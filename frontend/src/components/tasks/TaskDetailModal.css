@@ -47,6 +47,11 @@
   gap: 1rem;
 }
 
+.modal-header-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
 .modal-header h2 {
   font-size: 1.25rem;
   font-weight: 700;
@@ -55,17 +60,25 @@
   flex: 1;
 }
 
+.edit-btn,
 .close-btn {
   width: 32px;
   height: 32px;
   border-radius: var(--radius-md);
   background: transparent;
+  border: none;
   color: var(--text-muted);
   display: flex;
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
   flex-shrink: 0;
+  cursor: pointer;
+}
+
+.edit-btn:hover {
+  background: rgba(14, 165, 233, 0.1);
+  color: var(--primary);
 }
 
 .close-btn:hover {

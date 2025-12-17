@@ -95,6 +95,11 @@ export function TasksPage() {
           task={selectedTask}
           subtasks={subtasks}
           onClose={handleCloseModal}
+          onEdit={(task) => {
+            setTaskToEdit(task);
+            setIsFormOpen(true);
+            setSelectedTask(null);
+          }}
         />
       )}
 

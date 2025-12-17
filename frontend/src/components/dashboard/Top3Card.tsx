@@ -4,14 +4,17 @@ import { useTop3 } from '../../hooks/useTop3';
 import { useTasks } from '../../hooks/useTasks';
 import { TaskItem } from './TaskItem';
 import { TaskDetailModal } from '../tasks/TaskDetailModal';
+import { TaskFormModal } from '../tasks/TaskFormModal';
 import { tasksApi } from '../../api/tasks';
-import type { Task } from '../../api/types';
+import type { Task, TaskCreate, TaskUpdate } from '../../api/types';
 import './Top3Card.css';
 
 export function Top3Card() {
   const { data: tasks, isLoading, error } = useTop3();
-  const { updateTask } = useTasks();
+  const { updateTask, createTask, isCreating, isUpdating } = useTasks();
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [taskToEdit, setTaskToEdit] = useState<Task | undefined>(undefined);
   const [removingTaskIds, setRemovingTaskIds] = useState<Set<string>>(new Set());
   const [pendingDoneTasks, setPendingDoneTasks] = useState<Map<string, Task>>(new Map());
 
@@ -28,6 +31,20 @@ export function Top3Card() {
 
   const handleCloseModal = () => {
     setSelectedTask(null);
+  };
+
+  const handleCloseForm = () => {
+    setIsFormOpen(false);
+    setTaskToEdit(undefined);
+  };
+
+  const handleSubmitForm = (data: TaskCreate | TaskUpdate) => {
+    if (taskToEdit) {
+      updateTask(taskToEdit.id, data as TaskUpdate);
+    } else {
+      createTask(data as TaskCreate);
+    }
+    handleCloseForm();
   };
 
   const handleTaskCheck = (taskId: string) => {
@@ -132,6 +149,20 @@ export function Top3Card() {
           task={selectedTask}
           subtasks={subtasks}
           onClose={handleCloseModal}
+          onEdit={(task) => {
+            setTaskToEdit(task);
+            setIsFormOpen(true);
+            setSelectedTask(null);
+          }}
+        />
+      )}
+
+      {isFormOpen && (
+        <TaskFormModal
+          task={taskToEdit}
+          onClose={handleCloseForm}
+          onSubmit={handleSubmitForm}
+          isSubmitting={isCreating || isUpdating}
         />
       )}
     </div>

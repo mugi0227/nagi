@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { FaTimes, FaFire, FaClock, FaLeaf, FaBatteryFull, FaBatteryQuarter, FaCheckCircle, FaCircle, FaArrowLeft, FaBookOpen } from 'react-icons/fa';
+import { FaTimes, FaFire, FaClock, FaLeaf, FaBatteryFull, FaBatteryQuarter, FaCheckCircle, FaCircle, FaArrowLeft, FaBookOpen, FaEdit } from 'react-icons/fa';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Task } from '../../api/types';
@@ -9,6 +9,7 @@ interface TaskDetailModalProps {
   task: Task;
   subtasks?: Task[];
   onClose: () => void;
+  onEdit?: (task: Task) => void;
 }
 
 // Helper to extract guide from description
@@ -38,7 +39,7 @@ function extractGuide(description?: string | null): { mainDescription: string; g
   return { mainDescription: description, guide: '' };
 }
 
-export function TaskDetailModal({ task, subtasks = [], onClose }: TaskDetailModalProps) {
+export function TaskDetailModal({ task, subtasks = [], onClose, onEdit }: TaskDetailModalProps) {
   const [selectedSubtask, setSelectedSubtask] = useState<Task | null>(null);
   const getPriorityIcon = (level: string) => {
     switch (level) {
@@ -89,9 +90,16 @@ export function TaskDetailModal({ task, subtasks = [], onClose }: TaskDetailModa
         <div className="modal-content">
           <div className="modal-header">
             <h2>{task.title}</h2>
-            <button className="close-btn" onClick={onClose}>
-              <FaTimes />
-            </button>
+            <div className="modal-header-actions">
+              {onEdit && (
+                <button className="edit-btn" onClick={() => onEdit(task)} title="編集">
+                  <FaEdit />
+                </button>
+              )}
+              <button className="close-btn" onClick={onClose}>
+                <FaTimes />
+              </button>
+            </div>
           </div>
 
           <div className="modal-body">
