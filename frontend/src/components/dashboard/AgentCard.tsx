@@ -30,7 +30,7 @@ export function AgentCard() {
         </div>
       </div>
       <div className="agent-actions">
-        <button className="secondary-btn">
+        <button className="secondary-btn" onClick={() => alert('朝のブリーフィング機能は開発中です！')}>
           <FaPlay />
           <span>朝のブリーフィング</span>
         </button>

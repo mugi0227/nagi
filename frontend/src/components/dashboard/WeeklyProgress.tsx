@@ -1,16 +1,8 @@
+import { useWeeklyProgress } from '../../hooks/useWeeklyProgress';
 import './WeeklyProgress.css';
 
 export function WeeklyProgress() {
-  // Mock data for the week
-  const weekData = [
-    { day: '月', height: 40 },
-    { day: '火', height: 70 },
-    { day: '水', height: 50 },
-    { day: '木', height: 30, active: true },
-    { day: '金', height: 20 },
-    { day: '土', height: 10 },
-    { day: '日', height: 10 },
-  ];
+  const { weekData, totalDone, totalPending } = useWeeklyProgress();
 
   return (
     <div className="stats-card">
@@ -21,7 +13,7 @@ export function WeeklyProgress() {
             key={index}
             className={`bar ${item.active ? 'active' : ''}`}
             style={{ height: `${item.height}%` }}
-            title={`${item.day}: ${item.height}%`}
+            title={`${item.day}: ${item.completedCount}件完了`}
           >
             <span className="bar-label">{item.day}</span>
           </div>
@@ -29,11 +21,11 @@ export function WeeklyProgress() {
       </div>
       <div className="stats-summary">
         <div className="stat-item">
-          <span className="stat-value">12</span>
+          <span className="stat-value">{totalDone}</span>
           <span className="stat-label">Done</span>
         </div>
         <div className="stat-item">
-          <span className="stat-value">5</span>
+          <span className="stat-value">{totalPending}</span>
           <span className="stat-label">Pending</span>
         </div>
       </div>

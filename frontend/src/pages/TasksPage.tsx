@@ -1,15 +1,19 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { FaPlus } from 'react-icons/fa';
 import { useTasks } from '../hooks/useTasks';
 import { KanbanBoard } from '../components/tasks/KanbanBoard';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
+import { TaskFormModal } from '../components/tasks/TaskFormModal';
 import { tasksApi } from '../api/tasks';
-import type { Task, TaskStatus } from '../api/types';
+import type { Task, TaskStatus, TaskCreate, TaskUpdate } from '../api/types';
 import './TasksPage.css';
 
 export function TasksPage() {
-  const { tasks, isLoading, error, updateTask, deleteTask } = useTasks();
+  const { tasks, isLoading, error, createTask, updateTask, deleteTask, isCreating, isUpdating } = useTasks();
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [taskToEdit, setTaskToEdit] = useState<Task | undefined>(undefined);
 
   // Fetch subtasks when a task is selected
   const { data: subtasks = [] } = useQuery({
@@ -28,6 +32,25 @@ export function TasksPage() {
 
   const handleCloseModal = () => {
     setSelectedTask(null);
+  };
+
+  const handleOpenCreateForm = () => {
+    setTaskToEdit(undefined);
+    setIsFormOpen(true);
+  };
+
+  const handleCloseForm = () => {
+    setIsFormOpen(false);
+    setTaskToEdit(undefined);
+  };
+
+  const handleSubmitForm = (data: TaskCreate | TaskUpdate) => {
+    if (taskToEdit) {
+      updateTask(taskToEdit.id, data as TaskUpdate);
+    } else {
+      createTask(data as TaskCreate);
+    }
+    handleCloseForm();
   };
 
   if (error) {
@@ -54,6 +77,10 @@ export function TasksPage() {
         <h2 className="page-title">Tasks</h2>
         <div className="header-actions">
           <span className="task-total">全{tasks.length}件</span>
+          <button className="primary-btn" onClick={handleOpenCreateForm}>
+            <FaPlus />
+            新規タスク
+          </button>
         </div>
       </div>
       <KanbanBoard
@@ -68,6 +95,15 @@ export function TasksPage() {
           task={selectedTask}
           subtasks={subtasks}
           onClose={handleCloseModal}
+        />
+      )}
+
+      {isFormOpen && (
+        <TaskFormModal
+          task={taskToEdit}
+          onClose={handleCloseForm}
+          onSubmit={handleSubmitForm}
+          isSubmitting={isCreating || isUpdating}
         />
       )}
     </div>

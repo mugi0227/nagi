@@ -1,0 +1,262 @@
+.achievement-page {
+  padding: 0;
+  height: 100%;
+}
+
+.achievement-page .page-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  margin-bottom: 1.5rem;
+  box-shadow: var(--shadow-card);
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.page-icon {
+  font-size: 1.75rem;
+  color: var(--accent-orange);
+}
+
+.period-selector {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.period-btn {
+  padding: 0.5rem 1rem;
+  border: 2px solid rgba(148, 163, 184, 0.2);
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.period-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.period-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+.achievement-content {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1.5rem;
+}
+
+.stat-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-card);
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.stat-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.75rem;
+}
+
+.stat-icon.completed {
+  background: rgba(74, 222, 128, 0.1);
+  color: var(--accent-green);
+}
+
+.stat-icon.projects {
+  background: rgba(14, 165, 233, 0.1);
+  color: var(--primary);
+}
+
+.stat-info {
+  flex: 1;
+}
+
+.stat-value {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.stat-label {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.achievement-section {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 1.5rem;
+  box-shadow: var(--shadow-card);
+}
+
+.achievement-section h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0 0 1.5rem 0;
+}
+
+.project-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.project-group {
+  border: 2px solid rgba(148, 163, 184, 0.1);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+}
+
+.project-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0 0 1rem 0;
+}
+
+.task-count {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.achievement-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.achievement-item {
+  display: flex;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  transition: background 0.2s ease;
+}
+
+.achievement-item:hover {
+  background: rgba(14, 165, 233, 0.05);
+}
+
+.check-icon {
+  color: var(--accent-green);
+  font-size: 1.25rem;
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+}
+
+.achievement-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.achievement-title {
+  font-weight: 600;
+  color: var(--text-main);
+  margin-bottom: 0.25rem;
+}
+
+.achievement-desc {
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  margin-bottom: 0.5rem;
+}
+
+.achievement-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.growth-notes {
+  width: 100%;
+  padding: 1rem;
+  border: 2px solid rgba(148, 163, 184, 0.2);
+  border-radius: var(--radius-md);
+  background: var(--bg-main);
+  color: var(--text-main);
+  font-size: 0.95rem;
+  font-family: inherit;
+  resize: vertical;
+  margin-bottom: 1rem;
+  transition: all 0.2s ease;
+}
+
+.growth-notes:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}
+
+.export-btn {
+  width: 100%;
+  padding: 0.875rem 1.5rem;
+  background: var(--primary);
+  border: none;
+  border-radius: var(--radius-md);
+  color: white;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.export-btn:hover {
+  background: var(--primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+}
+
+.empty-state {
+  padding: 3rem 2rem;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.loading-state {
+  padding: 3rem;
+  text-align: center;
+  color: var(--text-muted);
+}

@@ -1,5 +1,5 @@
 import { Link, useLocation } from 'react-router-dom';
-import { FaBrain, FaChartPie, FaListCheck, FaFolderOpen, FaGear } from 'react-icons/fa6';
+import { FaBrain, FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear } from 'react-icons/fa6';
 import './Sidebar.css';
 
 export function Sidebar() {
@@ -9,6 +9,7 @@ export function Sidebar() {
     { path: '/', label: 'Dashboard', icon: FaChartPie },
     { path: '/tasks', label: 'Tasks', icon: FaListCheck },
     { path: '/projects', label: 'Projects', icon: FaFolderOpen },
+    { path: '/achievement', label: 'Achievement', icon: FaTrophy },
   ];
 
   return (
@@ -41,9 +42,9 @@ export function Sidebar() {
             <span className="user-status">Online</span>
           </div>
         </div>
-        <button className="settings-btn" title="Settings">
+        <Link to="/settings" className="settings-btn" title="Settings">
           <FaGear />
-        </button>
+        </Link>
       </div>
     </aside>
   );
