@@ -22,6 +22,7 @@ export function AgentCard() {
       <div className="agent-status">
         <div className="agent-avatar">
           <div className="pulse-ring"></div>
+          <div className="pulse-ring"></div>
           <FaRobot />
         </div>
         <div className="agent-message">

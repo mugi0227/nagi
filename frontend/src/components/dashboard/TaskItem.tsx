@@ -1,5 +1,6 @@
-import { FaCircle, FaCheckCircle } from 'react-icons/fa';
+import { FaCheck } from 'react-icons/fa';
 import { FaFire, FaClock, FaLeaf, FaBatteryFull, FaBatteryQuarter, FaEllipsis } from 'react-icons/fa6';
+import { motion, AnimatePresence } from 'framer-motion';
 import type { Task } from '../../api/types';
 import './TaskItem.css';
 
@@ -35,7 +36,7 @@ export function TaskItem({ task, onCheck, onClick, isRemoving = false }: TaskIte
   };
 
   const handleCheckClick = (e: React.MouseEvent) => {
-    e.stopPropagation(); // モーダルを開かないようにする
+    e.stopPropagation();
     if (onCheck && task.status !== 'DONE') {
       onCheck(task.id);
     }
@@ -43,29 +44,40 @@ export function TaskItem({ task, onCheck, onClick, isRemoving = false }: TaskIte
 
   const handleActionClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    // 将来的にアクションメニューを実装する場合に使用
   };
 
   const isDone = task.status === 'DONE';
 
   return (
-    <div 
+    <div
       className={`task-item ${isRemoving ? 'removing' : ''}`}
       onClick={handleClick}
       data-done={isDone}
       style={{ cursor: onClick ? 'pointer' : 'default' }}
     >
-      <div 
-        className="task-check" 
-        onClick={handleCheckClick}
-        style={{ cursor: 'pointer' }}
-      >
-        <FaCircle className="circle-icon" />
-        {isDone ? (
-          <FaCheckCircle className="circle-icon check-icon done" />
-        ) : (
-          <FaCheckCircle className="circle-icon check-icon hover-preview" />
-        )}
+      <div className={`task-check ${isDone ? 'done' : ''}`} onClick={handleCheckClick}>
+        <div className="circle-bg" />
+        <AnimatePresence mode="wait">
+          {isDone ? (
+            <motion.div
+              key="check"
+              className="check-icon-wrapper done"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0, opacity: 0 }}
+              transition={{ type: "spring", damping: 12, stiffness: 200 }}
+            >
+              <FaCheck className="check-icon" />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="preview"
+              className="check-icon-wrapper hover-preview"
+            >
+              <FaCheck className="check-icon" />
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       <div className="task-content">
@@ -84,8 +96,8 @@ export function TaskItem({ task, onCheck, onClick, isRemoving = false }: TaskIte
         </div>
       </div>
 
-      <button 
-        className="task-action-btn" 
+      <button
+        className="task-action-btn"
         aria-label="More actions"
         onClick={handleActionClick}
       >

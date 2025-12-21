@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { FaTimes, FaFire, FaClock, FaLeaf, FaBatteryFull, FaBatteryQuarter, FaCheckCircle, FaCircle, FaArrowLeft, FaBookOpen, FaEdit } from 'react-icons/fa';
+import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Task } from '../../api/types';
@@ -41,6 +42,7 @@ function extractGuide(description?: string | null): { mainDescription: string; g
 
 export function TaskDetailModal({ task, subtasks = [], onClose, onEdit }: TaskDetailModalProps) {
   const [selectedSubtask, setSelectedSubtask] = useState<Task | null>(null);
+
   const getPriorityIcon = (level: string) => {
     switch (level) {
       case 'HIGH':
@@ -84,8 +86,21 @@ export function TaskDetailModal({ task, subtasks = [], onClose, onEdit }: TaskDe
   const taskDescription = extractGuide(task.description);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className={`modal-container ${selectedSubtask ? 'split-view' : ''}`} onClick={(e) => e.stopPropagation()}>
+    <motion.div
+      className="modal-overlay"
+      onClick={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <motion.div
+        className={`modal-container ${selectedSubtask ? 'split-view' : ''}`}
+        onClick={(e) => e.stopPropagation()}
+        initial={{ scale: 0.95, opacity: 0, y: 10 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: 10 }}
+        transition={{ type: "spring", damping: 30, stiffness: 450, mass: 0.8 }}
+      >
         {/* Main Task Panel */}
         <div className="modal-content">
           <div className="modal-header">
@@ -103,161 +118,169 @@ export function TaskDetailModal({ task, subtasks = [], onClose, onEdit }: TaskDe
           </div>
 
           <div className="modal-body">
-          {/* Status */}
-          <div className="detail-section">
-            <h3>ステータス</h3>
-            <span className={`status-badge status-${task.status.toLowerCase()}`}>
-              {getStatusLabel(task.status)}
-            </span>
-          </div>
-
-          {/* Description */}
-          {task.description && (
+            {/* Status */}
             <div className="detail-section">
-              <h3>説明</h3>
-              {taskDescription.mainDescription && (
-                <div className="description-text markdown-content">
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {taskDescription.mainDescription}
-                  </ReactMarkdown>
-                </div>
-              )}
-              {taskDescription.guide && (
-                <div className="task-guide markdown-content">
-                  <h4>進め方ガイド</h4>
-                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {taskDescription.guide}
-                  </ReactMarkdown>
-                </div>
-              )}
+              <h3>ステータス</h3>
+              <span className={`status-badge status-${task.status.toLowerCase()}`}>
+                {getStatusLabel(task.status)}
+              </span>
             </div>
-          )}
 
-          {/* Metadata */}
-          <div className="detail-section">
-            <h3>優先度・エネルギー</h3>
-            <div className="metadata-grid">
-              <div className="metadata-item">
-                <span className="metadata-label">重要度</span>
-                <span className={`meta-badge importance-${task.importance.toLowerCase()}`}>
-                  {getPriorityIcon(task.importance)}
-                  <span>{task.importance}</span>
-                </span>
+            {/* Description */}
+            {task.description && (
+              <div className="detail-section">
+                <h3>説明</h3>
+                {taskDescription.mainDescription && (
+                  <div className="description-text markdown-content">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {taskDescription.mainDescription}
+                    </ReactMarkdown>
+                  </div>
+                )}
+                {taskDescription.guide && (
+                  <div className="task-guide markdown-content">
+                    <h4>進め方ガイド</h4>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {taskDescription.guide}
+                    </ReactMarkdown>
+                  </div>
+                )}
               </div>
-              <div className="metadata-item">
-                <span className="metadata-label">緊急度</span>
-                <span className={`meta-badge urgency-${task.urgency.toLowerCase()}`}>
-                  {getPriorityIcon(task.urgency)}
-                  <span>{task.urgency}</span>
-                </span>
-              </div>
-              <div className="metadata-item">
-                <span className="metadata-label">必要エネルギー</span>
-                <span className={`meta-badge energy-${task.energy_level.toLowerCase()}`}>
-                  {getEnergyIcon(task.energy_level)}
-                  <span>{task.energy_level}</span>
-                </span>
-              </div>
-              {task.estimated_minutes && (
+            )}
+
+            {/* Metadata */}
+            <div className="detail-section">
+              <h3>優先度・エネルギー</h3>
+              <div className="metadata-grid">
                 <div className="metadata-item">
-                  <span className="metadata-label">見積もり時間</span>
-                  <span className="metadata-value">{task.estimated_minutes}分</span>
+                  <span className="metadata-label">重要度</span>
+                  <span className={`meta-badge importance-${task.importance.toLowerCase()}`}>
+                    {getPriorityIcon(task.importance)}
+                    <span>{task.importance}</span>
+                  </span>
                 </div>
-              )}
+                <div className="metadata-item">
+                  <span className="metadata-label">緊急度</span>
+                  <span className={`meta-badge urgency-${task.urgency.toLowerCase()}`}>
+                    {getPriorityIcon(task.urgency)}
+                    <span>{task.urgency}</span>
+                  </span>
+                </div>
+                <div className="metadata-item">
+                  <span className="metadata-label">必要エネルギー</span>
+                  <span className={`meta-badge energy-${task.energy_level.toLowerCase()}`}>
+                    {getEnergyIcon(task.energy_level)}
+                    <span>{task.energy_level}</span>
+                  </span>
+                </div>
+                {task.estimated_minutes && (
+                  <div className="metadata-item">
+                    <span className="metadata-label">見積もり時間</span>
+                    <span className="metadata-value">{task.estimated_minutes}分</span>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Due Date */}
+            {task.due_date && (
+              <div className="detail-section">
+                <h3>期限</h3>
+                <p className="due-date">{formatDate(task.due_date)}</p>
+              </div>
+            )}
+
+            {/* Subtasks */}
+            {subtasks.length > 0 && (
+              <div className="detail-section">
+                <h3>サブタスク ({subtasks.length}件)</h3>
+                <ul className="subtasks-list">
+                  {subtasks.map((subtask) => {
+                    const { guide } = extractGuide(subtask.description);
+                    const hasGuide = guide.length > 0;
+                    return (
+                      <li
+                        key={subtask.id}
+                        className={`subtask-item ${hasGuide ? 'has-guide' : ''} ${selectedSubtask?.id === subtask.id ? 'selected' : ''}`}
+                        onClick={() => hasGuide && setSelectedSubtask(subtask)}
+                      >
+                        {subtask.status === 'DONE' ? (
+                          <FaCheckCircle className="subtask-icon done" />
+                        ) : (
+                          <FaCircle className="subtask-icon" />
+                        )}
+                        <span className={subtask.status === 'DONE' ? 'subtask-title done' : 'subtask-title'}>
+                          {subtask.title}
+                        </span>
+                        {hasGuide && (
+                          <FaBookOpen className="subtask-guide-icon" title="進め方ガイドあり" />
+                        )}
+                        {subtask.estimated_minutes && (
+                          <span className="subtask-time">{subtask.estimated_minutes}分</span>
+                        )}
+                      </li>
+                    );
+                  })}
+                </ul>
+              </div>
+            )}
+
+            {/* Meta Info */}
+            <div className="detail-section meta-info">
+              <div className="meta-info-row">
+                <span className="meta-info-label">作成者:</span>
+                <span className="meta-info-value">{task.created_by === 'AGENT' ? 'AI秘書' : 'ユーザー'}</span>
+              </div>
+              <div className="meta-info-row">
+                <span className="meta-info-label">作成日時:</span>
+                <span className="meta-info-value">{formatDate(task.created_at)}</span>
+              </div>
+              <div className="meta-info-row">
+                <span className="meta-info-label">更新日時:</span>
+                <span className="meta-info-value">{formatDate(task.updated_at)}</span>
+              </div>
             </div>
           </div>
-
-          {/* Due Date */}
-          {task.due_date && (
-            <div className="detail-section">
-              <h3>期限</h3>
-              <p className="due-date">{formatDate(task.due_date)}</p>
-            </div>
-          )}
-
-          {/* Subtasks */}
-          {subtasks.length > 0 && (
-            <div className="detail-section">
-              <h3>サブタスク ({subtasks.length}件)</h3>
-              <ul className="subtasks-list">
-                {subtasks.map((subtask) => {
-                  const { guide } = extractGuide(subtask.description);
-                  const hasGuide = guide.length > 0;
-                  return (
-                    <li
-                      key={subtask.id}
-                      className={`subtask-item ${hasGuide ? 'has-guide' : ''} ${selectedSubtask?.id === subtask.id ? 'selected' : ''}`}
-                      onClick={() => hasGuide && setSelectedSubtask(subtask)}
-                    >
-                      {subtask.status === 'DONE' ? (
-                        <FaCheckCircle className="subtask-icon done" />
-                      ) : (
-                        <FaCircle className="subtask-icon" />
-                      )}
-                      <span className={subtask.status === 'DONE' ? 'subtask-title done' : 'subtask-title'}>
-                        {subtask.title}
-                      </span>
-                      {hasGuide && (
-                        <FaBookOpen className="subtask-guide-icon" title="進め方ガイドあり" />
-                      )}
-                      {subtask.estimated_minutes && (
-                        <span className="subtask-time">{subtask.estimated_minutes}分</span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          )}
-
-          {/* Meta Info */}
-          <div className="detail-section meta-info">
-            <div className="meta-info-row">
-              <span className="meta-info-label">作成者:</span>
-              <span className="meta-info-value">{task.created_by === 'AGENT' ? 'AI秘書' : 'ユーザー'}</span>
-            </div>
-            <div className="meta-info-row">
-              <span className="meta-info-label">作成日時:</span>
-              <span className="meta-info-value">{formatDate(task.created_at)}</span>
-            </div>
-            <div className="meta-info-row">
-              <span className="meta-info-label">更新日時:</span>
-              <span className="meta-info-value">{formatDate(task.updated_at)}</span>
-            </div>
-          </div>
-        </div>
         </div>
 
         {/* Guide Panel */}
-        {selectedSubtask && selectedGuide && (
-          <div className="guide-panel">
-            <div className="guide-header">
-              <button className="back-btn" onClick={() => setSelectedSubtask(null)}>
-                <FaArrowLeft />
-              </button>
-              <h3>進め方ガイド</h3>
-            </div>
-            <div className="guide-content">
-              <div className="guide-task-title">
-                <FaBookOpen />
-                <span>{selectedSubtask.title}</span>
+        <AnimatePresence>
+          {selectedSubtask && selectedGuide && (
+            <motion.div
+              className="guide-panel"
+              initial={{ x: 50, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              exit={{ x: 50, opacity: 0 }}
+              transition={{ type: "spring", damping: 20, stiffness: 200 }}
+            >
+              <div className="guide-header">
+                <button className="back-btn" onClick={() => setSelectedSubtask(null)}>
+                  <FaArrowLeft />
+                </button>
+                <h3>進め方ガイド</h3>
               </div>
-              {selectedGuide.mainDescription && (
-                <div className="guide-description">
+              <div className="guide-content">
+                <div className="guide-task-title">
+                  <FaBookOpen />
+                  <span>{selectedSubtask.title}</span>
+                </div>
+                {selectedGuide.mainDescription && (
+                  <div className="guide-description">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {selectedGuide.mainDescription}
+                    </ReactMarkdown>
+                  </div>
+                )}
+                <div className="guide-steps markdown-content">
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                    {selectedGuide.mainDescription}
+                    {selectedGuide.guide}
                   </ReactMarkdown>
                 </div>
-              )}
-              <div className="guide-steps markdown-content">
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                  {selectedGuide.guide}
-                </ReactMarkdown>
               </div>
-            </div>
-          </div>
-        )}
-      </div>
-    </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.div>
+    </motion.div>
   );
 }

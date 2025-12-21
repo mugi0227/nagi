@@ -1,5 +1,6 @@
-import { useState, useEffect, FormEvent } from 'react';
+import { useState, type FormEvent } from 'react';
 import { FaTimes, FaSave } from 'react-icons/fa';
+import { motion } from 'framer-motion';
 import { useProjects } from '../../hooks/useProjects';
 import type { Task, TaskCreate, TaskUpdate, Priority, EnergyLevel } from '../../api/types';
 import './TaskFormModal.css';
@@ -44,8 +45,21 @@ export function TaskFormModal({ task, onClose, onSubmit, isSubmitting }: TaskFor
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="task-form-modal" onClick={(e) => e.stopPropagation()}>
+    <motion.div
+      className="modal-overlay"
+      onClick={onClose}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+    >
+      <motion.div
+        className="task-form-modal"
+        onClick={(e) => e.stopPropagation()}
+        initial={{ scale: 0.95, opacity: 0, y: 10 }}
+        animate={{ scale: 1, opacity: 1, y: 0 }}
+        exit={{ scale: 0.95, opacity: 0, y: 10 }}
+        transition={{ type: "spring", damping: 30, stiffness: 450, mass: 0.8 }}
+      >
         <div className="modal-header">
           <h2>{isEditMode ? 'タスク編集' : '新規タスク作成'}</h2>
           <button className="close-btn" onClick={onClose}>
@@ -174,7 +188,7 @@ export function TaskFormModal({ task, onClose, onSubmit, isSubmitting }: TaskFor
             </button>
           </div>
         </form>
-      </div>
-    </div>
+      </motion.div>
+    </motion.div>
   );
 }

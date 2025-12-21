@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { FaPlus } from 'react-icons/fa';
 import { useTasks } from '../hooks/useTasks';
+import { AnimatePresence } from 'framer-motion';
 import { KanbanBoard } from '../components/tasks/KanbanBoard';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { TaskFormModal } from '../components/tasks/TaskFormModal';
@@ -90,27 +91,31 @@ export function TasksPage() {
         onTaskClick={handleTaskClick}
       />
 
-      {selectedTask && (
-        <TaskDetailModal
-          task={selectedTask}
-          subtasks={subtasks}
-          onClose={handleCloseModal}
-          onEdit={(task) => {
-            setTaskToEdit(task);
-            setIsFormOpen(true);
-            setSelectedTask(null);
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {selectedTask && (
+          <TaskDetailModal
+            task={selectedTask}
+            subtasks={subtasks}
+            onClose={handleCloseModal}
+            onEdit={(task) => {
+              setTaskToEdit(task);
+              setIsFormOpen(true);
+              setSelectedTask(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
 
-      {isFormOpen && (
-        <TaskFormModal
-          task={taskToEdit}
-          onClose={handleCloseForm}
-          onSubmit={handleSubmitForm}
-          isSubmitting={isCreating || isUpdating}
-        />
-      )}
+      <AnimatePresence>
+        {isFormOpen && (
+          <TaskFormModal
+            task={taskToEdit}
+            onClose={handleCloseForm}
+            onSubmit={handleSubmitForm}
+            isSubmitting={isCreating || isUpdating}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

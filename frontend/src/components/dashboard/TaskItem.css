@@ -6,8 +6,8 @@
   border-radius: var(--radius-md);
   background: var(--bg-card);
   transition: background 0.3s ease,
-              border-color 0.3s ease,
-              transform 0.3s ease;
+    border-color 0.3s ease,
+    transform 0.3s ease;
   border: 1px solid transparent;
   animation: fadeIn 0.6s ease-out;
 }
@@ -17,6 +17,7 @@
     opacity: 0;
     transform: translateY(-10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -33,6 +34,7 @@
     opacity: 1;
     transform: translateX(0);
   }
+
   to {
     opacity: 0;
     transform: translateX(20px);
@@ -45,89 +47,93 @@
   transform: translateX(4px);
 }
 
+/* Checkbox Container */
 .task-check {
-  width: 28px;
-  height: 28px;
+  width: 32px;
+  /* Expanded hit area */
+  height: 32px;
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
+  cursor: pointer;
   flex-shrink: 0;
-  position: relative;
+  border-radius: 50%;
+  transition: background 0.2s ease;
 }
 
-.circle-icon {
-  font-size: 1rem;
-  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+/* Visual guide for the hit area on hover */
+.task-check:hover {
+  background: rgba(14, 165, 233, 0.08);
+}
+
+.circle-bg {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
-}
-
-/* 白い丸（FaCircle）のスタイル */
-.circle-icon:not(.check-icon) {
-  color: transparent;
-  background: white;
+  width: 22px;
+  height: 22px;
   border: 2px solid var(--text-muted);
   border-radius: 50%;
-  width: 1.2em;
-  height: 1.2em;
-  display: block;
+  background: white;
+  transition: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
   box-sizing: border-box;
 }
 
-.circle-icon:not(.check-icon) svg {
-  display: none; /* FaCircleのSVGは非表示にして、背景の白い円だけを表示 */
+/* Subtle change when hovering the whole item */
+.task-item:hover .circle-bg {
+  border-color: #94a3b8;
 }
 
-.circle-icon.check-icon {
-  color: var(--primary);
-  opacity: 0;
+/* Strong feedback when hovering the checkbox specifically */
+.task-check:hover .circle-bg {
+  border-color: var(--primary);
+  transform: scale(1.1);
+  box-shadow: 0 0 12px rgba(14, 165, 233, 0.2);
+}
+
+.task-check.done .circle-bg {
+  border-color: var(--primary);
+  background: var(--primary);
+  /* Solid fill for cleaner look */
+}
+
+.check-icon-wrapper {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   pointer-events: none;
+  z-index: 2;
 }
 
-/* ホバー時：薄くチェックを表示 */
-.task-check:hover .check-icon.hover-preview {
-  opacity: 0.3;
+.check-icon {
+  width: 15px;
+  height: 15px;
+  color: var(--primary);
+  display: block;
+  flex-shrink: 0;
+}
+
+.task-check.done .check-icon {
+  color: white;
+  /* White check on primary background */
+}
+
+.check-icon-wrapper.hover-preview {
+  opacity: 0;
   transition: opacity 0.2s ease;
 }
 
-/* クリック時：1秒かけてチェックがつく（Nintendo風バウンス） */
-.circle-icon.check-icon.done {
-  color: #4ade80;
-  opacity: 1;
-  animation: checkAppear 1s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+/* Restrict hover preview to the checkbox itself */
+.task-check:hover .check-icon-wrapper.hover-preview {
+  opacity: 0.6;
 }
 
-@keyframes checkAppear {
-  0% {
-    transform: translate(-50%, -50%) scale(0) rotate(-180deg);
-    opacity: 0;
-  }
-  60% {
-    transform: translate(-50%, -50%) scale(1.4) rotate(10deg);
-    opacity: 0.9;
-  }
-  75% {
-    transform: translate(-50%, -50%) scale(0.9) rotate(-5deg);
-    opacity: 1;
-  }
-  85% {
-    transform: translate(-50%, -50%) scale(1.1) rotate(2deg);
-  }
-  100% {
-    transform: translate(-50%, -50%) scale(1) rotate(0deg);
-    opacity: 1;
-  }
-}
-
-.task-check:hover .circle-icon:not(.check-icon) {
-  border-color: var(--primary);
-  transform: translate(-50%, -50%) scale(1.1);
-}
-
-.task-check:active .circle-icon:not(.check-icon) {
-  transform: translate(-50%, -50%) scale(0.95);
+.task-check:active .circle-bg {
+  transform: scale(0.95);
 }
 
 .task-content {

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTop3 } from '../../hooks/useTop3';
 import { useTasks } from '../../hooks/useTasks';
+import { AnimatePresence } from 'framer-motion';
 import { TaskItem } from './TaskItem';
 import { TaskDetailModal } from '../tasks/TaskDetailModal';
 import { TaskFormModal } from '../tasks/TaskFormModal';
@@ -144,27 +145,31 @@ export function Top3Card() {
         )}
       </div>
 
-      {selectedTask && (
-        <TaskDetailModal
-          task={selectedTask}
-          subtasks={subtasks}
-          onClose={handleCloseModal}
-          onEdit={(task) => {
-            setTaskToEdit(task);
-            setIsFormOpen(true);
-            setSelectedTask(null);
-          }}
-        />
-      )}
+      <AnimatePresence>
+        {selectedTask && (
+          <TaskDetailModal
+            task={selectedTask}
+            subtasks={subtasks}
+            onClose={handleCloseModal}
+            onEdit={(task) => {
+              setTaskToEdit(task);
+              setIsFormOpen(true);
+              setSelectedTask(null);
+            }}
+          />
+        )}
+      </AnimatePresence>
 
-      {isFormOpen && (
-        <TaskFormModal
-          task={taskToEdit}
-          onClose={handleCloseForm}
-          onSubmit={handleSubmitForm}
-          isSubmitting={isCreating || isUpdating}
-        />
-      )}
+      <AnimatePresence>
+        {isFormOpen && (
+          <TaskFormModal
+            task={taskToEdit}
+            onClose={handleCloseForm}
+            onSubmit={handleSubmitForm}
+            isSubmitting={isCreating || isUpdating}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
