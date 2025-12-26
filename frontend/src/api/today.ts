@@ -12,6 +12,7 @@ export const todayApi = {
   getTop3: (query?: {
     capacityHours?: number;
     bufferHours?: number;
+    capacityByWeekday?: number[];
   }) => {
     const params = new URLSearchParams();
     if (query?.capacityHours !== undefined) {
@@ -19,6 +20,9 @@ export const todayApi = {
     }
     if (query?.bufferHours !== undefined) {
       params.set('buffer_hours', String(query.bufferHours));
+    }
+    if (query?.capacityByWeekday && query.capacityByWeekday.length === 7) {
+      params.set('capacity_by_weekday', JSON.stringify(query.capacityByWeekday));
     }
     const suffix = params.toString();
     return api.get<Top3Response>(`/today/top3${suffix ? `?${suffix}` : ''}`);

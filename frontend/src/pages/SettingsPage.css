@@ -123,6 +123,42 @@
   height: 30px;
 }
 
+/* Weekly Capacity */
+.weekday-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(90px, 1fr));
+  gap: 0.75rem;
+}
+
+.weekday-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.weekday-label {
+  font-weight: 700;
+  color: var(--text-main);
+  font-size: 0.9rem;
+}
+
+.weekday-item.sun .weekday-label {
+  color: #ef4444;
+}
+
+.weekday-item.sat .weekday-label {
+  color: #3b82f6;
+}
+
+.weekday-input {
+  max-width: 100%;
+}
+
 /* Toggle Button */
 .toggle-btn {
   position: relative;

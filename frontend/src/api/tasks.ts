@@ -45,6 +45,7 @@ export const tasksApi = {
   getToday: (query?: {
     capacityHours?: number;
     bufferHours?: number;
+    capacityByWeekday?: number[];
   }) => {
     const params = new URLSearchParams();
     if (query?.capacityHours !== undefined) {
@@ -52,6 +53,9 @@ export const tasksApi = {
     }
     if (query?.bufferHours !== undefined) {
       params.set('buffer_hours', String(query.bufferHours));
+    }
+    if (query?.capacityByWeekday && query.capacityByWeekday.length === 7) {
+      params.set('capacity_by_weekday', JSON.stringify(query.capacityByWeekday));
     }
     const suffix = params.toString();
     return api.get<TodayTasksResponse>(`/tasks/today${suffix ? `?${suffix}` : ''}`);
@@ -62,6 +66,7 @@ export const tasksApi = {
     capacityHours?: number;
     bufferHours?: number;
     maxDays?: number;
+    capacityByWeekday?: number[];
   }) => {
     const params = new URLSearchParams();
     if (query?.startDate) {
@@ -72,6 +77,9 @@ export const tasksApi = {
     }
     if (query?.bufferHours !== undefined) {
       params.set('buffer_hours', String(query.bufferHours));
+    }
+    if (query?.capacityByWeekday && query.capacityByWeekday.length === 7) {
+      params.set('capacity_by_weekday', JSON.stringify(query.capacityByWeekday));
     }
     if (query?.maxDays !== undefined) {
       params.set('max_days', String(query.maxDays));

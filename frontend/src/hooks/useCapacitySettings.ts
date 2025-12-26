@@ -14,5 +14,10 @@ export function useCapacitySettings() {
     };
   }, []);
 
-  return settings;
+  const getCapacityForDate = (date: Date) => {
+    const index = date.getDay();
+    return settings.capacityByWeekday?.[index] ?? settings.capacityHours;
+  };
+
+  return { ...settings, getCapacityForDate };
 }

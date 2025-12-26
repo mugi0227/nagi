@@ -68,7 +68,7 @@ type TodayTaskSnapshot = {
 export function TodayTasksCard() {
   const { data, isLoading, error } = useTodayTasks();
   const { tasks: allTasks, updateTask, createTask, isCreating, isUpdating } = useTasks();
-  const { capacityHours } = useCapacitySettings();
+  const { capacityHours, getCapacityForDate } = useCapacitySettings();
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [openedParentTask, setOpenedParentTask] = useState<Task | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
@@ -200,7 +200,10 @@ export function TodayTasksCard() {
   const todayAllocations = data?.today_allocations ?? [];
   const allocatedMinutes = data?.total_estimated_minutes ?? 0;
   const overflowMinutes = data?.overflow_minutes ?? 0;
-  const displayCapacityMinutes = Math.max(0, Math.round(capacityHours * 60));
+  const displayCapacityMinutes = Math.max(
+    0,
+    Math.round(getCapacityForDate(new Date()) * 60)
+  );
 
   const allocationMap = useMemo(() => {
     const map = new Map<string, TodayTaskAllocationSnapshot>();

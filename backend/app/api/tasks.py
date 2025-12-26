@@ -5,6 +5,7 @@ CRUD operations for tasks and task breakdown.
 """
 
 from datetime import date
+import json
 from typing import Optional
 from uuid import UUID
 
@@ -26,16 +27,56 @@ def get_scheduler_service() -> SchedulerService:
     return SchedulerService()
 
 
+def parse_capacity_by_weekday(
+    capacity_by_weekday: Optional[str],
+) -> Optional[list[float]]:
+    """Parse capacity_by_weekday query param."""
+    if capacity_by_weekday is None:
+        return None
+    try:
+        parsed = json.loads(capacity_by_weekday)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="capacity_by_weekday must be a JSON array of 7 numbers",
+        ) from exc
+    if not isinstance(parsed, list) or len(parsed) != 7:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="capacity_by_weekday must be a JSON array of 7 numbers",
+        )
+    result: list[float] = []
+    for entry in parsed:
+        try:
+            value = float(entry)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="capacity_by_weekday must be a JSON array of 7 numbers",
+            ) from exc
+        if value < 0 or value > 24:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="capacity_by_weekday values must be between 0 and 24",
+            )
+        result.append(value)
+    return result
+
+
 def apply_capacity_buffer(
     scheduler_service: SchedulerService,
     capacity_hours: Optional[float],
     buffer_hours: Optional[float],
-) -> Optional[float]:
+    capacity_by_weekday: Optional[list[float]] = None,
+) -> tuple[Optional[float], Optional[list[float]]]:
     """Apply buffer hours to capacity hours."""
     if buffer_hours is None:
-        return capacity_hours
+        return capacity_hours, capacity_by_weekday
     base_hours = capacity_hours if capacity_hours is not None else scheduler_service.default_capacity_hours
-    return max(0.0, base_hours - buffer_hours)
+    adjusted_weekday = None
+    if capacity_by_weekday:
+        adjusted_weekday = [max(0.0, hours - buffer_hours) for hours in capacity_by_weekday]
+    return max(0.0, base_hours - buffer_hours), adjusted_weekday
 
 
 async def load_project_priorities(project_repo: ProjectRepo, user_id: str) -> dict[UUID, int]:
@@ -84,17 +125,28 @@ async def get_task_schedule(
     start_date: Optional[date] = Query(None, description="Schedule start date"),
     capacity_hours: Optional[float] = Query(None, description="Daily capacity in hours (default: 8)"),
     buffer_hours: Optional[float] = Query(None, description="Daily buffer hours"),
+    capacity_by_weekday: Optional[str] = Query(
+        None,
+        description="JSON array of 7 daily capacity values (Sun..Sat)",
+    ),
     max_days: int = Query(60, ge=1, le=365, description="Maximum days to schedule"),
 ):
     """Build a multi-day schedule for tasks."""
     tasks = await repo.list(user.id, include_done=True, limit=1000)
     project_priorities = await load_project_priorities(project_repo, user.id)
-    effective_capacity = apply_capacity_buffer(scheduler_service, capacity_hours, buffer_hours)
+    parsed_weekly = parse_capacity_by_weekday(capacity_by_weekday)
+    effective_capacity, effective_weekly = apply_capacity_buffer(
+        scheduler_service,
+        capacity_hours,
+        buffer_hours,
+        parsed_weekly,
+    )
     return scheduler_service.build_schedule(
         tasks,
         project_priorities=project_priorities,
         start_date=start_date,
         capacity_hours=effective_capacity,
+        capacity_by_weekday=effective_weekly,
         max_days=max_days,
     )
 
@@ -108,17 +160,28 @@ async def get_today_tasks(
     target_date: Optional[date] = Query(None, description="Target date (default: today)"),
     capacity_hours: Optional[float] = Query(None, description="Daily capacity in hours (default: 8)"),
     buffer_hours: Optional[float] = Query(None, description="Daily buffer hours"),
+    capacity_by_weekday: Optional[str] = Query(
+        None,
+        description="JSON array of 7 daily capacity values (Sun..Sat)",
+    ),
     max_days: int = Query(30, ge=1, le=365, description="Maximum days to schedule"),
 ):
     """Get today's tasks derived from the schedule."""
     tasks = await repo.list(user.id, include_done=True, limit=1000)
     project_priorities = await load_project_priorities(project_repo, user.id)
-    effective_capacity = apply_capacity_buffer(scheduler_service, capacity_hours, buffer_hours)
+    parsed_weekly = parse_capacity_by_weekday(capacity_by_weekday)
+    effective_capacity, effective_weekly = apply_capacity_buffer(
+        scheduler_service,
+        capacity_hours,
+        buffer_hours,
+        parsed_weekly,
+    )
     schedule = scheduler_service.build_schedule(
         tasks,
         project_priorities=project_priorities,
         start_date=target_date,
         capacity_hours=effective_capacity,
+        capacity_by_weekday=effective_weekly,
         max_days=max_days,
     )
     return scheduler_service.get_today_tasks(

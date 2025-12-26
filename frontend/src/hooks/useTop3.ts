@@ -7,10 +7,10 @@ import { todayApi } from '../api/today';
 import { useCapacitySettings } from './useCapacitySettings';
 
 export function useTop3() {
-  const { capacityHours, bufferHours } = useCapacitySettings();
+  const { capacityHours, bufferHours, capacityByWeekday } = useCapacitySettings();
   return useQuery({
-    queryKey: ['top3', capacityHours, bufferHours],
-    queryFn: () => todayApi.getTop3({ capacityHours, bufferHours }),
+    queryKey: ['top3', capacityHours, bufferHours, capacityByWeekday],
+    queryFn: () => todayApi.getTop3({ capacityHours, bufferHours, capacityByWeekday }),
     staleTime: 30_000, // 30 seconds
   });
 }

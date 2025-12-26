@@ -1,14 +1,46 @@
 import { useState, useEffect } from 'react';
 import { FaCog, FaMoon, FaSun, FaBell, FaUser, FaClock } from 'react-icons/fa';
 import { useTheme } from '../context/ThemeContext';
-import { DEFAULT_DAILY_BUFFER_HOURS } from '../utils/capacitySettings';
+import { DEFAULT_DAILY_BUFFER_HOURS, DEFAULT_DAILY_CAPACITY_HOURS } from '../utils/capacitySettings';
 import './SettingsPage.css';
+
+const WEEKDAY_LABELS = [
+  '\u65e5',
+  '\u6708',
+  '\u706b',
+  '\u6c34',
+  '\u6728',
+  '\u91d1',
+  '\u571f',
+];
+
+const CAPACITY_TEMPLATES = [
+  {
+    id: 'weekdays',
+    label: '\u5e73\u65e58\u6642\u95930\u6642\u9593',
+    hours: [0, 8, 8, 8, 8, 8, 0],
+  },
+  {
+    id: 'everyday',
+    label: '\u5168\u66dc\u65e58\u6642\u9593',
+    hours: [8, 8, 8, 8, 8, 8, 8],
+  },
+  {
+    id: 'light',
+    label: '\u5e73\u65e56\u6642\u95930\u6642\u9593',
+    hours: [0, 6, 6, 6, 6, 6, 0],
+  },
+];
 
 export function SettingsPage() {
   const { theme, toggleTheme } = useTheme();
   const [userName, setUserName] = useState('');
-  const [dailyCapacityHours, setDailyCapacityHours] = useState(8);
+  const [dailyCapacityHours, setDailyCapacityHours] = useState(DEFAULT_DAILY_CAPACITY_HOURS);
   const [dailyBufferHours, setDailyBufferHours] = useState(DEFAULT_DAILY_BUFFER_HOURS);
+  const [weeklyCapacityHours, setWeeklyCapacityHours] = useState(
+    Array(7).fill(DEFAULT_DAILY_CAPACITY_HOURS)
+  );
+  const [capacityTemplateId, setCapacityTemplateId] = useState('custom');
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(false);
   const [quietHoursStart, setQuietHoursStart] = useState('22:00');
   const [quietHoursEnd, setQuietHoursEnd] = useState('07:00');
@@ -16,10 +48,14 @@ export function SettingsPage() {
   // Load settings from localStorage
   useEffect(() => {
     const savedUserName = localStorage.getItem('userName') || 'Shuhei';
-    const savedDailyCapacityHours = parseFloat(localStorage.getItem('dailyCapacityHours') || '8');
+    const savedDailyCapacityHours = parseFloat(
+      localStorage.getItem('dailyCapacityHours') || String(DEFAULT_DAILY_CAPACITY_HOURS)
+    );
     const savedDailyBufferHours = parseFloat(
       localStorage.getItem('dailyBufferHours') || String(DEFAULT_DAILY_BUFFER_HOURS)
     );
+    const savedWeeklyCapacityHours = localStorage.getItem('weeklyCapacityHours');
+    const savedTemplateId = localStorage.getItem('capacityTemplateId') || 'custom';
     const savedQuietHoursEnabled = localStorage.getItem('quietHoursEnabled') === 'true';
     const savedQuietHoursStart = localStorage.getItem('quietHoursStart') || '22:00';
     const savedQuietHoursEnd = localStorage.getItem('quietHoursEnd') || '07:00';
@@ -27,6 +63,24 @@ export function SettingsPage() {
     setUserName(savedUserName);
     setDailyCapacityHours(savedDailyCapacityHours);
     setDailyBufferHours(savedDailyBufferHours);
+    setCapacityTemplateId(savedTemplateId);
+    if (savedWeeklyCapacityHours) {
+      try {
+        const parsed = JSON.parse(savedWeeklyCapacityHours);
+        if (Array.isArray(parsed) && parsed.length === 7) {
+          setWeeklyCapacityHours(parsed.map((value: unknown) => {
+            const numeric = Number(value);
+            return Number.isFinite(numeric) ? numeric : savedDailyCapacityHours;
+          }));
+        } else {
+          setWeeklyCapacityHours(Array(7).fill(savedDailyCapacityHours));
+        }
+      } catch {
+        setWeeklyCapacityHours(Array(7).fill(savedDailyCapacityHours));
+      }
+    } else {
+      setWeeklyCapacityHours(Array(7).fill(savedDailyCapacityHours));
+    }
     setQuietHoursEnabled(savedQuietHoursEnabled);
     setQuietHoursStart(savedQuietHoursStart);
     setQuietHoursEnd(savedQuietHoursEnd);
@@ -42,6 +96,11 @@ export function SettingsPage() {
     if (!isNaN(hours) && hours > 0 && hours <= 24) {
       setDailyCapacityHours(hours);
       localStorage.setItem('dailyCapacityHours', String(hours));
+      const updatedWeekly = Array(7).fill(hours);
+      setWeeklyCapacityHours(updatedWeekly);
+      localStorage.setItem('weeklyCapacityHours', JSON.stringify(updatedWeekly));
+      localStorage.setItem('capacityTemplateId', 'custom');
+      setCapacityTemplateId('custom');
       window.dispatchEvent(new Event('capacity-settings-updated'));
     }
   };
@@ -53,6 +112,34 @@ export function SettingsPage() {
       localStorage.setItem('dailyBufferHours', String(hours));
       window.dispatchEvent(new Event('capacity-settings-updated'));
     }
+  };
+
+  const handleWeeklyCapacityChange = (dayIndex: number, value: string) => {
+    const hours = parseFloat(value);
+    if (!isNaN(hours) && hours >= 0 && hours <= 24) {
+      const updated = [...weeklyCapacityHours];
+      updated[dayIndex] = hours;
+      setWeeklyCapacityHours(updated);
+      localStorage.setItem('weeklyCapacityHours', JSON.stringify(updated));
+      localStorage.setItem('capacityTemplateId', 'custom');
+      setCapacityTemplateId('custom');
+      window.dispatchEvent(new Event('capacity-settings-updated'));
+    }
+  };
+
+  const handleCapacityTemplateChange = (templateId: string) => {
+    setCapacityTemplateId(templateId);
+    localStorage.setItem('capacityTemplateId', templateId);
+    const template = CAPACITY_TEMPLATES.find(item => item.id === templateId);
+    if (!template) {
+      return;
+    }
+    setWeeklyCapacityHours(template.hours);
+    localStorage.setItem('weeklyCapacityHours', JSON.stringify(template.hours));
+    const baseHours = template.hours[1] ?? template.hours[0] ?? DEFAULT_DAILY_CAPACITY_HOURS;
+    setDailyCapacityHours(baseHours);
+    localStorage.setItem('dailyCapacityHours', String(baseHours));
+    window.dispatchEvent(new Event('capacity-settings-updated'));
   };
 
   const handleQuietHoursToggle = () => {
@@ -113,7 +200,7 @@ export function SettingsPage() {
           </h3>
           <div className="setting-item">
             <label htmlFor="dailyCapacityHours" className="setting-label">
-              1日の稼働時間（時間）
+              1日の稼働時間（全曜日一括）
             </label>
             <input
               type="number"
@@ -127,7 +214,7 @@ export function SettingsPage() {
               step="0.5"
             />
             <p className="setting-description">
-              スケジューリング計算に使用する1日の作業可能時間を設定します（デフォルト: 8時間）
+              まとめて入力すると全曜日に反映されます（デフォルト: 8時間）
             </p>
           </div>
           <div className="setting-item">
@@ -147,6 +234,52 @@ export function SettingsPage() {
             />
             <p className="setting-description">
               稼働時間から差し引いて計算します（例: 8時間 - 1時間 = 7時間）
+            </p>
+          </div>
+          <div className="setting-item">
+            <label htmlFor="capacityTemplate" className="setting-label">
+              稼働時間テンプレート
+            </label>
+            <select
+              id="capacityTemplate"
+              value={capacityTemplateId}
+              onChange={(e) => handleCapacityTemplateChange(e.target.value)}
+              className="setting-select"
+            >
+              <option value="custom">カスタム</option>
+              {CAPACITY_TEMPLATES.map(template => (
+                <option key={template.id} value={template.id}>
+                  {template.label}
+                </option>
+              ))}
+            </select>
+            <p className="setting-description">
+              用途に合わせた稼働時間をまとめて設定できます
+            </p>
+          </div>
+          <div className="setting-item">
+            <span className="setting-label">曜日別の稼働時間</span>
+            <div className="weekday-grid">
+              {WEEKDAY_LABELS.map((label, index) => (
+                <div
+                  key={label}
+                  className={`weekday-item ${index === 0 ? 'sun' : ''} ${index === 6 ? 'sat' : ''}`}
+                >
+                  <span className="weekday-label">{label}</span>
+                  <input
+                    type="number"
+                    value={weeklyCapacityHours[index] ?? 0}
+                    onChange={(e) => handleWeeklyCapacityChange(index, e.target.value)}
+                    className="setting-input capacity-input weekday-input"
+                    min="0"
+                    max="24"
+                    step="0.5"
+                  />
+                </div>
+              ))}
+            </div>
+            <p className="setting-description">
+              0時間にすると、その曜日はスケジュール対象外になります
             </p>
           </div>
         </div>

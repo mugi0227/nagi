@@ -7,10 +7,10 @@ import { tasksApi } from '../api/tasks';
 import { useCapacitySettings } from './useCapacitySettings';
 
 export function useTodayTasks() {
-  const { capacityHours, bufferHours } = useCapacitySettings();
+  const { capacityHours, bufferHours, capacityByWeekday } = useCapacitySettings();
   return useQuery({
-    queryKey: ['today-tasks', capacityHours, bufferHours],
-    queryFn: () => tasksApi.getToday({ capacityHours, bufferHours }),
+    queryKey: ['today-tasks', capacityHours, bufferHours, capacityByWeekday],
+    queryFn: () => tasksApi.getToday({ capacityHours, bufferHours, capacityByWeekday }),
     staleTime: 30_000,
   });
 }

@@ -7,10 +7,15 @@ import { tasksApi } from '../api/tasks';
 import { useCapacitySettings } from './useCapacitySettings';
 
 export function useSchedule(maxDays: number) {
-  const { capacityHours, bufferHours } = useCapacitySettings();
+  const { capacityHours, bufferHours, capacityByWeekday } = useCapacitySettings();
   return useQuery({
-    queryKey: ['schedule', maxDays, capacityHours, bufferHours],
-    queryFn: () => tasksApi.getSchedule({ maxDays, capacityHours, bufferHours }),
+    queryKey: ['schedule', maxDays, capacityHours, bufferHours, capacityByWeekday],
+    queryFn: () => tasksApi.getSchedule({
+      maxDays,
+      capacityHours,
+      bufferHours,
+      capacityByWeekday,
+    }),
     staleTime: 30_000,
   });
 }

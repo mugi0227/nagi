@@ -189,6 +189,7 @@ class SchedulerService:
         project_priorities: dict[UUID, int] | None = None,
         start_date: Optional[date] = None,
         capacity_hours: Optional[float] = None,
+        capacity_by_weekday: Optional[list[float]] = None,
         max_days: int = 60,
     ) -> ScheduleResponse:
         """
@@ -208,8 +209,16 @@ class SchedulerService:
             )
 
         start = start_date or date.today()
-        capacity_minutes_default = int((capacity_hours or self.default_capacity_hours) * 60)
         project_priorities = project_priorities or {}
+        capacity_by_weekday = capacity_by_weekday if capacity_by_weekday and len(capacity_by_weekday) == 7 else None
+
+        def capacity_minutes_for_day(day: date) -> int:
+            if capacity_by_weekday:
+                weekday_index = (day.weekday() + 1) % 7
+                hours = capacity_by_weekday[weekday_index]
+            else:
+                hours = capacity_hours or self.default_capacity_hours
+            return max(0, int(hours * 60))
 
         all_task_map = {task.id: task for task in tasks}
 
@@ -333,7 +342,8 @@ class SchedulerService:
         ended_due_to_cycle = False
 
         while remaining_task_ids and safety_limit > 0:
-            capacity_remaining = capacity_minutes_default
+            capacity_minutes_today = capacity_minutes_for_day(day_cursor)
+            capacity_remaining = capacity_minutes_today
             allocations: list[TaskAllocation] = []
             allocated_minutes = 0
             overflow_minutes = 0
@@ -376,7 +386,7 @@ class SchedulerService:
                     days.append(
                         ScheduleDay(
                             date=day_cursor,
-                            capacity_minutes=capacity_minutes_default,
+                            capacity_minutes=capacity_minutes_today,
                             allocated_minutes=allocated_minutes,
                             overflow_minutes=overflow_minutes,
                             task_allocations=allocations,
@@ -425,7 +435,7 @@ class SchedulerService:
             days.append(
                 ScheduleDay(
                     date=day_cursor,
-                    capacity_minutes=capacity_minutes_default,
+                    capacity_minutes=capacity_minutes_today,
                     allocated_minutes=allocated_minutes,
                     overflow_minutes=overflow_minutes,
                     task_allocations=allocations,

@@ -118,7 +118,7 @@ type TodayTasksLock = {
 export function ScheduleOverviewCard() {
   const [horizon, setHorizon] = useState(14);
   const { data, isLoading, error, refetch, isFetching } = useSchedule(horizon);
-  const { capacityHours } = useCapacitySettings();
+  const { getCapacityForDate } = useCapacitySettings();
   const [isExcludedOpen, setIsExcludedOpen] = useState(false);
   const [lockInfo, setLockInfo] = useState<TodayTasksLock | null>(null);
   const [statusOverrides, setStatusOverrides] = useState<Record<string, TaskStatus>>({});
@@ -235,8 +235,6 @@ export function ScheduleOverviewCard() {
     });
     return buckets;
   }, [data?.excluded_tasks]);
-
-  const displayCapacityMinutes = Math.max(0, Math.round(capacityHours * 60));
 
   const dependencyStatusByTaskId = useMemo(() => {
     const map = new Map<string, { blocked: boolean; reason?: string }>();
@@ -479,7 +477,11 @@ export function ScheduleOverviewCard() {
               : day;
             const allocated = effectiveDay.allocated_minutes;
             const capacity = effectiveDay.capacity_minutes;
-            const displayCapacity = displayCapacityMinutes || capacity;
+            const baseCapacityMinutes = Math.max(
+              0,
+              Math.round(getCapacityForDate(dayDate) * 60)
+            );
+            const displayCapacity = baseCapacityMinutes || capacity;
             const percent = displayCapacity
               ? Math.min(100, Math.round((allocated / displayCapacity) * 100))
               : 0;

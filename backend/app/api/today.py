@@ -5,7 +5,8 @@ Smart daily features like Top 3 tasks.
 """
 
 from typing import Optional
-from fastapi import APIRouter, Depends, Query, status
+import json
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from datetime import date
@@ -37,15 +38,55 @@ def get_scheduler_service() -> SchedulerService:
     return SchedulerService()
 
 
+def parse_capacity_by_weekday(
+    capacity_by_weekday: Optional[str],
+) -> Optional[list[float]]:
+    """Parse capacity_by_weekday query param."""
+    if capacity_by_weekday is None:
+        return None
+    try:
+        parsed = json.loads(capacity_by_weekday)
+    except json.JSONDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="capacity_by_weekday must be a JSON array of 7 numbers",
+        ) from exc
+    if not isinstance(parsed, list) or len(parsed) != 7:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="capacity_by_weekday must be a JSON array of 7 numbers",
+        )
+    result: list[float] = []
+    for entry in parsed:
+        try:
+            value = float(entry)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="capacity_by_weekday must be a JSON array of 7 numbers",
+            ) from exc
+        if value < 0 or value > 24:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="capacity_by_weekday values must be between 0 and 24",
+            )
+        result.append(value)
+    return result
+
+
 def apply_capacity_buffer(
     capacity_hours: Optional[float],
     buffer_hours: Optional[float],
-) -> Optional[float]:
+    capacity_by_weekday: Optional[list[float]] = None,
+) -> tuple[Optional[float], Optional[list[float]]]:
     """Apply buffer hours to capacity hours."""
     if buffer_hours is None:
-        return capacity_hours
+        return capacity_hours, capacity_by_weekday
     base_hours = capacity_hours if capacity_hours is not None else SchedulerService().default_capacity_hours
-    return max(0.0, base_hours - buffer_hours)
+    adjusted_weekday = None
+    if capacity_by_weekday:
+        adjusted_weekday = [max(0.0, hours - buffer_hours) for hours in capacity_by_weekday]
+    return max(0.0, base_hours - buffer_hours), adjusted_weekday
 
 
 @router.get("/top3", response_model=Top3Response, status_code=status.HTTP_200_OK)
@@ -56,6 +97,10 @@ async def get_top3_tasks(
     scheduler_service: SchedulerService = Depends(get_scheduler_service),
     capacity_hours: Optional[float] = Query(None, description="Daily capacity in hours (default: 8)"),
     buffer_hours: Optional[float] = Query(None, description="Daily buffer hours"),
+    capacity_by_weekday: Optional[str] = Query(
+        None,
+        description="JSON array of 7 daily capacity values (Sun..Sat)",
+    ),
     check_capacity: bool = Query(True, description="Check capacity constraints"),
 ):
     """
@@ -77,13 +122,19 @@ async def get_top3_tasks(
     """
     tasks = await task_repo.list(user.id, include_done=True, limit=1000)
     project_priorities = {project.id: project.priority for project in await project_repo.list(user.id, limit=1000)}
-    effective_capacity = apply_capacity_buffer(capacity_hours, buffer_hours)
+    parsed_weekly = parse_capacity_by_weekday(capacity_by_weekday)
+    effective_capacity, effective_weekly = apply_capacity_buffer(
+        capacity_hours,
+        buffer_hours,
+        parsed_weekly,
+    )
 
     schedule = scheduler_service.build_schedule(
         tasks,
         project_priorities=project_priorities,
         start_date=date.today(),
         capacity_hours=effective_capacity,
+        capacity_by_weekday=effective_weekly,
         max_days=30,
     )
     today_result = scheduler_service.get_today_tasks(
