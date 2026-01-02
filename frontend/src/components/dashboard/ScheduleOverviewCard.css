@@ -435,3 +435,62 @@
   color: var(--text-muted);
   margin-bottom: 0.35rem;
 }
+
+/* Capacity breakdown */
+.capacity-breakdown {
+  display: flex;
+  gap: 1rem;
+  padding: 0.75rem;
+  margin: 0.5rem 0;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.08) 0%, rgba(118, 75, 162, 0.08) 100%);
+  border-radius: var(--radius-sm);
+  border-left: 3px solid #667eea;
+  font-size: 0.875rem;
+}
+
+.breakdown-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.breakdown-item.meeting {
+  color: #667eea;
+  font-weight: 500;
+}
+
+.breakdown-item.available {
+  color: var(--text-secondary);
+}
+
+.breakdown-icon {
+  font-size: 0.875rem;
+}
+
+.breakdown-label {
+  font-weight: 500;
+}
+
+.breakdown-value {
+  font-weight: 600;
+  color: var(--text-color);
+}
+
+/* Meeting task styling */
+.schedule-task-row.meeting {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.05) 0%, rgba(118, 75, 162, 0.05) 100%);
+  border-left: 2px solid #667eea;
+}
+
+.schedule-task-meeting-icon {
+  color: #667eea;
+  font-size: 0.875rem;
+  margin-right: 0.25rem;
+  flex-shrink: 0;
+}
+
+.meeting-time-inline {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  font-weight: normal;
+}

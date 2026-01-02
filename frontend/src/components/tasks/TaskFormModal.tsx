@@ -28,6 +28,13 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
     project_id: task?.project_id || initialData?.project_id || '',
     dependency_ids: task?.dependency_ids || initialData?.dependency_ids || [] as string[],
     energy_level: task?.energy_level || initialData?.energy_level || 'LOW' as EnergyLevel,
+    // Meeting fields
+    is_fixed_time: task?.is_fixed_time || false,
+    start_time: task?.start_time ? new Date(task.start_time).toISOString().slice(0, 16) : '',
+    end_time: task?.end_time ? new Date(task.end_time).toISOString().slice(0, 16) : '',
+    location: task?.location || '',
+    attendees: task?.attendees?.join(', ') || '',
+    meeting_notes: task?.meeting_notes || '',
   });
 
   // Filter available tasks for dependencies (exclude self and completed tasks)
@@ -51,6 +58,15 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
       due_date: formData.due_date || undefined,
       project_id: formData.project_id || undefined,
       dependency_ids: formData.dependency_ids.length > 0 ? formData.dependency_ids : undefined,
+      // Meeting fields (only include if is_fixed_time is true)
+      ...(formData.is_fixed_time && {
+        start_time: formData.start_time || undefined,
+        end_time: formData.end_time || undefined,
+        is_fixed_time: true,
+        location: formData.location || undefined,
+        attendees: formData.attendees ? formData.attendees.split(',').map(a => a.trim()).filter(Boolean) : undefined,
+        meeting_notes: formData.meeting_notes || undefined,
+      }),
     };
 
     onSubmit(submitData);
@@ -167,6 +183,7 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
                 onChange={(e) => setFormData({ ...formData, estimated_minutes: e.target.value })}
                 placeholder="15"
                 min="1"
+                disabled={formData.is_fixed_time}
               />
             </div>
 
@@ -180,6 +197,80 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
               />
             </div>
           </div>
+
+          {/* Meeting Toggle */}
+          <div className="form-group">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={formData.is_fixed_time}
+                onChange={(e) => setFormData({ ...formData, is_fixed_time: e.target.checked })}
+              />
+              <span>会議・固定時間イベント</span>
+            </label>
+          </div>
+
+          {/* Meeting Fields (shown only when is_fixed_time is true) */}
+          {formData.is_fixed_time && (
+            <>
+              <div className="form-row">
+                <div className="form-group">
+                  <label htmlFor="start_time">開始時刻 *</label>
+                  <input
+                    type="datetime-local"
+                    id="start_time"
+                    value={formData.start_time}
+                    onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="form-group">
+                  <label htmlFor="end_time">終了時刻 *</label>
+                  <input
+                    type="datetime-local"
+                    id="end_time"
+                    value={formData.end_time}
+                    onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="location">場所</label>
+                <input
+                  type="text"
+                  id="location"
+                  value={formData.location}
+                  onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                  placeholder="例: Zoom, 会議室A"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="attendees">参加者（カンマ区切り）</label>
+                <input
+                  type="text"
+                  id="attendees"
+                  value={formData.attendees}
+                  onChange={(e) => setFormData({ ...formData, attendees: e.target.value })}
+                  placeholder="例: 田中さん, 佐藤さん, 鈴木さん"
+                />
+              </div>
+
+              <div className="form-group">
+                <label htmlFor="meeting_notes">議事録・メモ</label>
+                <textarea
+                  id="meeting_notes"
+                  value={formData.meeting_notes}
+                  onChange={(e) => setFormData({ ...formData, meeting_notes: e.target.value })}
+                  placeholder="議題や議事録など"
+                  rows={3}
+                />
+              </div>
+            </>
+          )}
 
           {/* Project */}
           <div className="form-group">

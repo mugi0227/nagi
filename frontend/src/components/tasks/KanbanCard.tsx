@@ -1,6 +1,7 @@
 import { FaFire, FaClock, FaLeaf, FaBatteryFull, FaBatteryQuarter, FaPen, FaTrash, FaHourglass, FaLock, FaLockOpen } from 'react-icons/fa6';
 import { FaCheckCircle, FaCircle } from 'react-icons/fa';
 import type { Task } from '../../api/types';
+import { MeetingBadge } from './MeetingBadge';
 import './KanbanCard.css';
 import { useMemo } from 'react';
 
@@ -114,6 +115,11 @@ export function KanbanCard({ task, subtasks = [], allTasks = [], onEdit, onDelet
 
       {task.description && (
         <p className="card-description">{task.description}</p>
+      )}
+
+      {/* Meeting Badge */}
+      {task.is_fixed_time && (
+        <MeetingBadge task={task} showDetails={true} />
       )}
 
       <div className="card-meta">

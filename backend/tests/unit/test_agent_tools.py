@@ -5,15 +5,18 @@ Tests tool functions with mocked repositories.
 """
 
 import pytest
+from typing import Optional
 from datetime import datetime, timedelta
 from uuid import uuid4
 
 from app.tools.task_tools import (
     create_task,
+    create_meeting,
     update_task,
     delete_task,
     search_similar_tasks,
     CreateTaskInput,
+    CreateMeetingInput,
     UpdateTaskInput,
     DeleteTaskInput,
     SearchSimilarTasksInput,
@@ -46,10 +49,17 @@ class MockTaskRepository:
             estimated_minutes=task.estimated_minutes,
             due_date=task.due_date,
             parent_id=task.parent_id,
+            dependency_ids=task.dependency_ids,
             source_capture_id=task.source_capture_id,
             created_by=task.created_by,
             created_at=now,
             updated_at=now,
+            start_time=task.start_time,
+            end_time=task.end_time,
+            is_fixed_time=task.is_fixed_time,
+            location=task.location,
+            attendees=task.attendees,
+            meeting_notes=task.meeting_notes,
         )
         self.tasks[task_id] = task_obj
         return task_obj
@@ -70,8 +80,6 @@ class MockTaskRepository:
         update_data = update.model_dump(exclude_unset=True)
         for field, value in update_data.items():
             if value is not None:
-                if hasattr(value, "value"):  # Enum
-                    value = value.value
                 setattr(task, field, value)
 
         task.updated_at = datetime.utcnow()
@@ -84,6 +92,29 @@ class MockTaskRepository:
             return False
         del self.tasks[task_id]
         return True
+
+    async def list(
+        self,
+        user_id: str,
+        project_id=None,
+        status: Optional[str] = None,
+        parent_id=None,
+        include_done: bool = False,
+        limit: int = 100,
+        offset: int = 0,
+    ):
+        """List tasks with optional filters."""
+        tasks = [t for t in self.tasks.values() if t.user_id == user_id]
+        if project_id is not None:
+            tasks = [t for t in tasks if t.project_id == project_id]
+        if status:
+            tasks = [t for t in tasks if t.status.value == status]
+        elif not include_done:
+            tasks = [t for t in tasks if t.status != TaskStatus.DONE]
+        if parent_id is not None:
+            tasks = [t for t in tasks if t.parent_id == parent_id]
+        tasks.sort(key=lambda t: t.created_at, reverse=True)
+        return tasks[offset:offset + limit]
 
     async def find_similar(self, user_id: str, title: str, project_id=None, threshold: float = 0.8, limit: int = 5):
         """Find similar tasks within the same project."""
@@ -192,3 +223,47 @@ async def test_search_similar_tasks_tool():
     assert len(result["similar_tasks"]) >= 1
     assert result["similar_tasks"][0]["similarity_score"] > 0.8
 
+
+@pytest.mark.asyncio
+async def test_create_meeting_deduplicates_by_time_and_title():
+    """Test create_meeting avoids duplicate meetings."""
+    repo = MockTaskRepository()
+    user_id = "test_user"
+
+    meeting_input = CreateMeetingInput(
+        title="定例ミーティング",
+        start_time="2024-01-15T10:00:00",
+        end_time="2024-01-15T11:00:00",
+        location="Zoom",
+    )
+
+    created = await create_meeting(user_id, repo, meeting_input)
+    created_again = await create_meeting(user_id, repo, meeting_input)
+
+    assert created["id"] == created_again["id"]
+    assert len(repo.tasks) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_meeting_deduplicates_with_time_tolerance():
+    """Test create_meeting deduplicates meetings within the time tolerance."""
+    repo = MockTaskRepository()
+    user_id = "test_user"
+
+    meeting_input = CreateMeetingInput(
+        title="定例ミーティング",
+        start_time="2024-01-15T10:00:00",
+        end_time="2024-01-15T11:00:00",
+    )
+
+    meeting_input_offset = CreateMeetingInput(
+        title="定例ミーティング",
+        start_time="2024-01-15T10:15:00",
+        end_time="2024-01-15T11:15:00",
+    )
+
+    created = await create_meeting(user_id, repo, meeting_input)
+    created_again = await create_meeting(user_id, repo, meeting_input_offset)
+
+    assert created["id"] == created_again["id"]
+    assert len(repo.tasks) == 1

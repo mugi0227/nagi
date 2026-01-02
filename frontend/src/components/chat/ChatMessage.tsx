@@ -10,9 +10,10 @@ interface ChatMessageProps {
   timestamp: Date;
   toolCalls?: ToolCall[];
   isStreaming?: boolean;
+  imageUrl?: string;  // Added for image attachments
 }
 
-export function ChatMessage({ role, content, timestamp, toolCalls, isStreaming }: ChatMessageProps) {
+export function ChatMessage({ role, content, timestamp, toolCalls, isStreaming, imageUrl }: ChatMessageProps) {
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('ja-JP', {
       hour: '2-digit',
@@ -64,6 +65,13 @@ export function ChatMessage({ role, content, timestamp, toolCalls, isStreaming }
                 </div>
               </div>
             ))}
+          </div>
+        )}
+
+        {/* Image Attachment */}
+        {imageUrl && role === 'user' && (
+          <div className="message-image">
+            <img src={imageUrl} alt="Uploaded attachment" />
           </div>
         )}
 

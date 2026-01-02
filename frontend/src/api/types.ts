@@ -56,6 +56,14 @@ export interface Task {
   created_by: CreatedBy;
   created_at: string;
   updated_at: string;
+
+  // Meeting/Fixed-time event fields
+  start_time?: string;
+  end_time?: string;
+  is_fixed_time: boolean;
+  location?: string;
+  attendees: string[];
+  meeting_notes?: string;
 }
 
 export interface TaskCreate {
@@ -84,6 +92,13 @@ export interface TaskUpdate {
   due_date?: string;
   parent_id?: string;
   dependency_ids?: string[];
+  // Meeting fields
+  start_time?: string;
+  end_time?: string;
+  is_fixed_time?: boolean;
+  location?: string;
+  attendees?: string[];
+  meeting_notes?: string;
 }
 
 export interface TaskWithSubtasks extends Task {
@@ -217,6 +232,8 @@ export interface ScheduleDay {
   allocated_minutes: number;
   overflow_minutes: number;
   task_allocations: TaskAllocation[];
+  meeting_minutes: number;
+  available_minutes: number;
 }
 
 export interface TaskScheduleInfo {

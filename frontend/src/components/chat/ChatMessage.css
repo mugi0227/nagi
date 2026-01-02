@@ -367,3 +367,21 @@
 .chat-message.user .markdown-content th {
   background: rgba(255, 255, 255, 0.1);
 }
+
+/* Image attachment styling */
+.message-image {
+  margin-bottom: 0.5rem;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  max-width: 100%;
+}
+
+.message-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  max-height: 400px;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}

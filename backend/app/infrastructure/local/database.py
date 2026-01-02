@@ -60,6 +60,14 @@ class TaskORM(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
+    # Meeting/Fixed-time event fields
+    start_time = Column(DateTime, nullable=True)
+    end_time = Column(DateTime, nullable=True)
+    is_fixed_time = Column(Boolean, default=False, index=True)
+    location = Column(String(500), nullable=True)
+    attendees = Column(JSON, nullable=True, default=list)
+    meeting_notes = Column(Text, nullable=True)
+
 
 class ProjectORM(Base):
     """Project ORM model."""

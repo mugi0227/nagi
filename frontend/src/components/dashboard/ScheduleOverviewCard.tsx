@@ -4,6 +4,7 @@ import { useSchedule } from '../../hooks/useSchedule';
 import { useCapacitySettings } from '../../hooks/useCapacitySettings';
 import { tasksApi } from '../../api/tasks';
 import { FaLock } from 'react-icons/fa6';
+import { FaCalendarAlt } from 'react-icons/fa';
 import type { Task, TaskScheduleInfo, TaskStatus } from '../../api/types';
 import './ScheduleOverviewCard.css';
 
@@ -539,6 +540,21 @@ export function ScheduleOverviewCard() {
                   <div className="schedule-day-fill" style={{ width: `${percent}%` }} />
                 </div>
 
+                {/* Capacity breakdown for days with meetings */}
+                {effectiveDay.meeting_minutes > 0 && (
+                  <div className="capacity-breakdown">
+                    <div className="breakdown-item meeting">
+                      <FaCalendarAlt className="breakdown-icon" />
+                      <span className="breakdown-label">会議</span>
+                      <span className="breakdown-value">{formatMinutes(effectiveDay.meeting_minutes)}</span>
+                    </div>
+                    <div className="breakdown-item available">
+                      <span className="breakdown-label">作業可能</span>
+                      <span className="breakdown-value">{formatMinutes(effectiveDay.available_minutes)}</span>
+                    </div>
+                  </div>
+                )}
+
                 <div className="schedule-day-tasks">
                   {groups.length === 0 ? (
                     <div className="schedule-day-empty">{TEXT.todayEmpty}</div>
@@ -548,11 +564,19 @@ export function ScheduleOverviewCard() {
                         return (
                           <div key={group.key} className="schedule-task-group">
                             <div className="schedule-parent-title">{group.parentTitle}</div>
-                            {group.items.map(item => (
+                            {group.items.map(item => {
+                              const taskDetail = taskDetailsCache[item.allocation.task_id];
+                              const isMeeting = taskDetail?.is_fixed_time;
+                              return (
                             <div
                               key={`${day.date}-${item.allocation.task_id}`}
-                              className="schedule-task-row child"
+                              className={`schedule-task-row child ${isMeeting ? 'meeting' : ''}`}
                             >
+                              {isMeeting && (
+                                <span className="schedule-task-meeting-icon">
+                                  <FaCalendarAlt />
+                                </span>
+                              )}
                               {(() => {
                                 const isDone = statusOverrides[item.allocation.task_id] === 'DONE';
                                 return (
@@ -586,19 +610,33 @@ export function ScheduleOverviewCard() {
                               </span>
                               <span className="schedule-task-title">
                                 {item.info?.title || TEXT.task}
+                                {isMeeting && taskDetail?.start_time && (
+                                  <span className="meeting-time-inline">
+                                    {' '}({new Date(taskDetail.start_time).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false })})
+                                  </span>
+                                )}
                                 </span>
                                 {item.dayCount > 1 && <span className="schedule-task-tag">{TEXT.split}</span>}
                                 {item.dueTag && (
                                   <span className="schedule-task-tag warn">{item.dueTag}</span>
                                 )}
                               </div>
-                            ))}
+                            );
+                            })}
                           </div>
                         );
                       }
 
-                      return group.items.map(item => (
-                        <div key={`${day.date}-${item.allocation.task_id}`} className="schedule-task-row">
+                      return group.items.map(item => {
+                        const taskDetail = taskDetailsCache[item.allocation.task_id];
+                        const isMeeting = taskDetail?.is_fixed_time;
+                        return (
+                        <div key={`${day.date}-${item.allocation.task_id}`} className={`schedule-task-row ${isMeeting ? 'meeting' : ''}`}>
+                          {isMeeting && (
+                            <span className="schedule-task-meeting-icon">
+                              <FaCalendarAlt />
+                            </span>
+                          )}
                           {(() => {
                             const isDone = statusOverrides[item.allocation.task_id] === 'DONE';
                             return (
@@ -632,6 +670,11 @@ export function ScheduleOverviewCard() {
                           </span>
                           <span className="schedule-task-title">
                             {item.info?.title || TEXT.task}
+                            {isMeeting && taskDetail?.start_time && (
+                              <span className="meeting-time-inline">
+                                {' '}({new Date(taskDetail.start_time).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false })})
+                              </span>
+                            )}
                           </span>
                           {group.isParentGroup && (
                             <span className="schedule-task-tag parent">
@@ -641,7 +684,8 @@ export function ScheduleOverviewCard() {
                           {item.dayCount > 1 && <span className="schedule-task-tag">{TEXT.split}</span>}
                           {item.dueTag && <span className="schedule-task-tag warn">{item.dueTag}</span>}
                         </div>
-                      ));
+                        );
+                      });
                     })
                   )}
                 </div>

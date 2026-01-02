@@ -24,7 +24,10 @@ async def lifespan(app: FastAPI):
     # Initialize database if needed
     if settings.ENVIRONMENT == "local":
         from app.infrastructure.local.database import init_db
+        from app.infrastructure.local.migrations import run_migrations
+
         await init_db()
+        await run_migrations()
 
     yield
 

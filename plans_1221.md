@@ -9,10 +9,10 @@ spec2.md に記載された要件定義と現在の実装状況を比較し、�
 ### ✅ 実装済み機能
 
 - タスクCRUD (API + UI)
-- プロジェクトCRUD
-- Top3スコアリング（ルールベース）
+- プロジェクトCRUD（README、優先度、goals、key_points）
+- **Top3スコアリング（スコアベース実装）** ✅ 2026-01-02
 - タスク分解 (Planner Agent)
-- チャットインターフェース（ストリーミング対応）
+- チャットインターフェース（ストリーミング対応、画像アップロード）
 - Captureシステム（モデル定義）
 - エージェントツール群
 - Clean Architecture / Repository Pattern
@@ -22,6 +22,10 @@ spec2.md に記載された要件定義と現在の実装状況を比較し、�
   - ✅ 1.3 カンバンUI（🔒インジケーター、依存関係表示）
   - ✅ 1.4 設定画面（1日の稼働時間設定、LocalStorage保存）
   - ✅ 1.5 タスク詳細モーダル（依存関係設定UI、サブタスク間依存表示）
+- **Phase 2: AIスケジューリング + プロジェクト統合**
+  - ✅ 2.2 AIスケジューリングシステム（依存関係、キャパシティ、エネルギーバランス）
+  - ✅ 2.3 プロジェクト中心アーキテクチャ（コンテキスト活用、KPI、優先度）
+  - ✅ 2.4 会議インポート機能（Outlookスクリーンショット、固定時間タスク）
 
 ### ❌ 未実装機能
 
@@ -212,6 +216,76 @@ Cursor の承認フローのような体験：
 
 ---
 
+#### Phase 2.4: 会議インポート機能 ✅ (2026-01-02完了)
+
+**目的**: Outlookスクリーンショットから会議情報を読み取り、固定時間タスクとして登録
+
+**実装内容**:
+
+**Backend - Database & Models**:
+- ✅ [TaskORMに会議フィールド追加](backend/app/infrastructure/local/database.py#L63-L69)
+  - `start_time`, `end_time`, `is_fixed_time`, `location`, `attendees`, `meeting_notes`
+- ✅ [Taskモデル拡張](backend/app/models/task.py#L36-L56)（会議フィールド + バリデーション）
+- ✅ [ScheduleDayモデル拡張](backend/app/models/schedule.py#L31-L32)（`meeting_minutes`, `available_minutes`）
+- ✅ [マイグレーションスクリプト](backend/app/infrastructure/local/migrations.py)（カラム存在チェック付き）
+
+**Backend - Scheduler Service**:
+- ✅ [会議の重複処理](backend/app/services/scheduler_service.py#L186-L244)（インターバルマージアルゴリズム）
+  - 重なる会議を統合して正確な所要時間を計算
+- ✅ [会議の固定スケジューリング](backend/app/services/scheduler_service.py#L417-L427)
+  - 会議を通常タスクから除外し、指定日時にプリアロケーション
+- ✅ [会議を含むタスク情報返却](backend/app/services/scheduler_service.py#L545-L571)
+
+**Backend - Agent Tools**:
+- ✅ [create_meeting ツール](backend/app/tools/task_tools.py#L282-L330)
+  - 会議専用の作成ツール（高重要度・高緊急度で自動設定）
+- ✅ [create_task / update_task 会議対応](backend/app/tools/task_tools.py#L53-L59,L74-L80)
+  - CreateTaskInput, UpdateTaskInputに会議フィールド追加
+
+**Backend - Agent Prompts**:
+- ✅ [Secretary Agent プロンプト拡張](backend/app/agents/prompts/secretary_prompt.py#L66-L109)
+  - Outlookスクリーンショット解析ガイダンス
+  - 日付の正確な抽出（画像内の日付を優先）
+  - ISO 8601形式での日時指定
+
+**Frontend - Types & API**:
+- ✅ [Task interface拡張](frontend/src/api/types.ts#L60-L67)（会議フィールド）
+- ✅ [ScheduleDay interface拡張](frontend/src/api/types.ts#L228-L229)
+- ✅ [TaskUpdate interface](frontend/src/api/types.ts#L83-L102)
+
+**Frontend - Components**:
+- ✅ [MeetingBadge コンポーネント](frontend/src/components/tasks/MeetingBadge.tsx)
+  - コンパクトモード・詳細モードの2種類
+  - 日時、場所、参加者表示
+- ✅ [KanbanCard統合](frontend/src/components/tasks/KanbanCard.tsx#L120-L122)
+- ✅ [ScheduleOverviewCard統合](frontend/src/components/dashboard/ScheduleOverviewCard.tsx)
+  - 会議時間と作業可能時間の内訳表示（L543-L555）
+  - 会議アイコンとインライン時刻表示（L567-L624, L630-L687）
+- ✅ [TaskFormModal会議対応](frontend/src/components/tasks/TaskFormModal.tsx#L32-L38,L62-L73,L201-L273)
+  - 会議トグル、日時・場所・参加者入力フィールド
+- ✅ [ChatMessage画像表示](frontend/src/components/chat/ChatMessage.tsx#L71-L75)
+  - アップロード画像を直接表示（「画像を添付しました」→画像そのもの）
+- ✅ [useChat画像URL対応](frontend/src/hooks/useChat.ts#L256-L276)
+
+**修正したバグ**:
+1. ✅ 会議の重複カウント問題（インターバルマージで解決）
+2. ✅ 会議が正しい日時にスケジュールされない問題（固定日時アロケーション実装）
+3. ✅ Agent toolsが会議フィールドに非対応（CreateTaskInput/UpdateTaskInput更新）
+4. ✅ チャット画像が表示されない（imageUrl prop追加）
+5. ✅ ProjectCreateModal UIが壊れている（CSSクラス修正）
+
+**機能フロー**:
+1. ユーザーがOutlookスクリーンショットをチャットにアップロード
+2. Secretary Agentが画像を解析し、会議情報を抽出
+   - タイトル、日時、場所、参加者
+   - 画像内の日付を正確に読み取る（例: 「12/31 14:00」）
+3. `create_meeting`ツールで固定時間タスクとして登録
+   - `is_fixed_time=True`, 重要度・緊急度=HIGH
+4. スケジューラーが会議を検出し、その日の作業可能時間を減算
+5. UIで会議バッジ付きで表示、スケジュールに固定配置
+
+---
+
 ### Phase 2: プロジェクト中心設計 + Focus for Today改善
 
 #### 設計の全体像
@@ -259,14 +333,62 @@ Phase 2では、以下の3つの柱を中心に機能を強化します：
 
 ---
 
-#### 2.2 AIスケジューリングシステム
+#### 2.2 AIスケジューリングシステム ✅ **完了 (2026-01-02)**
 
 **目的**: 「今日やるべきタスク」をAIが自動計算し、その中でTop3を強調表示
 
+**実装状況**:
+- ✅ 依存関係解決（トポロジカルソート）
+- ✅ キャパシティ計算（会議時間考慮）
+- ✅ 週間スケジュール生成（horizon日数対応）
+- ✅ エネルギーバランス（HIGH/MEDIUM/LOW分散）
+- ✅ Top3選択ロジック（**スコアベース実装済み** 2026-01-02）
+- ✅ プロジェクト優先度統合
+- ✅ 会議インポート機能（Outlookスクリーンショット対応）
+
+**調査結果 (2026-01-02)**:
+調査エージェント（Explore agent）による実装状況確認:
+- 実装完成度: 80-95%
+- コア機能: すべて動作確認済み
+- **発見された問題**: Top3ロジックが「最初の3タスク」を取得していた
+  - 修正前: `top3_ids = [task.id for task in today_tasks_sorted[:3]]` (today_tasks_sortedは実際にはソートされていない)
+  - 修正後: スコア計算 → ソート → Top3選択
+  - 修正ファイル: [scheduler_service.py:647-664](backend/app/services/scheduler_service.py#L647-L664)
+
+**Top3スコアベース実装詳細 (2026-01-02)**:
+```python
+# スコア計算（全今日のタスクに対して）
+task_scores = {
+    task.id: self._calculate_task_score(task, project_priorities, today_date)
+    for task in today_tasks
+}
+
+# スコア降順でソート
+today_tasks_sorted = sorted(
+    today_tasks,
+    key=lambda t: (
+        -task_scores[t.id],           # スコア降順（高い方が優先）
+        t.due_date or datetime.max,   # 期限昇順（近い方が優先）
+        t.created_at                  # 作成日時昇順（古い方が優先）
+    )
+)
+
+# Top3は最も重要な3タスク
+top3_ids = [task.id for task in today_tasks_sorted[:3]]
+```
+
+**スコア計算要素**:
+- 重要度（HIGH: 30点, MEDIUM: 20点, LOW: 10点）
+- 緊急度（HIGH: 24点, MEDIUM: 16点, LOW: 8点）
+- ステータス（IN_PROGRESS: +2点）
+- エネルギーレベル（LOW: +1点）
+- プロジェクト優先度（スコアに乗算: 1 + priority * 0.1）
+- 期限ボーナス（2週間以内の期限に最大30点）
+
 **現状の問題**:
-- Focus for Today は Top3 のみ表示
-- 「今日のタスク」という概念が存在しない
-- ユーザーは今日何をすべきか全体像を把握できない
+- ~~Focus for Today は Top3 のみ表示~~ ✅ 解決（スケジュール全体を表示）
+- ~~「今日のタスク」という概念が存在しない~~ ✅ 解決
+- ~~ユーザーは今日何をすべきか全体像を把握できない~~ ✅ 解決
 
 **新しい仕様**:
 

@@ -102,11 +102,13 @@ async def list_tasks(
     project_id: Optional[UUID] = Query(None, description="Filter by project ID"),
     status: Optional[str] = Query(None, description="Filter by status"),
     include_done: bool = Query(False, description="Include completed tasks"),
+    only_meetings: bool = Query(False, description="会議のみ取得"),
+    exclude_meetings: bool = Query(False, description="会議を除外"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ):
     """List tasks with optional filters."""
-    return await repo.list(
+    tasks = await repo.list(
         user.id,
         project_id=project_id,
         status=status,
@@ -114,6 +116,14 @@ async def list_tasks(
         limit=limit,
         offset=offset,
     )
+
+    # Apply meeting filters in-memory (simple KISS approach)
+    if only_meetings:
+        tasks = [t for t in tasks if t.is_fixed_time]
+    elif exclude_meetings:
+        tasks = [t for t in tasks if not t.is_fixed_time]
+
+    return tasks
 
 
 @router.get("/schedule", response_model=ScheduleResponse)

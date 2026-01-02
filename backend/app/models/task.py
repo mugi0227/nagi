@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.models.enums import CreatedBy, EnergyLevel, Priority, TaskStatus
 
@@ -32,6 +32,28 @@ class TaskBase(BaseModel):
     dependency_ids: list[UUID] = Field(
         default_factory=list, description="このタスクより先に終わらせるべきタスクのID"
     )
+
+    # Meeting/Fixed-time event fields
+    start_time: Optional[datetime] = Field(None, description="開始時刻（会議等の固定時間タスク用）")
+    end_time: Optional[datetime] = Field(None, description="終了時刻（会議等の固定時間タスク用）")
+    is_fixed_time: bool = Field(False, description="固定時間タスク（会議・予定など）")
+    location: Optional[str] = Field(None, max_length=500, description="場所（会議用）")
+    attendees: list[str] = Field(default_factory=list, description="参加者リスト")
+    meeting_notes: Optional[str] = Field(None, max_length=5000, description="議事録・メモ")
+
+    @model_validator(mode='after')
+    def validate_fixed_time(self):
+        """Validate fixed-time task constraints."""
+        if self.is_fixed_time:
+            if not self.start_time or not self.end_time:
+                raise ValueError("固定時間タスクにはstart_timeとend_timeが必須です")
+            if self.end_time <= self.start_time:
+                raise ValueError("終了時刻は開始時刻より後である必要があります")
+            # Auto-calculate estimated_minutes if not provided
+            if not self.estimated_minutes:
+                duration_seconds = (self.end_time - self.start_time).total_seconds()
+                self.estimated_minutes = int(duration_seconds / 60)
+        return self
 
 
 class TaskCreate(TaskBase):
@@ -58,6 +80,12 @@ class TaskUpdate(BaseModel):
     parent_id: Optional[UUID] = None
     dependency_ids: Optional[list[UUID]] = None
     source_capture_id: Optional[UUID] = None
+    start_time: Optional[datetime] = None
+    end_time: Optional[datetime] = None
+    is_fixed_time: Optional[bool] = None
+    location: Optional[str] = Field(None, max_length=500)
+    attendees: Optional[list[str]] = None
+    meeting_notes: Optional[str] = Field(None, max_length=5000)
 
 
 class Task(TaskBase):

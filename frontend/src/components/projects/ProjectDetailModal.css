@@ -493,3 +493,50 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* Project Create Modal (vertical layout, no sidebar) */
+.project-create-modal {
+  max-width: 800px;
+  width: 90vw;
+  max-height: 90vh;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-card);
+}
+
+.project-create-modal .modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2rem 3rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.project-create-modal .modal-header h2 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.project-create-modal .modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 2rem 3rem;
+}
+
+.project-create-modal .modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 1rem;
+  padding: 1.5rem 3rem;
+  border-top: 1px solid var(--border-color);
+  background: #f8fafc;
+  flex-shrink: 0;
+}
+}

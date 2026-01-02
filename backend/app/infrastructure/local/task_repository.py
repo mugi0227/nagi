@@ -51,6 +51,12 @@ class SqliteTaskRepository(ITaskRepository):
             created_by=orm.created_by,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
+            start_time=orm.start_time,
+            end_time=orm.end_time,
+            is_fixed_time=bool(orm.is_fixed_time),
+            location=orm.location,
+            attendees=orm.attendees or [],
+            meeting_notes=orm.meeting_notes,
         )
 
     async def create(self, user_id: str, task: TaskCreate) -> Task:
@@ -71,6 +77,12 @@ class SqliteTaskRepository(ITaskRepository):
                 dependency_ids=[str(dep_id) for dep_id in task.dependency_ids],
                 source_capture_id=str(task.source_capture_id) if task.source_capture_id else None,
                 created_by=task.created_by.value,
+                start_time=task.start_time,
+                end_time=task.end_time,
+                is_fixed_time=task.is_fixed_time,
+                location=task.location,
+                attendees=task.attendees,
+                meeting_notes=task.meeting_notes,
             )
             session.add(orm)
             await session.commit()

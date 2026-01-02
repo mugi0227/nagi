@@ -2,6 +2,7 @@
 
 from app.tools.task_tools import (
     create_task_tool,
+    create_meeting_tool,
     update_task_tool,
     delete_task_tool,
     search_similar_tasks_tool,
@@ -26,6 +27,7 @@ from app.tools.scheduler_tools import (
 
 __all__ = [
     "create_task_tool",
+    "create_meeting_tool",
     "create_project_tool",
     "list_kpi_templates_tool",
     "list_projects_tool",

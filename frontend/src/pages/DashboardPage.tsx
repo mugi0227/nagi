@@ -3,7 +3,6 @@ import { AgentCard } from '../components/dashboard/AgentCard';
 import { TodayTasksCard } from '../components/dashboard/TodayTasksCard';
 import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
 import { WeeklyProgress } from '../components/dashboard/WeeklyProgress';
-import { InboxWidget } from '../components/dashboard/InboxWidget';
 import './DashboardPage.css';
 
 const containerVariants = {
@@ -48,7 +47,6 @@ export function DashboardPage() {
           variants={itemVariants}
           className="grid-main"
         >
-          <InboxWidget />
           <TodayTasksCard />
           <ScheduleOverviewCard />
         </motion.div>

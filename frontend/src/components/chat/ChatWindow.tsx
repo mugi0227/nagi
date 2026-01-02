@@ -202,6 +202,7 @@ export function ChatWindow({ isOpen, onClose }: ChatWindowProps) {
               timestamp={message.timestamp}
               toolCalls={message.toolCalls}
               isStreaming={message.isStreaming}
+              imageUrl={message.imageUrl}
             />
           ))}
           <div ref={messagesEndRef} />

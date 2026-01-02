@@ -16,6 +16,7 @@ from app.interfaces.task_repository import ITaskRepository
 from app.interfaces.llm_provider import ILLMProvider
 from app.tools import (
     create_task_tool,
+    create_meeting_tool,
     create_project_tool,
     list_kpi_templates_tool,
     list_projects_tool,
@@ -61,6 +62,7 @@ def create_secretary_agent(
     tools = [
         get_current_datetime_tool(),
         create_task_tool(task_repo, user_id),
+        create_meeting_tool(task_repo, user_id),
         list_kpi_templates_tool(),
         create_project_tool(project_repo, llm_provider, user_id),
         list_projects_tool(project_repo, user_id),

@@ -6,7 +6,7 @@ Tools for creating, updating, deleting, and searching tasks.
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -50,6 +50,13 @@ class CreateTaskInput(BaseModel):
         default_factory=list,
         description="このタスクが依存する他のタスクのIDリスト（UUID文字列のリスト）"
     )
+    # Meeting fields (optional, only for fixed-time events)
+    is_fixed_time: bool = Field(False, description="会議・固定時間イベントの場合true")
+    start_time: Optional[str] = Field(None, description="開始時刻（ISO形式、is_fixed_time=trueの場合必須）")
+    end_time: Optional[str] = Field(None, description="終了時刻（ISO形式、is_fixed_time=trueの場合必須）")
+    location: Optional[str] = Field(None, description="場所（会議用）")
+    attendees: list[str] = Field(default_factory=list, description="参加者リスト（会議用）")
+    meeting_notes: Optional[str] = Field(None, description="議事録・メモ（会議用）")
 
     model_config = {"populate_by_name": True}
 
@@ -64,6 +71,13 @@ class UpdateTaskInput(BaseModel):
     importance: Optional[Priority] = Field(None, description="重要度")
     urgency: Optional[Priority] = Field(None, description="緊急度")
     energy_level: Optional[EnergyLevel] = Field(None, description="必要エネルギー")
+    # Meeting fields
+    is_fixed_time: Optional[bool] = Field(None, description="会議・固定時間イベントの場合true")
+    start_time: Optional[str] = Field(None, description="開始時刻（ISO形式）")
+    end_time: Optional[str] = Field(None, description="終了時刻（ISO形式）")
+    location: Optional[str] = Field(None, description="場所（会議用）")
+    attendees: Optional[list[str]] = Field(None, description="参加者リスト（会議用）")
+    meeting_notes: Optional[str] = Field(None, description="議事録・メモ（会議用）")
 
 
 class DeleteTaskInput(BaseModel):
@@ -84,6 +98,19 @@ class SearchSimilarTasksInput(BaseModel):
         None,
         description="プロジェクトID（指定時はそのプロジェクト内のみ検索）"
     )
+
+
+class CreateMeetingInput(BaseModel):
+    """Input for create_meeting tool."""
+
+    title: str = Field(..., description="会議タイトル")
+    start_time: str = Field(..., description="開始時刻（ISO形式: YYYY-MM-DDTHH:MM）")
+    end_time: str = Field(..., description="終了時刻（ISO形式: YYYY-MM-DDTHH:MM）")
+    location: Optional[str] = Field(None, description="場所（オンライン/会議室名）")
+    attendees: list[str] = Field(default_factory=list, description="参加者リスト")
+    description: Optional[str] = Field(None, description="会議の目的・議題")
+    meeting_notes: Optional[str] = Field(None, description="議事録・メモ")
+    project_id: Optional[str] = Field(None, description="プロジェクトID（UUID文字列）")
 
 
 class BreakdownTaskInput(BaseModel):
@@ -118,6 +145,45 @@ class ListTasksInput(BaseModel):
 # ===========================================
 # Tool Functions
 # ===========================================
+
+
+def _normalize_meeting_title(title: str) -> str:
+    return " ".join(title.split()).casefold()
+
+
+def _normalize_datetime(value: datetime) -> datetime:
+    if value.tzinfo is None:
+        return value
+    return value.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def _within_minutes(left: datetime, right: datetime, minutes: int) -> bool:
+    left_norm = _normalize_datetime(left)
+    right_norm = _normalize_datetime(right)
+    delta_seconds = abs((left_norm - right_norm).total_seconds())
+    return delta_seconds <= minutes * 60
+
+
+async def _find_existing_meeting(
+    repo: ITaskRepository,
+    user_id: str,
+    start_time: datetime,
+    end_time: datetime,
+    title: str,
+    project_id: UUID | None,
+) -> Task | None:
+    normalized = _normalize_meeting_title(title)
+    tasks = await repo.list(user_id, project_id=project_id, include_done=True, limit=1000)
+    for task in tasks:
+        if not task.is_fixed_time or not task.start_time or not task.end_time:
+            continue
+        if not _within_minutes(task.start_time, start_time, 30):
+            continue
+        if not _within_minutes(task.end_time, end_time, 30):
+            continue
+        if _normalize_meeting_title(task.title) == normalized:
+            return task
+    return None
 
 
 async def create_task(
@@ -156,6 +222,28 @@ async def create_task(
             # Invalid UUID format, skip this dependency
             pass
 
+    # Parse meeting times if is_fixed_time
+    start_time = None
+    end_time = None
+    if input_data.is_fixed_time and input_data.start_time and input_data.end_time:
+        try:
+            start_time = datetime.fromisoformat(input_data.start_time.replace("Z", "+00:00"))
+            end_time = datetime.fromisoformat(input_data.end_time.replace("Z", "+00:00"))
+        except ValueError:
+            pass  # Invalid date format, ignore
+
+    if input_data.is_fixed_time and start_time and end_time:
+        existing = await _find_existing_meeting(
+            repo,
+            user_id,
+            start_time,
+            end_time,
+            input_data.title,
+            project_id,
+        )
+        if existing:
+            return existing.model_dump(mode="json")
+
     task_data = TaskCreate(
         title=input_data.title,
         description=input_data.description,
@@ -167,6 +255,13 @@ async def create_task(
         due_date=due_date,
         dependency_ids=dependency_ids,
         created_by=CreatedBy.AGENT,
+        # Meeting fields
+        is_fixed_time=input_data.is_fixed_time,
+        start_time=start_time,
+        end_time=end_time,
+        location=input_data.location,
+        attendees=input_data.attendees,
+        meeting_notes=input_data.meeting_notes,
     )
 
     task = await repo.create(user_id, task_data)
@@ -191,6 +286,16 @@ async def update_task(
     """
     task_id = UUID(input_data.task_id)
 
+    # Parse meeting times if provided
+    start_time = None
+    end_time = None
+    if input_data.start_time and input_data.end_time:
+        try:
+            start_time = datetime.fromisoformat(input_data.start_time.replace("Z", "+00:00"))
+            end_time = datetime.fromisoformat(input_data.end_time.replace("Z", "+00:00"))
+        except ValueError:
+            pass  # Invalid date format, ignore
+
     update_data = TaskUpdate(
         title=input_data.title,
         description=input_data.description,
@@ -198,6 +303,13 @@ async def update_task(
         importance=input_data.importance,
         urgency=input_data.urgency,
         energy_level=input_data.energy_level,
+        # Meeting fields
+        is_fixed_time=input_data.is_fixed_time,
+        start_time=start_time,
+        end_time=end_time,
+        location=input_data.location,
+        attendees=input_data.attendees,
+        meeting_notes=input_data.meeting_notes,
     )
 
     task = await repo.update(user_id, task_id, update_data)
@@ -279,6 +391,68 @@ async def list_tasks(
     }
 
 
+async def create_meeting(
+    user_id: str,
+    repo: ITaskRepository,
+    input_data: CreateMeetingInput,
+) -> dict:
+    """
+    Create a meeting task with fixed time.
+
+    Args:
+        user_id: User ID
+        repo: Task repository
+        input_data: Meeting creation data
+
+    Returns:
+        Created meeting task as dict
+    """
+    # Parse timestamps
+    start_dt = datetime.fromisoformat(input_data.start_time.replace("Z", "+00:00"))
+    end_dt = datetime.fromisoformat(input_data.end_time.replace("Z", "+00:00"))
+
+    # Validate time range
+    if end_dt <= start_dt:
+        raise ValueError("終了時刻は開始時刻より後である必要があります")
+
+    # Calculate duration
+    duration_minutes = int((end_dt - start_dt).total_seconds() / 60)
+
+    # Parse project_id if provided
+    project_id = UUID(input_data.project_id) if input_data.project_id else None
+
+    existing = await _find_existing_meeting(
+        repo,
+        user_id,
+        start_dt,
+        end_dt,
+        input_data.title,
+        project_id,
+    )
+    if existing:
+        return existing.model_dump(mode="json")
+
+    task_data = TaskCreate(
+        title=input_data.title,
+        description=input_data.description,
+        start_time=start_dt,
+        end_time=end_dt,
+        is_fixed_time=True,
+        estimated_minutes=duration_minutes,
+        location=input_data.location,
+        attendees=input_data.attendees,
+        meeting_notes=input_data.meeting_notes,
+        project_id=project_id,
+        importance=Priority.HIGH,  # 会議は重要度HIGH（変更不可）
+        urgency=Priority.HIGH,      # 緊急度HIGH（リスケ不可）
+        energy_level=EnergyLevel.LOW,  # 受動的参加
+        created_by=CreatedBy.AGENT,
+    )
+
+    task = await repo.create(user_id, task_data)
+    return task.model_dump(mode="json")
+
+
 async def search_similar_tasks(
     user_id: str,
     repo: ITaskRepository,
@@ -353,6 +527,12 @@ def create_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
             estimated_minutes (int, optional): 見積もり時間（分）
             due_date (str, optional): 期限（ISO形式）
             dependency_ids (list[str], optional): このタスクが依存する他のタスクのIDリスト（UUID文字列）
+            is_fixed_time (bool, optional): 会議・固定時間イベントの場合true
+            start_time (str, optional): 開始時刻（ISO形式、is_fixed_time=trueの場合必須）
+            end_time (str, optional): 終了時刻（ISO形式、is_fixed_time=trueの場合必須）
+            location (str, optional): 場所（会議用）
+            attendees (list[str], optional): 参加者リスト（会議用）
+            meeting_notes (str, optional): 議事録・メモ（会議用）
 
         Returns:
             dict: 作成されたタスク情報
@@ -376,6 +556,12 @@ def update_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
             importance (str, optional): 重要度 (HIGH/MEDIUM/LOW)
             urgency (str, optional): 緊急度 (HIGH/MEDIUM/LOW)
             energy_level (str, optional): 必要エネルギー (HIGH/LOW)
+            is_fixed_time (bool, optional): 会議・固定時間イベントの場合true
+            start_time (str, optional): 開始時刻（ISO形式）
+            end_time (str, optional): 終了時刻（ISO形式）
+            location (str, optional): 場所（会議用）
+            attendees (list[str], optional): 参加者リスト（会議用）
+            meeting_notes (str, optional): 議事録・メモ（会議用）
 
         Returns:
             dict: 更新されたタスク情報
@@ -480,6 +666,36 @@ async def breakdown_task(
     return result.model_dump(mode="json")
 
 
+def create_meeting_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
+    """Create ADK tool for creating meetings."""
+    async def _tool(input_data: dict) -> dict:
+        """create_meeting: 固定時間の会議・予定を登録します。
+
+        Outlookスクリーンショット等から会議情報を抽出した際に使用してください。
+
+        **複数日にまたがる会議の処理**:
+        2日間の研修や複数日カンファレンスの場合、日ごとに別々のタスクとして登録してください。
+        例: 「1月15-16日 年次研修」→ 2つの会議タスク（1/15分と1/16分）
+
+        Parameters:
+            title (str): 会議タイトル（必須）
+            start_time (str): 開始時刻（ISO形式: "2024-01-15T14:00:00"）
+            end_time (str): 終了時刻（ISO形式: "2024-01-15T15:30:00"）
+            location (str, optional): 場所（例: "Zoom", "会議室A"）
+            attendees (list[str], optional): 参加者リスト
+            description (str, optional): 会議の目的・議題
+            meeting_notes (str, optional): 議事録・メモ
+            project_id (str, optional): プロジェクトID
+
+        Returns:
+            dict: 作成された会議タスク情報
+        """
+        return await create_meeting(user_id, repo, CreateMeetingInput(**input_data))
+
+    _tool.__name__ = "create_meeting"
+    return FunctionTool(func=_tool)
+
+
 def breakdown_task_tool(
     repo: ITaskRepository,
     memory_repo: IMemoryRepository,
@@ -506,4 +722,3 @@ def breakdown_task_tool(
 
     _tool.__name__ = "breakdown_task"
     return FunctionTool(func=_tool)
-

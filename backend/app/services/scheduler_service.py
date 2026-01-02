@@ -183,6 +183,66 @@ class SchedulerService:
 
         return message
 
+    def _get_meetings_for_day(
+        self,
+        tasks: list[Task],
+        target_date: date,
+    ) -> tuple[list[Task], int]:
+        """
+        Get meetings scheduled for a specific day and calculate total duration.
+
+        Handles overlapping meetings by merging time intervals to avoid
+        double-counting overlapping periods.
+
+        Args:
+            tasks: All tasks
+            target_date: Date to check
+
+        Returns:
+            (list of meeting tasks, total meeting minutes accounting for overlaps)
+        """
+        meetings = [
+            task for task in tasks
+            if task.is_fixed_time
+            and task.start_time
+            and task.start_time.date() == target_date
+        ]
+
+        if not meetings:
+            return meetings, 0
+
+        # Create list of time intervals (start_minutes, end_minutes from midnight)
+        intervals = []
+        for meeting in meetings:
+            if meeting.end_time and meeting.start_time:
+                # Convert to minutes from midnight for easier calculation
+                start_mins = meeting.start_time.hour * 60 + meeting.start_time.minute
+                end_mins = meeting.end_time.hour * 60 + meeting.end_time.minute
+
+                # Handle meetings that span midnight (rare but possible)
+                if end_mins < start_mins:
+                    end_mins = 24 * 60  # Cap at end of day
+
+                intervals.append((start_mins, end_mins))
+
+        # Sort intervals by start time
+        intervals.sort()
+
+        # Merge overlapping intervals
+        merged = []
+        for start, end in intervals:
+            if merged and start <= merged[-1][1]:
+                # Overlaps with previous interval, merge them
+                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+            else:
+                # No overlap, add as new interval
+                merged.append((start, end))
+
+        # Calculate total minutes from merged intervals
+        total_minutes = sum(end - start for start, end in merged)
+
+        return meetings, total_minutes
+
     def build_schedule(
         self,
         tasks: list[Task],
@@ -247,13 +307,14 @@ class SchedulerService:
                     )
                 )
 
-        # Filter tasks to schedule (exclude DONE and WAITING, skip parent tasks)
+        # Filter tasks to schedule (exclude DONE, WAITING, parent tasks, and fixed-time meetings)
         candidate_tasks = [
             task
             for task in tasks
             if task.status != TaskStatus.DONE
             and task.status != TaskStatus.WAITING
             and not is_parent_task(task, tasks)
+            and not task.is_fixed_time  # 会議は通常スケジューリング対象外
         ]
         candidate_ids = {task.id for task in candidate_tasks}
 
@@ -342,12 +403,38 @@ class SchedulerService:
         ended_due_to_cycle = False
 
         while remaining_task_ids and safety_limit > 0:
+            # Get meetings for this day and reduce capacity
+            day_meetings, meeting_minutes = self._get_meetings_for_day(tasks, day_cursor)
+
             capacity_minutes_today = capacity_minutes_for_day(day_cursor)
-            capacity_remaining = capacity_minutes_today
+            capacity_remaining = max(0, capacity_minutes_today - meeting_minutes)
+
+            # Pre-allocate meetings (they're fixed and take priority)
             allocations: list[TaskAllocation] = []
             allocated_minutes = 0
             overflow_minutes = 0
+
+            for meeting in day_meetings:
+                duration = int((meeting.end_time - meeting.start_time).total_seconds() / 60)
+                allocations.append(TaskAllocation(task_id=meeting.id, minutes=duration))
+                allocated_minutes += duration
+
+                # Mark meeting as scheduled and record its fixed date
+                if meeting.id in remaining_task_ids:
+                    remaining_task_ids.remove(meeting.id)
+                    task_start[meeting.id] = day_cursor
+                    task_end[meeting.id] = day_cursor
+                    remaining_minutes[meeting.id] = 0  # Meeting is fully allocated on its fixed day
+
+            # Check if meetings exceed capacity
+            if meeting_minutes > capacity_minutes_today:
+                overflow_minutes = meeting_minutes - capacity_minutes_today
+
             energy_minutes = {EnergyLevel.HIGH: 0, EnergyLevel.LOW: 0}
+            # Count meeting energy levels
+            for meeting in day_meetings:
+                duration = int((meeting.end_time - meeting.start_time).total_seconds() / 60)
+                energy_minutes[meeting.energy_level] += duration
             day_scores = {
                 task_id: base_scores[task_id] + self._calculate_due_bonus(task_map[task_id], day_cursor)
                 for task_id in task_map
@@ -390,6 +477,8 @@ class SchedulerService:
                             allocated_minutes=allocated_minutes,
                             overflow_minutes=overflow_minutes,
                             task_allocations=allocations,
+                            meeting_minutes=meeting_minutes,
+                            available_minutes=0 if overflow_minutes > 0 else capacity_remaining,
                         )
                     )
                     day_cursor += timedelta(days=1)
@@ -439,6 +528,8 @@ class SchedulerService:
                     allocated_minutes=allocated_minutes,
                     overflow_minutes=overflow_minutes,
                     task_allocations=allocations,
+                    meeting_minutes=meeting_minutes,
+                    available_minutes=capacity_remaining,
                 )
             )
             day_cursor += timedelta(days=1)
@@ -451,8 +542,11 @@ class SchedulerService:
         if remaining_task_ids and safety_limit <= 0:
             ended_due_to_limit = True
 
+        # Collect all meeting tasks that were scheduled
+        all_meetings = [task for task in tasks if task.is_fixed_time and task.id in task_start]
+
         tasks_info: list[TaskScheduleInfo] = []
-        tasks_for_info = scheduled_tasks + [task for task in candidate_tasks if task.id in blocked_task_ids]
+        tasks_for_info = scheduled_tasks + [task for task in candidate_tasks if task.id in blocked_task_ids] + all_meetings
         for task in tasks_for_info:
             total_minutes = get_effective_estimated_minutes(task, tasks) or self.default_task_minutes
             if task.id in remaining_task_ids:
@@ -550,7 +644,23 @@ class SchedulerService:
                     ratio=min(1.0, max(0.0, ratio)),
                 )
             )
-        today_tasks_sorted = today_tasks
+        # Calculate scores for all today's tasks
+        task_scores = {
+            task.id: self._calculate_task_score(task, project_priorities, today_date)
+            for task in today_tasks
+        }
+
+        # Sort by score (descending), then by due date, then by creation time
+        today_tasks_sorted = sorted(
+            today_tasks,
+            key=lambda t: (
+                -task_scores[t.id],
+                t.due_date or datetime.max,
+                t.created_at
+            )
+        )
+
+        # Top 3 are now the most important tasks based on score
         top3_ids = [task.id for task in today_tasks_sorted[:3]]
 
         return TodayTasksResponse(

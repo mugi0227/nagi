@@ -33,7 +33,8 @@ export function ChatInput({ onSend, disabled, externalImage, onImageClear }: Cha
 
   const handleSubmit = () => {
     if ((input.trim() || selectedImage) && !disabled) {
-      onSend(input.trim() || '画像を添付しました', selectedImage || undefined);
+      const trimmed = input.trim();
+      onSend(trimmed, selectedImage || undefined);
       setInput('');
       setSelectedImage(null);
       // Reset textarea height

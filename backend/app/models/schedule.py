@@ -28,6 +28,8 @@ class ScheduleDay(BaseModel):
     allocated_minutes: int
     overflow_minutes: int = 0
     task_allocations: list[TaskAllocation] = Field(default_factory=list)
+    meeting_minutes: int = Field(0, description="会議の合計時間（分）")
+    available_minutes: int = Field(0, description="会議を除いた利用可能時間（分）")
 
 
 class TaskScheduleInfo(BaseModel):

@@ -18,6 +18,7 @@ interface Message {
   timestamp: Date;
   toolCalls?: ToolCall[];
   isStreaming?: boolean;
+  imageUrl?: string;  // For image attachments
 }
 
 const SESSION_STORAGE_KEY = 'chat_session_id';
@@ -108,6 +109,7 @@ export function useChat() {
         role: 'user',
         content: text,
         timestamp: new Date(),
+        imageUrl: imageBase64,
       };
       setMessages((prev) => [...prev, userMessage]);
 
@@ -252,13 +254,14 @@ export function useChat() {
   );
 
   const sendMessage = useCallback(
-    (text: string, mode?: ChatMode) => {
+    (text: string, mode?: ChatMode, imageUrl?: string) => {
       // Add user message
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: 'user',
         content: text,
         timestamp: new Date(),
+        imageUrl,  // Include image URL in message
       };
       setMessages((prev) => [...prev, userMessage]);
 
@@ -267,6 +270,7 @@ export function useChat() {
         text,
         mode,
         session_id: sessionId,
+        image_url: imageUrl,  // Send image URL to API
       });
     },
     [mutation, sessionId]
