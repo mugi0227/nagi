@@ -9,6 +9,10 @@ export type EnergyLevel = 'HIGH' | 'LOW';
 export type CreatedBy = 'USER' | 'AGENT';
 export type ChatMode = 'dump' | 'consult' | 'breakdown';
 export type ProjectStatus = 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
+export type PhaseStatus = 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
+export type ProjectRole = 'OWNER' | 'ADMIN' | 'MEMBER';
+export type BlockerStatus = 'OPEN' | 'RESOLVED';
+export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
 export type KpiDirection = 'up' | 'down' | 'neutral';
 export type KpiStrategy = 'template' | 'ai' | 'custom';
 
@@ -44,6 +48,7 @@ export interface Task {
   title: string;
   description?: string;
   project_id?: string;
+  phase_id?: string;
   status: TaskStatus;
   importance: Priority;
   urgency: Priority;
@@ -51,11 +56,15 @@ export interface Task {
   estimated_minutes?: number;
   due_date?: string;
   parent_id?: string;
+  order_in_parent?: number;
   dependency_ids: string[];
   source_capture_id?: string;
   created_by: CreatedBy;
   created_at: string;
   updated_at: string;
+
+  // Progress tracking (0-100)
+  progress?: number;
 
   // Meeting/Fixed-time event fields
   start_time?: string;
@@ -76,6 +85,7 @@ export interface TaskCreate {
   estimated_minutes?: number;
   due_date?: string;
   parent_id?: string;
+  order_in_parent?: number;
   dependency_ids?: string[];
   source_capture_id?: string;
 }
@@ -91,7 +101,9 @@ export interface TaskUpdate {
   estimated_minutes?: number;
   due_date?: string;
   parent_id?: string;
+  order_in_parent?: number;
   dependency_ids?: string[];
+  progress?: number;
   // Meeting fields
   start_time?: string;
   end_time?: string;
@@ -105,6 +117,35 @@ export interface TaskWithSubtasks extends Task {
   subtasks: Task[];
 }
 
+export interface BreakdownStep {
+  step_number: number;
+  title: string;
+  description?: string;
+  estimated_minutes: number;
+  energy_level: EnergyLevel;
+  guide: string;
+  dependency_step_numbers: number[];
+}
+
+export interface TaskBreakdown {
+  original_task_id: string;
+  original_task_title: string;
+  steps: BreakdownStep[];
+  total_estimated_minutes: number;
+  work_memory_used: string[];
+}
+
+export interface BreakdownRequest {
+  create_subtasks?: boolean;
+}
+
+export interface BreakdownResponse {
+  breakdown: TaskBreakdown;
+  subtasks_created: boolean;
+  subtask_ids: string[];
+  markdown_guide: string;
+}
+
 // Chat models
 export interface ChatRequest {
   text?: string;
@@ -114,6 +155,7 @@ export interface ChatRequest {
   mode?: ChatMode;
   session_id?: string;
   context?: Record<string, unknown>;
+  proposal_mode?: boolean; // AI提案モード（true: 提案→承諾、false: 直接作成）
 }
 
 export interface SuggestedAction {
@@ -165,6 +207,45 @@ export interface ProjectWithTaskCount extends Project {
   in_progress_tasks: number;
 }
 
+// Phase models
+export interface Phase {
+  id: string;
+  user_id: string;
+  project_id: string;
+  name: string;
+  description?: string;
+  status: PhaseStatus;
+  order_in_project: number;
+  start_date?: string;
+  end_date?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PhaseWithTaskCount extends Phase {
+  total_tasks: number;
+  completed_tasks: number;
+  in_progress_tasks: number;
+}
+
+export interface PhaseCreate {
+  project_id: string;
+  name: string;
+  description?: string;
+  order_in_project?: number;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface PhaseUpdate {
+  name?: string;
+  description?: string;
+  status?: PhaseStatus;
+  order_in_project?: number;
+  start_date?: string;
+  end_date?: string;
+}
+
 export interface ProjectCreate {
   name: string;
   description?: string;
@@ -186,6 +267,119 @@ export interface ProjectUpdate {
   goals?: string[];
   key_points?: string[];
   kpi_config?: ProjectKpiConfig;
+}
+
+export interface ProjectMember {
+  id: string;
+  user_id: string;
+  project_id: string;
+  member_user_id: string;
+  member_display_name?: string;
+  role: ProjectRole;
+  capacity_hours?: number;
+  timezone?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectMemberCreate {
+  member_user_id: string;
+  role?: ProjectRole;
+  capacity_hours?: number;
+  timezone?: string;
+}
+
+export interface ProjectMemberUpdate {
+  role?: ProjectRole;
+  capacity_hours?: number;
+  timezone?: string;
+}
+
+export interface TaskAssignment {
+  id: string;
+  user_id: string;
+  task_id: string;
+  assignee_id: string;
+  status?: TaskStatus;
+  progress?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TaskAssignmentCreate {
+  assignee_id: string;
+  status?: TaskStatus;
+  progress?: number;
+}
+
+export interface TaskAssignmentUpdate {
+  assignee_id?: string;
+  status?: TaskStatus;
+  progress?: number;
+}
+
+export interface Checkin {
+  id: string;
+  user_id: string;
+  project_id: string;
+  member_user_id: string;
+  checkin_date: string;
+  summary_text?: string;
+  raw_text: string;
+  created_at: string;
+}
+
+export interface CheckinCreate {
+  member_user_id: string;
+  checkin_date: string;
+  raw_text: string;
+}
+
+export interface Blocker {
+  id: string;
+  user_id: string;
+  task_id: string;
+  created_by: string;
+  status: BlockerStatus;
+  reason: string;
+  resolved_by?: string;
+  created_at: string;
+  resolved_at?: string;
+}
+
+export interface BlockerCreate {
+  created_by: string;
+  reason: string;
+}
+
+export interface BlockerUpdate {
+  status?: BlockerStatus;
+  resolved_by?: string;
+}
+
+export interface ProjectInvitation {
+  id: string;
+  user_id: string;
+  project_id: string;
+  email: string;
+  role: ProjectRole;
+  status: InvitationStatus;
+  invited_by: string;
+  accepted_by?: string;
+  token?: string;
+  created_at: string;
+  updated_at: string;
+  expires_at?: string;
+  accepted_at?: string;
+}
+
+export interface ProjectInvitationCreate {
+  email: string;
+  role?: ProjectRole;
+}
+
+export interface ProjectInvitationUpdate {
+  status: InvitationStatus;
 }
 
 // Top 3 response models
@@ -242,6 +436,7 @@ export interface TaskScheduleInfo {
   project_id?: string;
   parent_id?: string;
   parent_title?: string;
+  order_in_parent?: number;
   due_date?: string;
   planned_start?: string;
   planned_end?: string;
@@ -287,4 +482,27 @@ export interface CaptureCreate {
   transcription?: string;
   image_analysis?: string;
   base64_image?: string;
+}
+
+// Proposal models (AI提案承諾機能)
+export type ProposalType = 'create_task' | 'create_project';
+export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'expired';
+
+export interface Proposal {
+  id: string;
+  user_id: string;
+  session_id: string;
+  proposal_type: ProposalType;
+  status: ProposalStatus;
+  payload: TaskCreate | ProjectCreate; // The data for creating task/project
+  description: string; // AI-generated explanation
+  created_at: string;
+  expires_at: string;
+}
+
+export interface ProposalResponse {
+  proposal_id: string;
+  proposal_type: ProposalType;
+  description: string;
+  payload: TaskCreate | ProjectCreate;
 }

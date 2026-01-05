@@ -1,0 +1,150 @@
+"""
+SQLite implementation of task assignment repository.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+from typing import Optional
+from uuid import UUID, uuid4
+
+from sqlalchemy import select, and_
+
+from app.core.exceptions import NotFoundError
+from app.infrastructure.local.database import TaskAssignmentORM, TaskORM, get_session_factory
+from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
+from app.models.collaboration import TaskAssignment, TaskAssignmentCreate, TaskAssignmentUpdate
+from app.models.enums import TaskStatus
+
+
+class SqliteTaskAssignmentRepository(ITaskAssignmentRepository):
+    """SQLite implementation of task assignment repository."""
+
+    def __init__(self, session_factory=None):
+        self._session_factory = session_factory or get_session_factory()
+
+    def _orm_to_model(self, orm: TaskAssignmentORM) -> TaskAssignment:
+        status = TaskStatus(orm.status) if orm.status else None
+        return TaskAssignment(
+            id=UUID(orm.id),
+            user_id=orm.user_id,
+            task_id=UUID(orm.task_id),
+            assignee_id=orm.assignee_id,
+            status=status,
+            progress=orm.progress,
+            created_at=orm.created_at,
+            updated_at=orm.updated_at,
+        )
+
+    async def assign(
+        self, user_id: str, task_id: UUID, assignment: TaskAssignmentCreate
+    ) -> TaskAssignment:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(TaskAssignmentORM).where(
+                    and_(
+                        TaskAssignmentORM.task_id == str(task_id),
+                        TaskAssignmentORM.user_id == user_id,
+                    )
+                )
+            )
+            orm = result.scalar_one_or_none()
+            if orm:
+                orm.assignee_id = assignment.assignee_id
+                orm.status = assignment.status.value if assignment.status else None
+                orm.progress = assignment.progress
+                orm.updated_at = datetime.utcnow()
+            else:
+                orm = TaskAssignmentORM(
+                    id=str(uuid4()),
+                    user_id=user_id,
+                    task_id=str(task_id),
+                    assignee_id=assignment.assignee_id,
+                    status=assignment.status.value if assignment.status else None,
+                    progress=assignment.progress,
+                )
+                session.add(orm)
+            await session.commit()
+            await session.refresh(orm)
+            return self._orm_to_model(orm)
+
+    async def get_by_task(self, user_id: str, task_id: UUID) -> Optional[TaskAssignment]:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(TaskAssignmentORM).where(
+                    and_(
+                        TaskAssignmentORM.task_id == str(task_id),
+                        TaskAssignmentORM.user_id == user_id,
+                    )
+                )
+            )
+            orm = result.scalar_one_or_none()
+            return self._orm_to_model(orm) if orm else None
+
+    async def list_by_project(self, user_id: str, project_id: UUID) -> list[TaskAssignment]:
+        async with self._session_factory() as session:
+            task_ids_result = await session.execute(
+                select(TaskORM.id).where(
+                    and_(
+                        TaskORM.project_id == str(project_id),
+                        TaskORM.user_id == user_id,
+                    )
+                )
+            )
+            task_ids = [row[0] for row in task_ids_result.fetchall()]
+            if not task_ids:
+                return []
+            result = await session.execute(
+                select(TaskAssignmentORM).where(
+                    and_(
+                        TaskAssignmentORM.user_id == user_id,
+                        TaskAssignmentORM.task_id.in_(task_ids),
+                    )
+                )
+            )
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]
+
+    async def update(
+        self, user_id: str, assignment_id: UUID, update: TaskAssignmentUpdate
+    ) -> TaskAssignment:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(TaskAssignmentORM).where(
+                    and_(
+                        TaskAssignmentORM.id == str(assignment_id),
+                        TaskAssignmentORM.user_id == user_id,
+                    )
+                )
+            )
+            orm = result.scalar_one_or_none()
+            if not orm:
+                raise NotFoundError(f"Assignment {assignment_id} not found")
+
+            update_data = update.model_dump(exclude_unset=True)
+            for field, value in update_data.items():
+                if value is None:
+                    continue
+                if hasattr(value, "value"):
+                    value = value.value
+                setattr(orm, field, value)
+            orm.updated_at = datetime.utcnow()
+            await session.commit()
+            await session.refresh(orm)
+            return self._orm_to_model(orm)
+
+    async def delete_by_task(self, user_id: str, task_id: UUID) -> bool:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(TaskAssignmentORM).where(
+                    and_(
+                        TaskAssignmentORM.task_id == str(task_id),
+                        TaskAssignmentORM.user_id == user_id,
+                    )
+                )
+            )
+            orm = result.scalar_one_or_none()
+            if not orm:
+                return False
+            await session.delete(orm)
+            await session.commit()
+            return True

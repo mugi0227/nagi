@@ -201,6 +201,7 @@ export function ChatWindow({ isOpen, onClose }: ChatWindowProps) {
               content={message.content}
               timestamp={message.timestamp}
               toolCalls={message.toolCalls}
+              proposals={message.proposals}
               isStreaming={message.isStreaming}
               imageUrl={message.imageUrl}
             />

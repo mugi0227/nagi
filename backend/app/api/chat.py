@@ -15,6 +15,7 @@ from app.api.deps import (
     LLMProvider,
     TaskRepo,
     ProjectRepo,
+    ProposalRepo,
     MemoryRepo,
     AgentTaskRepo,
     CaptureRepo,
@@ -34,6 +35,7 @@ async def chat(
     llm_provider: LLMProvider,
     task_repo: TaskRepo,
     project_repo: ProjectRepo,
+    proposal_repo: ProposalRepo,
     memory_repo: MemoryRepo,
     agent_task_repo: AgentTaskRepo,
     capture_repo: CaptureRepo,
@@ -68,6 +70,7 @@ async def chat(
         agent_task_repo=agent_task_repo,
         capture_repo=capture_repo,
         chat_repo=chat_repo,
+        proposal_repo=proposal_repo,
     )
 
     try:
@@ -99,6 +102,7 @@ async def chat_stream(
     llm_provider: LLMProvider,
     task_repo: TaskRepo,
     project_repo: ProjectRepo,
+    proposal_repo: ProposalRepo,
     memory_repo: MemoryRepo,
     agent_task_repo: AgentTaskRepo,
     capture_repo: CaptureRepo,
@@ -119,6 +123,7 @@ async def chat_stream(
         agent_task_repo=agent_task_repo,
         capture_repo=capture_repo,
         chat_repo=chat_repo,
+        proposal_repo=proposal_repo,
     )
 
     async def event_generator() -> AsyncGenerator[str, None]:
@@ -156,6 +161,7 @@ async def list_sessions(
     llm_provider: LLMProvider,
     task_repo: TaskRepo,
     project_repo: ProjectRepo,
+    proposal_repo: ProposalRepo,
     memory_repo: MemoryRepo,
     agent_task_repo: AgentTaskRepo,
     capture_repo: CaptureRepo,
@@ -170,6 +176,7 @@ async def list_sessions(
         agent_task_repo=agent_task_repo,
         capture_repo=capture_repo,
         chat_repo=chat_repo,
+        proposal_repo=proposal_repo,
     )
     return await agent_service.list_user_sessions(user.id)
 
@@ -181,6 +188,7 @@ async def get_history(
     llm_provider: LLMProvider,
     task_repo: TaskRepo,
     project_repo: ProjectRepo,
+    proposal_repo: ProposalRepo,
     memory_repo: MemoryRepo,
     agent_task_repo: AgentTaskRepo,
     capture_repo: CaptureRepo,
@@ -195,6 +203,7 @@ async def get_history(
         agent_task_repo=agent_task_repo,
         capture_repo=capture_repo,
         chat_repo=chat_repo,
+        proposal_repo=proposal_repo,
     )
     return await agent_service.get_session_messages(user.id, session_id)
 

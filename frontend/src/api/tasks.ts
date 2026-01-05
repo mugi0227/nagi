@@ -4,7 +4,15 @@ import type {
   TaskCreate,
   TaskUpdate,
   TodayTasksResponse,
-  ScheduleResponse
+  ScheduleResponse,
+  BreakdownRequest,
+  BreakdownResponse,
+  TaskAssignment,
+  TaskAssignmentCreate,
+  TaskAssignmentUpdate,
+  Blocker,
+  BlockerCreate,
+  BlockerUpdate,
 } from './types';
 
 export const tasksApi = {
@@ -87,4 +95,25 @@ export const tasksApi = {
     const suffix = params.toString();
     return api.get<ScheduleResponse>(`/tasks/schedule${suffix ? `?${suffix}` : ''}`);
   },
+
+  breakdownTask: (id: string, data: BreakdownRequest) =>
+    api.post<BreakdownResponse>(`/tasks/${id}/breakdown`, data),
+
+  getAssignment: (id: string) => api.get<TaskAssignment>(`/tasks/${id}/assignment`),
+
+  assignTask: (id: string, data: TaskAssignmentCreate) =>
+    api.post<TaskAssignment>(`/tasks/${id}/assignment`, data),
+
+  updateAssignment: (assignmentId: string, data: TaskAssignmentUpdate) =>
+    api.patch<TaskAssignment>(`/tasks/assignments/${assignmentId}`, data),
+
+  unassignTask: (id: string) => api.delete<void>(`/tasks/${id}/assignment`),
+
+  listBlockers: (id: string) => api.get<Blocker[]>(`/tasks/${id}/blockers`),
+
+  createBlocker: (id: string, data: BlockerCreate) =>
+    api.post<Blocker>(`/tasks/${id}/blockers`, data),
+
+  updateBlocker: (blockerId: string, data: BlockerUpdate) =>
+    api.patch<Blocker>(`/tasks/blockers/${blockerId}`, data),
 };

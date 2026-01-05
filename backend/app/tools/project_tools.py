@@ -13,8 +13,10 @@ from pydantic import BaseModel, Field
 
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.project_repository import IProjectRepository
+from app.interfaces.proposal_repository import IProposalRepository
 from app.models.project import ProjectCreate, ProjectUpdate
 from app.models.project_kpi import ProjectKpiConfig, ProjectKpiMetric
+from app.models.proposal import Proposal, ProposalResponse, ProposalType
 from app.services.kpi_templates import get_kpi_templates
 
 
@@ -224,6 +226,83 @@ def _select_kpis_via_llm(
         return {}
 
 
+async def propose_project(
+    user_id: str,
+    session_id: str,
+    proposal_repo: IProposalRepository,
+    project_repo: IProjectRepository,
+    llm_provider: ILLMProvider,
+    input_data: CreateProjectInput,
+    description: str = "",
+    auto_approve: bool = False,
+) -> dict:
+    """
+    Propose a project for user approval, or auto-approve if configured.
+
+    Args:
+        user_id: User ID
+        session_id: Chat session ID
+        proposal_repo: Proposal repository
+        project_repo: Project repository (for auto-approval)
+        llm_provider: LLM provider (for auto-approval)
+        input_data: Project creation data
+        description: AI-generated description of why this project is being proposed
+        auto_approve: If True, automatically approve and create the project
+
+    Returns:
+        If auto_approve=False: Proposal response with proposal_id
+        If auto_approve=True: Created project info with project_id
+    """
+    from uuid import UUID
+
+    # If no description provided, generate a simple one
+    if not description:
+        description = f"プロジェクト「{input_data.name}」を作成します。"
+
+    # Auto-approve mode: create project immediately
+    if auto_approve:
+        created_project = await create_project(
+            user_id=user_id,
+            repo=project_repo,
+            llm_provider=llm_provider,
+            input_data=input_data,
+        )
+        return {
+            "auto_approved": True,
+            "project_id": created_project.get("id"),
+            "description": description,
+        }
+
+    # Proposal mode: create proposal and return for user approval
+    # Try to parse user_id as UUID, fallback to generating a new one for dev mode
+    user_id_raw = None
+    try:
+        parsed_user_id = UUID(user_id)
+    except (ValueError, AttributeError):
+        # For dev mode where user_id might be "dev_user", use a consistent UUID
+        import hashlib
+        user_id_raw = user_id
+        parsed_user_id = UUID(bytes=hashlib.md5(user_id.encode()).digest())
+
+    proposal = Proposal(
+        user_id=parsed_user_id,
+        user_id_raw=user_id_raw,
+        session_id=session_id,
+        proposal_type=ProposalType.CREATE_PROJECT,
+        payload=input_data.model_dump(mode="json"),
+        description=description,
+    )
+
+    created_proposal = await proposal_repo.create(proposal)
+
+    return ProposalResponse(
+        proposal_id=str(created_proposal.id),
+        proposal_type=ProposalType.CREATE_PROJECT,
+        description=description,
+        payload=input_data.model_dump(mode="json"),
+    ).model_dump(mode="json")
+
+
 async def create_project(
     user_id: str,
     repo: IProjectRepository,
@@ -297,6 +376,45 @@ async def create_project(
 
     project = await repo.create(user_id, project_data)
     return project.model_dump(mode="json")
+
+
+def propose_project_tool(
+    proposal_repo: IProposalRepository,
+    project_repo: IProjectRepository,
+    llm_provider: ILLMProvider,
+    user_id: str,
+    session_id: str,
+    auto_approve: bool = False,
+) -> FunctionTool:
+    """Create ADK tool for proposing/creating projects (with auto-approve option)."""
+    async def _tool(input_data: dict) -> dict:
+        """propose_project: 新しいプロジェクトを作成します。
+
+        設定に応じて、即座に作成するか、ユーザー承諾を待ちます。
+
+        Parameters:
+            name (str): プロジェクト名（必須）
+            description (str, optional): 概要
+            priority (int, optional): 優先度 (1-10)
+            goals (list[str], optional): ゴール一覧
+            key_points (list[str], optional): 重要ポイント一覧
+            kpi_strategy (str, optional): KPI選定戦略（template/custom）
+            kpi_template_id (str, optional): KPIテンプレートID
+            kpi_metrics (list, optional): KPIメトリクス（テンプレ未使用時）
+            proposal_description (str, optional): 提案の説明文（なぜこのプロジェクトを作成するか）
+
+        Returns:
+            dict: プロジェクトID、説明文、または提案ID（auto_approveの設定による）
+        """
+        # Extract proposal_description if provided
+        proposal_desc = input_data.pop("proposal_description", "")
+        return await propose_project(
+            user_id, session_id, proposal_repo, project_repo, llm_provider,
+            CreateProjectInput(**input_data), proposal_desc, auto_approve
+        )
+
+    _tool.__name__ = "propose_project"
+    return FunctionTool(func=_tool)
 
 
 def create_project_tool(

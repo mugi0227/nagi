@@ -37,6 +37,7 @@ class SqliteTaskRepository(ITaskRepository):
             id=UUID(orm.id),
             user_id=orm.user_id,
             project_id=UUID(orm.project_id) if orm.project_id else None,
+            phase_id=UUID(orm.phase_id) if orm.phase_id else None,
             title=orm.title,
             description=orm.description,
             status=TaskStatus(orm.status),
@@ -46,7 +47,9 @@ class SqliteTaskRepository(ITaskRepository):
             estimated_minutes=orm.estimated_minutes,
             due_date=orm.due_date,
             parent_id=UUID(orm.parent_id) if orm.parent_id else None,
+            order_in_parent=orm.order_in_parent,
             dependency_ids=[UUID(dep_id) for dep_id in (orm.dependency_ids or [])],
+            progress=orm.progress if hasattr(orm, 'progress') and orm.progress is not None else 0,
             source_capture_id=UUID(orm.source_capture_id) if orm.source_capture_id else None,
             created_by=orm.created_by,
             created_at=orm.created_at,
@@ -66,6 +69,7 @@ class SqliteTaskRepository(ITaskRepository):
                 id=str(uuid4()),
                 user_id=user_id,
                 project_id=str(task.project_id) if task.project_id else None,
+                phase_id=str(task.phase_id) if task.phase_id else None,
                 title=task.title,
                 description=task.description,
                 importance=task.importance.value,
@@ -74,7 +78,9 @@ class SqliteTaskRepository(ITaskRepository):
                 estimated_minutes=task.estimated_minutes,
                 due_date=task.due_date,
                 parent_id=str(task.parent_id) if task.parent_id else None,
+                order_in_parent=task.order_in_parent,
                 dependency_ids=[str(dep_id) for dep_id in task.dependency_ids],
+                progress=task.progress,
                 source_capture_id=str(task.source_capture_id) if task.source_capture_id else None,
                 created_by=task.created_by.value,
                 start_time=task.start_time,
@@ -148,7 +154,7 @@ class SqliteTaskRepository(ITaskRepository):
             status_value = None
             for field, value in update_data.items():
                 if value is not None:
-                    if field in ("project_id", "parent_id"):
+                    if field in ("project_id", "parent_id", "phase_id"):
                         value = str(value) if value else None
                     elif field == "dependency_ids":
                         value = [str(dep_id) for dep_id in value]

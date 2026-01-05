@@ -51,6 +51,38 @@ class ProjectStatus(str, Enum):
     ARCHIVED = "ARCHIVED"
 
 
+class PhaseStatus(str, Enum):
+    """Phase status."""
+
+    ACTIVE = "ACTIVE"
+    COMPLETED = "COMPLETED"
+    ARCHIVED = "ARCHIVED"
+
+
+class ProjectRole(str, Enum):
+    """Role of a member within a project."""
+
+    OWNER = "OWNER"
+    ADMIN = "ADMIN"
+    MEMBER = "MEMBER"
+
+
+class BlockerStatus(str, Enum):
+    """Status for task blockers."""
+
+    OPEN = "OPEN"
+    RESOLVED = "RESOLVED"
+
+
+class InvitationStatus(str, Enum):
+    """Status for project invitations."""
+
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    REVOKED = "REVOKED"
+    EXPIRED = "EXPIRED"
+
+
 class ActionType(str, Enum):
     """Agent autonomous action types."""
 

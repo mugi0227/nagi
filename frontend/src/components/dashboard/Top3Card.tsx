@@ -33,7 +33,7 @@ export function Top3Card() {
   const [pendingDoneTasks, setPendingDoneTasks] = useState<Map<string, Task>>(new Map());
   const [dependencyCache, setDependencyCache] = useState<Record<string, Task>>({});
 
-  const tasks = top3Response?.tasks || [];
+  const tasks = useMemo(() => top3Response?.tasks ?? [], [top3Response?.tasks]);
   const allTasks = useMemo(() => {
     const merged = [...tasks];
     pendingDoneTasks.forEach((task, taskId) => {
@@ -258,6 +258,10 @@ export function Top3Card() {
               setIsFormOpen(true);
               handleCloseModal();
             }}
+            onProgressChange={(taskId, progress) => {
+              updateTask(taskId, { progress });
+            }}
+            onTaskCheck={handleTaskCheck}
           />
         )}
       </AnimatePresence>

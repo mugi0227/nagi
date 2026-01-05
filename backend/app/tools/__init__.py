@@ -1,7 +1,7 @@
 """Agent tools for Google ADK."""
 
 from app.tools.task_tools import (
-    create_task_tool,
+    propose_task_tool,
     create_meeting_tool,
     update_task_tool,
     delete_task_tool,
@@ -10,7 +10,7 @@ from app.tools.task_tools import (
     breakdown_task_tool,
 )
 from app.tools.project_tools import (
-    create_project_tool,
+    propose_project_tool,
     list_kpi_templates_tool,
     list_projects_tool,
     load_project_context_tool,
@@ -26,9 +26,9 @@ from app.tools.scheduler_tools import (
 )
 
 __all__ = [
-    "create_task_tool",
+    "propose_task_tool",
     "create_meeting_tool",
-    "create_project_tool",
+    "propose_project_tool",
     "list_kpi_templates_tool",
     "list_projects_tool",
     "load_project_context_tool",

@@ -1,4 +1,4 @@
-# Secretary Partner AI - 実装計画 (2025-12-21)
+﻿# Secretary Partner AI - 実装計画 (2025-12-21)
 
 ## 背景
 
@@ -688,9 +688,67 @@ top3_ids = [task.id for task in today_tasks_sorted[:3]]
 
 ---
 
+### Phase 2.5: Focus for Today UI改善 ✅ (2026-01-04完了)
+
+**目的**: サブタスク表示の改善、依存関係考慮、進捗率サポート
+
+**実装内容**:
+
+#### 2.5.1 サブタスク順序表示 ✅
+- ✅ [taskSort.ts](frontend/src/utils/taskSort.ts) 新規作成
+  - `extractStepNumber()`: タイトルから`[1]`, `[2]`などを抽出
+  - `sortTasksByStepNumber()`: ステップ番号順でソート
+- ✅ [TodayTasksCard.tsx](frontend/src/components/dashboard/TodayTasksCard.tsx#L337-L344) グループ内タスクをソート
+- ✅ [KanbanBoard.tsx](frontend/src/components/tasks/KanbanBoard.tsx#L45-L48) サブタスクマップをソート
+
+#### 2.5.2 進捗率(progress)フィールド追加 ✅
+- ✅ [Task.progress](backend/app/models/task.py) フィールド追加 (0-100%)
+- ✅ [TaskORM.progress](backend/app/infrastructure/local/database.py) カラム追加
+- ✅ [migrations.py](backend/app/infrastructure/local/migrations.py) マイグレーション追加
+- ✅ [task_utils.py](backend/app/services/task_utils.py#L51-L84) `get_remaining_minutes()` 関数追加
+  - 進捗率に基づく残り時間計算: `estimated * (100 - progress) / 100`
+- ✅ [scheduler_service.py](backend/app/services/scheduler_service.py) 進捗率考慮のスケジューリング
+- ✅ [task_tools.py](backend/app/tools/task_tools.py#L74,L306,L559) エージェントツール対応
+- ✅ [secretary_prompt.py](backend/app/agents/prompts/secretary_prompt.py#L46-L60) プロンプトに進捗管理セクション追加
+
+#### 2.5.3 進捗バーUI ✅
+- ✅ [TaskDetailModal.tsx](frontend/src/components/tasks/TaskDetailModal.tsx) 進捗スライダー追加
+- ✅ [TaskDetailModal.css](frontend/src/components/tasks/TaskDetailModal.css) 進捗バースタイル
+- ✅ 各ページでonProgressChange prop対応
+  - TodayTasksCard, Top3Card, TasksPage, ProjectDetailPage
+
+#### 2.5.4 Next Action依存関係考慮 ✅
+- ✅ [TodayTasksCard.tsx:352-366](frontend/src/components/dashboard/TodayTasksCard.tsx#L352-L366)
+  - focusTask選択時にブロック中タスクをスキップ
+  - 完了タスクもスキップ
+
+---
+
 ## 次のステップ
 
-Phase 1.1 から着手:
+### 推奨優先順位:
+
+1. **ビルドエラー修正** (低優先度)
+   - 既存のTypeScriptエラーが複数あり（今回の実装とは無関係）
+   - 必要に応じて修正
+
+2. **Phase 3: Incubatorパターン** (中優先度)
+   - DRAFTステータス追加
+   - AI生成タスクの承認フロー
+
+3. **Phase 3: 可視化強化** (低優先度)
+   - ガントチャート
+   - DAGビュー（依存関係グラフ）
+
+4. **Phase 4: 自律行動** (低優先度)
+   - Heartbeatアクション実装
+   - 音声/画像入力UI
+
+---
+
+## 過去の次のステップ（完了）
+
+Phase 1.1 から着手: ✅ 完了
 1. Backend: Task モデルに `dependency_ids` 追加
 2. DB: マイグレーション実行
 3. API: CRUD対応
@@ -702,3 +760,65 @@ Phase 1.1 から着手:
 
 - spec2.md: 要件定義書
 - ギャップ分析結果: エージェントID `a4e9c22` の調査結果
+
+
+---
+
+## 追加計画: 複数人アサイン対応（Team Collaboration）
+
+### ゴール
+- プロジェクトのKPI/進捗がリアルタイムに見える
+- 定例会議なしで各メンバーの状況が自動サマリーされる
+- 困りごと（ブロッカー）が見える
+- AI相談/代行の強みを活かす
+
+### 現状の前提
+- KPIは ProjectKpiConfig が既に存在（自動算出は拡張余地）
+- タスク/プロジェクトは user_id 単位（単一ユーザー前提）
+
+### 完成形イメージ（短期〜中期）
+1) Team Pulse ダッシュボード
+   - KPI進捗、遅延予兆、ブロッカー、Focus（Top3先頭）を集約
+2) Auto Check-in / Auto Summary
+   - 各メンバーの進捗・困りごと・次の一手をAIが要約
+3) Blocker Radar
+   - 依存未完了・期限超過・手詰まりを自動検知
+
+### Phase 1: データモデル追加 + 最小UI（まずここから開始）
+**目的**: チームアサインと表示を最小構成で成立させる
+
+#### Backend
+- 新規テーブル/モデル
+  - ProjectMember: project_id, user_id, role, capacity, timezone
+  - TaskAssignment: task_id, assignee_id, status, progress, updated_at
+  - Checkin: user_id, project_id, date, summary_text, raw_text
+  - Blocker: task_id, created_by, status, reason, resolved_by
+  - User: provider_issuer, provider_sub, email, display_name
+  - ProjectInvitation: project_id, email, role, status, token, invited_by, accepted_by
+- API
+  - プロジェクトメンバーCRUD
+  - タスクアサイン/解除
+  - チェックイン作成/取得
+  - ブロッカー作成/解消
+  - 招待作成/一覧/承諾/取消
+
+#### Frontend
+- Project詳細に「Members」セクション追加
+- タスクカードに「担当者」表示
+- Team Pulse（最小版）カード追加
+  - KPI進捗（既存KPI利用）
+  - 進行中タスク数 / ブロッカー数 / 未完了依存数
+
+#### AI連携（最小）
+- /checkins の raw_text を保存し、簡易要約（LLM）を生成してsummary_textへ保存
+
+### Phase 2: 自動サマリー強化
+- 毎日/毎週の自動Summary生成
+- 依存関係・遅延・工数超過からリスク抽出
+
+### Phase 3: KPIの自動算出強化
+- KPIテンプレートとタスク/進捗を紐付け
+- KPI更新根拠タスクのトレース表示
+
+### 進め方（合意）
+- 3は一部既存（KPI構造はある）ので、まず Phase 1 から開始

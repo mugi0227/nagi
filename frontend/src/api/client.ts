@@ -1,3 +1,5 @@
+import { getAuthToken } from './auth';
+
 /**
  * API Client - Fetch wrapper with error handling
  */
@@ -20,12 +22,14 @@ export async function apiClient<T>(
   options?: RequestInit
 ): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
+  const { token } = getAuthToken();
+  const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
 
   const response = await fetch(url, {
     ...options,
     headers: {
       'Content-Type': 'application/json',
-      'Authorization': 'Bearer dev_user', // Fixed token for local dev
+      ...authHeader,
       ...options?.headers,
     },
   });

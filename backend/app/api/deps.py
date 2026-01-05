@@ -14,10 +14,18 @@ from app.core.config import Settings, get_settings
 from app.interfaces.auth_provider import IAuthProvider, User
 from app.interfaces.task_repository import ITaskRepository
 from app.interfaces.project_repository import IProjectRepository
+from app.interfaces.phase_repository import IPhaseRepository
+from app.interfaces.proposal_repository import IProposalRepository
 from app.interfaces.agent_task_repository import IAgentTaskRepository
 from app.interfaces.memory_repository import IMemoryRepository
 from app.interfaces.capture_repository import ICaptureRepository
 from app.interfaces.chat_session_repository import IChatSessionRepository
+from app.interfaces.project_member_repository import IProjectMemberRepository
+from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
+from app.interfaces.checkin_repository import ICheckinRepository
+from app.interfaces.blocker_repository import IBlockerRepository
+from app.interfaces.user_repository import IUserRepository
+from app.interfaces.project_invitation_repository import IProjectInvitationRepository
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.speech_provider import ISpeechToTextProvider
 from app.interfaces.storage_provider import IStorageProvider
@@ -49,6 +57,17 @@ def get_project_repository() -> IProjectRepository:
     else:
         from app.infrastructure.local.project_repository import SqliteProjectRepository
         return SqliteProjectRepository()
+
+
+@lru_cache()
+def get_phase_repository() -> IPhaseRepository:
+    """Get phase repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Firestore not implemented yet")
+    else:
+        from app.infrastructure.local.phase_repository import SqlitePhaseRepository
+        return SqlitePhaseRepository()
 
 
 @lru_cache()
@@ -95,6 +114,83 @@ def get_chat_session_repository() -> IChatSessionRepository:
         return SqliteChatSessionRepository()
 
 
+@lru_cache()
+def get_proposal_repository() -> IProposalRepository:
+    """Get proposal repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Proposal repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.proposal_repository import InMemoryProposalRepository
+        return InMemoryProposalRepository()
+
+
+@lru_cache()
+def get_user_repository() -> IUserRepository:
+    """Get user repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("User repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.user_repository import SqliteUserRepository
+        return SqliteUserRepository()
+
+
+@lru_cache()
+def get_project_member_repository() -> IProjectMemberRepository:
+    """Get project member repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Project member repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.project_member_repository import SqliteProjectMemberRepository
+        return SqliteProjectMemberRepository()
+
+
+@lru_cache()
+def get_project_invitation_repository() -> IProjectInvitationRepository:
+    """Get project invitation repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Project invitation repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.project_invitation_repository import SqliteProjectInvitationRepository
+        return SqliteProjectInvitationRepository()
+
+
+@lru_cache()
+def get_task_assignment_repository() -> ITaskAssignmentRepository:
+    """Get task assignment repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Task assignment repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.task_assignment_repository import SqliteTaskAssignmentRepository
+        return SqliteTaskAssignmentRepository()
+
+
+@lru_cache()
+def get_checkin_repository() -> ICheckinRepository:
+    """Get check-in repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Check-in repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.checkin_repository import SqliteCheckinRepository
+        return SqliteCheckinRepository()
+
+
+@lru_cache()
+def get_blocker_repository() -> IBlockerRepository:
+    """Get blocker repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Blocker repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.blocker_repository import SqliteBlockerRepository
+        return SqliteBlockerRepository()
+
+
 # ===========================================
 # Provider Dependencies
 # ===========================================
@@ -137,12 +233,13 @@ def get_llm_provider() -> ILLMProvider:
 def get_auth_provider() -> IAuthProvider:
     """Get auth provider instance."""
     settings = get_settings()
-    if settings.is_gcp:
-        # TODO: Implement Firebase Auth
-        raise NotImplementedError("Firebase Auth not implemented yet")
-    else:
-        from app.infrastructure.local.mock_auth import MockAuthProvider
-        return MockAuthProvider(enabled=True)
+    if settings.AUTH_PROVIDER == "oidc":
+        from app.infrastructure.auth.oidc_auth import OidcAuthProvider
+
+        return OidcAuthProvider(settings, get_user_repository())
+
+    from app.infrastructure.local.mock_auth import MockAuthProvider
+    return MockAuthProvider(enabled=True)
 
 
 @lru_cache()
@@ -220,10 +317,20 @@ async def get_current_user(
 
 TaskRepo = Annotated[ITaskRepository, Depends(get_task_repository)]
 ProjectRepo = Annotated[IProjectRepository, Depends(get_project_repository)]
+PhaseRepo = Annotated[IPhaseRepository, Depends(get_phase_repository)]
+ProposalRepo = Annotated[IProposalRepository, Depends(get_proposal_repository)]
 AgentTaskRepo = Annotated[IAgentTaskRepository, Depends(get_agent_task_repository)]
 MemoryRepo = Annotated[IMemoryRepository, Depends(get_memory_repository)]
 CaptureRepo = Annotated[ICaptureRepository, Depends(get_capture_repository)]
 ChatRepo = Annotated[IChatSessionRepository, Depends(get_chat_session_repository)]
+ProjectMemberRepo = Annotated[IProjectMemberRepository, Depends(get_project_member_repository)]
+TaskAssignmentRepo = Annotated[ITaskAssignmentRepository, Depends(get_task_assignment_repository)]
+CheckinRepo = Annotated[ICheckinRepository, Depends(get_checkin_repository)]
+BlockerRepo = Annotated[IBlockerRepository, Depends(get_blocker_repository)]
+UserRepo = Annotated[IUserRepository, Depends(get_user_repository)]
+ProjectInvitationRepo = Annotated[
+    IProjectInvitationRepository, Depends(get_project_invitation_repository)
+]
 LLMProvider = Annotated[ILLMProvider, Depends(get_llm_provider)]
 StorageProvider = Annotated[IStorageProvider, Depends(get_storage_provider)]
 SpeechProvider = Annotated[ISpeechToTextProvider, Depends(get_speech_provider)]

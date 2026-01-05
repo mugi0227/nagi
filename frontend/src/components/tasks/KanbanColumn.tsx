@@ -8,9 +8,15 @@ interface KanbanColumnProps {
   tasks: Task[];
   allTasks: Task[];
   subtasksMap: Record<string, Task[]>;
+  assigneeByTaskId?: Record<string, string>;
+  assignedMemberIdByTaskId?: Record<string, string>;
+  memberOptions?: { id: string; label: string }[];
+  onAssign?: (taskId: string, memberUserId: string | null) => void;
   onEditTask?: (task: Task) => void;
   onDeleteTask?: (id: string) => void;
   onTaskClick?: (task: Task) => void;
+  onBreakdownTask?: (id: string) => void;
+  breakdownTaskId?: string | null;
   onDrop?: (taskId: string, newStatus: TaskStatus) => void;
 }
 
@@ -20,9 +26,15 @@ export function KanbanColumn({
   tasks,
   allTasks,
   subtasksMap,
+  assigneeByTaskId,
+  assignedMemberIdByTaskId,
+  memberOptions,
+  onAssign,
   onEditTask,
   onDeleteTask,
   onTaskClick,
+  onBreakdownTask,
+  breakdownTaskId,
   onDrop,
 }: KanbanColumnProps) {
   const handleDragOver = (e: React.DragEvent) => {
@@ -69,9 +81,15 @@ export function KanbanColumn({
               task={task}
               subtasks={subtasksMap[task.id] || []}
               allTasks={allTasks}
+              assigneeName={assigneeByTaskId?.[task.id]}
+              assignedMemberId={assignedMemberIdByTaskId?.[task.id]}
+              memberOptions={memberOptions}
+              onAssign={onAssign}
               onEdit={onEditTask}
               onDelete={onDeleteTask}
               onClick={onTaskClick}
+              onBreakdown={onBreakdownTask}
+              isBreakdownPending={breakdownTaskId === task.id}
             />
           </div>
         ))}

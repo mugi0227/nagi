@@ -127,20 +127,6 @@
   transition: opacity 0.2s ease;
 }
 
-/* Restrict hover preview to the checkbox itself */
-.task-check:hover .check-icon-wrapper.hover-preview {
-  opacity: 0.6;
-}
-
-.task-check:active .circle-bg {
-  transform: scale(0.95);
-}
-
-.task-content {
-  flex: 1;
-  min-width: 0;
-}
-
 .task-title {
   display: block;
   font-weight: 500;

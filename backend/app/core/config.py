@@ -64,7 +64,18 @@ class Settings(BaseSettings):
     AWS_REGION: str = "us-east-1"
 
     # ===========================================
-    # Firebase Auth
+    # Auth (OIDC/JWT)
+    # ===========================================
+    AUTH_PROVIDER: Literal["mock", "oidc"] = "mock"
+    OIDC_ISSUER: str = ""
+    OIDC_AUDIENCE: str = ""
+    OIDC_JWKS_URL: str = ""
+    OIDC_EMAIL_CLAIM: str = "email"
+    OIDC_NAME_CLAIM: str = "name"
+    OIDC_ALLOW_EMAIL_LINKING: bool = False
+
+    # ===========================================
+    # Firebase Auth (legacy placeholder)
     # ===========================================
     FIREBASE_PROJECT_ID: str = ""
 

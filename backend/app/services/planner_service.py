@@ -161,7 +161,12 @@ class PlannerService:
                     "**KPI設定**:",
                 ])
                 for metric in project.kpi_config.metrics:
-                    prompt_parts.append(f"- {metric.name}: {metric.target_value} {metric.unit}（現在: {metric.current_value}）")
+                    target_value = metric.target if metric.target is not None else "-"
+                    current_value = metric.current if metric.current is not None else "-"
+                    unit_label = f" {metric.unit}" if metric.unit else ""
+                    prompt_parts.append(
+                        f"- {metric.label}: {target_value}{unit_label}（現在: {current_value}）"
+                    )
 
             prompt_parts.extend([
                 "",
@@ -411,7 +416,7 @@ class PlannerService:
                     )
 
             subtask = TaskCreate(
-                title=f"[{step.step_number}] {step.title}",
+                title=step.title,  # No [N] prefix - use order_in_parent instead
                 description="".join(description_parts) if description_parts else None,
                 project_id=parent_task.project_id,
                 importance=parent_task.importance,
@@ -419,6 +424,7 @@ class PlannerService:
                 energy_level=step.energy_level,
                 estimated_minutes=step.estimated_minutes,
                 parent_id=parent_task.id,
+                order_in_parent=step.step_number,  # Use dedicated field for ordering
                 dependency_ids=dependency_ids,  # Always pass list (can be empty)
                 created_by=CreatedBy.AGENT,
             )

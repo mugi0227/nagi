@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from 'react';
-import { FaPlus, FaMicrophone, FaPaperPlane, FaImage, FaXmark } from 'react-icons/fa6';
+import { FaMicrophone, FaPaperPlane, FaImage, FaXmark } from 'react-icons/fa6';
 import './ChatInput.css';
 
 interface ChatInputProps {
@@ -14,13 +14,8 @@ export function ChatInput({ onSend, disabled, externalImage, onImageClear }: Cha
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  // Sync external image to selected image
-  useEffect(() => {
-    if (externalImage) {
-      setSelectedImage(externalImage);
-    }
-  }, [externalImage]);
+  const effectiveImage = externalImage ?? selectedImage;
+  const hasExternalImage = Boolean(externalImage);
 
   // Auto-resize textarea based on content
   useEffect(() => {
@@ -32,11 +27,14 @@ export function ChatInput({ onSend, disabled, externalImage, onImageClear }: Cha
   }, [input]);
 
   const handleSubmit = () => {
-    if ((input.trim() || selectedImage) && !disabled) {
+    if ((input.trim() || effectiveImage) && !disabled) {
       const trimmed = input.trim();
-      onSend(trimmed, selectedImage || undefined);
+      onSend(trimmed, effectiveImage || undefined);
       setInput('');
       setSelectedImage(null);
+      if (hasExternalImage && onImageClear) {
+        onImageClear();
+      }
       // Reset textarea height
       if (textareaRef.current) {
         textareaRef.current.style.height = 'auto';
@@ -47,17 +45,20 @@ export function ChatInput({ onSend, disabled, externalImage, onImageClear }: Cha
   const handleImageSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      if (hasExternalImage && onImageClear) {
+        onImageClear();
+      }
       processImageFile(file);
     }
   };
 
   const handleRemoveImage = () => {
     setSelectedImage(null);
+    if (hasExternalImage && onImageClear) {
+      onImageClear();
+    }
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
-    }
-    if (onImageClear) {
-      onImageClear();
     }
   };
 
@@ -93,9 +94,9 @@ export function ChatInput({ onSend, disabled, externalImage, onImageClear }: Cha
 
   return (
     <div className="chat-input-container">
-      {selectedImage && (
+      {effectiveImage && (
         <div className="image-preview">
-          <img src={selectedImage} alt="Selected" />
+          <img src={effectiveImage} alt="Selected" />
           <button className="remove-image-btn" onClick={handleRemoveImage} title="画像を削除">
             <FaXmark />
           </button>
@@ -134,7 +135,7 @@ export function ChatInput({ onSend, disabled, externalImage, onImageClear }: Cha
         <button
           className="send-btn"
           onClick={handleSubmit}
-          disabled={(!input.trim() && !selectedImage) || disabled}
+          disabled={(!input.trim() && !effectiveImage) || disabled}
           title="送信"
         >
           <FaPaperPlane />

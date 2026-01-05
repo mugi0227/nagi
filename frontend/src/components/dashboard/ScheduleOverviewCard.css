@@ -40,6 +40,38 @@
   justify-content: flex-end;
 }
 
+.view-mode-tabs {
+  display: flex;
+  gap: 0.25rem;
+  background: var(--primary-light);
+  padding: 0.25rem;
+  border-radius: var(--radius-full);
+}
+
+.view-mode-tab {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.view-mode-tab:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.view-mode-tab.active {
+  background: var(--primary);
+  color: white;
+  box-shadow: var(--shadow-sm);
+}
+
 .schedule-title h3 {
   margin: 0;
 }

@@ -1,0 +1,326 @@
+.gantt-container {
+  --tree-width: 260px;
+  --day-min-width: 40px;
+  display: flex;
+  flex-direction: column;
+  overflow-x: auto;
+  min-width: 0;
+}
+
+.gantt-empty {
+  padding: 2rem;
+  text-align: center;
+  color: var(--text-tertiary, #888);
+}
+
+.gantt-header {
+  display: grid;
+  grid-template-columns: var(--tree-width) repeat(var(--days), minmax(var(--day-min-width), 1fr));
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg-secondary, #f5f5f5);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+}
+
+.gantt-header-label {
+  padding: 8px 12px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-secondary, #666);
+  background: var(--bg-secondary, #f5f5f5);
+}
+
+.gantt-header-day {
+  padding: 6px 4px;
+  text-align: center;
+  font-size: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-right: 1px solid var(--border-light, #ededed);
+  background: var(--bg-secondary, #f5f5f5);
+}
+
+.gantt-header-day.weekend {
+  background: var(--bg-secondary, #f5f5f5);
+}
+
+.gantt-header-day.offday {
+  background: repeating-linear-gradient(
+    135deg,
+    #f2f2f2,
+    #f2f2f2 6px,
+    #e8e8e8 6px,
+    #e8e8e8 12px
+  );
+}
+
+.gantt-header-day.today {
+  background: var(--color-primary-light, #e3f2fd);
+}
+
+.gantt-day-label {
+  font-weight: 600;
+  color: var(--text-primary, #333);
+}
+
+.gantt-weekday {
+  font-size: 0.65rem;
+  color: var(--text-tertiary, #888);
+}
+
+.gantt-header-day.weekend .gantt-weekday {
+  color: var(--color-error, #d32f2f);
+}
+
+.gantt-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.gantt-row {
+  display: grid;
+  grid-template-columns: var(--tree-width) 1fr;
+  min-height: 34px;
+  border-bottom: 1px solid var(--border-light, #f0f0f0);
+}
+
+.gantt-row:hover .gantt-tree-cell.clickable {
+  background: var(--bg-hover, #f8f9fa);
+}
+
+.gantt-tree-cell {
+  position: sticky;
+  left: 0;
+  padding: 8px 12px;
+  padding-left: calc(12px + var(--depth, 0) * 16px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  font-size: 0.85rem;
+  border-right: 1px solid var(--border-color, #e0e0e0);
+  background: var(--bg-primary, #fff);
+  z-index: 2;
+}
+
+.gantt-header .gantt-tree-cell {
+  z-index: 6;
+  background: var(--bg-secondary, #f5f5f5);
+}
+
+.gantt-tree-cell.clickable {
+  cursor: pointer;
+}
+
+.gantt-tree-cell.done {
+  text-decoration: line-through;
+  color: var(--text-tertiary, #888);
+}
+
+.gantt-row.project .gantt-tree-cell {
+  font-weight: 700;
+  background: var(--bg-tertiary, #f7f7f7);
+}
+
+.gantt-row.phase .gantt-tree-cell {
+  font-weight: 600;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #666);
+  background: var(--bg-tertiary, #fafafa);
+}
+
+.gantt-row.parent .gantt-tree-cell {
+  font-weight: 600;
+}
+
+.gantt-toggle {
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  padding: 0;
+}
+
+.gantt-toggle-placeholder {
+  width: 18px;
+  height: 18px;
+  display: inline-block;
+}
+
+.gantt-task-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+.gantt-meeting-icon {
+  font-size: 0.75rem;
+}
+
+.gantt-subtask-count {
+  margin-left: auto;
+  font-size: 0.7rem;
+  color: var(--text-tertiary, #888);
+  background: var(--bg-secondary, #f0f0f0);
+  border-radius: 999px;
+  padding: 2px 6px;
+}
+
+.gantt-task-bars {
+  position: relative;
+  padding: 0;
+  height: 100%;
+  align-self: stretch;
+}
+
+.gantt-day-grid,
+.gantt-bar-layer,
+.gantt-offday-overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  grid-template-columns: repeat(var(--days), minmax(var(--day-min-width), 1fr));
+  grid-template-rows: 1fr;
+}
+
+.gantt-day-grid {
+  z-index: 1;
+  pointer-events: none;
+}
+
+.gantt-bar-layer {
+  z-index: 2;
+  align-items: center;
+}
+
+.gantt-offday-overlay {
+  z-index: 3;
+  pointer-events: none;
+}
+
+.gantt-day-cell {
+  height: 100%;
+  border-right: 1px solid var(--border-light, #f0f0f0);
+  background: var(--bg-primary, #fff);
+  pointer-events: none;
+}
+
+.gantt-day-cell.weekend {
+  background: var(--bg-primary, #fff);
+}
+
+.gantt-day-cell.offday {
+  background: var(--bg-primary, #fff);
+}
+
+.gantt-day-cell.today {
+  box-shadow: inset 2px 0 0 var(--color-primary, #1976d2);
+}
+
+.gantt-day-overlay {
+  height: 100%;
+  pointer-events: none;
+}
+
+.gantt-day-overlay.offday {
+  background: repeating-linear-gradient(
+    135deg,
+    rgba(0, 0, 0, 0.08),
+    rgba(0, 0, 0, 0.08) 6px,
+    rgba(0, 0, 0, 0.12) 6px,
+    rgba(0, 0, 0, 0.12) 12px
+  );
+  opacity: 0.25;
+}
+
+.gantt-day-overlay.today {
+  box-shadow: inset 2px 0 0 var(--color-primary, #1976d2);
+}
+
+.gantt-bar {
+  height: 20px;
+  border-radius: 4px;
+  background: var(--color-primary, #1976d2);
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  margin: 0 2px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  display: flex;
+  align-items: center;
+}
+
+.gantt-row.parent .gantt-bar {
+  height: 22px;
+}
+
+.gantt-row.task .gantt-bar {
+  height: 18px;
+}
+
+.gantt-bar.aggregate {
+  background: var(--color-primary-dark, #1565c0);
+}
+
+.gantt-bar:hover {
+  transform: scaleY(1.1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  z-index: 3;
+}
+
+.gantt-bar.done {
+  background: var(--color-success, #4caf50);
+  opacity: 0.7;
+}
+
+.gantt-bar.meeting {
+  background: var(--color-warning, #ff9800);
+}
+
+.gantt-bar.split {
+  background: repeating-linear-gradient(
+    45deg,
+    var(--color-primary, #1976d2),
+    var(--color-primary, #1976d2) 4px,
+    var(--color-primary-dark, #1565c0) 4px,
+    var(--color-primary-dark, #1565c0) 8px
+  );
+}
+
+.gantt-bar-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px 0 0 4px;
+}
+
+@media (max-width: 768px) {
+  .gantt-container {
+    --tree-width: 180px;
+    --day-min-width: 30px;
+  }
+
+  .gantt-tree-cell {
+    padding: 6px 8px;
+    font-size: 0.75rem;
+  }
+
+  .gantt-header-day {
+    padding: 4px 2px;
+    font-size: 0.65rem;
+  }
+
+  .gantt-bar {
+    height: 18px;
+  }
+}

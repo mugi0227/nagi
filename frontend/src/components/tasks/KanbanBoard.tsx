@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import type { Task, TaskStatus } from '../../api/types';
 import { KanbanColumn } from './KanbanColumn';
+import { sortTasksByStepNumber } from '../../utils/taskSort';
 import './KanbanBoard.css';
 
 interface KanbanBoardProps {
@@ -9,6 +10,12 @@ interface KanbanBoardProps {
   onEditTask?: (task: Task) => void;
   onDeleteTask?: (id: string) => void;
   onTaskClick?: (task: Task) => void;
+  assigneeByTaskId?: Record<string, string>;
+  assignedMemberIdByTaskId?: Record<string, string>;
+  memberOptions?: { id: string; label: string }[];
+  onAssign?: (taskId: string, memberUserId: string | null) => void;
+  onBreakdownTask?: (id: string) => void;
+  breakdownTaskId?: string | null;
 }
 
 const COLUMNS: { status: TaskStatus; title: string }[] = [
@@ -24,13 +31,19 @@ export function KanbanBoard({
   onEditTask,
   onDeleteTask,
   onTaskClick,
+  assigneeByTaskId,
+  assignedMemberIdByTaskId,
+  memberOptions,
+  onAssign,
+  onBreakdownTask,
+  breakdownTaskId,
 }: KanbanBoardProps) {
   // Group tasks: parent tasks only (no parent_id)
   const parentTasks = useMemo(() => {
     return tasks.filter(task => !task.parent_id);
   }, [tasks]);
 
-  // Create subtasks map for easy lookup
+  // Create subtasks map for easy lookup, sorted by step number
   const subtasksMap = useMemo(() => {
     const map: Record<string, Task[]> = {};
     tasks.forEach((task) => {
@@ -40,6 +53,10 @@ export function KanbanBoard({
         }
         map[task.parent_id].push(task);
       }
+    });
+    // Sort subtasks by step number [1], [2], [3], etc.
+    Object.keys(map).forEach((parentId) => {
+      map[parentId] = sortTasksByStepNumber(map[parentId]);
     });
     return map;
   }, [tasks]);
@@ -73,9 +90,15 @@ export function KanbanBoard({
           tasks={tasksByStatus[column.status]}
           allTasks={tasks}
           subtasksMap={subtasksMap}
+          assigneeByTaskId={assigneeByTaskId}
+          assignedMemberIdByTaskId={assignedMemberIdByTaskId}
+          memberOptions={memberOptions}
+          onAssign={onAssign}
           onEditTask={onEditTask}
           onDeleteTask={onDeleteTask}
           onTaskClick={onTaskClick}
+          onBreakdownTask={onBreakdownTask}
+          breakdownTaskId={breakdownTaskId}
           onDrop={handleDrop}
         />
       ))}

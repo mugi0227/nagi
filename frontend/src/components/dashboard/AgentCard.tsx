@@ -1,7 +1,11 @@
 import { FaRobot, FaPlay } from 'react-icons/fa6';
 import './AgentCard.css';
 
-export function AgentCard() {
+type AgentCardProps = {
+  onOpenDailyBriefing?: () => void;
+};
+
+export function AgentCard({ onOpenDailyBriefing }: AgentCardProps) {
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good Morning';
@@ -39,13 +43,17 @@ export function AgentCard() {
         </div>
 
         <div className="agent-actions-section">
-          <button className="primary-action-btn" onClick={() => alert('ブリーフィング機能を開始します...')}>
+          <button
+            className="primary-action-btn"
+            onClick={onOpenDailyBriefing}
+            type="button"
+          >
             <div className="btn-icon">
               <FaPlay />
             </div>
             <div className="btn-text">
               <span className="btn-label">デイリーブリーフィング</span>
-              <span className="btn-subtext">3分で今日を把握</span>
+              <span className="btn-subtext">3分で今日を整える</span>
             </div>
           </button>
         </div>

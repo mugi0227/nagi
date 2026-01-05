@@ -11,9 +11,25 @@ from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
-from app.api.deps import CurrentUser, LLMProvider, MemoryRepo, ProjectRepo, TaskRepo
+from app.api.deps import (
+    BlockerRepo,
+    CurrentUser,
+    LLMProvider,
+    MemoryRepo,
+    ProjectRepo,
+    TaskAssignmentRepo,
+    TaskRepo,
+)
 from app.core.exceptions import LLMValidationError, NotFoundError
 from app.models.breakdown import BreakdownRequest, BreakdownResponse
+from app.models.collaboration import (
+    Blocker,
+    BlockerCreate,
+    BlockerUpdate,
+    TaskAssignment,
+    TaskAssignmentCreate,
+    TaskAssignmentUpdate,
+)
 from app.models.schedule import ScheduleResponse, TodayTasksResponse
 from app.models.task import Task, TaskCreate, TaskUpdate
 from app.services.planner_service import PlannerService
@@ -83,6 +99,16 @@ async def load_project_priorities(project_repo: ProjectRepo, user_id: str) -> di
     """Load project priorities for scheduling."""
     projects = await project_repo.list(user_id, limit=1000)
     return {project.id: project.priority for project in projects}
+
+
+async def _get_task_or_404(user: CurrentUser, repo: TaskRepo, task_id: UUID) -> Task:
+    task = await repo.get(user.id, task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found",
+        )
+    return task
 
 
 @router.post("", response_model=Task, status_code=status.HTTP_201_CREATED)
@@ -303,4 +329,111 @@ async def get_subtasks(
 ):
     """Get all subtasks of a parent task."""
     return await repo.get_subtasks(user.id, task_id)
+
+
+@router.get("/{task_id}/assignment", response_model=TaskAssignment)
+async def get_task_assignment(
+    task_id: UUID,
+    user: CurrentUser,
+    repo: TaskRepo,
+    assignment_repo: TaskAssignmentRepo,
+):
+    """Get assignment for a task."""
+    await _get_task_or_404(user, repo, task_id)
+    assignment = await assignment_repo.get_by_task(user.id, task_id)
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Assignment for task {task_id} not found",
+        )
+    return assignment
+
+
+@router.post("/{task_id}/assignment", response_model=TaskAssignment, status_code=status.HTTP_201_CREATED)
+async def assign_task(
+    task_id: UUID,
+    assignment: TaskAssignmentCreate,
+    user: CurrentUser,
+    repo: TaskRepo,
+    assignment_repo: TaskAssignmentRepo,
+):
+    """Assign a task to a member (upsert)."""
+    await _get_task_or_404(user, repo, task_id)
+    return await assignment_repo.assign(user.id, task_id, assignment)
+
+
+@router.patch("/assignments/{assignment_id}", response_model=TaskAssignment)
+async def update_task_assignment(
+    assignment_id: UUID,
+    update: TaskAssignmentUpdate,
+    user: CurrentUser,
+    assignment_repo: TaskAssignmentRepo,
+):
+    """Update assignment fields."""
+    try:
+        return await assignment_repo.update(user.id, assignment_id, update)
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
+
+
+@router.delete("/{task_id}/assignment", status_code=status.HTTP_204_NO_CONTENT)
+async def unassign_task(
+    task_id: UUID,
+    user: CurrentUser,
+    repo: TaskRepo,
+    assignment_repo: TaskAssignmentRepo,
+):
+    """Remove assignment from a task."""
+    await _get_task_or_404(user, repo, task_id)
+    deleted = await assignment_repo.delete_by_task(user.id, task_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Assignment for task {task_id} not found",
+        )
+
+
+@router.get("/{task_id}/blockers", response_model=list[Blocker])
+async def list_task_blockers(
+    task_id: UUID,
+    user: CurrentUser,
+    repo: TaskRepo,
+    blocker_repo: BlockerRepo,
+):
+    """List blockers for a task."""
+    await _get_task_or_404(user, repo, task_id)
+    return await blocker_repo.list_by_task(user.id, task_id)
+
+
+@router.post("/{task_id}/blockers", response_model=Blocker, status_code=status.HTTP_201_CREATED)
+async def create_task_blocker(
+    task_id: UUID,
+    blocker: BlockerCreate,
+    user: CurrentUser,
+    repo: TaskRepo,
+    blocker_repo: BlockerRepo,
+):
+    """Create a blocker for a task."""
+    await _get_task_or_404(user, repo, task_id)
+    return await blocker_repo.create(user.id, task_id, blocker)
+
+
+@router.patch("/blockers/{blocker_id}", response_model=Blocker)
+async def update_task_blocker(
+    blocker_id: UUID,
+    update: BlockerUpdate,
+    user: CurrentUser,
+    blocker_repo: BlockerRepo,
+):
+    """Update a blocker."""
+    try:
+        return await blocker_repo.update(user.id, blocker_id, update)
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        )
 

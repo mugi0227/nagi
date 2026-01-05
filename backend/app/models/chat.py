@@ -22,6 +22,7 @@ class ChatRequest(BaseModel):
     mode: ChatMode = Field(ChatMode.DUMP, description="チャットモード")
     session_id: Optional[str] = Field(None, description="セッションID（継続会話用）")
     context: dict[str, Any] = Field(default_factory=dict, description="追加コンテキスト")
+    proposal_mode: bool = Field(False, description="提案モード（True: AIが提案→ユーザー承諾、False: AI が直接作成）")
 
 
 class SuggestedAction(BaseModel):

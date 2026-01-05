@@ -11,6 +11,7 @@ from uuid import uuid4
 from sqlalchemy import (
     Boolean,
     Column,
+    Date,
     DateTime,
     Float,
     ForeignKey,
@@ -18,6 +19,7 @@ from sqlalchemy import (
     String,
     Text,
     JSON,
+    UniqueConstraint,
     create_engine,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
@@ -45,6 +47,7 @@ class TaskORM(Base):
     id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
     user_id = Column(String(255), nullable=False, index=True)
     project_id = Column(String(36), nullable=True, index=True)
+    phase_id = Column(String(36), nullable=True, index=True)
     title = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)
     status = Column(String(20), default="TODO", index=True)
@@ -54,7 +57,9 @@ class TaskORM(Base):
     estimated_minutes = Column(Integer, nullable=True)
     due_date = Column(DateTime, nullable=True)
     parent_id = Column(String(36), nullable=True, index=True)
+    order_in_parent = Column(Integer, nullable=True)
     dependency_ids = Column(JSON, nullable=True, default=list)
+    progress = Column(Integer, default=0, nullable=False)
     source_capture_id = Column(String(36), nullable=True)
     created_by = Column(String(10), default="USER")
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -87,6 +92,132 @@ class ProjectORM(Base):
     kpi_config = Column(JSON, nullable=True)  # KPI configuration
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class PhaseORM(Base):
+    """Phase ORM model."""
+
+    __tablename__ = "phases"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    project_id = Column(String(36), nullable=False, index=True)
+    name = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(20), default="ACTIVE")
+    order_in_project = Column(Integer, default=1, nullable=False)
+    start_date = Column(DateTime, nullable=True)
+    end_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class UserORM(Base):
+    """User ORM model."""
+
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("provider_issuer", "provider_sub", name="uq_user_provider"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    provider_issuer = Column(String(500), nullable=False, index=True)
+    provider_sub = Column(String(255), nullable=False, index=True)
+    email = Column(String(255), nullable=True, index=True)
+    display_name = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ProjectMemberORM(Base):
+    """Project member ORM model."""
+
+    __tablename__ = "project_members"
+    __table_args__ = (
+        UniqueConstraint("project_id", "member_user_id", "user_id", name="uq_project_member"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    project_id = Column(String(36), nullable=False, index=True)
+    member_user_id = Column(String(255), nullable=False, index=True)
+    role = Column(String(20), default="MEMBER")
+    capacity_hours = Column(Float, nullable=True)
+    timezone = Column(String(100), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class ProjectInvitationORM(Base):
+    """Project invitation ORM model."""
+
+    __tablename__ = "project_invitations"
+    __table_args__ = (
+        UniqueConstraint("project_id", "email", "user_id", name="uq_project_invitation"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    project_id = Column(String(36), nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
+    role = Column(String(20), default="MEMBER")
+    status = Column(String(20), default="PENDING")
+    token = Column(String(255), nullable=True, index=True)
+    invited_by = Column(String(255), nullable=False)
+    accepted_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=True)
+    accepted_at = Column(DateTime, nullable=True)
+
+
+class TaskAssignmentORM(Base):
+    """Task assignment ORM model."""
+
+    __tablename__ = "task_assignments"
+    __table_args__ = (
+        UniqueConstraint("task_id", "user_id", name="uq_task_assignment"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    task_id = Column(String(36), nullable=False, index=True)
+    assignee_id = Column(String(255), nullable=False, index=True)
+    status = Column(String(20), nullable=True)
+    progress = Column(Integer, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class CheckinORM(Base):
+    """Check-in ORM model."""
+
+    __tablename__ = "checkins"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    project_id = Column(String(36), nullable=False, index=True)
+    member_user_id = Column(String(255), nullable=False, index=True)
+    checkin_date = Column(Date, nullable=False, index=True)
+    summary_text = Column(Text, nullable=True)
+    raw_text = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class BlockerORM(Base):
+    """Blocker ORM model."""
+
+    __tablename__ = "blockers"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    task_id = Column(String(36), nullable=False, index=True)
+    created_by = Column(String(255), nullable=False)
+    status = Column(String(20), default="OPEN")
+    reason = Column(Text, nullable=False)
+    resolved_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    resolved_at = Column(DateTime, nullable=True)
 
 
 class AgentTaskORM(Base):
@@ -183,10 +314,14 @@ def get_session_factory():
 
 
 async def init_db():
-    """Initialize database tables."""
+    """Initialize database tables and run migrations."""
     engine = get_engine()
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+
+    # Run migrations to add any missing columns
+    from app.infrastructure.local.migrations import run_migrations
+    await run_migrations()
 
 
 async def get_db_session() -> AsyncSession:

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FaXmark, FaStar, FaPlus, FaTrash } from 'react-icons/fa6';
+import { FaStar, FaPlus, FaTrash, FaUsers } from 'react-icons/fa6';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -9,6 +9,7 @@ import type {
   ProjectKpiConfig,
   ProjectKpiMetric,
   ProjectKpiTemplate,
+  ProjectMember,
 } from '../../api/types';
 import { projectsApi } from '../../api/projects';
 import './ProjectDetailModal.css';
@@ -35,7 +36,7 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [activeTab, setActiveTab] = useState<'general' | 'roadmap' | 'kpi' | 'context'>('general');
+  const [activeTab, setActiveTab] = useState<'general' | 'roadmap' | 'kpi' | 'context' | 'members'>('general');
 
   // Form state
   const [name, setName] = useState(project.name);
@@ -51,6 +52,9 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
   );
   const [kpiTemplates, setKpiTemplates] = useState<ProjectKpiTemplate[]>([]);
   const [isLoadingTemplates, setIsLoadingTemplates] = useState(false);
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [isMembersLoading, setIsMembersLoading] = useState(false);
+  const [memberActionId, setMemberActionId] = useState<string | null>(null);
 
   // Reset form when project changes
   useEffect(() => {
@@ -87,6 +91,27 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
     };
   }, []);
 
+  useEffect(() => {
+    if (activeTab !== 'members') return;
+    let isActive = true;
+    setIsMembersLoading(true);
+    projectsApi
+      .listMembers(project.id)
+      .then((data) => {
+        if (isActive) setMembers(data);
+      })
+      .catch((error) => {
+        console.error('Failed to load members:', error);
+      })
+      .finally(() => {
+        if (isActive) setIsMembersLoading(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [activeTab, project.id]);
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -108,18 +133,6 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
     } finally {
       setIsSaving(false);
     }
-  };
-
-  const handleCancel = () => {
-    // Reset to original values
-    setName(project.name);
-    setDescription(project.description || '');
-    setContext(project.context || '');
-    setPriority(project.priority);
-    setGoals(project.goals || []);
-    setKeyPoints(project.key_points || []);
-    setKpiConfig(buildKpiConfig(project.kpi_config));
-    setIsEditing(false);
   };
 
   const addGoal = () => {
@@ -184,6 +197,34 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
     }));
   };
 
+  const handleMemberRoleChange = async (memberId: string, role: ProjectMember['role']) => {
+    setMemberActionId(memberId);
+    try {
+      await projectsApi.updateMember(project.id, memberId, { role });
+      const membersData = await projectsApi.listMembers(project.id);
+      setMembers(membersData);
+    } catch (error) {
+      console.error('Failed to update member role:', error);
+      alert('Failed to update member role.');
+    } finally {
+      setMemberActionId(null);
+    }
+  };
+
+  const handleRemoveMember = async (memberId: string) => {
+    setMemberActionId(memberId);
+    try {
+      await projectsApi.removeMember(project.id, memberId);
+      const membersData = await projectsApi.listMembers(project.id);
+      setMembers(membersData);
+    } catch (error) {
+      console.error('Failed to remove member:', error);
+      alert('Failed to remove member.');
+    } finally {
+      setMemberActionId(null);
+    }
+  };
+
   const renderStars = (count: number, interactive: boolean = false) => {
     return (
       <div className="priority-stars">
@@ -234,6 +275,12 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
               onClick={() => setActiveTab('context')}
             >
               <FaPlus className="nav-item-icon" /> README
+            </button>
+            <button
+              className={`nav-item ${activeTab === 'members' ? 'active' : ''}`}
+              onClick={() => setActiveTab('members')}
+            >
+              <FaUsers className="nav-item-icon" /> Members
             </button>
           </nav>
         </aside>
@@ -505,6 +552,55 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
                     rows={20}
                   />
                 )}
+              </div>
+            )}
+            {activeTab === 'members' && (
+              <div className="section-content">
+                <div className="section members-panel">
+                  <label className="field-label">
+                    <FaUsers className="field-label-icon" /> Members
+                  </label>
+                  {isMembersLoading ? (
+                    <div className="members-loading">Loading...</div>
+                  ) : members.length === 0 ? (
+                    <div className="members-empty">No members yet.</div>
+                  ) : (
+                    <div className="members-list">
+                      {members.map((member) => (
+                        <div key={member.id} className="member-chip">
+                          <div className="member-info">
+                            <span className="member-name">
+                              {member.member_display_name || member.member_user_id}
+                            </span>
+                            <span className="member-id">{member.member_user_id}</span>
+                          </div>
+                          <div className="member-actions">
+                            <select
+                              className="member-role-select"
+                              value={member.role}
+                              onChange={(e) =>
+                                handleMemberRoleChange(member.id, e.target.value as ProjectMember['role'])
+                              }
+                              disabled={memberActionId === member.id}
+                            >
+                              <option value="OWNER">OWNER</option>
+                              <option value="ADMIN">ADMIN</option>
+                              <option value="MEMBER">MEMBER</option>
+                            </select>
+                            <button
+                              type="button"
+                              className="member-remove-btn"
+                              onClick={() => handleRemoveMember(member.id)}
+                              disabled={memberActionId === member.id}
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>

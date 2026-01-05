@@ -21,7 +21,7 @@ from app.models.schedule import (
     ExcludedTask,
 )
 from app.models.task import Task
-from app.services.task_utils import get_effective_estimated_minutes, is_parent_task
+from app.services.task_utils import get_effective_estimated_minutes, get_remaining_minutes, is_parent_task
 
 logger = setup_logger(__name__)
 
@@ -346,6 +346,7 @@ class SchedulerService:
                     project_id=task.project_id,
                     parent_id=get_parent_info(task)[0],
                     parent_title=get_parent_info(task)[1],
+                    order_in_parent=task.order_in_parent,
                     due_date=task.due_date,
                     planned_start=None,
                     planned_end=None,
@@ -374,7 +375,11 @@ class SchedulerService:
             base_scores[task.id] = self._calculate_base_score(task, project_priorities)
 
         for task in scheduled_tasks:
-            minutes = get_effective_estimated_minutes(task, tasks)
+            # Use remaining minutes (considering progress)
+            minutes = get_remaining_minutes(task, tasks)
+            if minutes <= 0:
+                # If no remaining time based on progress, use effective estimate
+                minutes = get_effective_estimated_minutes(task, tasks)
             remaining_minutes[task.id] = minutes if minutes > 0 else self.default_task_minutes
 
         # Build dependency graph within scheduled tasks
@@ -558,6 +563,7 @@ class SchedulerService:
                     project_id=task.project_id,
                     parent_id=get_parent_info(task)[0],
                     parent_title=get_parent_info(task)[1],
+                    order_in_parent=task.order_in_parent,
                     due_date=task.due_date,
                     planned_start=task_start.get(task.id),
                     planned_end=task_end.get(task.id),
@@ -631,16 +637,22 @@ class SchedulerService:
             task = task_map.get(task_id)
             if not task:
                 continue
+            # Use remaining minutes (considering progress) for allocation calculation
+            remaining_mins = get_remaining_minutes(task, tasks)
             total_minutes = get_effective_estimated_minutes(task, tasks)
             if total_minutes <= 0:
                 total_minutes = self.default_task_minutes
+            if remaining_mins <= 0:
+                remaining_mins = total_minutes
+
             allocated_for_day = allocation_minutes_by_task.get(task_id, 0)
-            ratio = allocated_for_day / total_minutes if total_minutes > 0 else 0.0
+            # ratio is based on remaining work, not total
+            ratio = allocated_for_day / remaining_mins if remaining_mins > 0 else 0.0
             today_allocations.append(
                 TodayTaskAllocation(
                     task_id=task_id,
                     allocated_minutes=allocated_for_day,
-                    total_minutes=total_minutes,
+                    total_minutes=remaining_mins,  # Use remaining as "total" for today's planning
                     ratio=min(1.0, max(0.0, ratio)),
                 )
             )
@@ -660,8 +672,25 @@ class SchedulerService:
             )
         )
 
-        # Top 3 are now the most important tasks based on score
-        top3_ids = [task.id for task in today_tasks_sorted[:3]]
+        # Filter out tasks blocked by dependencies for Top3 selection
+        # A task is blocked if any of its dependencies are not DONE
+        unblocked_tasks = []
+        for task in today_tasks_sorted:
+            if not task.dependency_ids:
+                unblocked_tasks.append(task)
+                continue
+            # Check if all dependencies are completed
+            all_deps_done = True
+            for dep_id in task.dependency_ids:
+                dep_task = task_map.get(dep_id)
+                if dep_task is None or dep_task.status != TaskStatus.DONE:
+                    all_deps_done = False
+                    break
+            if all_deps_done:
+                unblocked_tasks.append(task)
+
+        # Top 3 are the most important UNBLOCKED tasks based on score
+        top3_ids = [task.id for task in unblocked_tasks[:3]]
 
         return TodayTasksResponse(
             today=today_date,

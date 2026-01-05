@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="ja">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ADHD Focus Mode Demo</title>
+    <style>
+        :root {
+            /* Theme Variables from variables.css */
+            --bg-main: #f0f4f8;
+            --bg-card: #ffffff;
+            --primary: #0ea5e9;
+            --primary-light: #e0f2fe;
+            --accent-pink: #f472b6;
+            --accent-orange: #fb923c;
+            --accent-green: #4ade80;
+            --text-main: #334155;
+            --text-muted: #94a3b8;
+            --border-color: #f1f5f9;
+            --shadow-card: 0 10px 40px -10px rgba(148, 163, 184, 0.2);
+            --radius-lg: 24px;
+            --radius-md: 16px;
+            --radius-sm: 12px;
+        }
+
+        [data-theme="dark"] {
+            --bg-main: #0f172a;
+            --bg-card: #1e293b;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --border-color: #334155;
+            --shadow-card: 0 10px 40px -10px rgba(0, 0, 0, 0.5);
+        }
+
+        body {
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            transition: background-color 0.3s;
+        }
+
+        .controls {
+            margin-bottom: 2rem;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .toggle-btn {
+            padding: 0.8rem 1.5rem;
+            border-radius: 99px;
+            border: none;
+            background: var(--primary);
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+            transition: transform 0.2s, background 0.2s;
+        }
+
+        .toggle-btn:hover {
+            transform: translateY(-2px);
+            background: #0284c7;
+        }
+
+        .toggle-btn.secondary {
+            background: var(--bg-card);
+            color: var(--text-main);
+            border: 1px solid var(--border-color);
+        }
+
+        /* TodayTasksCard Mock */
+        .today-tasks-card {
+            width: 400px;
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-card);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .card-header {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-header h3 {
+            margin: 0;
+            font-size: 14px;
+            font-weight: 600;
+        }
+
+        /* Focus Section */
+        .focus-section {
+            padding: 20px;
+            border-bottom: 1px solid var(--border-color);
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .focus-label {
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--primary);
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .focus-item {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            padding: 16px;
+            border-radius: var(--radius-md);
+            background: rgba(148, 163, 184, 0.05);
+            transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .focus-title {
+            font-size: 16px;
+            font-weight: 600;
+            flex: 1;
+        }
+
+        .focus-checkbox {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--primary);
+            border-radius: 8px;
+            flex-shrink: 0;
+        }
+
+        /* ADHD MODE STYLES */
+        .adhd-mode .focus-section {
+            padding: 30px 20px;
+            background: radial-gradient(circle at top right, rgba(14, 165, 233, 0.05), transparent);
+        }
+
+        .adhd-mode .focus-item {
+            padding: 24px;
+            background: var(--bg-card);
+            box-shadow: 0 20px 40px -10px rgba(14, 165, 233, 0.2),
+                0 0 0 1px rgba(14, 165, 233, 0.1);
+            transform: scale(1.02);
+            border-radius: var(--radius-lg);
+            animation: pulse-border 3s infinite alternate ease-in-out;
+        }
+
+        @keyframes pulse-border {
+            0% {
+                box-shadow: 0 15px 30px -10px rgba(14, 165, 233, 0.2), 0 0 0 1px rgba(14, 165, 233, 0.1);
+            }
+
+            100% {
+                box-shadow: 0 25px 50px -10px rgba(14, 165, 233, 0.4), 0 0 0 3px rgba(14, 165, 233, 0.3);
+            }
+        }
+
+        .adhd-mode .focus-label {
+            font-size: 13px;
+            color: var(--accent-pink);
+            letter-spacing: 3px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .adhd-mode .focus-label::after {
+            content: '';
+            height: 2px;
+            flex: 1;
+            background: linear-gradient(90deg, var(--accent-pink), transparent);
+        }
+
+        .adhd-mode .focus-title {
+            font-size: 24px;
+            letter-spacing: -0.5px;
+            line-height: 1.2;
+            color: var(--primary);
+        }
+
+        .adhd-mode .focus-checkbox {
+            width: 44px;
+            height: 44px;
+            border-width: 3px;
+            border-radius: 14px;
+            background: var(--primary-light);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .adhd-mode .focus-checkbox::before {
+            content: '✓';
+            color: var(--primary);
+            font-size: 24px;
+            font-weight: bold;
+            opacity: 0.3;
+        }
+
+        /* Standard List */
+        .task-list {
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            opacity: 1;
+            transition: opacity 0.3s;
+        }
+
+        .adhd-mode .task-list {
+            opacity: 0.3;
+            filter: blur(1px);
+        }
+
+        .task-item {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 8px 12px;
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        .task-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: var(--border-color);
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="controls">
+        <button class="toggle-btn" onclick="toggleADHD()">ADHD Focus Mode: OFF</button>
+        <button class="toggle-btn secondary" onclick="toggleTheme()">Dark/Light</button>
+    </div>
+
+    <div id="card" class="today-tasks-card">
+        <div class="card-header">
+            <h3>今日のタスク</h3>
+            <span style="font-size: 12px; color: var(--text-muted);">1月4日</span>
+        </div>
+
+        <div class="focus-section">
+            <div class="focus-label" id="label">Next Action</div>
+            <div class="focus-item">
+                <div class="focus-checkbox"></div>
+                <div class="focus-title">プロジェクトの提案資料を送信する</div>
+            </div>
+        </div>
+
+        <div class="task-list">
+            <div class="task-item">
+                <div class="task-dot"></div> メールを確認する
+            </div>
+            <div class="task-item">
+                <div class="task-dot"></div> 定例MTGの準備
+            </div>
+            <div class="task-item">
+                <div class="task-dot"></div> 週報を作成する
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let adhdEnabled = false;
+        function toggleADHD() {
+            adhdEnabled = !adhdEnabled;
+            const card = document.getElementById('card');
+            const btn = document.querySelector('.toggle-btn');
+
+            if (adhdEnabled) {
+                card.classList.add('adhd-mode');
+                btn.textContent = 'ADHD Focus Mode: ON';
+                btn.style.background = 'var(--accent-pink)';
+            } else {
+                card.classList.remove('adhd-mode');
+                btn.textContent = 'ADHD Focus Mode: OFF';
+                btn.style.background = 'var(--primary)';
+            }
+        }
+
+        let isDark = false;
+        function toggleTheme() {
+            isDark = !isDark;
+            document.body.setAttribute('data-theme', isDark ? 'dark' : 'light');
+        }
+    </script>
+</body>
+
+</html>

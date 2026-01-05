@@ -1,11 +1,18 @@
-import { Link, useLocation } from 'react-router-dom';
-import { FaBrain, FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear, FaMoon, FaSun } from 'react-icons/fa6';
+﻿import { useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { FaBrain, FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear, FaMoon, FaSun, FaRightFromBracket, FaRightToBracket } from 'react-icons/fa6';
 import { useTheme } from '../../context/ThemeContext';
+import { clearAuthToken, getAuthToken } from '../../api/auth';
+import { SettingsModal } from '../settings/SettingsModal';
 import './Sidebar.css';
 
 export function Sidebar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
+  const { token, source } = getAuthToken();
+  const [showSettings, setShowSettings] = useState(false);
+  const isAuthLocked = source === 'env' || source === 'mock';
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: FaChartPie },
@@ -13,6 +20,16 @@ export function Sidebar() {
     { path: '/projects', label: 'Projects', icon: FaFolderOpen },
     { path: '/achievement', label: 'Achievement', icon: FaTrophy },
   ];
+
+  const handleLogout = () => {
+    if (isAuthLocked) return;
+    clearAuthToken();
+    navigate('/login');
+  };
+
+  const handleLogin = () => {
+    navigate('/login');
+  };
 
   return (
     <aside className="sidebar">
@@ -41,7 +58,7 @@ export function Sidebar() {
           <div className="user-avatar">S</div>
           <div className="user-info">
             <span className="user-name">Shuhei</span>
-            <span className="user-status">Online</span>
+            <span className="user-status">{token ? 'Signed in' : 'Guest'}</span>
           </div>
         </div>
         <div className="footer-actions">
@@ -52,11 +69,37 @@ export function Sidebar() {
           >
             {theme === 'light' ? <FaMoon /> : <FaSun />}
           </button>
-          <Link to="/settings" className="footer-btn settings-btn" title="Settings">
+          <button
+            className="footer-btn settings-btn"
+            onClick={() => setShowSettings(true)}
+            title="設定"
+          >
             <FaGear />
-          </Link>
+          </button>
+          {token ? (
+            <button
+              className="footer-btn logout-btn"
+              onClick={handleLogout}
+              title={isAuthLocked ? '環境トークン利用中のためログアウトできません' : 'ログアウト'}
+              disabled={isAuthLocked}
+            >
+              <FaRightFromBracket />
+            </button>
+          ) : (
+            <button
+              className="footer-btn login-btn"
+              onClick={handleLogin}
+              title="ログイン"
+            >
+              <FaRightToBracket />
+            </button>
+          )}
         </div>
       </div>
+
+      {showSettings && (
+        <SettingsModal onClose={() => setShowSettings(false)} />
+      )}
     </aside>
   );
 }

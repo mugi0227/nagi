@@ -1,15 +1,21 @@
 import { api } from './client';
+import { getAuthToken } from './auth';
 import type { ChatRequest, ChatResponse, ChatSession, ChatHistoryMessage } from './types';
 
 export interface StreamChunk {
-  chunk_type: 'tool_start' | 'tool_end' | 'text' | 'done' | 'error';
+  chunk_type: 'tool_start' | 'tool_end' | 'text' | 'done' | 'error' | 'proposal';
   tool_name?: string;
-  tool_args?: Record<string, any>;
+  tool_args?: Record<string, unknown>;
   tool_result?: string;
   content?: string;
   assistant_message?: string;
   session_id?: string;
   capture_id?: string;
+  // Proposal-specific fields
+  proposal_id?: string;
+  proposal_type?: 'create_task' | 'create_project';
+  description?: string;
+  payload?: Record<string, unknown>;
 }
 
 export const chatApi = {
@@ -25,15 +31,13 @@ export const chatApi = {
    */
   async *streamMessage(request: ChatRequest): AsyncGenerator<StreamChunk, void, unknown> {
     const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
-    // For local dev, we fixed the token to 'dev_user' in client.ts
-    // We should do the same here until we have real auth
-    const token = 'dev_user';
+    const { token } = getAuthToken();
 
     const response = await fetch(`${baseURL}/chat/stream`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${token}`,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(request),
     });

@@ -19,6 +19,7 @@ class TaskBase(BaseModel):
     title: str = Field(..., min_length=1, max_length=500, description="タスクタイトル")
     description: Optional[str] = Field(None, max_length=2000, description="タスクの詳細説明")
     project_id: Optional[UUID] = Field(None, description="所属プロジェクトID (InboxならNull)")
+    phase_id: Optional[UUID] = Field(None, description="所属フェーズID（プロジェクト内での分類）")
     importance: Priority = Field(Priority.MEDIUM, description="重要度 (HIGH/MEDIUM/LOW)")
     urgency: Priority = Field(Priority.MEDIUM, description="緊急度 (HIGH/MEDIUM/LOW)")
     energy_level: EnergyLevel = Field(
@@ -29,8 +30,14 @@ class TaskBase(BaseModel):
     )
     due_date: Optional[datetime] = Field(None, description="期限")
     parent_id: Optional[UUID] = Field(None, description="親タスクID（サブタスクの場合）")
+    order_in_parent: Optional[int] = Field(
+        None, ge=1, description="親タスク内での順序（1から始まる連番、サブタスクの場合のみ）"
+    )
     dependency_ids: list[UUID] = Field(
         default_factory=list, description="このタスクより先に終わらせるべきタスクのID"
+    )
+    progress: int = Field(
+        default=0, ge=0, le=100, description="進捗率（0-100%）"
     )
 
     # Meeting/Fixed-time event fields
@@ -71,6 +78,7 @@ class TaskUpdate(BaseModel):
     title: Optional[str] = Field(None, min_length=1, max_length=500)
     description: Optional[str] = Field(None, max_length=2000)
     project_id: Optional[UUID] = None
+    phase_id: Optional[UUID] = None
     status: Optional[TaskStatus] = None
     importance: Optional[Priority] = None
     urgency: Optional[Priority] = None
@@ -78,8 +86,10 @@ class TaskUpdate(BaseModel):
     estimated_minutes: Optional[int] = Field(None, ge=1, le=480)
     due_date: Optional[datetime] = None
     parent_id: Optional[UUID] = None
+    order_in_parent: Optional[int] = Field(None, ge=1, description="親タスク内での順序")
     dependency_ids: Optional[list[UUID]] = None
     source_capture_id: Optional[UUID] = None
+    progress: Optional[int] = Field(None, ge=0, le=100, description="進捗率（0-100%）")
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     is_fixed_time: Optional[bool] = None

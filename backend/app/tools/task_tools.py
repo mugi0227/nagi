@@ -17,8 +17,10 @@ from app.core.config import get_settings
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.memory_repository import IMemoryRepository
 from app.interfaces.project_repository import IProjectRepository
+from app.interfaces.proposal_repository import IProposalRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.models.enums import CreatedBy, EnergyLevel, Priority
+from app.models.proposal import Proposal, ProposalResponse, ProposalType
 from app.models.task import Task, TaskCreate, TaskUpdate
 from app.services.planner_service import PlannerService
 
@@ -71,6 +73,7 @@ class UpdateTaskInput(BaseModel):
     importance: Optional[Priority] = Field(None, description="重要度")
     urgency: Optional[Priority] = Field(None, description="緊急度")
     energy_level: Optional[EnergyLevel] = Field(None, description="必要エネルギー")
+    progress: Optional[int] = Field(None, ge=0, le=100, description="進捗率（0-100%）")
     # Meeting fields
     is_fixed_time: Optional[bool] = Field(None, description="会議・固定時間イベントの場合true")
     start_time: Optional[str] = Field(None, description="開始時刻（ISO形式）")
@@ -184,6 +187,78 @@ async def _find_existing_meeting(
         if _normalize_meeting_title(task.title) == normalized:
             return task
     return None
+
+
+async def propose_task(
+    user_id: str,
+    session_id: str,
+    proposal_repo: IProposalRepository,
+    task_repo: ITaskRepository,
+    input_data: CreateTaskInput,
+    description: str = "",
+    auto_approve: bool = False,
+) -> dict:
+    """
+    Propose a task for user approval, or auto-approve if configured.
+
+    Args:
+        user_id: User ID
+        session_id: Chat session ID
+        proposal_repo: Proposal repository
+        task_repo: Task repository (for auto-approval)
+        input_data: Task creation data
+        description: AI-generated description of why this task is being proposed
+        auto_approve: If True, automatically approve and create the task
+
+    Returns:
+        If auto_approve=False: Proposal response with proposal_id
+        If auto_approve=True: Created task info with task_id
+    """
+    # If no description provided, generate a simple one
+    if not description:
+        description = f"タスク「{input_data.title}」を作成します。"
+
+    # Auto-approve mode: create task immediately
+    if auto_approve:
+        created_task = await create_task(
+            user_id=user_id,
+            repo=task_repo,
+            input_data=input_data,
+        )
+        return {
+            "auto_approved": True,
+            "task_id": created_task.get("id"),
+            "description": description,
+        }
+
+    # Proposal mode: create proposal and return for user approval
+    # Try to parse user_id as UUID, fallback to generating a new one for dev mode
+    user_id_raw = None
+    try:
+        parsed_user_id = UUID(user_id)
+    except (ValueError, AttributeError):
+        # For dev mode where user_id might be "dev_user", use a consistent UUID
+        import hashlib
+        user_id_raw = user_id
+        parsed_user_id = UUID(bytes=hashlib.md5(user_id.encode()).digest())
+
+    proposal = Proposal(
+        user_id=parsed_user_id,
+        user_id_raw=user_id_raw,
+        session_id=session_id,
+        proposal_type=ProposalType.CREATE_TASK,
+        payload=input_data.model_dump(mode="json"),
+        description=description,
+    )
+
+    created_proposal = await proposal_repo.create(proposal)
+
+    return ProposalResponse(
+        proposal_id=str(created_proposal.id),
+        proposal_type=ProposalType.CREATE_TASK,
+        description=description,
+        payload=input_data.model_dump(mode="json"),
+    ).model_dump(mode="json")
 
 
 async def create_task(
@@ -303,6 +378,7 @@ async def update_task(
         importance=input_data.importance,
         urgency=input_data.urgency,
         energy_level=input_data.energy_level,
+        progress=input_data.progress,
         # Meeting fields
         is_fixed_time=input_data.is_fixed_time,
         start_time=start_time,
@@ -505,6 +581,58 @@ async def search_similar_tasks(
 # ===========================================
 
 
+def propose_task_tool(
+    proposal_repo: IProposalRepository,
+    task_repo: ITaskRepository,
+    user_id: str,
+    session_id: str,
+    auto_approve: bool = False,
+) -> FunctionTool:
+    """Create ADK tool for proposing/creating tasks (with auto-approve option)."""
+    async def _tool(input_data: dict) -> dict:
+        """propose_task: 新しいタスクを作成します。
+
+        設定に応じて、即座に作成するか、ユーザー承諾を待ちます。
+
+        **⚠️ 依存関係の設定（重要）**:
+        タスク作成時には、以下の手順で依存関係を判断してください：
+        1. list_tasks で同じプロジェクト内の未完了タスク（TODO/IN_PROGRESS）を取得
+        2. 新しいタスクが既存タスクの完了を前提とする場合、dependency_ids に設定
+        3. 例: 「確定申告書を提出する」を提案する場合 → 「領収書を整理する」が未完了なら依存関係を設定
+        4. 並行実行可能なタスク（関係ないタスク）には依存関係を設定しない
+
+        Parameters:
+            title (str): タスクのタイトル（必須）※task_titleでも可
+            description (str, optional): タスクの詳細説明
+            project_id (str, optional): プロジェクトID
+            importance (str, optional): 重要度 (HIGH/MEDIUM/LOW)、デフォルト: MEDIUM
+            urgency (str, optional): 緊急度 (HIGH/MEDIUM/LOW)、デフォルト: MEDIUM
+            energy_level (str, optional): 必要エネルギー (HIGH/LOW)、デフォルト: LOW
+            estimated_minutes (int, optional): 見積もり時間（分）
+            due_date (str, optional): 期限（ISO形式）
+            dependency_ids (list[str], optional): このタスクが依存する他のタスクのIDリスト（UUID文字列）
+            is_fixed_time (bool, optional): 会議・固定時間イベントの場合true
+            start_time (str, optional): 開始時刻（ISO形式、is_fixed_time=trueの場合必須）
+            end_time (str, optional): 終了時刻（ISO形式、is_fixed_time=trueの場合必須）
+            location (str, optional): 場所（会議用）
+            attendees (list[str], optional): 参加者リスト（会議用）
+            meeting_notes (str, optional): 議事録・メモ（会議用）
+            proposal_description (str, optional): 提案の説明文（なぜこのタスクを作成するか）
+
+        Returns:
+            dict: タスクID、説明文、または提案ID（auto_approveの設定による）
+        """
+        # Extract proposal_description if provided
+        proposal_desc = input_data.pop("proposal_description", "")
+        return await propose_task(
+            user_id, session_id, proposal_repo, task_repo,
+            CreateTaskInput(**input_data), proposal_desc, auto_approve
+        )
+
+    _tool.__name__ = "propose_task"
+    return FunctionTool(func=_tool)
+
+
 def create_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
     """Create ADK tool for creating tasks."""
     async def _tool(input_data: dict) -> dict:
@@ -546,7 +674,7 @@ def create_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
 def update_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
     """Create ADK tool for updating tasks."""
     async def _tool(input_data: dict) -> dict:
-        """update_task: 既存のタスクを更新します（タイトル、説明、ステータス等）。
+        """update_task: 既存のタスクを更新します（タイトル、説明、ステータス、進捗率等）。
 
         Parameters:
             task_id (str): タスクID（UUID文字列、必須）
@@ -556,6 +684,7 @@ def update_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
             importance (str, optional): 重要度 (HIGH/MEDIUM/LOW)
             urgency (str, optional): 緊急度 (HIGH/MEDIUM/LOW)
             energy_level (str, optional): 必要エネルギー (HIGH/LOW)
+            progress (int, optional): 進捗率（0-100%）。タスクの完成度を設定
             is_fixed_time (bool, optional): 会議・固定時間イベントの場合true
             start_time (str, optional): 開始時刻（ISO形式）
             end_time (str, optional): 終了時刻（ISO形式）

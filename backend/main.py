@@ -24,10 +24,8 @@ async def lifespan(app: FastAPI):
     # Initialize database if needed
     if settings.ENVIRONMENT == "local":
         from app.infrastructure.local.database import init_db
-        from app.infrastructure.local.migrations import run_migrations
 
-        await init_db()
-        await run_migrations()
+        await init_db()  # This also runs migrations
 
     yield
 
@@ -58,11 +56,13 @@ def create_app() -> FastAPI:
     )
 
     # Include routers
-    from app.api import chat, tasks, projects, captures, agent_tasks, memories, heartbeat, today
+    from app.api import chat, tasks, projects, phases, proposals, captures, agent_tasks, memories, heartbeat, today
 
     app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
     app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
     app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
+    app.include_router(phases.router, prefix="/api", tags=["phases"])
+    app.include_router(proposals.router, prefix="/api/proposals", tags=["proposals"])
     app.include_router(captures.router, prefix="/api/captures", tags=["captures"])
     app.include_router(agent_tasks.router, prefix="/api/agent-tasks", tags=["agent_tasks"])
     app.include_router(memories.router, prefix="/api/memories", tags=["memories"])

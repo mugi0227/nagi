@@ -10,6 +10,12 @@ from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.speech_provider import ISpeechToTextProvider
 from app.interfaces.storage_provider import IStorageProvider
 from app.interfaces.auth_provider import IAuthProvider
+from app.interfaces.project_member_repository import IProjectMemberRepository
+from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
+from app.interfaces.checkin_repository import ICheckinRepository
+from app.interfaces.blocker_repository import IBlockerRepository
+from app.interfaces.user_repository import IUserRepository
+from app.interfaces.project_invitation_repository import IProjectInvitationRepository
 
 __all__ = [
     "ITaskRepository",
@@ -22,4 +28,10 @@ __all__ = [
     "ISpeechToTextProvider",
     "IStorageProvider",
     "IAuthProvider",
+    "IUserRepository",
+    "IProjectInvitationRepository",
+    "IProjectMemberRepository",
+    "ITaskAssignmentRepository",
+    "ICheckinRepository",
+    "IBlockerRepository",
 ]

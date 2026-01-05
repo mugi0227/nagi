@@ -40,6 +40,7 @@ class TaskScheduleInfo(BaseModel):
     project_id: Optional[UUID] = None
     parent_id: Optional[UUID] = None
     parent_title: Optional[str] = None
+    order_in_parent: Optional[int] = None
     due_date: Optional[datetime] = None
     planned_start: Optional[date] = None
     planned_end: Optional[date] = None

@@ -1,6 +1,6 @@
 import { FaCheck } from 'react-icons/fa';
 import { FaFire, FaClock, FaLeaf, FaBatteryFull, FaBatteryQuarter, FaEllipsis, FaLock } from 'react-icons/fa6';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useAnimationControls } from 'framer-motion';
 import type { Task } from '../../api/types';
 import './TaskItem.css';
 
@@ -50,9 +50,18 @@ export function TaskItem({
     }
   };
 
-  const handleCheckClick = (e: React.MouseEvent) => {
+  const controls = useAnimationControls();
+
+  const handleCheckClick = async (e: React.MouseEvent) => {
     e.stopPropagation();
     if (onCheck && (allowToggleDone || task.status !== 'DONE')) {
+      if (task.status !== 'DONE') {
+        // Play "burst" animation sequence
+        await controls.start({
+          scale: [1, 1.2, 1],
+          transition: { duration: 0.2 }
+        });
+      }
       onCheck(task.id);
     }
   };
@@ -70,19 +79,35 @@ export function TaskItem({
       data-done={isDone}
       style={{ cursor: onClick ? 'pointer' : 'default' }}
     >
-      <div className={`task-check ${isDone ? 'done' : ''}`} onClick={handleCheckClick}>
+      <motion.div
+        className={`task-check ${isDone ? 'done' : ''}`}
+        onClick={handleCheckClick}
+        animate={controls}
+      >
         <div className="circle-bg" />
         <AnimatePresence mode="wait">
           {isDone ? (
             <motion.div
               key="check"
               className="check-icon-wrapper done"
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0, opacity: 0 }}
-              transition={{ type: "spring", damping: 12, stiffness: 200 }}
+              initial={{ scale: 0, opacity: 0, rotate: -45 }}
+              animate={{ scale: 1, opacity: 1, rotate: 0 }}
+              exit={{ scale: 0, opacity: 0, rotate: 45 }}
+              transition={{
+                type: "spring",
+                damping: 10,
+                stiffness: 300,
+                scale: { type: "spring", damping: 12, stiffness: 200 }
+              }}
             >
               <FaCheck className="check-icon" />
+              {/* Particle Burst Effect */}
+              <motion.div
+                className="check-burst"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 2.5, opacity: [0, 1, 0] }}
+                transition={{ duration: 0.5, ease: "easeOut" }}
+              />
             </motion.div>
           ) : (
             <motion.div
@@ -93,7 +118,7 @@ export function TaskItem({
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
+      </motion.div>
 
       <div className="task-content">
         <span className="task-title">{task.title}</span>

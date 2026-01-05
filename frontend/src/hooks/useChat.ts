@@ -1,14 +1,22 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { chatApi, type StreamChunk } from '../api/chat';
-import type { ChatRequest, ChatResponse, ChatMode, ChatSession, ChatHistoryMessage } from '../api/types';
+import { chatApi } from '../api/chat';
+import type { ChatRequest, ChatResponse, ChatMode, ChatSession, ChatHistoryMessage, TaskCreate, ProjectCreate } from '../api/types';
 
 export interface ToolCall {
   id: string;
   name: string;
-  args?: Record<string, any>;
+  args?: Record<string, unknown>;
   result?: string;
   status: 'running' | 'completed';
+}
+
+export interface ProposalInfo {
+  id: string;
+  proposalId: string;
+  proposalType: 'create_task' | 'create_project';
+  description: string;
+  payload: TaskCreate | ProjectCreate;
 }
 
 interface Message {
@@ -17,6 +25,7 @@ interface Message {
   content: string;
   timestamp: Date;
   toolCalls?: ToolCall[];
+  proposals?: ProposalInfo[]; // AI提案リスト
   isStreaming?: boolean;
   imageUrl?: string;  // For image attachments
 }
@@ -121,6 +130,7 @@ export function useChat() {
         content: '',
         timestamp: new Date(),
         toolCalls: [],
+        proposals: [],
         isStreaming: true,
       };
       setMessages((prev) => [...prev, assistantMessage]);
@@ -128,12 +138,16 @@ export function useChat() {
       setIsStreaming(true);
 
       try {
+        // Get proposal mode from localStorage
+        const proposalMode = localStorage.getItem('aiProposalMode') === 'true';
+
         // Stream response
         for await (const chunk of chatApi.streamMessage({
           text,
           image_base64: imageBase64,
           mode,
           session_id: sessionId,
+          proposal_mode: proposalMode,
         })) {
           switch (chunk.chunk_type) {
             case 'tool_start':
@@ -217,6 +231,31 @@ export function useChat() {
               queryClient.invalidateQueries({ queryKey: ['projects'] });
               break;
 
+            case 'proposal':
+              // Add proposal to message
+              if (chunk.proposal_id && chunk.proposal_type && chunk.payload) {
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? {
+                          ...msg,
+                          proposals: [
+                            ...(msg.proposals || []),
+                            {
+                              id: crypto.randomUUID(),
+                              proposalId: chunk.proposal_id,
+                              proposalType: chunk.proposal_type,
+                              description: chunk.description || '',
+                              payload: chunk.payload as TaskCreate | ProjectCreate,
+                            },
+                          ],
+                        }
+                      : msg
+                  )
+                );
+              }
+              break;
+
             case 'error':
               // Show error
               setMessages((prev) =>
@@ -250,7 +289,7 @@ export function useChat() {
         setIsStreaming(false);
       }
     },
-    [sessionId]
+    [queryClient, sessionId, setSessionId]
   );
 
   const sendMessage = useCallback(

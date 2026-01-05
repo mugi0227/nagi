@@ -31,6 +31,7 @@ export function TasksPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [taskToEdit, setTaskToEdit] = useState<Task | undefined>(undefined);
+  const [breakdownTaskId, setBreakdownTaskId] = useState<string | null>(null);
 
   const createMutation = useMutation({
     mutationFn: tasksApi.create,
@@ -60,6 +61,27 @@ export function TasksPage() {
       queryClient.invalidateQueries({ queryKey: ['top3'] });
       queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
       queryClient.invalidateQueries({ queryKey: ['schedule'] });
+    },
+  });
+
+  const breakdownMutation = useMutation({
+    mutationFn: ({ id }: { id: string }) =>
+      tasksApi.breakdownTask(id, { create_subtasks: true }),
+    onMutate: ({ id }) => {
+      setBreakdownTaskId(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['top3'] });
+      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['schedule'] });
+      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
+    },
+    onError: () => {
+      alert('タスク分解に失敗しました。');
+    },
+    onSettled: () => {
+      setBreakdownTaskId(null);
     },
   });
 
@@ -182,6 +204,8 @@ export function TasksPage() {
         onUpdateTask={handleUpdateStatus}
         onDeleteTask={(taskId) => deleteMutation.mutate(taskId)}
         onTaskClick={handleTaskClick}
+        onBreakdownTask={(taskId) => breakdownMutation.mutate({ id: taskId })}
+        breakdownTaskId={breakdownTaskId}
       />
 
       <AnimatePresence>
@@ -195,6 +219,9 @@ export function TasksPage() {
               setTaskToEdit(task);
               setIsFormOpen(true);
               setSelectedTask(null);
+            }}
+            onProgressChange={(taskId, progress) => {
+              updateMutation.mutate({ id: taskId, data: { progress } });
             }}
           />
         )}

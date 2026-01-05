@@ -55,6 +55,18 @@
   transform: scale(1.05);
 }
 
+.icon-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.icon-btn:disabled:hover {
+  background: transparent;
+  color: var(--text-muted);
+  transform: none;
+}
+
 .notification-btn {
   position: relative;
 }

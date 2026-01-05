@@ -7,6 +7,7 @@ This service handles agent execution, tool calling, and response generation.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+import json
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -23,15 +24,16 @@ from app.interfaces.chat_session_repository import IChatSessionRepository
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.memory_repository import IMemoryRepository
 from app.interfaces.project_repository import IProjectRepository
+from app.interfaces.proposal_repository import IProposalRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.models.capture import CaptureCreate
 from app.models.chat import ChatRequest, ChatResponse
 from app.models.enums import ContentType
 
 
-# Global cache for runners (keyed by user_id)
+# Global cache for runners (keyed by user_id + session_id)
 # This allows session state to persist across requests
-_runner_cache: dict[str, InMemoryRunner] = {}
+_runner_cache: dict[tuple[str, str], tuple[InMemoryRunner, bool]] = {}
 _session_index: dict[str, dict[str, dict[str, Any]]] = {}
 
 
@@ -49,6 +51,7 @@ class AgentService:
         agent_task_repo: IAgentTaskRepository,
         capture_repo: ICaptureRepository,
         chat_repo: IChatSessionRepository,
+        proposal_repo: IProposalRepository,
     ):
         """
         Initialize Agent Service.
@@ -61,6 +64,7 @@ class AgentService:
             agent_task_repo: Agent task repository
             capture_repo: Capture repository
             chat_repo: Chat session repository
+            proposal_repo: Proposal repository
         """
         self._llm_provider = llm_provider
         self._task_repo = task_repo
@@ -69,20 +73,45 @@ class AgentService:
         self._agent_task_repo = agent_task_repo
         self._capture_repo = capture_repo
         self._chat_repo = chat_repo
+        self._proposal_repo = proposal_repo
 
-    def _get_or_create_runner(self, user_id: str) -> InMemoryRunner:
-        """Get cached runner or create a new one for the user."""
-        if user_id not in _runner_cache:
-            agent = create_secretary_agent(
-                llm_provider=self._llm_provider,
-                task_repo=self._task_repo,
-                project_repo=self._project_repo,
-                memory_repo=self._memory_repo,
-                agent_task_repo=self._agent_task_repo,
-                user_id=user_id,
-            )
-            _runner_cache[user_id] = InMemoryRunner(agent=agent, app_name=self.APP_NAME)
-        return _runner_cache[user_id]
+    def _get_or_create_runner(
+        self,
+        user_id: str,
+        session_id: str,
+        auto_approve: bool = True,
+        allow_auto_approve_mismatch: bool = False,
+    ) -> InMemoryRunner:
+        """Get cached runner or create a new one for the user.
+
+        Note: All tools are now proposal-based, but auto_approve determines
+        whether proposals are automatically approved or require user confirmation.
+        """
+        cache_key = (user_id, session_id)
+
+        # Check if we already have a runner
+        cached = _runner_cache.get(cache_key)
+        if cached:
+            runner, cached_auto_approve = cached
+            if cached_auto_approve == auto_approve or allow_auto_approve_mismatch:
+                return runner
+
+        # Create new agent (always with proposal tools + auto_approve setting)
+        agent = create_secretary_agent(
+            llm_provider=self._llm_provider,
+            task_repo=self._task_repo,
+            project_repo=self._project_repo,
+            memory_repo=self._memory_repo,
+            agent_task_repo=self._agent_task_repo,
+            user_id=user_id,
+            proposal_repo=self._proposal_repo,
+            session_id=session_id,
+            auto_approve=auto_approve,
+        )
+
+        runner = InMemoryRunner(agent=agent, app_name=self.APP_NAME)
+        _runner_cache[cache_key] = (runner, auto_approve)
+        return runner
 
     def _touch_session_index(self, user_id: str, session_id: str, title: str | None = None) -> None:
         """Track session metadata for list/history fallback when ADK APIs are unavailable."""
@@ -178,7 +207,12 @@ class AgentService:
 
     async def list_user_sessions(self, user_id: str) -> list[dict[str, Any]]:
         """List active sessions for the user."""
-        runner = self._get_or_create_runner(user_id)
+        runner = self._get_or_create_runner(
+            user_id,
+            session_id="system",
+            auto_approve=True,
+            allow_auto_approve_mismatch=True,
+        )
         if self._chat_repo:
             stored_sessions = await self._chat_repo.list_sessions(user_id=user_id)
             if stored_sessions:
@@ -249,7 +283,12 @@ class AgentService:
 
     async def get_session_messages(self, user_id: str, session_id: str) -> list[dict[str, Any]]:
         """Get all messages for a specific session."""
-        runner = self._get_or_create_runner(user_id)
+        runner = self._get_or_create_runner(
+            user_id,
+            session_id=session_id,
+            auto_approve=True,
+            allow_auto_approve_mismatch=True,
+        )
         if self._chat_repo:
             stored_messages = await self._chat_repo.list_messages(
                 user_id=user_id,
@@ -415,8 +454,13 @@ class AgentService:
             )
             capture_id = capture.id
 
-        # Get or create runner
-        runner = self._get_or_create_runner(user_id)
+        # Get or create runner with auto_approve setting
+        # Note: proposal_mode=True means "wait for approval", so auto_approve=NOT proposal_mode
+        runner = self._get_or_create_runner(
+            user_id,
+            session_id=session_id,
+            auto_approve=not request.proposal_mode,
+        )
 
         # Run agent with user message
         try:
@@ -518,8 +562,13 @@ class AgentService:
             )
             capture_id = capture.id
 
-        # Get or create runner
-        runner = self._get_or_create_runner(user_id)
+        # Get or create runner with auto_approve setting
+        # Note: proposal_mode=True means "wait for approval", so auto_approve=NOT proposal_mode
+        runner = self._get_or_create_runner(
+            user_id,
+            session_id=session_id_str,
+            auto_approve=not request.proposal_mode,
+        )
 
         try:
             user_message_text = self._get_user_message_text(request)
@@ -568,11 +617,58 @@ class AgentService:
 
                         func_response = getattr(part, "function_response", None)
                         if func_response:
+                            tool_name = func_response.name if hasattr(func_response, "name") else "unknown"
+                            raw_response = func_response.response if hasattr(func_response, "response") else None
+                            tool_result_str = ""
+                            result = None
+
+                            if raw_response is not None:
+                                if isinstance(raw_response, str):
+                                    tool_result_str = raw_response
+                                    if raw_response:
+                                        try:
+                                            result = json.loads(raw_response)
+                                        except json.JSONDecodeError:
+                                            try:
+                                                import ast
+
+                                                parsed = ast.literal_eval(raw_response)
+                                                result = parsed if isinstance(parsed, dict) else None
+                                            except (ValueError, SyntaxError):
+                                                result = None
+                                else:
+                                    if isinstance(raw_response, dict):
+                                        result = raw_response
+                                    elif hasattr(raw_response, "model_dump"):
+                                        try:
+                                            result = raw_response.model_dump(mode="json")
+                                        except Exception:
+                                            result = raw_response.model_dump()
+                                    try:
+                                        tool_result_str = json.dumps(raw_response, ensure_ascii=False)
+                                    except TypeError:
+                                        tool_result_str = str(raw_response)
+
                             yield {
                                 "chunk_type": "tool_end",
-                                "tool_name": func_response.name if hasattr(func_response, "name") else "unknown",
-                                "tool_result": str(func_response.response) if hasattr(func_response, "response") else "",
+                                "tool_name": tool_name,
+                                "tool_result": tool_result_str,
                             }
+
+                            # If this is a proposal tool, send a proposal chunk
+                            if tool_name in ["propose_task", "propose_project"]:
+                                if isinstance(result, dict) and "proposal_id" in result:
+                                    proposal_id = result.get("proposal_id")
+                                    proposal_type = result.get("proposal_type")
+                                    if hasattr(proposal_type, "value"):
+                                        proposal_type = proposal_type.value
+                                    yield {
+                                        "chunk_type": "proposal",
+                                        "proposal_id": str(proposal_id) if proposal_id is not None else None,
+                                        "proposal_type": proposal_type,
+                                        "description": result.get("description", ""),
+                                        "payload": result.get("payload", {}),
+                                    }
 
                         text = getattr(part, "text", None)
                         if text:

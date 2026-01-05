@@ -1,7 +1,8 @@
-import { FaFire, FaClock, FaLeaf, FaBatteryFull, FaBatteryQuarter, FaPen, FaTrash, FaHourglass, FaLock, FaLockOpen } from 'react-icons/fa6';
+import { FaFire, FaClock, FaLeaf, FaBatteryFull, FaBatteryQuarter, FaPen, FaTrash, FaHourglass, FaLock, FaLockOpen, FaListCheck, FaUser } from 'react-icons/fa6';
 import { FaCheckCircle, FaCircle } from 'react-icons/fa';
 import type { Task } from '../../api/types';
 import { MeetingBadge } from './MeetingBadge';
+import { StepNumber } from '../common/StepNumber';
 import './KanbanCard.css';
 import { useMemo } from 'react';
 
@@ -9,12 +10,31 @@ interface KanbanCardProps {
   task: Task;
   subtasks?: Task[];
   allTasks?: Task[];
+  assigneeName?: string;
+  memberOptions?: { id: string; label: string }[];
+  assignedMemberId?: string | null;
+  onAssign?: (taskId: string, memberUserId: string | null) => void;
   onEdit?: (task: Task) => void;
   onDelete?: (id: string) => void;
   onClick?: (task: Task) => void;
+  onBreakdown?: (id: string) => void;
+  isBreakdownPending?: boolean;
 }
 
-export function KanbanCard({ task, subtasks = [], allTasks = [], onEdit, onDelete, onClick }: KanbanCardProps) {
+export function KanbanCard({
+  task,
+  subtasks = [],
+  allTasks = [],
+  assigneeName,
+  memberOptions,
+  assignedMemberId,
+  onAssign,
+  onEdit,
+  onDelete,
+  onClick,
+  onBreakdown,
+  isBreakdownPending = false,
+}: KanbanCardProps) {
   const getPriorityIcon = (level: string) => {
     switch (level) {
       case 'HIGH':
@@ -41,6 +61,12 @@ export function KanbanCard({ task, subtasks = [], allTasks = [], onEdit, onDelet
   const handleActionClick = (e: React.MouseEvent, action: () => void) => {
     e.stopPropagation();
     action();
+  };
+
+  const handleAssigneeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    if (!onAssign) return;
+    const value = e.target.value;
+    onAssign(task.id, value ? value : null);
   };
 
   const completedSubtasks = subtasks.filter(st => st.status === 'DONE').length;
@@ -101,6 +127,17 @@ export function KanbanCard({ task, subtasks = [], allTasks = [], onEdit, onDelet
               <FaPen />
             </button>
           )}
+          {onBreakdown && (
+            <button
+              className="card-action-btn breakdown"
+              onClick={(e) => handleActionClick(e, () => onBreakdown(task.id))}
+              title={isBreakdownPending ? 'タスク分解中...' : 'タスク分解'}
+              disabled={isBreakdownPending}
+              aria-busy={isBreakdownPending}
+            >
+              <FaListCheck />
+            </button>
+          )}
           {onDelete && (
             <button
               className="card-action-btn delete"
@@ -123,6 +160,12 @@ export function KanbanCard({ task, subtasks = [], allTasks = [], onEdit, onDelet
       )}
 
       <div className="card-meta">
+        {assigneeName && (
+          <span className="meta-badge assignee">
+            <FaUser />
+            <span>{assigneeName}</span>
+          </span>
+        )}
         <span
           className={`meta-badge urgency-${task.urgency.toLowerCase()}`}
         >
@@ -136,6 +179,28 @@ export function KanbanCard({ task, subtasks = [], allTasks = [], onEdit, onDelet
           <span>{task.energy_level}</span>
         </span>
       </div>
+
+      {memberOptions && memberOptions.length > 0 && onAssign && (
+        <div className="card-assignee-row">
+          <label className="assignee-label" htmlFor={`assignee-${task.id}`}>
+            担当
+          </label>
+          <select
+            id={`assignee-${task.id}`}
+            className="assignee-select"
+            value={assignedMemberId ?? ''}
+            onChange={handleAssigneeChange}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <option value="">未割り当て</option>
+            {memberOptions.map((member) => (
+              <option key={member.id} value={member.id}>
+                {member.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Subtasks Summary */}
       {totalSubtasks > 0 && (
@@ -153,18 +218,24 @@ export function KanbanCard({ task, subtasks = [], allTasks = [], onEdit, onDelet
             </div>
           </div>
           <ul className="subtasks-mini-list">
-            {subtasks.slice(0, 3).map((subtask) => (
-              <li key={subtask.id} className="subtask-mini-item">
-                {subtask.status === 'DONE' ? (
-                  <FaCheckCircle className="subtask-mini-icon done" />
-                ) : (
-                  <FaCircle className="subtask-mini-icon" />
-                )}
-                <span className={subtask.status === 'DONE' ? 'subtask-mini-text done' : 'subtask-mini-text'}>
-                  {subtask.title}
-                </span>
-              </li>
-            ))}
+            {subtasks.slice(0, 3).map((subtask) => {
+              const stepNumber = subtask.order_in_parent;
+              return (
+                <li key={subtask.id} className="subtask-mini-item">
+                  {subtask.status === 'DONE' ? (
+                    <FaCheckCircle className="subtask-mini-icon done" />
+                  ) : (
+                    <FaCircle className="subtask-mini-icon" />
+                  )}
+                  {stepNumber != null && (
+                    <StepNumber stepNumber={stepNumber} className="small" />
+                  )}
+                  <span className={subtask.status === 'DONE' ? 'subtask-mini-text done' : 'subtask-mini-text'}>
+                    {subtask.title}
+                  </span>
+                </li>
+              );
+            })}
             {totalSubtasks > 3 && (
               <li className="subtasks-more">他 {totalSubtasks - 3} 件</li>
             )}

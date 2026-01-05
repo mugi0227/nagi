@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
 import type { Task } from '../../api/types';
+import { StepNumber } from '../common/StepNumber';
 import './TaskDetailModal.css';
 
 interface TaskDetailModalProps {
@@ -14,6 +15,8 @@ interface TaskDetailModalProps {
   initialSubtask?: Task | null;
   onClose: () => void;
   onEdit?: (task: Task) => void;
+  onProgressChange?: (taskId: string, progress: number) => void;
+  onTaskCheck?: (taskId: string) => void;
 }
 
 // Helper to extract guide from description
@@ -24,7 +27,7 @@ function extractGuide(description?: string | null): { mainDescription: string; g
   const guideSeparator = '---\n\n## 進め方ガイド';
   const guideStartOnly = '## 進め方ガイド';
 
-  let separatorIndex = description.indexOf(guideSeparator);
+  const separatorIndex = description.indexOf(guideSeparator);
   if (separatorIndex !== -1) {
     return {
       mainDescription: description.substring(0, separatorIndex).trim(),
@@ -43,19 +46,38 @@ function extractGuide(description?: string | null): { mainDescription: string; g
   return { mainDescription: description, guide: '' };
 }
 
-export function TaskDetailModal({ task, subtasks = [], allTasks = [], initialSubtask = null, onClose, onEdit }: TaskDetailModalProps) {
+export function TaskDetailModal({
+  task,
+  subtasks = [],
+  allTasks = [],
+  initialSubtask = null,
+  onClose,
+  onEdit,
+  onProgressChange,
+  onTaskCheck
+}: TaskDetailModalProps) {
   const [selectedSubtask, setSelectedSubtask] = useState<Task | null>(initialSubtask);
+  const [localProgress, setLocalProgress] = useState<number>(task.progress ?? 0);
 
-  // Sort subtasks by step_number (extracted from title like "[1] ...")
+  // Sort subtasks by order_in_parent (fallback to title)
   const sortedSubtasks = useMemo(() => {
     return [...subtasks].sort((a, b) => {
-      const getStepNumber = (title: string) => {
-        const match = title.match(/^\[(\d+)\]/);
-        return match ? parseInt(match[1]) : 999;
-      };
-      return getStepNumber(a.title) - getStepNumber(b.title);
+      const aOrder = a.order_in_parent ?? Number.POSITIVE_INFINITY;
+      const bOrder = b.order_in_parent ?? Number.POSITIVE_INFINITY;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      return a.title.localeCompare(b.title);
     });
   }, [subtasks]);
+
+  const stepNumberBySubtaskId = useMemo(() => {
+    const map = new Map<string, number>();
+    sortedSubtasks.forEach((subtask) => {
+      if (subtask.order_in_parent != null) {
+        map.set(subtask.id, subtask.order_in_parent);
+      }
+    });
+    return map;
+  }, [sortedSubtasks]);
 
   // Look up dependency tasks for parent task (left panel always shows parent)
   const dependencies = useMemo(() => {
@@ -75,9 +97,9 @@ export function TaskDetailModal({ task, subtasks = [], allTasks = [], initialSub
     }
 
     return selectedSubtask.dependency_ids
-      .map(depId => sortedSubtasks.find(t => t.id === depId))
+      .map(depId => sortedSubtasks.find(t => t.id === depId) || allTasks.find(t => t.id === depId))
       .filter((t): t is Task => t !== undefined);
-  }, [selectedSubtask, sortedSubtasks]);
+  }, [selectedSubtask, sortedSubtasks, allTasks]);
 
   // Calculate effective estimated minutes (parent task's own time or sum of subtasks)
   const effectiveEstimatedMinutes = useMemo(() => {
@@ -131,6 +153,14 @@ export function TaskDetailModal({ task, subtasks = [], allTasks = [], initialSub
 
   const selectedGuide = selectedSubtask ? extractGuide(selectedSubtask.description) : null;
   const taskDescription = extractGuide(task.description);
+  const selectedSubtaskStepNumber = selectedSubtask ? stepNumberBySubtaskId.get(selectedSubtask.id) : undefined;
+
+  const handleSubtaskCheck = (subtaskId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onTaskCheck) {
+      onTaskCheck(subtaskId);
+    }
+  };
 
   return (
     <motion.div
@@ -178,6 +208,42 @@ export function TaskDetailModal({ task, subtasks = [], allTasks = [], initialSub
               <span className={`status-badge status-${task.status.toLowerCase()}`}>
                 {getStatusLabel(task.status)}
               </span>
+            </div>
+
+            {/* Progress */}
+            <div className="detail-section">
+              <h3>進捗率</h3>
+              <div className="progress-control">
+                <div className="progress-bar-container">
+                  <div
+                    className="progress-bar-fill"
+                    style={{ width: `${localProgress}%` }}
+                  />
+                  <input
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="5"
+                    value={localProgress}
+                    onChange={(e) => {
+                      const newProgress = parseInt(e.target.value, 10);
+                      setLocalProgress(newProgress);
+                    }}
+                    onMouseUp={() => {
+                      if (onProgressChange) {
+                        onProgressChange(task.id, localProgress);
+                      }
+                    }}
+                    onTouchEnd={() => {
+                      if (onProgressChange) {
+                        onProgressChange(task.id, localProgress);
+                      }
+                    }}
+                    className="progress-slider"
+                  />
+                </div>
+                <span className="progress-value">{localProgress}%</span>
+              </div>
             </div>
 
             {/* Description */}
@@ -297,6 +363,7 @@ export function TaskDetailModal({ task, subtasks = [], allTasks = [], initialSub
                   {sortedSubtasks.map((subtask) => {
                     const { guide } = extractGuide(subtask.description);
                     const hasGuide = guide.length > 0;
+                    const stepNumber = stepNumberBySubtaskId.get(subtask.id);
 
                     // Check if this subtask has dependencies
                     const hasDependencies = subtask.dependency_ids && subtask.dependency_ids.length > 0;
@@ -305,7 +372,12 @@ export function TaskDetailModal({ task, subtasks = [], allTasks = [], initialSub
                         .map(depId => sortedSubtasks.find(t => t.id === depId))
                         .filter((t): t is Task => t !== undefined)
                       : [];
-                    const hasPendingDependencies = dependencyTasks.some(dep => dep.status !== 'DONE');
+                    const dependencyStepNumbers = hasDependencies
+                      ? subtask.dependency_ids.map(depId => stepNumberBySubtaskId.get(depId) ?? '?')
+                      : [];
+                    const hasPendingDependencies = hasDependencies
+                      && (dependencyTasks.length !== subtask.dependency_ids.length
+                        || dependencyTasks.some(dep => dep.status !== 'DONE'));
 
                     return (
                       <li
@@ -313,23 +385,44 @@ export function TaskDetailModal({ task, subtasks = [], allTasks = [], initialSub
                         className={`subtask-item ${hasGuide ? 'has-guide' : ''} ${selectedSubtask?.id === subtask.id ? 'selected' : ''}`}
                         onClick={() => hasGuide && setSelectedSubtask(subtask)}
                       >
-                        {subtask.status === 'DONE' ? (
-                          <FaCheckCircle className="subtask-icon done" />
-                        ) : (
-                          <FaCircle className="subtask-icon" />
-                        )}
+                        <div
+                          className={`subtask-check-wrapper ${subtask.status === 'DONE' ? 'done' : ''}`}
+                          onClick={(e) => handleSubtaskCheck(subtask.id, e)}
+                        >
+                          <AnimatePresence mode="wait">
+                            {subtask.status === 'DONE' ? (
+                              <motion.div
+                                key="check"
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0, opacity: 0 }}
+                              >
+                                <FaCheckCircle className="subtask-icon done" />
+                              </motion.div>
+                            ) : (
+                              <motion.div
+                                key="circle"
+                                initial={{ scale: 0, opacity: 0 }}
+                                animate={{ scale: 1, opacity: 1 }}
+                                exit={{ scale: 0, opacity: 0 }}
+                              >
+                                <FaCircle className="subtask-icon" />
+                              </motion.div>
+                            )}
+                          </AnimatePresence>
+                        </div>
                         {hasDependencies && hasPendingDependencies && (
                           <FaLock className="subtask-dependency-icon" title={`${dependencyTasks.map(d => d.title).join(', ')} に依存`} />
+                        )}
+                        {stepNumber != null && (
+                          <StepNumber stepNumber={stepNumber} className="small" />
                         )}
                         <span className={subtask.status === 'DONE' ? 'subtask-title done' : 'subtask-title'}>
                           {subtask.title}
                         </span>
                         {hasDependencies && (
                           <span className="subtask-dependency-hint" title={`${dependencyTasks.map(d => d.title).join(', ')} に依存`}>
-                            {dependencyTasks.map(d => {
-                              const match = d.title.match(/^\[(\d+)\]/);
-                              return match ? match[1] : '?';
-                            }).join(',')} に依存
+                            {dependencyStepNumbers.join(',')} に依存
                           </span>
                         )}
                         {hasGuide && (
@@ -390,6 +483,9 @@ export function TaskDetailModal({ task, subtasks = [], allTasks = [], initialSub
                 {/* Subtask Title */}
                 <div className="guide-task-title">
                   <FaBookOpen />
+                  {selectedSubtaskStepNumber != null && (
+                    <StepNumber stepNumber={selectedSubtaskStepNumber} className="small" />
+                  )}
                   <span>{selectedSubtask.title}</span>
                 </div>
 
@@ -421,6 +517,12 @@ export function TaskDetailModal({ task, subtasks = [], allTasks = [], initialSub
                             <FaLockOpen className="dependency-icon completed" />
                           ) : (
                             <FaLock className="dependency-icon pending" />
+                          )}
+                          {stepNumberBySubtaskId.has(dep.id) && (
+                            <StepNumber
+                              stepNumber={stepNumberBySubtaskId.get(dep.id)!}
+                              className="small"
+                            />
                           )}
                           <span className="dependency-title">{dep.title}</span>
                           <span className={`dependency-status status-${dep.status.toLowerCase()}`}>

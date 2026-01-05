@@ -1,7 +1,9 @@
 import { FaSpinner, FaCheck, FaWrench } from 'react-icons/fa6';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { ToolCall } from '../../hooks/useChat';
+import { useQueryClient } from '@tanstack/react-query';
+import type { ToolCall, ProposalInfo } from '../../hooks/useChat';
+import { ProposalCard } from './ProposalCard';
 import './ChatMessage.css';
 
 interface ChatMessageProps {
@@ -9,11 +11,14 @@ interface ChatMessageProps {
   content: string;
   timestamp: Date;
   toolCalls?: ToolCall[];
+  proposals?: ProposalInfo[];
   isStreaming?: boolean;
   imageUrl?: string;  // Added for image attachments
 }
 
-export function ChatMessage({ role, content, timestamp, toolCalls, isStreaming, imageUrl }: ChatMessageProps) {
+export function ChatMessage({ role, content, timestamp, toolCalls, proposals, isStreaming, imageUrl }: ChatMessageProps) {
+  const queryClient = useQueryClient();
+
   const formatTime = (date: Date) => {
     return date.toLocaleTimeString('ja-JP', {
       hour: '2-digit',
@@ -32,8 +37,17 @@ export function ChatMessage({ role, content, timestamp, toolCalls, isStreaming, 
       search_work_memory: 'メモリ検索',
       add_to_memory: 'メモリ追加',
       schedule_agent_task: 'スケジュール',
+      propose_task: 'タスク提案',
+      propose_project: 'プロジェクト提案',
     };
     return toolNames[toolName] || toolName;
+  };
+
+  const handleProposalAction = () => {
+    // Invalidate queries to refresh data after approval/rejection
+    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    queryClient.invalidateQueries({ queryKey: ['top3'] });
+    queryClient.invalidateQueries({ queryKey: ['projects'] });
   };
 
   return (
@@ -72,6 +86,23 @@ export function ChatMessage({ role, content, timestamp, toolCalls, isStreaming, 
         {imageUrl && role === 'user' && (
           <div className="message-image">
             <img src={imageUrl} alt="Uploaded attachment" />
+          </div>
+        )}
+
+        {/* Proposals */}
+        {proposals && proposals.length > 0 && (
+          <div className="proposals">
+            {proposals.map((proposal) => (
+              <ProposalCard
+                key={proposal.id}
+                proposalId={proposal.proposalId}
+                proposalType={proposal.proposalType}
+                description={proposal.description}
+                payload={proposal.payload}
+                onApprove={handleProposalAction}
+                onReject={handleProposalAction}
+              />
+            ))}
           </div>
         )}
 

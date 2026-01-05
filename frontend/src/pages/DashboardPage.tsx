@@ -1,5 +1,7 @@
+import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { AgentCard } from '../components/dashboard/AgentCard';
+import { DailyBriefingCard } from '../components/dashboard/DailyBriefingCard';
 import { TodayTasksCard } from '../components/dashboard/TodayTasksCard';
 import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
 import { WeeklyProgress } from '../components/dashboard/WeeklyProgress';
@@ -29,6 +31,8 @@ const itemVariants = {
 };
 
 export function DashboardPage() {
+  const [isBriefingOpen, setIsBriefingOpen] = useState(false);
+
   return (
     <motion.div
       className="dashboard-page"
@@ -39,7 +43,7 @@ export function DashboardPage() {
       <motion.div
         variants={itemVariants}
       >
-        <AgentCard />
+        <AgentCard onOpenDailyBriefing={() => setIsBriefingOpen(true)} />
       </motion.div>
 
       <div className="dashboard-grid">
@@ -58,6 +62,26 @@ export function DashboardPage() {
           <WeeklyProgress />
         </motion.div>
       </div>
+
+      {isBriefingOpen && (
+        <div className="daily-briefing-modal" role="dialog" aria-modal="true">
+          <div
+            className="daily-briefing-backdrop"
+            onClick={() => setIsBriefingOpen(false)}
+          />
+          <div className="daily-briefing-panel">
+            <button
+              type="button"
+              className="daily-briefing-close"
+              onClick={() => setIsBriefingOpen(false)}
+              aria-label="Close"
+            >
+              X
+            </button>
+            <DailyBriefingCard onFinish={() => setIsBriefingOpen(false)} />
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

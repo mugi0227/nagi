@@ -103,6 +103,16 @@
   transform: scale(1.1);
 }
 
+.card-action-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.card-action-btn:disabled:hover {
+  background: transparent;
+}
+
 .card-action-btn.delete:hover {
   background: rgba(239, 68, 68, 0.1);
 }
@@ -162,6 +172,20 @@
   color: var(--text-muted);
 }
 
+.meta-badge.assignee {
+  background: rgba(59, 130, 246, 0.12);
+  color: #1d4ed8;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.meta-badge.assignee span {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .card-footer {
   padding-top: 0.5rem;
   border-top: 1px solid rgba(148, 163, 184, 0.1);
@@ -182,6 +206,37 @@
   margin-top: 0.75rem;
   padding-top: 0.75rem;
   border-top: 1px solid rgba(148, 163, 184, 0.1);
+}
+
+.card-assignee-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  margin-bottom: 0.25rem;
+}
+
+.assignee-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.assignee-select {
+  flex: 1;
+  min-width: 0;
+  padding: 0.35rem 0.6rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-main);
+  color: var(--text-main);
+  font-size: 0.8rem;
+}
+
+.assignee-select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
 .subtasks-progress {

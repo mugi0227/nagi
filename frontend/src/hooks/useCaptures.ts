@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { api } from '../api/client';
-import type { Capture } from '../api/types';
+import type { Capture, TaskCreate } from '../api/types';
 
 export function useCaptures() {
     const queryClient = useQueryClient();
@@ -25,7 +25,7 @@ export function useCaptures() {
     });
 
     const analyzeCapture = useMutation({
-        mutationFn: (id: string) => api.post<any>(`/captures/${id}/analyze`, {}),
+        mutationFn: (id: string) => api.post<TaskCreate>(`/captures/${id}/analyze`, {}),
     });
 
     return {

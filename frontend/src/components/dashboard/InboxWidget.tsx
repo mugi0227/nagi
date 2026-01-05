@@ -3,7 +3,7 @@ import { useCaptures } from '../../hooks/useCaptures';
 import { useTasks } from '../../hooks/useTasks';
 import { TaskFormModal } from '../tasks/TaskFormModal';
 import './InboxWidget.css';
-import type { TaskCreate } from '../../api/types';
+import type { Capture, TaskCreate, TaskUpdate } from '../../api/types';
 
 export function InboxWidget() {
     const { unprocessedCaptures: allCaptures, isLoading, error, deleteCapture, processCapture, analyzeCapture, isAnalyzing } = useCaptures();
@@ -29,11 +29,27 @@ export function InboxWidget() {
         }
     };
 
-    const handleSubmit = async (data: TaskCreate) => {
-        await createTask({
-            ...data,
-            source_capture_id: processedSourceId || undefined
-        });
+    const handleSubmit = async (data: TaskCreate | TaskUpdate) => {
+        if (!data.title) {
+            alert('タイトルを入力してください');
+            return;
+        }
+        const payload: TaskCreate = {
+            title: data.title,
+            description: data.description,
+            project_id: data.project_id,
+            importance: data.importance,
+            urgency: data.urgency,
+            energy_level: data.energy_level,
+            estimated_minutes: data.estimated_minutes,
+            due_date: data.due_date,
+            parent_id: data.parent_id,
+            order_in_parent: data.order_in_parent,
+            dependency_ids: data.dependency_ids,
+            source_capture_id: processedSourceId || data.source_capture_id,
+        };
+
+        await createTask(payload);
 
         // Mark capture as processed after successful task creation
         if (processedSourceId) {
@@ -127,7 +143,7 @@ export function InboxWidget() {
                     initialData={analyzedTask} // Pass analyzed data as initial values (requires modifying Modal to accept this)
                     allTasks={[]} // Context for dependency selection (optional)
                     onClose={() => setIsFormOpen(false)}
-                    onSubmit={handleSubmit as any} // Type mismatch workaround if needed
+                    onSubmit={handleSubmit}
                     isSubmitting={false}
                 />
             )}
@@ -135,7 +151,7 @@ export function InboxWidget() {
     );
 }
 
-function getDisplayText(capture: any) {
+function getDisplayText(capture: Capture) {
     if (capture.content_type === 'TEXT') {
         try {
             // Chrome Extension sends JSON in raw_text

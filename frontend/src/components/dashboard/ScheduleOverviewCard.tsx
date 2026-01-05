@@ -2,10 +2,12 @@ import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSchedule } from '../../hooks/useSchedule';
 import { useCapacitySettings } from '../../hooks/useCapacitySettings';
+import { useProjects } from '../../hooks/useProjects';
 import { tasksApi } from '../../api/tasks';
 import { FaLock } from 'react-icons/fa6';
-import { FaCalendarAlt } from 'react-icons/fa';
+import { FaCalendarAlt, FaList, FaChartBar } from 'react-icons/fa';
 import type { Task, TaskScheduleInfo, TaskStatus } from '../../api/types';
+import { GanttChartView } from './GanttChartView';
 import './ScheduleOverviewCard.css';
 
 const HORIZON_OPTIONS = [7, 14, 30];
@@ -118,10 +120,25 @@ type TodayTasksLock = {
 
 export function ScheduleOverviewCard() {
   const [horizon, setHorizon] = useState(14);
+  const [viewMode, setViewMode] = useState<'list' | 'gantt'>('list');
   const { data, isLoading, error, refetch, isFetching } = useSchedule(horizon);
   const { getCapacityForDate } = useCapacitySettings();
+  const { projects } = useProjects();
   const [isExcludedOpen, setIsExcludedOpen] = useState(false);
-  const [lockInfo, setLockInfo] = useState<TodayTasksLock | null>(null);
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const lockInfo = useMemo(() => {
+    const raw = localStorage.getItem(LOCK_STORAGE_KEY);
+    if (!raw) return null;
+    try {
+      const parsed = JSON.parse(raw) as TodayTasksLock;
+      if (parsed?.date === todayIso && Array.isArray(parsed.taskIds)) {
+        return parsed;
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }, [todayIso]);
   const [statusOverrides, setStatusOverrides] = useState<Record<string, TaskStatus>>({});
   const [taskDetailsCache, setTaskDetailsCache] = useState<Record<string, Task>>({});
   const queryClient = useQueryClient();
@@ -136,27 +153,19 @@ export function ScheduleOverviewCard() {
     },
   });
 
-  const todayIso = new Date().toISOString().slice(0, 10);
-
   useEffect(() => {
+    if (lockInfo) return;
     const raw = localStorage.getItem(LOCK_STORAGE_KEY);
-    if (!raw) {
-      setLockInfo(null);
-      return;
-    }
+    if (!raw) return;
     try {
       const parsed = JSON.parse(raw) as TodayTasksLock;
-      if (parsed?.date === todayIso && Array.isArray(parsed.taskIds)) {
-        setLockInfo(parsed);
-      } else {
+      if (parsed?.date !== todayIso || !Array.isArray(parsed.taskIds)) {
         localStorage.removeItem(LOCK_STORAGE_KEY);
-        setLockInfo(null);
       }
     } catch {
       localStorage.removeItem(LOCK_STORAGE_KEY);
-      setLockInfo(null);
     }
-  }, [todayIso]);
+  }, [lockInfo, todayIso]);
 
   const scheduleTaskIds = useMemo(() => {
     const ids = new Set<string>();
@@ -210,6 +219,14 @@ export function ScheduleOverviewCard() {
     }
     return map;
   }, [data?.tasks, lockInfo]);
+
+  const projectNameById = useMemo(() => {
+    const map: Record<string, string> = {};
+    projects.forEach(project => {
+      map[project.id] = project.name;
+    });
+    return map;
+  }, [projects]);
 
   const taskDayCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -339,6 +356,24 @@ export function ScheduleOverviewCard() {
           <span className="schedule-subtitle">{TEXT.recentPrefix}{horizon}{TEXT.dayUnit}</span>
         </div>
         <div className="schedule-actions">
+          <div className="view-mode-tabs">
+            <button
+              className={`view-mode-tab ${viewMode === 'list' ? 'active' : ''}`}
+              onClick={() => setViewMode('list')}
+              type="button"
+              title="リストビュー"
+            >
+              <FaList />
+            </button>
+            <button
+              className={`view-mode-tab ${viewMode === 'gantt' ? 'active' : ''}`}
+              onClick={() => setViewMode('gantt')}
+              type="button"
+              title="ガントチャート"
+            >
+              <FaChartBar />
+            </button>
+          </div>
           <div className="range-tabs">
             {HORIZON_OPTIONS.map(option => (
               <button
@@ -450,6 +485,15 @@ export function ScheduleOverviewCard() {
         <div className="schedule-empty">
           <p>{TEXT.emptySchedule}</p>
         </div>
+      ) : viewMode === 'gantt' ? (
+        <GanttChartView
+          days={days}
+          tasks={data?.tasks ?? []}
+          taskDetailsCache={taskDetailsCache}
+          statusOverrides={statusOverrides}
+          projectNameById={projectNameById}
+          getCapacityForDate={getCapacityForDate}
+        />
       ) : (
         <div className="schedule-days">
           {days.map(day => {
