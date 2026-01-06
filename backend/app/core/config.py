@@ -35,17 +35,30 @@ class Settings(BaseSettings):
     # ===========================================
     # LLM Configuration
     # ===========================================
-    # LLM Provider: "gemini-api" | "vertex-ai" | "litellm"
+    # LLM Provider: "gemini-api" | "vertex-ai" | "litellm" | "bedrock"
     # - gemini-api: Gemini API (API Key, works in local/gcp)
     # - vertex-ai: Vertex AI (GCP only, service account)
-    # - litellm: LiteLLM (Bedrock, OpenAI, etc.)
-    LLM_PROVIDER: Literal["gemini-api", "vertex-ai", "litellm"] = "gemini-api"
+    # - litellm: LiteLLM (Bedrock, OpenAI, etc. with optional custom endpoint)
+    # - bedrock: Direct AWS Bedrock via boto3 (supports custom endpoints)
+    LLM_PROVIDER: Literal["gemini-api", "vertex-ai", "litellm", "bedrock"] = "gemini-api"
 
     # Gemini model name (for gemini-api and vertex-ai)
     GEMINI_MODEL: str = "gemini-2.0-flash"
 
     # LiteLLM model identifier (for litellm provider)
     LITELLM_MODEL: str = "bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0"
+
+    # LiteLLM custom endpoint (optional, for proxy servers)
+    LITELLM_API_BASE: str = ""
+
+    # LiteLLM custom API key (optional, for custom endpoints)
+    LITELLM_API_KEY: str = ""
+
+    # Bedrock model ID (for bedrock provider)
+    BEDROCK_MODEL_ID: str = "anthropic.claude-3-5-sonnet-20241022-v2:0"
+
+    # Bedrock custom endpoint URL (optional, for VPC endpoints or proxies)
+    BEDROCK_ENDPOINT_URL: str = ""
 
     # Google API Key (for gemini-api provider)
     GOOGLE_API_KEY: str = ""

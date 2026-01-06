@@ -24,6 +24,7 @@ dependencies = [
 
     # LLM
     "litellm>=1.55.0",
+    "boto3>=1.35.0",
 
     # Database
     "sqlalchemy[asyncio]>=2.0.0",

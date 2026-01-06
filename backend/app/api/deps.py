@@ -204,7 +204,8 @@ def get_llm_provider() -> ILLMProvider:
     Supports:
     - gemini-api: Gemini API (API Key, works in local/gcp)
     - vertex-ai: Vertex AI (GCP only, service account)
-    - litellm: LiteLLM (Bedrock, OpenAI, etc.)
+    - litellm: LiteLLM (Bedrock, OpenAI, etc. with optional custom endpoint)
+    - bedrock: Direct AWS Bedrock via boto3 (supports custom endpoints)
     """
     settings = get_settings()
 
@@ -224,6 +225,10 @@ def get_llm_provider() -> ILLMProvider:
     elif settings.LLM_PROVIDER == "litellm":
         from app.infrastructure.local.litellm_provider import LiteLLMProvider
         return LiteLLMProvider(settings.LITELLM_MODEL)
+
+    elif settings.LLM_PROVIDER == "bedrock":
+        from app.infrastructure.local.boto3_bedrock_provider import Boto3BedrockProvider
+        return Boto3BedrockProvider(settings.BEDROCK_MODEL_ID)
 
     else:
         raise ValueError(f"Unknown LLM_PROVIDER: {settings.LLM_PROVIDER}")
