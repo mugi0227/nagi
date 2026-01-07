@@ -24,13 +24,16 @@ export function ChatWindow({ isOpen, onClose }: ChatWindowProps) {
     isLoadingHistory,
   } = useChat();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScroll = useRef(true);
   const [isDragging, setIsDragging] = useState(false);
   const [draggedImage, setDraggedImage] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   useEffect(() => {
     if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      const behavior = shouldAutoScroll.current ? 'auto' : 'smooth';
+      messagesEndRef.current.scrollIntoView({ behavior });
+      shouldAutoScroll.current = false;
     }
   }, [messages]);
 
@@ -102,6 +105,7 @@ export function ChatWindow({ isOpen, onClose }: ChatWindowProps) {
 
   const handleSelectSession = async (targetSessionId: string) => {
     try {
+      shouldAutoScroll.current = true;
       await loadHistory(targetSessionId);
       setIsHistoryOpen(false);
     } catch (error) {

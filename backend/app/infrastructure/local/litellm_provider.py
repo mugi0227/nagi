@@ -5,9 +5,10 @@ Supports Bedrock, OpenAI, and other providers via LiteLLM.
 Includes support for custom endpoints (api_base) for proxy servers.
 """
 
+import os
 from typing import Any, Optional
 
-from litellm import LiteLLM
+from google.adk.models.litellm import LiteLLM
 
 from app.core.config import get_settings
 from app.interfaces.llm_provider import ILLMProvider
@@ -26,8 +27,9 @@ class LiteLLMProvider(ILLMProvider):
         Initialize LiteLLM provider.
 
         Args:
-            model_name: LiteLLM model identifier (e.g., "bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0")
+            model_name: LiteLLM model identifier (e.g., "claude-sonnet-4-5-20250929")
             api_base: Custom API endpoint URL (optional, for proxy servers)
+                     Note: Do NOT include /v1 suffix - LiteLLM adds it automatically
             api_key: Custom API key (optional, overrides default)
         """
         self._model_name = model_name
@@ -35,8 +37,14 @@ class LiteLLMProvider(ILLMProvider):
         self._api_base = api_base or self._settings.LITELLM_API_BASE or None
         self._api_key = api_key or self._settings.LITELLM_API_KEY or None
 
-        # Build LiteLLM kwargs
-        litellm_kwargs: dict[str, Any] = {"model": model_name}
+        # Enable debug logging if DEBUG is set
+        if self._settings.DEBUG:
+            os.environ["LITELLM_LOG"] = "DEBUG"
+
+        # Build LiteLLM kwargs for ADK-compatible LiteLLM
+        litellm_kwargs: dict[str, Any] = {
+            "model": model_name,
+        }
 
         if self._api_base:
             litellm_kwargs["api_base"] = self._api_base
@@ -44,6 +52,7 @@ class LiteLLMProvider(ILLMProvider):
         if self._api_key:
             litellm_kwargs["api_key"] = self._api_key
 
+        # Use ADK's LiteLLM class
         self._litellm = LiteLLM(**litellm_kwargs)
 
     def get_model(self) -> LiteLLM:

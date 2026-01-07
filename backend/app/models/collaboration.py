@@ -70,6 +70,12 @@ class TaskAssignmentCreate(BaseModel):
     progress: Optional[int] = Field(None, ge=0, le=100)
 
 
+class TaskAssignmentsCreate(BaseModel):
+    """Assign a task to multiple members."""
+
+    assignee_ids: list[str] = Field(..., min_length=1, description="List of assignee IDs")
+
+
 class TaskAssignmentUpdate(BaseModel):
     """Update an assignment."""
 

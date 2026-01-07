@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { FaCheckCircle, FaTimesCircle, FaSpinner } from 'react-icons/fa';
 import { proposalsApi } from '../../api/proposals';
-import type { TaskCreate, ProjectCreate } from '../../api/types';
+import type { TaskCreate, ProjectCreate, MemoryCreate } from '../../api/types';
 import './ProposalCard.css';
 
 interface ProposalCardProps {
   proposalId: string;
-  proposalType: 'create_task' | 'create_project';
+  proposalType: 'create_task' | 'create_project' | 'create_skill';
   description: string;
-  payload: TaskCreate | ProjectCreate;
+  payload: TaskCreate | ProjectCreate | MemoryCreate;
   onApprove?: () => void;
   onReject?: () => void;
 }
@@ -57,8 +57,10 @@ export function ProposalCard({
   };
 
   const isTask = proposalType === 'create_task';
+  const isSkill = proposalType === 'create_skill';
   const taskPayload = isTask ? (payload as TaskCreate) : null;
-  const projectPayload = !isTask ? (payload as ProjectCreate) : null;
+  const projectPayload = !isTask && !isSkill ? (payload as ProjectCreate) : null;
+  const skillPayload = isSkill ? (payload as MemoryCreate) : null;
 
   if (status === 'done') {
     return null; // Hide after action
@@ -68,7 +70,7 @@ export function ProposalCard({
     <div className="proposal-card">
       <div className="proposal-header">
         <span className="proposal-type-badge">
-          {isTask ? '📋 タスク作成の提案' : '📁 プロジェクト作成の提案'}
+          {isTask ? '📋 タスク作成の提案' : isSkill ? '🧩 スキル登録の提案' : '📁 プロジェクト作成の提案'}
         </span>
       </div>
 
@@ -125,6 +127,33 @@ export function ProposalCard({
                   </ul>
                 </div>
               )}
+              {projectPayload.context && (
+                <div className="proposal-detail-row">
+                  <span className="detail-label">README:</span>
+                  <span className="detail-value detail-value-pre">
+                    {projectPayload.context}
+                  </span>
+                </div>
+              )}
+            </>
+          )}
+
+          {isSkill && skillPayload && (
+            <>
+              <div className="proposal-detail-row">
+                <span className="detail-label">内容:</span>
+                <span className="detail-value detail-value-pre">
+                  {skillPayload.content}
+                </span>
+              </div>
+              {skillPayload.tags && skillPayload.tags.length > 0 && (
+                <div className="proposal-detail-row">
+                  <span className="detail-label">タグ:</span>
+                  <span className="detail-value">
+                    {skillPayload.tags.join(', ')}
+                  </span>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -133,23 +162,6 @@ export function ProposalCard({
       {error && <div className="proposal-error">{error}</div>}
 
       <div className="proposal-actions">
-        <button
-          className="proposal-btn approve"
-          onClick={handleApprove}
-          disabled={status !== 'pending'}
-        >
-          {status === 'approving' ? (
-            <>
-              <FaSpinner className="spinner" />
-              承諾中...
-            </>
-          ) : (
-            <>
-              <FaCheckCircle />
-              承諾
-            </>
-          )}
-        </button>
         <button
           className="proposal-btn reject"
           onClick={handleReject}
@@ -164,6 +176,23 @@ export function ProposalCard({
             <>
               <FaTimesCircle />
               却下
+            </>
+          )}
+        </button>
+        <button
+          className="proposal-btn approve"
+          onClick={handleApprove}
+          disabled={status !== 'pending'}
+        >
+          {status === 'approving' ? (
+            <>
+              <FaSpinner className="spinner" />
+              承諾中...
+            </>
+          ) : (
+            <>
+              <FaCheckCircle />
+              提案を承諾
             </>
           )}
         </button>

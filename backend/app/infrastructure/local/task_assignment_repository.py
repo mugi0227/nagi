@@ -13,7 +13,7 @@ from sqlalchemy import select, and_
 from app.core.exceptions import NotFoundError
 from app.infrastructure.local.database import TaskAssignmentORM, TaskORM, get_session_factory
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
-from app.models.collaboration import TaskAssignment, TaskAssignmentCreate, TaskAssignmentUpdate
+from app.models.collaboration import TaskAssignment, TaskAssignmentCreate, TaskAssignmentsCreate, TaskAssignmentUpdate
 from app.models.enums import TaskStatus
 
 
@@ -148,3 +148,82 @@ class SqliteTaskAssignmentRepository(ITaskAssignmentRepository):
             await session.delete(orm)
             await session.commit()
             return True
+
+    async def list_by_task(self, user_id: str, task_id: UUID) -> list[TaskAssignment]:
+        """List all assignments for a task (supports multiple assignees)."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(TaskAssignmentORM).where(
+                    and_(
+                        TaskAssignmentORM.task_id == str(task_id),
+                        TaskAssignmentORM.user_id == user_id,
+                    )
+                )
+            )
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]
+
+    async def assign_multiple(
+        self, user_id: str, task_id: UUID, assignments: TaskAssignmentsCreate
+    ) -> list[TaskAssignment]:
+        """Assign a task to multiple members. Replaces existing assignments."""
+        async with self._session_factory() as session:
+            # Delete existing assignments for this task
+            result = await session.execute(
+                select(TaskAssignmentORM).where(
+                    and_(
+                        TaskAssignmentORM.task_id == str(task_id),
+                        TaskAssignmentORM.user_id == user_id,
+                    )
+                )
+            )
+            for orm in result.scalars().all():
+                await session.delete(orm)
+
+            # Create new assignments for each assignee
+            created_orms = []
+            for assignee_id in assignments.assignee_ids:
+                orm = TaskAssignmentORM(
+                    id=str(uuid4()),
+                    user_id=user_id,
+                    task_id=str(task_id),
+                    assignee_id=assignee_id,
+                    status=None,
+                    progress=None,
+                )
+                session.add(orm)
+                created_orms.append(orm)
+
+            await session.commit()
+            for orm in created_orms:
+                await session.refresh(orm)
+            return [self._orm_to_model(orm) for orm in created_orms]
+
+    async def list_all_for_user(self, user_id: str) -> list[TaskAssignment]:
+        """List all assignments where user is the project owner."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(TaskAssignmentORM).where(
+                    TaskAssignmentORM.user_id == user_id
+                )
+            )
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]
+
+    async def convert_invitation_to_user(
+        self, user_id: str, invitation_assignee_id: str, new_user_id: str
+    ) -> int:
+        """Convert all invitation-based assignments to user-based."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(TaskAssignmentORM).where(
+                    and_(
+                        TaskAssignmentORM.user_id == user_id,
+                        TaskAssignmentORM.assignee_id == invitation_assignee_id,
+                    )
+                )
+            )
+            assignments = result.scalars().all()
+            for orm in assignments:
+                orm.assignee_id = new_user_id
+                orm.updated_at = datetime.utcnow()
+            await session.commit()
+            return len(assignments)

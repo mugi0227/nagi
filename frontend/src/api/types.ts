@@ -5,7 +5,7 @@
 // Enums
 export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'WAITING' | 'DONE';
 export type Priority = 'HIGH' | 'MEDIUM' | 'LOW';
-export type EnergyLevel = 'HIGH' | 'LOW';
+export type EnergyLevel = 'HIGH' | 'MEDIUM' | 'LOW';
 export type CreatedBy = 'USER' | 'AGENT';
 export type ChatMode = 'dump' | 'consult' | 'breakdown';
 export type ProjectStatus = 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
@@ -15,6 +15,8 @@ export type BlockerStatus = 'OPEN' | 'RESOLVED';
 export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
 export type KpiDirection = 'up' | 'down' | 'neutral';
 export type KpiStrategy = 'template' | 'ai' | 'custom';
+export type MemoryScope = 'USER' | 'PROJECT' | 'WORK';
+export type MemoryType = 'FACT' | 'PREFERENCE' | 'PATTERN' | 'RULE';
 
 export interface ProjectKpiMetric {
   key: string;
@@ -184,6 +186,39 @@ export interface ChatHistoryMessage {
   created_at?: string;
 }
 
+// Memory models
+export interface Memory {
+  id: string;
+  user_id: string;
+  content: string;
+  scope: MemoryScope;
+  memory_type: MemoryType;
+  project_id?: string;
+  tags: string[];
+  source: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MemoryCreate {
+  content: string;
+  scope: MemoryScope;
+  memory_type: MemoryType;
+  project_id?: string;
+  tags?: string[];
+}
+
+export interface MemoryUpdate {
+  content?: string;
+  memory_type?: MemoryType;
+  tags?: string[];
+}
+
+export interface MemorySearchResult {
+  memory: Memory;
+  relevance_score: number;
+}
+
 // Project models
 export interface Project {
   id: string;
@@ -316,6 +351,10 @@ export interface TaskAssignmentUpdate {
   assignee_id?: string;
   status?: TaskStatus;
   progress?: number;
+}
+
+export interface TaskAssignmentsCreate {
+  assignee_ids: string[];
 }
 
 export interface Checkin {
@@ -485,7 +524,7 @@ export interface CaptureCreate {
 }
 
 // Proposal models (AI提案承諾機能)
-export type ProposalType = 'create_task' | 'create_project';
+export type ProposalType = 'create_task' | 'create_project' | 'create_skill';
 export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'expired';
 
 export interface Proposal {
@@ -494,7 +533,7 @@ export interface Proposal {
   session_id: string;
   proposal_type: ProposalType;
   status: ProposalStatus;
-  payload: TaskCreate | ProjectCreate; // The data for creating task/project
+  payload: TaskCreate | ProjectCreate | MemoryCreate; // The data for creating task/project/skill
   description: string; // AI-generated explanation
   created_at: string;
   expires_at: string;
@@ -504,5 +543,5 @@ export interface ProposalResponse {
   proposal_id: string;
   proposal_type: ProposalType;
   description: string;
-  payload: TaskCreate | ProjectCreate;
+  payload: TaskCreate | ProjectCreate | MemoryCreate;
 }

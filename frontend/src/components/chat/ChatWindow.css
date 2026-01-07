@@ -1,18 +1,17 @@
-/* Removed overlay - chat window is now independent */
+/* Chat Window - Sidebar Adaptive Mode */
 
 .chat-window {
-  position: fixed;
-  bottom: 100px;
-  right: 24px;
-  width: 400px;
-  height: 600px;
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 20px 60px -10px rgba(0, 0, 0, 0.3);
   display: flex;
   flex-direction: column;
-  z-index: 1000;
-  animation: slideUp 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  height: 100%;
+  width: 100%;
+  background: var(--bg-card);
+  /* Ensure it has background when in sidebar */
+  position: relative;
+  bottom: auto;
+  right: auto;
+  z-index: 1;
+  animation: fadeIn 0.3s ease-out;
 }
 
 .chat-window.dragging {
@@ -51,14 +50,15 @@
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
 }
 
-@keyframes slideUp {
+@keyframes fadeIn {
   from {
     opacity: 0;
-    transform: translateY(20px) scale(0.95);
+    transform: scale(0.98);
   }
+
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: scale(1);
   }
 }
 
@@ -69,8 +69,8 @@
   padding: 1.25rem;
   border-bottom: 1px solid rgba(148, 163, 184, 0.1);
   background: linear-gradient(135deg,
-    rgba(14, 165, 233, 0.1) 0%,
-    rgba(56, 189, 248, 0.05) 100%);
+      rgba(14, 165, 233, 0.1) 0%,
+      rgba(56, 189, 248, 0.05) 100%);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
@@ -134,28 +134,6 @@
   background: rgba(14, 165, 233, 0.08);
 }
 
-.history-panel-item:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
-.history-panel-title {
-  font-size: 0.95rem;
-  font-weight: 600;
-}
-
-.history-panel-date {
-  font-size: 0.75rem;
-  color: var(--text-muted);
-}
-
-.history-panel-empty {
-  padding: 1rem;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-}
-
 .chat-title {
   display: flex;
   align-items: center;
@@ -190,16 +168,6 @@
   color: var(--text-muted);
 }
 
-.header-btn:hover {
-  background: rgba(148, 163, 184, 0.1);
-  transform: scale(1.1);
-}
-
-.close-btn {
-  font-size: 1.25rem;
-  font-weight: 300;
-}
-
 .chat-history {
   flex: 1;
   overflow-y: auto;
@@ -210,10 +178,6 @@
 
 .chat-history::-webkit-scrollbar {
   width: 6px;
-}
-
-.chat-history::-webkit-scrollbar-track {
-  background: transparent;
 }
 
 .chat-history::-webkit-scrollbar-thumb {
@@ -257,55 +221,4 @@
   font-size: 0.9rem;
   color: var(--text-muted);
   max-width: 280px;
-}
-
-.chat-loading {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  margin-bottom: 1rem;
-}
-
-.loading-dots {
-  display: flex;
-  gap: 0.25rem;
-  padding: 0.75rem 1rem;
-  background: var(--bg-main);
-  border-radius: var(--radius-md);
-}
-
-.loading-dots span {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  animation: bounce 1.4s infinite ease-in-out;
-}
-
-.loading-dots span:nth-child(1) {
-  animation-delay: -0.32s;
-}
-
-.loading-dots span:nth-child(2) {
-  animation-delay: -0.16s;
-}
-
-@keyframes bounce {
-  0%, 80%, 100% {
-    transform: scale(0.8);
-    opacity: 0.5;
-  }
-  40% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-@media (max-width: 768px) {
-  .chat-window {
-    right: 12px;
-    bottom: 80px;
-    width: calc(100vw - 24px);
-    height: calc(100vh - 120px);
-  }
 }

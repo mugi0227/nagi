@@ -13,7 +13,7 @@ from app.agents.prompts.planner_prompt import PLANNER_SYSTEM_PROMPT
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.memory_repository import IMemoryRepository
 from app.interfaces.task_repository import ITaskRepository
-from app.tools.memory_tools import search_work_memory_tool
+from app.tools.memory_tools import search_work_memory_tool, search_skills_tool
 
 
 def create_planner_agent(
@@ -38,6 +38,7 @@ def create_planner_agent(
 
     # Planner only needs WorkMemory search tool
     tools = [
+        search_skills_tool(memory_repo, user_id),
         search_work_memory_tool(memory_repo, user_id),
     ]
 

@@ -1,11 +1,20 @@
 .proposal-card {
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  border-radius: 12px;
-  padding: 16px;
-  margin: 12px 0;
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
-  color: white;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  margin: 16px 0;
+  box-shadow: var(--shadow-card);
+  color: var(--text-main);
   animation: slideIn 0.3s ease-out;
+  border: 1px solid var(--border-color);
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.proposal-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-float);
 }
 
 @keyframes slideIn {
@@ -13,6 +22,7 @@
     opacity: 0;
     transform: translateY(10px);
   }
+
   to {
     opacity: 1;
     transform: translateY(0);
@@ -22,55 +32,73 @@
 .proposal-header {
   display: flex;
   align-items: center;
-  margin-bottom: 12px;
+  justify-content: space-between;
+  margin-bottom: 16px;
 }
 
 .proposal-type-badge {
-  font-size: 14px;
-  font-weight: 600;
-  background: rgba(255, 255, 255, 0.2);
-  padding: 6px 12px;
-  border-radius: 20px;
-  backdrop-filter: blur(10px);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  background: var(--primary-light);
+  color: var(--primary);
+  padding: 6px 14px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .proposal-body {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 8px;
-  padding: 12px;
-  margin-bottom: 12px;
-  backdrop-filter: blur(10px);
+  background: rgba(148, 163, 184, 0.04);
+  border-radius: var(--radius-md);
+  padding: 16px;
+  margin-bottom: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.1);
 }
 
 .proposal-description {
-  margin: 0 0 12px 0;
-  font-size: 14px;
+  margin: 0 0 16px 0;
+  font-size: 15px;
+  font-weight: 500;
   line-height: 1.5;
-  opacity: 0.95;
+  color: var(--text-main);
 }
 
 .proposal-details {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .proposal-detail-row {
   display: flex;
-  gap: 8px;
+  gap: 12px;
   font-size: 13px;
   align-items: flex-start;
 }
 
 .detail-label {
   font-weight: 600;
-  min-width: 80px;
-  opacity: 0.9;
+  min-width: 90px;
+  color: var(--text-muted);
 }
 
 .detail-value {
   flex: 1;
-  opacity: 0.95;
+  color: var(--text-main);
+  font-weight: 500;
+}
+
+.detail-value-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  font-family: inherit;
+  font-size: 12px;
 }
 
 .detail-list {
@@ -81,26 +109,30 @@
 }
 
 .detail-list li {
-  padding-left: 16px;
+  padding-left: 18px;
   position: relative;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
+  color: var(--text-main);
 }
 
 .detail-list li::before {
-  content: '•';
+  content: '→';
   position: absolute;
   left: 0;
+  color: var(--primary);
   font-weight: bold;
 }
 
 .proposal-error {
-  background: rgba(239, 68, 68, 0.2);
-  border: 1px solid rgba(239, 68, 68, 0.4);
-  border-radius: 6px;
-  padding: 8px 12px;
-  margin-bottom: 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border-radius: var(--radius-sm);
+  padding: 10px 16px;
+  margin-bottom: 16px;
   font-size: 13px;
   text-align: center;
+  font-weight: 500;
 }
 
 .proposal-actions {
@@ -113,41 +145,41 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 10px 20px;
+  padding: 8px 18px;
   border: none;
-  border-radius: 8px;
-  font-size: 14px;
-  font-weight: 600;
+  border-radius: var(--radius-full);
+  font-size: 13px;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.2s ease;
-  backdrop-filter: blur(10px);
+  white-space: nowrap;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .proposal-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
 .proposal-btn.approve {
-  background: rgba(34, 197, 94, 0.9);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-hover) 100%);
   color: white;
+  box-shadow: 0 4px 15px rgba(14, 165, 233, 0.3);
 }
 
 .proposal-btn.approve:hover:not(:disabled) {
-  background: rgba(34, 197, 94, 1);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(34, 197, 94, 0.4);
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(14, 165, 233, 0.4);
 }
 
 .proposal-btn.reject {
-  background: rgba(239, 68, 68, 0.9);
-  color: white;
+  background: white;
+  color: #ef4444;
+  border: 1.5px solid #ef4444;
 }
 
 .proposal-btn.reject:hover:not(:disabled) {
-  background: rgba(239, 68, 68, 1);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 8px rgba(239, 68, 68, 0.4);
+  background: #fef2f2;
+  transform: translateY(-2px);
 }
 
 .proposal-btn svg {
@@ -162,6 +194,7 @@
   from {
     transform: rotate(0deg);
   }
+
   to {
     transform: rotate(360deg);
   }

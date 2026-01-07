@@ -29,10 +29,12 @@ class EnergyLevel(str, Enum):
     Energy level required for a task.
 
     HIGH = Heavy task requiring focus and concentration
+    MEDIUM = Moderate task requiring some focus
     LOW = Light task that can be done in spare moments
     """
 
     HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
     LOW = "LOW"
 
 

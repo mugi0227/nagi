@@ -18,6 +18,7 @@ interface KanbanColumnProps {
   onBreakdownTask?: (id: string) => void;
   breakdownTaskId?: string | null;
   onDrop?: (taskId: string, newStatus: TaskStatus) => void;
+  onUpdateTask?: (taskId: string, status: TaskStatus) => void;
 }
 
 export function KanbanColumn({
@@ -36,6 +37,7 @@ export function KanbanColumn({
   onBreakdownTask,
   breakdownTaskId,
   onDrop,
+  onUpdateTask,
 }: KanbanColumnProps) {
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -90,6 +92,7 @@ export function KanbanColumn({
               onClick={onTaskClick}
               onBreakdown={onBreakdownTask}
               isBreakdownPending={breakdownTaskId === task.id}
+              onUpdateTask={onUpdateTask}
             />
           </div>
         ))}

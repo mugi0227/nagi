@@ -30,6 +30,14 @@ class MemoryCreate(MemoryBase):
     source: str = Field("agent", description="記憶の出所 (agent/user/system)")
 
 
+class MemoryUpdate(BaseModel):
+    """Schema for updating an existing memory."""
+
+    content: Optional[str] = Field(None, min_length=1, max_length=5000)
+    memory_type: Optional[MemoryType] = None
+    tags: Optional[list[str]] = None
+
+
 class Memory(MemoryBase):
     """Complete memory model."""
 

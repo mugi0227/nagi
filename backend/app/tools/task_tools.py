@@ -44,7 +44,7 @@ class CreateTaskInput(BaseModel):
     importance: Priority = Field(Priority.MEDIUM, description="重要度 (HIGH/MEDIUM/LOW)")
     urgency: Priority = Field(Priority.MEDIUM, description="緊急度 (HIGH/MEDIUM/LOW)")
     energy_level: EnergyLevel = Field(
-        EnergyLevel.LOW, description="必要エネルギー (HIGH=重い, LOW=軽い)"
+        EnergyLevel.MEDIUM, description="必要エネルギー (HIGH=重い, MEDIUM=中程度, LOW=軽い)"
     )
     estimated_minutes: Optional[int] = Field(None, ge=1, le=480, description="見積もり時間（分）")
     due_date: Optional[str] = Field(None, description="期限（ISO形式: YYYY-MM-DDTHH:MM:SS）")
@@ -72,7 +72,7 @@ class UpdateTaskInput(BaseModel):
     status: Optional[str] = Field(None, description="ステータス (TODO/IN_PROGRESS/WAITING/DONE)")
     importance: Optional[Priority] = Field(None, description="重要度")
     urgency: Optional[Priority] = Field(None, description="緊急度")
-    energy_level: Optional[EnergyLevel] = Field(None, description="必要エネルギー")
+    energy_level: Optional[EnergyLevel] = Field(None, description="必要エネルギー (HIGH/MEDIUM/LOW)")
     progress: Optional[int] = Field(None, ge=0, le=100, description="進捗率（0-100%）")
     # Meeting fields
     is_fixed_time: Optional[bool] = Field(None, description="会議・固定時間イベントの場合true")

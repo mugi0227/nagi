@@ -1,6 +1,6 @@
 import { FaFire, FaClock, FaLeaf, FaBatteryFull, FaBatteryQuarter, FaPen, FaTrash, FaHourglass, FaLock, FaLockOpen, FaListCheck, FaUser } from 'react-icons/fa6';
 import { FaCheckCircle, FaCircle } from 'react-icons/fa';
-import type { Task } from '../../api/types';
+import type { Task, TaskStatus } from '../../api/types';
 import { MeetingBadge } from './MeetingBadge';
 import { StepNumber } from '../common/StepNumber';
 import './KanbanCard.css';
@@ -19,6 +19,7 @@ interface KanbanCardProps {
   onClick?: (task: Task) => void;
   onBreakdown?: (id: string) => void;
   isBreakdownPending?: boolean;
+  onUpdateTask?: (id: string, status: TaskStatus) => void;
 }
 
 export function KanbanCard({
@@ -34,6 +35,7 @@ export function KanbanCard({
   onClick,
   onBreakdown,
   isBreakdownPending = false,
+  onUpdateTask,
 }: KanbanCardProps) {
   const getPriorityIcon = (level: string) => {
     switch (level) {
@@ -71,6 +73,7 @@ export function KanbanCard({
 
   const completedSubtasks = subtasks.filter(st => st.status === 'DONE').length;
   const totalSubtasks = subtasks.length;
+  const isDone = task.status === 'DONE';
 
   // Check if task is blocked by dependencies
   const dependencyStatus = useMemo(() => {
@@ -118,6 +121,17 @@ export function KanbanCard({
         ) : null}
         <h4 className="card-title">{task.title}</h4>
         <div className="card-actions">
+          {onUpdateTask && (
+            <button
+              className={`card-action-btn check ${isDone ? 'done' : ''}`}
+              onClick={(e) => handleActionClick(e, () => onUpdateTask(task.id, 'DONE'))}
+              title={isDone ? '完了済み' : '完了にする'}
+              aria-pressed={isDone}
+              disabled={isDone}
+            >
+              {isDone ? <FaCheckCircle /> : <FaCircle />}
+            </button>
+          )}
           {onEdit && (
             <button
               className="card-action-btn"

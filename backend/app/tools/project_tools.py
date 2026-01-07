@@ -38,6 +38,7 @@ class CreateProjectInput(BaseModel):
 
     name: str = Field(..., description="プロジェクト名")
     description: Optional[str] = Field(None, description="概要")
+    context: Optional[str] = Field(None, description="README/詳細コンテキスト")
     priority: int = Field(5, ge=1, le=10, description="優先度 (1-10)")
     goals: list[str] = Field(default_factory=list, description="ゴール一覧")
     key_points: list[str] = Field(default_factory=list, description="重要ポイント一覧")
@@ -368,6 +369,7 @@ async def create_project(
     project_data = ProjectCreate(
         name=input_data.name,
         description=input_data.description,
+        context=input_data.context,
         priority=input_data.priority,
         goals=input_data.goals,
         key_points=input_data.key_points,
@@ -395,6 +397,7 @@ def propose_project_tool(
         Parameters:
             name (str): プロジェクト名（必須）
             description (str, optional): 概要
+            context (str, optional): README/詳細コンテキスト
             priority (int, optional): 優先度 (1-10)
             goals (list[str], optional): ゴール一覧
             key_points (list[str], optional): 重要ポイント一覧
@@ -429,6 +432,7 @@ def create_project_tool(
         Parameters:
             name (str): プロジェクト名（必須）
             description (str, optional): 概要
+            context (str, optional): README/詳細コンテキスト
             priority (int, optional): 優先度 (1-10)
             goals (list[str], optional): ゴール一覧
             key_points (list[str], optional): 重要ポイント一覧

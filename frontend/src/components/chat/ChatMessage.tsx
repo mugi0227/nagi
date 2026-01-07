@@ -39,6 +39,7 @@ export function ChatMessage({ role, content, timestamp, toolCalls, proposals, is
       schedule_agent_task: 'スケジュール',
       propose_task: 'タスク提案',
       propose_project: 'プロジェクト提案',
+      propose_skill: 'スキル提案',
     };
     return toolNames[toolName] || toolName;
   };

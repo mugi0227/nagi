@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent } from 'react';
+import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent, ClipboardEvent } from 'react';
 import { FaMicrophone, FaPaperPlane, FaImage, FaXmark } from 'react-icons/fa6';
 import './ChatInput.css';
 
@@ -50,6 +50,31 @@ export function ChatInput({ onSend, disabled, externalImage, onImageClear }: Cha
       }
       processImageFile(file);
     }
+  };
+
+  const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+    if (disabled) {
+      return;
+    }
+    const items = Array.from(e.clipboardData?.items ?? []);
+    const imageItem = items.find((item) => item.type.startsWith('image/'));
+    if (!imageItem) {
+      return;
+    }
+
+    const pastedText = e.clipboardData?.getData('text/plain');
+    if (!pastedText) {
+      e.preventDefault();
+    }
+
+    const file = imageItem.getAsFile();
+    if (!file) {
+      return;
+    }
+    if (hasExternalImage && onImageClear) {
+      onImageClear();
+    }
+    processImageFile(file);
   };
 
   const handleRemoveImage = () => {
@@ -124,6 +149,7 @@ export function ChatInput({ onSend, disabled, externalImage, onImageClear }: Cha
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
+            onPaste={handlePaste}
             placeholder="メッセージを入力... (Shift+Enterで改行)"
             disabled={disabled}
             rows={1}

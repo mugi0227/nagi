@@ -28,6 +28,7 @@ from app.models.collaboration import (
     BlockerUpdate,
     TaskAssignment,
     TaskAssignmentCreate,
+    TaskAssignmentsCreate,
     TaskAssignmentUpdate,
 )
 from app.models.schedule import ScheduleResponse, TodayTasksResponse
@@ -157,6 +158,7 @@ async def get_task_schedule(
     user: CurrentUser,
     repo: TaskRepo,
     project_repo: ProjectRepo,
+    assignment_repo: TaskAssignmentRepo,
     scheduler_service: SchedulerService = Depends(get_scheduler_service),
     start_date: Optional[date] = Query(None, description="Schedule start date"),
     capacity_hours: Optional[float] = Query(None, description="Daily capacity in hours (default: 8)"),
@@ -166,6 +168,7 @@ async def get_task_schedule(
         description="JSON array of 7 daily capacity values (Sun..Sat)",
     ),
     max_days: int = Query(60, ge=1, le=365, description="Maximum days to schedule"),
+    filter_by_assignee: bool = Query(False, description="Only show tasks assigned to me"),
 ):
     """Build a multi-day schedule for tasks."""
     tasks = await repo.list(user.id, include_done=True, limit=1000)
@@ -177,6 +180,12 @@ async def get_task_schedule(
         buffer_hours,
         parsed_weekly,
     )
+
+    # Load assignments if filtering by assignee
+    assignments = None
+    if filter_by_assignee:
+        assignments = await assignment_repo.list_all_for_user(user.id)
+
     return scheduler_service.build_schedule(
         tasks,
         project_priorities=project_priorities,
@@ -184,6 +193,9 @@ async def get_task_schedule(
         capacity_hours=effective_capacity,
         capacity_by_weekday=effective_weekly,
         max_days=max_days,
+        current_user_id=user.id,
+        assignments=assignments,
+        filter_by_assignee=filter_by_assignee,
     )
 
 
@@ -192,6 +204,7 @@ async def get_today_tasks(
     user: CurrentUser,
     repo: TaskRepo,
     project_repo: ProjectRepo,
+    assignment_repo: TaskAssignmentRepo,
     scheduler_service: SchedulerService = Depends(get_scheduler_service),
     target_date: Optional[date] = Query(None, description="Target date (default: today)"),
     capacity_hours: Optional[float] = Query(None, description="Daily capacity in hours (default: 8)"),
@@ -201,6 +214,7 @@ async def get_today_tasks(
         description="JSON array of 7 daily capacity values (Sun..Sat)",
     ),
     max_days: int = Query(30, ge=1, le=365, description="Maximum days to schedule"),
+    filter_by_assignee: bool = Query(False, description="Only show tasks assigned to me"),
 ):
     """Get today's tasks derived from the schedule."""
     tasks = await repo.list(user.id, include_done=True, limit=1000)
@@ -212,6 +226,12 @@ async def get_today_tasks(
         buffer_hours,
         parsed_weekly,
     )
+
+    # Load assignments if filtering by assignee
+    assignments = None
+    if filter_by_assignee:
+        assignments = await assignment_repo.list_all_for_user(user.id)
+
     schedule = scheduler_service.build_schedule(
         tasks,
         project_priorities=project_priorities,
@@ -219,6 +239,9 @@ async def get_today_tasks(
         capacity_hours=effective_capacity,
         capacity_by_weekday=effective_weekly,
         max_days=max_days,
+        current_user_id=user.id,
+        assignments=assignments,
+        filter_by_assignee=filter_by_assignee,
     )
     return scheduler_service.get_today_tasks(
         schedule,
@@ -338,7 +361,7 @@ async def get_task_assignment(
     repo: TaskRepo,
     assignment_repo: TaskAssignmentRepo,
 ):
-    """Get assignment for a task."""
+    """Get assignment for a task (returns first assignee)."""
     await _get_task_or_404(user, repo, task_id)
     assignment = await assignment_repo.get_by_task(user.id, task_id)
     if not assignment:
@@ -347,6 +370,18 @@ async def get_task_assignment(
             detail=f"Assignment for task {task_id} not found",
         )
     return assignment
+
+
+@router.get("/{task_id}/assignments", response_model=list[TaskAssignment])
+async def list_task_assignments(
+    task_id: UUID,
+    user: CurrentUser,
+    repo: TaskRepo,
+    assignment_repo: TaskAssignmentRepo,
+):
+    """List all assignments for a task (multiple assignees)."""
+    await _get_task_or_404(user, repo, task_id)
+    return await assignment_repo.list_by_task(user.id, task_id)
 
 
 @router.post("/{task_id}/assignment", response_model=TaskAssignment, status_code=status.HTTP_201_CREATED)
@@ -360,6 +395,19 @@ async def assign_task(
     """Assign a task to a member (upsert)."""
     await _get_task_or_404(user, repo, task_id)
     return await assignment_repo.assign(user.id, task_id, assignment)
+
+
+@router.put("/{task_id}/assignments", response_model=list[TaskAssignment])
+async def assign_task_multiple(
+    task_id: UUID,
+    assignments: TaskAssignmentsCreate,
+    user: CurrentUser,
+    repo: TaskRepo,
+    assignment_repo: TaskAssignmentRepo,
+):
+    """Assign a task to multiple members. Replaces existing assignments."""
+    await _get_task_or_404(user, repo, task_id)
+    return await assignment_repo.assign_multiple(user.id, task_id, assignments)
 
 
 @router.patch("/assignments/{assignment_id}", response_model=TaskAssignment)

@@ -10,8 +10,10 @@ from app.api.deps import (
     get_task_repository,
     get_project_repository,
     get_llm_provider,
+    get_memory_repository,
 )
 from app.interfaces.llm_provider import ILLMProvider
+from app.interfaces.memory_repository import IMemoryRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
 from app.interfaces.task_repository import ITaskRepository
@@ -20,6 +22,8 @@ from app.models.project import ProjectCreate
 from app.models.task import TaskCreate
 from app.tools.project_tools import CreateProjectInput
 from app.tools.task_tools import CreateTaskInput
+from app.tools.memory_tools import CreateSkillInput
+from app.models.memory import MemoryCreate
 
 router = APIRouter()
 
@@ -49,6 +53,7 @@ async def approve_proposal(
     proposal_repo: IProposalRepository = Depends(get_proposal_repository),
     task_repo: ITaskRepository = Depends(get_task_repository),
     project_repo: IProjectRepository = Depends(get_project_repository),
+    memory_repo: IMemoryRepository = Depends(get_memory_repository),
     llm_provider: ILLMProvider = Depends(get_llm_provider),
 ) -> ApprovalResult:
     """Approve a proposal and create the task/project.
@@ -105,6 +110,21 @@ async def approve_proposal(
             input_data=input_data,
         )
         result.project_id = created_project.get("id")
+
+    elif proposal.proposal_type.value == "create_skill":
+        input_data = CreateSkillInput(**proposal.payload)
+        created_memory = await memory_repo.create(
+            user.id,
+            MemoryCreate(
+                content=input_data.content,
+                scope=input_data.scope,
+                memory_type=input_data.memory_type,
+                project_id=None,
+                tags=input_data.tags,
+                source="agent",
+            ),
+        )
+        result.memory_id = str(created_memory.id)
 
     # Update proposal status
     await proposal_repo.update_status(proposal_id, ProposalStatus.APPROVED)

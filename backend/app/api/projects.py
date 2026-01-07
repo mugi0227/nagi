@@ -37,7 +37,7 @@ from app.models.collaboration import (
 )
 from app.models.project import Project, ProjectCreate, ProjectUpdate, ProjectWithTaskCount
 from app.models.project_kpi import ProjectKpiTemplate
-from app.models.enums import InvitationStatus
+from app.models.enums import InvitationStatus, ProjectRole
 from app.services.kpi_calculator import apply_project_kpis
 from app.services.kpi_templates import get_kpi_templates
 
@@ -121,9 +121,19 @@ async def create_project(
     project: ProjectCreate,
     user: CurrentUser,
     repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Create a new project."""
-    return await repo.create(user.id, project)
+    created_project = await repo.create(user.id, project)
+
+    # Add creator as OWNER member
+    await member_repo.create(
+        user.id,
+        created_project.id,
+        ProjectMemberCreate(member_user_id=user.id, role=ProjectRole.OWNER),
+    )
+
+    return created_project
 
 
 @router.get("/{project_id}", response_model=ProjectWithTaskCount)
@@ -359,6 +369,7 @@ async def accept_project_invitation(
     user: CurrentUser,
     invitation_repo: ProjectInvitationRepo,
     member_repo: ProjectMemberRepo,
+    assignment_repo: TaskAssignmentRepo,
 ):
     """Accept an invitation using a token."""
     invitation = await invitation_repo.get_by_token(token)
@@ -400,6 +411,17 @@ async def accept_project_invitation(
             invitation.project_id,
             ProjectMemberCreate(member_user_id=user.id, role=invitation.role),
         )
+
+    # Convert any tasks assigned to this invitation to the new user
+    from app.services.assignee_utils import make_invitation_assignee_id
+
+    invitation_assignee_id = make_invitation_assignee_id(str(invitation.id))
+    await assignment_repo.convert_invitation_to_user(
+        invitation.user_id,
+        invitation_assignee_id,
+        user.id,
+    )
+
     return await invitation_repo.mark_accepted(invitation.id, user.id)
 
 

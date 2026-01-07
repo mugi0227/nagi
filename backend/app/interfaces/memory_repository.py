@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 from uuid import UUID
 
-from app.models.memory import Memory, MemoryCreate, MemorySearchResult
+from app.models.memory import Memory, MemoryCreate, MemoryUpdate, MemorySearchResult
 from app.models.enums import MemoryScope, MemoryType
 
 
@@ -42,6 +42,21 @@ class IMemoryRepository(ABC):
 
         Returns:
             Memory if found, None otherwise
+        """
+        pass
+
+    @abstractmethod
+    async def update(self, user_id: str, memory_id: UUID, update: MemoryUpdate) -> Memory:
+        """
+        Update an existing memory.
+
+        Args:
+            user_id: Owner user ID
+            memory_id: Memory ID
+            update: Fields to update
+
+        Returns:
+            Updated memory
         """
         pass
 

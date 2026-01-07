@@ -176,7 +176,7 @@ class TaskAssignmentORM(Base):
 
     __tablename__ = "task_assignments"
     __table_args__ = (
-        UniqueConstraint("task_id", "user_id", name="uq_task_assignment"),
+        UniqueConstraint("task_id", "user_id", "assignee_id", name="uq_task_assignment"),
     )
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))

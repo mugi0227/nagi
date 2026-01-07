@@ -9,7 +9,7 @@ import { KanbanBoard } from '../components/tasks/KanbanBoard';
 import { ProjectDetailModal } from '../components/projects/ProjectDetailModal';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { TaskFormModal } from '../components/tasks/TaskFormModal';
-import type { Blocker, ProjectInvitation, ProjectMember, ProjectWithTaskCount, Task, TaskAssignment, TaskStatus } from '../api/types';
+import type { Blocker, Checkin, ProjectInvitation, ProjectMember, ProjectWithTaskCount, Task, TaskAssignment, TaskStatus } from '../api/types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -29,6 +29,12 @@ export function ProjectDetailPage() {
   const [assignments, setAssignments] = useState<TaskAssignment[]>([]);
   const [blockers, setBlockers] = useState<Blocker[]>([]);
   const [invitations, setInvitations] = useState<ProjectInvitation[]>([]);
+  const [checkins, setCheckins] = useState<Checkin[]>([]);
+  const [checkinMode, setCheckinMode] = useState<'weekly' | 'issue' | null>(null);
+  const [checkinText, setCheckinText] = useState('');
+  const [selectedCheckinMemberId, setSelectedCheckinMemberId] = useState('');
+  const [isCheckinSaving, setIsCheckinSaving] = useState(false);
+  const [checkinError, setCheckinError] = useState<string | null>(null);
   const [isCollabLoading, setIsCollabLoading] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [isInviting, setIsInviting] = useState(false);
@@ -36,7 +42,7 @@ export function ProjectDetailPage() {
   const [invitationActionId, setInvitationActionId] = useState<string | null>(null);
 
   // Fetch tasks for this project
-  const { tasks, isLoading: tasksLoading, refetch: refetchTasks, updateTask } = useTasks(projectId);
+  const { tasks, isLoading: tasksLoading, refetch: refetchTasks, updateTask, deleteTask } = useTasks(projectId);
 
   // Fetch project details
   useEffect(() => {
@@ -65,16 +71,18 @@ export function ProjectDetailPage() {
     const fetchCollaboration = async () => {
       setIsCollabLoading(true);
       try {
-        const [membersData, assignmentsData, blockersData, invitationsData] = await Promise.all([
+        const [membersData, assignmentsData, blockersData, invitationsData, checkinsData] = await Promise.all([
           projectsApi.listMembers(projectId),
           projectsApi.listAssignments(projectId),
           projectsApi.listBlockers(projectId),
           projectsApi.listInvitations(projectId),
+          projectsApi.listCheckins(projectId),
         ]);
-        setMembers(membersData);
-        setAssignments(assignmentsData);
-        setBlockers(blockersData);
-        setInvitations(invitationsData);
+        setMembers(Array.isArray(membersData) ? membersData : []);
+        setAssignments(Array.isArray(assignmentsData) ? assignmentsData : []);
+        setBlockers(Array.isArray(blockersData) ? blockersData : []);
+        setInvitations(Array.isArray(invitationsData) ? invitationsData : []);
+        setCheckins(Array.isArray(checkinsData) ? checkinsData : []);
       } catch (err) {
         console.error('Failed to fetch collaboration data:', err);
       } finally {
@@ -84,6 +92,13 @@ export function ProjectDetailPage() {
 
     fetchCollaboration();
   }, [projectId]);
+
+  useEffect(() => {
+    if (!members.length) return;
+    if (selectedCheckinMemberId) return;
+    const owner = members.find(member => member.role === 'OWNER');
+    setSelectedCheckinMemberId(owner?.member_user_id || members[0].member_user_id);
+  }, [members, selectedCheckinMemberId]);
 
   const handleTaskClick = (task: Task) => {
     if (task.parent_id) {
@@ -152,20 +167,44 @@ export function ProjectDetailPage() {
     memberLabelById[member.member_user_id] = member.member_display_name || member.member_user_id;
   });
 
+  // Build invitation label map for pending invitations
+  const pendingInvitations = invitations.filter((inv) => inv.status === 'PENDING');
+  const invitationLabelById: Record<string, string> = {};
+  pendingInvitations.forEach((inv) => {
+    invitationLabelById[`inv:${inv.id}`] = `${inv.email} (招待中)`;
+  });
+
   const assigneeByTaskId: Record<string, string> = {};
   assignments.forEach((assignment) => {
-    assigneeByTaskId[assignment.task_id] = memberLabelById[assignment.assignee_id] || assignment.assignee_id;
+    if (!assignment.assignee_id) {
+      return;
+    }
+    // Check if it's an invitation-based assignment
+    if (assignment.assignee_id.startsWith('inv:')) {
+      assigneeByTaskId[assignment.task_id] = invitationLabelById[assignment.assignee_id] || assignment.assignee_id;
+    } else {
+      assigneeByTaskId[assignment.task_id] = memberLabelById[assignment.assignee_id] || assignment.assignee_id;
+    }
   });
 
   const assignedMemberIdByTaskId: Record<string, string> = {};
   assignments.forEach((assignment) => {
-    assignedMemberIdByTaskId[assignment.task_id] = assignment.assignee_id;
+    if (assignment.assignee_id) {
+      assignedMemberIdByTaskId[assignment.task_id] = assignment.assignee_id;
+    }
   });
 
-  const memberOptions = members.map((member) => ({
-    id: member.member_user_id,
-    label: member.member_display_name || member.member_user_id,
-  }));
+  // Include both members and pending invitations in options
+  const memberOptions = [
+    ...members.map((member) => ({
+      id: member.member_user_id,
+      label: member.member_display_name || member.member_user_id,
+    })),
+    ...pendingInvitations.map((inv) => ({
+      id: `inv:${inv.id}`,
+      label: `${inv.email} (招待中)`,
+    })),
+  ];
 
   const inProgressCount = tasks.filter(task => task.status === 'IN_PROGRESS').length;
 
@@ -198,8 +237,6 @@ export function ProjectDetailPage() {
     }, 0);
     return Math.round((total / valid.length) * 100);
   })();
-
-  const pendingInvitations = invitations.filter((invitation) => invitation.status === 'PENDING');
 
   const handleAssign = async (taskId: string, memberUserId: string | null) => {
     if (!projectId) return;
@@ -309,6 +346,114 @@ export function ProjectDetailPage() {
       alert('メンバーの削除に失敗しました');
     } finally {
       setMemberActionId(null);
+    }
+  };
+
+  const formatCheckinDate = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
+  };
+
+  const buildWeeklySummary = () => {
+    const total = tasks.length;
+    const done = tasks.filter(task => task.status === 'DONE').length;
+    const inProgress = tasks.filter(task => task.status === 'IN_PROGRESS').length;
+    const waiting = tasks.filter(task => task.status === 'WAITING').length;
+    const todo = tasks.filter(task => task.status === 'TODO').length;
+
+    const today = new Date();
+    const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const weekAhead = new Date(todayDate);
+    weekAhead.setDate(todayDate.getDate() + 7);
+
+    const dueTasks = tasks.filter(task => task.due_date);
+    const overdueTasks = dueTasks.filter(task => {
+      if (task.status === 'DONE') return false;
+      const due = new Date(task.due_date as string);
+      return due < todayDate;
+    });
+    const dueSoonTasks = dueTasks.filter(task => {
+      if (task.status === 'DONE') return false;
+      const due = new Date(task.due_date as string);
+      return due >= todayDate && due <= weekAhead;
+    });
+
+    const formatTaskList = (items: Task[]) =>
+      items.slice(0, 5).map(task => `- ${task.title}`).join('\n');
+
+    const lines = [
+      `週次サマリー (${todayDate.toLocaleDateString('ja-JP')})`,
+      '',
+      `- タスク合計: ${total}`,
+      `- 完了: ${done} / 進行中: ${inProgress} / 待機: ${waiting} / 未着手: ${todo}`,
+      `- 期限超過: ${overdueTasks.length}`,
+      `- 直近7日以内の期限: ${dueSoonTasks.length}`,
+      `- 依存で止まりそう: ${blockedDependencyCount}`,
+      `- オープンブロッカー: ${openBlockerCount}`,
+    ];
+
+    if (overdueTasks.length > 0) {
+      lines.push('', '期限超過タスク（最大5件）', formatTaskList(overdueTasks));
+    }
+    if (dueSoonTasks.length > 0) {
+      lines.push('', '直近の期限タスク（最大5件）', formatTaskList(dueSoonTasks));
+    }
+
+    lines.push(
+      '',
+      '議論したいこと:',
+      '- ',
+      '',
+      '困りごと:',
+      '- ',
+      '',
+      '支援が必要な点:',
+      '- ',
+    );
+
+    return lines.join('\n');
+  };
+
+  const handleStartWeeklyCheckin = () => {
+    setCheckinError(null);
+    setCheckinMode('weekly');
+    setCheckinText(buildWeeklySummary());
+  };
+
+  const handleStartIssueCheckin = () => {
+    setCheckinError(null);
+    setCheckinMode('issue');
+    setCheckinText('');
+  };
+
+  const handleSubmitCheckin = async () => {
+    if (!projectId) return;
+    if (!selectedCheckinMemberId) {
+      setCheckinError('メンバーを選択してください。');
+      return;
+    }
+    if (!checkinText.trim()) {
+      setCheckinError('内容を入力してください。');
+      return;
+    }
+    setIsCheckinSaving(true);
+    setCheckinError(null);
+    try {
+      await projectsApi.createCheckin(projectId, {
+        member_user_id: selectedCheckinMemberId,
+        checkin_date: new Date().toISOString().slice(0, 10),
+        raw_text: checkinText.trim(),
+      });
+      const checkinsData = await projectsApi.listCheckins(projectId);
+      setCheckins(checkinsData);
+      setCheckinMode(null);
+      setCheckinText('');
+    } catch (err) {
+      console.error('Failed to create checkin:', err);
+      setCheckinError('チェックインの保存に失敗しました。');
+    } finally {
+      setIsCheckinSaving(false);
     }
   };
 
@@ -546,6 +691,109 @@ export function ProjectDetailPage() {
             )}
           </div>
 
+          <div className="detail-section checkins-section">
+            <div className="section-header">
+              <FaBookOpen className="section-icon" />
+              <h3 className="section-title">Check-ins</h3>
+            </div>
+            <div className="checkin-actions">
+              <button
+                type="button"
+                className="checkin-btn primary"
+                onClick={handleStartWeeklyCheckin}
+                disabled={!members.length}
+              >
+                週次サマリーを生成
+              </button>
+              <button
+                type="button"
+                className="checkin-btn ghost"
+                onClick={handleStartIssueCheckin}
+                disabled={!members.length}
+              >
+                困りごとを投稿
+              </button>
+            </div>
+
+            {!members.length && (
+              <p className="checkin-note">メンバーを追加すると投稿できます。</p>
+            )}
+
+            {checkinMode && (
+              <div className="checkin-editor">
+                <div className="checkin-row">
+                  <label className="checkin-label" htmlFor="checkin-member">
+                    投稿者
+                  </label>
+                  <select
+                    id="checkin-member"
+                    className="checkin-select"
+                    value={selectedCheckinMemberId}
+                    onChange={(e) => setSelectedCheckinMemberId(e.target.value)}
+                  >
+                    {members.map((member) => (
+                      <option key={member.id} value={member.member_user_id}>
+                        {member.member_display_name || member.member_user_id}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <textarea
+                  className="checkin-textarea"
+                  rows={7}
+                  value={checkinText}
+                  onChange={(e) => setCheckinText(e.target.value)}
+                  placeholder={checkinMode === 'weekly'
+                    ? '週次サマリーの内容を調整してください'
+                    : '困りごとや議論したいことを入力してください'}
+                />
+                {checkinError && <p className="checkin-error">{checkinError}</p>}
+                <div className="checkin-editor-actions">
+                  <button
+                    type="button"
+                    className="checkin-btn ghost"
+                    onClick={() => {
+                      setCheckinMode(null);
+                      setCheckinText('');
+                    }}
+                    disabled={isCheckinSaving}
+                  >
+                    キャンセル
+                  </button>
+                  <button
+                    type="button"
+                    className="checkin-btn primary"
+                    onClick={handleSubmitCheckin}
+                    disabled={isCheckinSaving}
+                  >
+                    {isCheckinSaving ? '保存中...' : '保存'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            <div className="checkin-list">
+              {checkins.length === 0 ? (
+                <p className="checkin-empty">まだチェックインはありません。</p>
+              ) : (
+                checkins.slice(0, 5).map((checkin) => {
+                  const name = memberLabelById[checkin.member_user_id] || checkin.member_user_id;
+                  const text = checkin.summary_text || checkin.raw_text;
+                  const preview = text.length > 140 ? `${text.slice(0, 140)}...` : text;
+                  return (
+                    <div key={checkin.id} className="checkin-item">
+                      <div className="checkin-meta">
+                        <span className="checkin-date">{formatCheckinDate(checkin.checkin_date)}</span>
+                        <span className="checkin-author">{name}</span>
+                      </div>
+                      <p className="checkin-preview">{preview}</p>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+
           {/* KPI Section */}
           {project.kpi_config && project.kpi_config.metrics && project.kpi_config.metrics.length > 0 && (
             <div className="detail-section">
@@ -613,6 +861,10 @@ export function ProjectDetailPage() {
             tasks={tasks}
             onUpdateTask={(id: string, status: TaskStatus) => {
               updateTask(id, { status });
+              refetchTasks();
+            }}
+            onDeleteTask={(taskId: string) => {
+              deleteTask(taskId);
               refetchTasks();
             }}
             onTaskClick={handleTaskClick}

@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from app.api.deps import CurrentUser, MemoryRepo
 from app.core.exceptions import NotFoundError
-from app.models.memory import Memory, MemoryCreate, MemorySearchResult
+from app.models.memory import Memory, MemoryCreate, MemoryUpdate, MemorySearchResult
 from app.models.enums import MemoryScope, MemoryType
 
 router = APIRouter()
@@ -81,6 +81,23 @@ async def search_memories(
         project_id=project_id,
         limit=limit,
     )
+
+
+@router.patch("/{memory_id}", response_model=Memory)
+async def update_memory(
+    memory_id: UUID,
+    update: MemoryUpdate,
+    user: CurrentUser,
+    repo: MemoryRepo,
+):
+    """Update an existing memory."""
+    try:
+        return await repo.update(user.id, memory_id, update)
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
 
 
 @router.delete("/{memory_id}", status_code=status.HTTP_204_NO_CONTENT)

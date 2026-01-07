@@ -175,7 +175,7 @@ class PlannerService:
 
         prompt_parts.extend([
             "",
-            "まず、関連する作業手順をsearch_work_memoryで検索してから分解してください。",
+            "まず、関連する作業手順をsearch_skillsで検索してから分解してください。",
             "",
             "**重要**: 必ず3-5個のステップに分解してください。10個以上に分解してはいけません。",
             "",

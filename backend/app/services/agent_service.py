@@ -41,6 +41,7 @@ class AgentService:
     """Service for running the Secretary Agent."""
 
     APP_NAME = "SecretaryPartnerAI"
+    HISTORY_SEED_LIMIT = 200
 
     def __init__(
         self,
@@ -146,6 +147,82 @@ class AgentService:
         if request.image_base64 or request.image_url:
             return "[Image attached]"
         return ""
+
+    async def _ensure_session(
+        self,
+        runner: InMemoryRunner,
+        user_id: str,
+        session_id: str,
+    ):
+        """Ensure session exists in the runner session service."""
+        existing = await runner.session_service.get_session(
+            app_name=self.APP_NAME,
+            user_id=user_id,
+            session_id=session_id,
+        )
+        if existing is None:
+            return await runner.session_service.create_session(
+                app_name=self.APP_NAME,
+                user_id=user_id,
+                session_id=session_id,
+            )
+        return existing
+
+    async def _hydrate_session_history(
+        self,
+        runner: InMemoryRunner,
+        user_id: str,
+        session_id: str,
+    ) -> None:
+        """Seed ADK session history from persisted chat messages after restart."""
+        if not self._chat_repo:
+            return
+
+        try:
+            session = await runner.session_service.get_session(
+                app_name=self.APP_NAME,
+                user_id=user_id,
+                session_id=session_id,
+            )
+            if session and getattr(session, "events", None):
+                if session.events:
+                    return
+
+            if session is None:
+                session = await runner.session_service.create_session(
+                    app_name=self.APP_NAME,
+                    user_id=user_id,
+                    session_id=session_id,
+                )
+
+            stored_messages = await self._chat_repo.list_messages(
+                user_id=user_id,
+                session_id=session_id,
+                limit=self.HISTORY_SEED_LIMIT,
+            )
+            if not stored_messages:
+                return
+
+            from google.adk.events.event import Event
+            from google.genai.types import Content, Part
+
+            agent_name = getattr(getattr(runner, "agent", None), "name", None) or "assistant"
+            for idx, msg in enumerate(stored_messages):
+                if msg.role not in {"user", "assistant"}:
+                    continue
+                content_text = msg.content or ""
+                if not content_text.strip():
+                    continue
+                author = "user" if msg.role == "user" else agent_name
+                role = "user" if msg.role == "user" else "model"
+                event = Event(
+                    author=author,
+                    invocation_id=f"history:{session_id}:{idx}",
+                    content=Content(role=role, parts=[Part(text=content_text)]),
+                )
+                await runner.session_service.append_event(session, event)
+        except Exception as exc:
+            logger.warning(f"Failed to hydrate session history for {session_id}: {exc}")
 
     async def _record_session(self, user_id: str, session_id: str, title: str | None = None) -> None:
         """Record session metadata in persistent storage and fallback index."""
@@ -464,6 +541,9 @@ class AgentService:
 
         # Run agent with user message
         try:
+            await self._ensure_session(runner, user_id, session_id)
+            await self._hydrate_session_history(runner, user_id, session_id)
+
             user_message_text = self._get_user_message_text(request)
             if user_message_text:
                 await self._record_message(
@@ -474,19 +554,6 @@ class AgentService:
                     title=title,
                 )
             new_message = await self._construct_user_message(request)
-
-            # Ensure session exists
-            existing = await runner.session_service.get_session(
-                app_name=self.APP_NAME,
-                user_id=user_id,
-                session_id=session_id,
-            )
-            if existing is None:
-                await runner.session_service.create_session(
-                    app_name=self.APP_NAME,
-                    user_id=user_id,
-                    session_id=session_id,
-                )
 
             assistant_message_parts: list[str] = []
             async for event in runner.run_async(
@@ -571,6 +638,9 @@ class AgentService:
         )
 
         try:
+            await self._ensure_session(runner, user_id, session_id_str)
+            await self._hydrate_session_history(runner, user_id, session_id_str)
+
             user_message_text = self._get_user_message_text(request)
             if user_message_text:
                 await self._record_message(
@@ -581,19 +651,6 @@ class AgentService:
                     title=title,
                 )
             new_message = await self._construct_user_message(request)
-
-            # Ensure session exists
-            existing = await runner.session_service.get_session(
-                app_name=self.APP_NAME,
-                user_id=user_id,
-                session_id=session_id_str,
-            )
-            if existing is None:
-                await runner.session_service.create_session(
-                    app_name=self.APP_NAME,
-                    user_id=user_id,
-                    session_id=session_id_str,
-                )
 
             # Stream agent execution
             assistant_message_parts: list[str] = []
@@ -656,7 +713,7 @@ class AgentService:
                             }
 
                             # If this is a proposal tool, send a proposal chunk
-                            if tool_name in ["propose_task", "propose_project"]:
+                            if tool_name in ["propose_task", "propose_project", "propose_skill"]:
                                 if isinstance(result, dict) and "proposal_id" in result:
                                     proposal_id = result.get("proposal_id")
                                     proposal_type = result.get("proposal_type")

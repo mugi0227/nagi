@@ -99,6 +99,7 @@ export function KanbanBoard({
           onTaskClick={onTaskClick}
           onBreakdownTask={onBreakdownTask}
           breakdownTaskId={breakdownTaskId}
+          onUpdateTask={onUpdateTask}
           onDrop={handleDrop}
         />
       ))}

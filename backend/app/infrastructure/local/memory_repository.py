@@ -15,7 +15,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.interfaces.memory_repository import IMemoryRepository
-from app.models.memory import Memory, MemoryCreate, MemorySearchResult
+from app.models.memory import Memory, MemoryCreate, MemoryUpdate, MemorySearchResult
+from app.core.exceptions import NotFoundError
 from app.models.enums import MemoryScope, MemoryType
 from app.infrastructure.local.database import MemoryORM, get_session_factory
 
@@ -70,6 +71,29 @@ class SqliteMemoryRepository(IMemoryRepository):
             )
             orm = result.scalar_one_or_none()
             return self._orm_to_model(orm) if orm else None
+
+    async def update(self, user_id: str, memory_id: UUID, update: MemoryUpdate) -> Memory:
+        """Update an existing memory."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(MemoryORM).where(
+                    and_(MemoryORM.id == str(memory_id), MemoryORM.user_id == user_id)
+                )
+            )
+            orm = result.scalar_one_or_none()
+            if not orm:
+                raise NotFoundError(f"Memory {memory_id} not found")
+
+            if update.content is not None:
+                orm.content = update.content
+            if update.memory_type is not None:
+                orm.memory_type = update.memory_type.value
+            if update.tags is not None:
+                orm.tags = json.dumps(update.tags) if update.tags else None
+
+            await session.commit()
+            await session.refresh(orm)
+            return self._orm_to_model(orm)
 
     async def list(
         self,

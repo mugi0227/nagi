@@ -1,21 +1,18 @@
-import { useState } from 'react';
-import { FaComments, FaXmark } from 'react-icons/fa6';
-import { ChatWindow } from './ChatWindow';
+import { FaComments } from 'react-icons/fa6';
 import './ChatWidget.css';
 
-export function ChatWidget() {
-  const [isOpen, setIsOpen] = useState(false);
+interface ChatWidgetProps {
+  forceOpen?: () => void;
+}
 
+export function ChatWidget({ forceOpen }: ChatWidgetProps) {
   return (
-    <>
-      <button
-        className="chat-fab"
-        onClick={() => setIsOpen(!isOpen)}
-        aria-label="Open chat"
-      >
-        {isOpen ? <FaXmark /> : <FaComments />}
-      </button>
-      <ChatWindow isOpen={isOpen} onClose={() => setIsOpen(false)} />
-    </>
+    <button
+      className="chat-fab"
+      onClick={forceOpen}
+      aria-label="Open chat"
+    >
+      <FaComments className="fab-icon" />
+    </button>
   );
 }

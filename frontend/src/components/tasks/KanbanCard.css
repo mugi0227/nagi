@@ -117,6 +117,18 @@
   background: rgba(239, 68, 68, 0.1);
 }
 
+.card-action-btn.check {
+  color: #16a34a;
+}
+
+.card-action-btn.check:hover {
+  background: rgba(74, 222, 128, 0.15);
+}
+
+.card-action-btn.check.done {
+  color: #16a34a;
+}
+
 .card-description {
   font-size: 0.875rem;
   color: var(--text-muted);

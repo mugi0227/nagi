@@ -5,6 +5,7 @@ export interface ApprovalResult {
   status: string;
   task_id?: string;
   project_id?: string;
+  memory_id?: string;
 }
 
 export interface RejectionResult {

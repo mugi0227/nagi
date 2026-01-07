@@ -21,6 +21,7 @@ export function ProjectCreateModal({ onClose, onCreate }: ProjectCreateModalProp
   // Form state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [context, setContext] = useState('');
   const [priority, setPriority] = useState(5);
   const [goals, setGoals] = useState<string[]>([]);
   const [keyPoints, setKeyPoints] = useState<string[]>([]);
@@ -67,6 +68,7 @@ export function ProjectCreateModal({ onClose, onCreate }: ProjectCreateModalProp
       const projectData: ProjectCreate = {
         name: name.trim(),
         description: description.trim() || undefined,
+        context: context.trim() || undefined,
         priority,
         goals,
         key_points: keyPoints,
@@ -461,9 +463,15 @@ export function ProjectCreateModal({ onClose, onCreate }: ProjectCreateModalProp
           </div>
 
           <div className="section">
-            <p className="field-hint">
-              ℹ️ README（詳細コンテキスト）は作成後に編集できます
-            </p>
+            <label className="field-label">README (詳細コンテキスト)</label>
+            <textarea
+              className="text-area context-editor"
+              value={context}
+              onChange={(e) => setContext(e.target.value)}
+              placeholder="プロジェクトの詳細や方針をMarkdownで記述..."
+              rows={8}
+            />
+            <p className="field-hint">作成後も編集できます</p>
           </div>
         </div>
 

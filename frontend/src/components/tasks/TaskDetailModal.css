@@ -17,11 +17,14 @@
 
 .modal-container {
   display: flex;
-  max-width: 95vw;
+  max-width: 98vw;
   width: auto;
   will-change: transform, opacity;
   align-items: flex-start;
   justify-content: center;
+  /* Define default widths for split-view */
+  --parent-width: 550px;
+  --guide-width: 750px;
 }
 
 
@@ -29,7 +32,7 @@
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  width: 640px;
+  width: 900px;
   max-width: 100%;
   flex-shrink: 0;
   max-height: 90vh;
@@ -39,7 +42,7 @@
 }
 
 .modal-container.split-view .modal-content {
-  width: 500px;
+  width: var(--parent-width);
 }
 
 .modal-header {
@@ -335,6 +338,40 @@
 
 .subtask-item:hover {
   background: rgba(14, 165, 233, 0.1);
+}
+
+.subtask-check-wrapper {
+  position: relative;
+  width: 24px;
+  height: 24px;
+  border: 2px solid var(--text-muted);
+  border-radius: 6px;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  background: var(--bg-card);
+  z-index: 2;
+}
+
+.subtask-check-wrapper:hover {
+  border-color: var(--primary);
+  background: var(--primary-light);
+  transform: scale(1.05);
+}
+
+.subtask-check-wrapper.checked {
+  background: var(--accent-green);
+  border-color: var(--accent-green);
+}
+
+.subtask-check-wrapper.checked::after {
+  content: '✓';
+  color: white;
+  font-size: 14px;
+  font-weight: bold;
 }
 
 .subtask-icon {
@@ -734,31 +771,46 @@
 }
 
 /* Responsive */
-@media (max-width: 1200px) {
-  .modal-container.split-view {
-    flex-direction: column;
-    max-width: 640px;
+@media (max-width: 1366px) {
+  .modal-container {
+    --parent-width: 450px;
+    --guide-width: 650px;
+  }
+}
+
+@media (max-width: 1024px) {
+  .modal-overlay {
+    align-items: flex-start;
+    /* Ensure scrolling starts from top */
+    overflow-y: auto;
+    padding: 2rem 1rem;
   }
 
-  .modal-container.split-view .modal-content {
-    flex: none;
+  .modal-container.split-view {
+    flex-direction: column;
+    max-width: 900px;
+    align-items: center;
+    gap: 1.5rem;
     width: 100%;
   }
 
+  .modal-container.split-view .modal-content {
+    width: 100%;
+    max-width: 800px;
+    max-height: none;
+    /* Allow vertical expansion */
+  }
+
   .guide-panel {
-    min-width: 100%;
-    max-height: 50vh;
+    width: 100% !important;
+    max-width: 800px;
+    max-height: none;
+    height: auto !important;
+    margin-left: 0 !important;
   }
 }
 
 @media (max-width: 640px) {
-
-  .modal-container,
-  .modal-container.split-view {
-    flex-direction: column;
-    max-width: 100%;
-  }
-
   .modal-content {
     max-width: 100%;
     margin: 0;
@@ -767,10 +819,5 @@
 
   .metadata-grid {
     grid-template-columns: 1fr;
-  }
-
-  .guide-panel {
-    min-width: 100%;
-    max-height: 60vh;
   }
 }

@@ -12,6 +12,7 @@ class ProposalType(str, Enum):
     """Type of action being proposed by AI."""
     CREATE_TASK = "create_task"
     CREATE_PROJECT = "create_project"
+    CREATE_SKILL = "create_skill"
 
 
 class ProposalStatus(str, Enum):
@@ -62,6 +63,7 @@ class ApprovalResult(BaseModel):
     status: str = "approved"
     task_id: Optional[str] = None
     project_id: Optional[str] = None
+    memory_id: Optional[str] = None
 
 
 class RejectionResult(BaseModel):

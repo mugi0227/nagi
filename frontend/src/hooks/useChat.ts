@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { chatApi } from '../api/chat';
-import type { ChatRequest, ChatResponse, ChatMode, ChatSession, ChatHistoryMessage, TaskCreate, ProjectCreate } from '../api/types';
+import type { ChatRequest, ChatResponse, ChatMode, ChatSession, ChatHistoryMessage, TaskCreate, ProjectCreate, MemoryCreate } from '../api/types';
 
 export interface ToolCall {
   id: string;
@@ -14,9 +14,9 @@ export interface ToolCall {
 export interface ProposalInfo {
   id: string;
   proposalId: string;
-  proposalType: 'create_task' | 'create_project';
+  proposalType: 'create_task' | 'create_project' | 'create_skill';
   description: string;
-  payload: TaskCreate | ProjectCreate;
+  payload: TaskCreate | ProjectCreate | MemoryCreate;
 }
 
 interface Message {
@@ -42,6 +42,7 @@ export function useChat() {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const hasLoadedInitialHistory = useRef(false);
 
   const setSessionId = useCallback((id?: string) => {
     setSessionIdState(id);
@@ -105,9 +106,29 @@ export function useChat() {
   const initialSessionId = useRef(sessionId);
 
   useEffect(() => {
-    if (initialSessionId.current) {
-      loadHistory(initialSessionId.current);
+    if (hasLoadedInitialHistory.current) {
+      return;
     }
+
+    const bootstrapHistory = async () => {
+      if (initialSessionId.current) {
+        await loadHistory(initialSessionId.current);
+        hasLoadedInitialHistory.current = true;
+        return;
+      }
+
+      try {
+        const data = await chatApi.listSessions();
+        setSessions(data);
+        if (data.length > 0) {
+          await loadHistory(data[0].session_id);
+        }
+      } finally {
+        hasLoadedInitialHistory.current = true;
+      }
+    };
+
+    bootstrapHistory();
   }, [loadHistory]);
 
   const sendMessageStream = useCallback(

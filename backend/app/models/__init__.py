@@ -15,7 +15,7 @@ from app.models.task import Task, TaskCreate, TaskUpdate
 from app.models.project import Project, ProjectCreate, ProjectUpdate
 from app.models.project_kpi import ProjectKpiConfig, ProjectKpiMetric, ProjectKpiTemplate
 from app.models.agent_task import AgentTask, AgentTaskCreate, AgentTaskUpdate
-from app.models.memory import Memory, MemoryCreate, UserMemory, ProjectMemory, WorkMemory
+from app.models.memory import Memory, MemoryCreate, MemoryUpdate, UserMemory, ProjectMemory, WorkMemory
 from app.models.capture import Capture, CaptureCreate
 from app.models.chat import ChatRequest, ChatResponse, ChatMode
 from app.models.chat_session import ChatSession, ChatMessage, ChatMessageCreate
@@ -50,6 +50,7 @@ __all__ = [
     # Memory
     "Memory",
     "MemoryCreate",
+    "MemoryUpdate",
     "UserMemory",
     "ProjectMemory",
     "WorkMemory",

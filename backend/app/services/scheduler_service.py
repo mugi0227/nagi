@@ -20,6 +20,7 @@ from app.models.schedule import (
     UnscheduledTask,
     ExcludedTask,
 )
+from app.models.collaboration import TaskAssignment
 from app.models.task import Task
 from app.services.task_utils import get_effective_estimated_minutes, get_remaining_minutes, is_parent_task
 
@@ -251,6 +252,9 @@ class SchedulerService:
         capacity_hours: Optional[float] = None,
         capacity_by_weekday: Optional[list[float]] = None,
         max_days: int = 60,
+        current_user_id: Optional[str] = None,
+        assignments: Optional[list[TaskAssignment]] = None,
+        filter_by_assignee: bool = False,
     ) -> ScheduleResponse:
         """
         Build a capacity-aware schedule across multiple days.
@@ -316,6 +320,23 @@ class SchedulerService:
             and not is_parent_task(task, tasks)
             and not task.is_fixed_time  # 会議は通常スケジューリング対象外
         ]
+
+        # Filter by assignee if requested
+        if filter_by_assignee and current_user_id and assignments is not None:
+            assignment_map = {a.task_id: a.assignee_id for a in assignments}
+
+            def is_my_task(task: Task) -> bool:
+                # Personal tasks (no project_id) are always included
+                if not task.project_id:
+                    return True
+                # Project tasks: check assignment
+                assignee = assignment_map.get(task.id)
+                if not assignee:
+                    return True  # Unassigned tasks included by default
+                return assignee == current_user_id
+
+            candidate_tasks = [t for t in candidate_tasks if is_my_task(t)]
+
         candidate_ids = {task.id for task in candidate_tasks}
 
         blocked_task_ids: set[UUID] = set()
