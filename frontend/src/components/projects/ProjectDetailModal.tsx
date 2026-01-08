@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { FaStar, FaPlus, FaTrash, FaUsers } from 'react-icons/fa6';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -10,6 +10,7 @@ import type {
   ProjectKpiMetric,
   ProjectKpiTemplate,
   ProjectMember,
+  ProjectInvitation,
 } from '../../api/types';
 import { projectsApi } from '../../api/projects';
 import './ProjectDetailModal.css';
@@ -55,6 +56,13 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [isMembersLoading, setIsMembersLoading] = useState(false);
   const [memberActionId, setMemberActionId] = useState<string | null>(null);
+  const [invitations, setInvitations] = useState<ProjectInvitation[]>([]);
+  const [invitationActionId, setInvitationActionId] = useState<string | null>(null);
+  const [inviteMode, setInviteMode] = useState<'email' | 'user_id'>('email');
+  const [inviteValue, setInviteValue] = useState('');
+  const [isInviting, setIsInviting] = useState(false);
+  const [isInviteMenuOpen, setInviteMenuOpen] = useState(false);
+  const inviteMenuRef = useRef<HTMLDivElement | null>(null);
 
   // Reset form when project changes
   useEffect(() => {
@@ -92,13 +100,20 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
   }, []);
 
   useEffect(() => {
-    if (activeTab !== 'members') return;
+    if (activeTab !== 'members') {
+      setInviteMenuOpen(false);
+      return;
+    }
     let isActive = true;
     setIsMembersLoading(true);
-    projectsApi
-      .listMembers(project.id)
-      .then((data) => {
-        if (isActive) setMembers(data);
+    Promise.all([
+      projectsApi.listMembers(project.id),
+      projectsApi.listInvitations(project.id),
+    ])
+      .then(([membersData, invitationsData]) => {
+        if (!isActive) return;
+        setMembers(membersData);
+        setInvitations(invitationsData);
       })
       .catch((error) => {
         console.error('Failed to load members:', error);
@@ -111,6 +126,25 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
       isActive = false;
     };
   }, [activeTab, project.id]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!inviteMenuRef.current) return;
+      if (inviteMenuRef.current.contains(event.target as Node)) return;
+      setInviteMenuOpen(false);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setInviteMenuOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, []);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -225,6 +259,70 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
     }
   };
 
+  const handleInvite = async () => {
+    const value = inviteValue.trim();
+    if (!value) return;
+    setIsInviting(true);
+    try {
+      if (inviteMode === 'email') {
+        await projectsApi.createInvitation(project.id, { email: value });
+      } else {
+        await projectsApi.addMember(project.id, { member_user_id: value });
+      }
+      const [membersData, invitationsData] = await Promise.all([
+        projectsApi.listMembers(project.id),
+        projectsApi.listInvitations(project.id),
+      ]);
+      setMembers(membersData);
+      setInvitations(invitationsData);
+      setInviteValue('');
+    } catch (error) {
+      console.error('Failed to add member:', error);
+      alert('Failed to add member.');
+    } finally {
+      setIsInviting(false);
+    }
+  };
+
+  const handleRevokeInvitation = async (invitation: ProjectInvitation) => {
+    setInvitationActionId(invitation.id);
+    try {
+      await projectsApi.updateInvitation(project.id, invitation.id, { status: 'REVOKED' });
+      const invitationsData = await projectsApi.listInvitations(project.id);
+      setInvitations(invitationsData);
+    } catch (error) {
+      console.error('Failed to revoke invitation:', error);
+      alert('Failed to revoke invitation.');
+    } finally {
+      setInvitationActionId(null);
+    }
+  };
+
+  const handleCopyInviteLink = async (token: string) => {
+    const link = `${window.location.origin}/invite/accept?token=${token}`;
+    if (navigator.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(link);
+        return;
+      } catch (error) {
+        console.error('Clipboard write failed:', error);
+      }
+    }
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = link;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      document.execCommand('copy');
+      document.body.removeChild(textarea);
+    } catch (error) {
+      console.error('Fallback copy failed:', error);
+    }
+  };
+
   const renderStars = (count: number, interactive: boolean = false) => {
     return (
       <div className="priority-stars">
@@ -242,6 +340,8 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
       </div>
     );
   };
+
+  const pendingInvitations = invitations.filter((invitation) => invitation.status === 'PENDING');
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -562,43 +662,161 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
                   </label>
                   {isMembersLoading ? (
                     <div className="members-loading">Loading...</div>
-                  ) : members.length === 0 ? (
-                    <div className="members-empty">No members yet.</div>
                   ) : (
-                    <div className="members-list">
-                      {members.map((member) => (
-                        <div key={member.id} className="member-chip">
-                          <div className="member-info">
-                            <span className="member-name">
-                              {member.member_display_name || member.member_user_id}
-                            </span>
-                            <span className="member-id">{member.member_user_id}</span>
-                          </div>
-                          <div className="member-actions">
-                            <select
-                              className="member-role-select"
-                              value={member.role}
-                              onChange={(e) =>
-                                handleMemberRoleChange(member.id, e.target.value as ProjectMember['role'])
-                              }
-                              disabled={memberActionId === member.id}
-                            >
-                              <option value="OWNER">OWNER</option>
-                              <option value="ADMIN">ADMIN</option>
-                              <option value="MEMBER">MEMBER</option>
-                            </select>
+                    <>
+                      <div className="members-invite">
+                        <div className="members-invite-row">
+                          <div
+                            className={`members-invite-select-wrap ${isInviteMenuOpen ? 'is-open' : ''}`}
+                            ref={inviteMenuRef}
+                          >
                             <button
                               type="button"
-                              className="member-remove-btn"
-                              onClick={() => handleRemoveMember(member.id)}
-                              disabled={memberActionId === member.id}
+                              className="members-invite-select"
+                              onClick={() => setInviteMenuOpen((prev) => !prev)}
+                              aria-haspopup="listbox"
+                              aria-expanded={isInviteMenuOpen}
+                              disabled={isInviting}
                             >
-                              Remove
+                              {inviteMode === 'email' ? 'Email' : 'User ID'}
                             </button>
+                            {isInviteMenuOpen && (
+                              <div className="members-invite-menu" role="listbox">
+                                <button
+                                  type="button"
+                                  className={`members-invite-option ${inviteMode === 'email' ? 'active' : ''}`}
+                                  onClick={() => {
+                                    setInviteMode('email');
+                                    setInviteMenuOpen(false);
+                                  }}
+                                  role="option"
+                                  aria-selected={inviteMode === 'email'}
+                                >
+                                  Email
+                                </button>
+                                <button
+                                  type="button"
+                                  className={`members-invite-option ${inviteMode === 'user_id' ? 'active' : ''}`}
+                                  onClick={() => {
+                                    setInviteMode('user_id');
+                                    setInviteMenuOpen(false);
+                                  }}
+                                  role="option"
+                                  aria-selected={inviteMode === 'user_id'}
+                                >
+                                  User ID
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                          <input
+                            type="text"
+                            className="text-input members-input"
+                            placeholder={inviteMode === 'email' ? 'member@example.com' : 'user-id'}
+                            value={inviteValue}
+                            onChange={(e) => setInviteValue(e.target.value)}
+                            disabled={isInviting}
+                          />
+                          <button
+                            type="button"
+                            className="members-invite-btn"
+                            onClick={handleInvite}
+                            disabled={!inviteValue.trim() || isInviting}
+                          >
+                            {inviteMode === 'email' ? 'Invite' : 'Add'}
+                          </button>
+                        </div>
+                        <p className="members-invite-note">
+                          Invite by email or add by user ID.
+                        </p>
+                      </div>
+
+                      {members.length === 0 && pendingInvitations.length === 0 ? (
+                        <div className="members-empty">No members yet.</div>
+                      ) : (
+                        members.length > 0 && (
+                          <div className="members-list">
+                            {members.map((member) => (
+                              <div key={member.id} className="member-chip">
+                                <div className="member-info">
+                                  <span className="member-name">
+                                    {member.member_display_name || member.member_user_id}
+                                  </span>
+                                  <span className="member-id">{member.member_user_id}</span>
+                                </div>
+                                <div className="member-actions">
+                                  <select
+                                    className="member-role-select"
+                                    value={member.role}
+                                    onChange={(e) =>
+                                      handleMemberRoleChange(member.id, e.target.value as ProjectMember['role'])
+                                    }
+                                    disabled={memberActionId === member.id}
+                                  >
+                                    <option value="OWNER">OWNER</option>
+                                    <option value="ADMIN">ADMIN</option>
+                                    <option value="MEMBER">MEMBER</option>
+                                  </select>
+                                  <button
+                                    type="button"
+                                    className="member-remove-btn"
+                                    onClick={() => handleRemoveMember(member.id)}
+                                    disabled={memberActionId === member.id}
+                                  >
+                                    Remove
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )
+                      )}
+
+                      {pendingInvitations.length > 0 && (
+                        <div className="members-invitations">
+                          <p className="invitations-title">Pending Invitations</p>
+                          <p className="invitations-note">
+                            Accept with the invite link.
+                          </p>
+                          <div className="invitations-list">
+                            {pendingInvitations.map((invitation) => (
+                              <div key={invitation.id} className="invitation-item">
+                                <div className="invitation-main">
+                                  <span className="invitation-email">{invitation.email}</span>
+                                  <span className={`invitation-status status-${invitation.status.toLowerCase()}`}>
+                                    {invitation.status}
+                                  </span>
+                                </div>
+                                {invitation.token && (
+                                  <div className="invitation-token-row">
+                                    <code className="invitation-token" title={invitation.token}>
+                                      {invitation.token}
+                                    </code>
+                                    <button
+                                      type="button"
+                                      className="invitation-btn primary"
+                                      onClick={() => handleCopyInviteLink(invitation.token as string)}
+                                    >
+                                      Copy link
+                                    </button>
+                                  </div>
+                                )}
+                                <div className="invitation-actions">
+                                  <button
+                                    type="button"
+                                    className="invitation-btn ghost"
+                                    onClick={() => handleRevokeInvitation(invitation)}
+                                    disabled={invitationActionId === invitation.id}
+                                  >
+                                    Revoke
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
-                      ))}
-                    </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>

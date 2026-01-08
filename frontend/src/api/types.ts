@@ -90,6 +90,13 @@ export interface TaskCreate {
   order_in_parent?: number;
   dependency_ids?: string[];
   source_capture_id?: string;
+  // Meeting/Fixed-time event fields
+  start_time?: string;
+  end_time?: string;
+  is_fixed_time?: boolean;
+  location?: string;
+  attendees?: string[];
+  meeting_notes?: string;
 }
 
 export interface TaskUpdate {
@@ -357,6 +364,11 @@ export interface TaskAssignmentsCreate {
   assignee_ids: string[];
 }
 
+export interface TaskAssignmentProposal {
+  task_id: string;
+  assignee_ids: string[];
+}
+
 export interface Checkin {
   id: string;
   user_id: string;
@@ -524,7 +536,7 @@ export interface CaptureCreate {
 }
 
 // Proposal models (AI提案承諾機能)
-export type ProposalType = 'create_task' | 'create_project' | 'create_skill';
+export type ProposalType = 'create_task' | 'create_project' | 'create_skill' | 'assign_task';
 export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'expired';
 
 export interface Proposal {
@@ -533,7 +545,7 @@ export interface Proposal {
   session_id: string;
   proposal_type: ProposalType;
   status: ProposalStatus;
-  payload: TaskCreate | ProjectCreate | MemoryCreate; // The data for creating task/project/skill
+  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal; // The data for proposals
   description: string; // AI-generated explanation
   created_at: string;
   expires_at: string;
@@ -543,5 +555,5 @@ export interface ProposalResponse {
   proposal_id: string;
   proposal_type: ProposalType;
   description: string;
-  payload: TaskCreate | ProjectCreate | MemoryCreate;
+  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal;
 }

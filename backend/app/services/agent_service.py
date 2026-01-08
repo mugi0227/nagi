@@ -23,8 +23,11 @@ from app.interfaces.capture_repository import ICaptureRepository
 from app.interfaces.chat_session_repository import IChatSessionRepository
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.memory_repository import IMemoryRepository
+from app.interfaces.project_invitation_repository import IProjectInvitationRepository
+from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
+from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.models.capture import CaptureCreate
 from app.models.chat import ChatRequest, ChatResponse
@@ -48,6 +51,9 @@ class AgentService:
         llm_provider: ILLMProvider,
         task_repo: ITaskRepository,
         project_repo: IProjectRepository,
+        project_member_repo: IProjectMemberRepository,
+        project_invitation_repo: IProjectInvitationRepository,
+        task_assignment_repo: ITaskAssignmentRepository,
         memory_repo: IMemoryRepository,
         agent_task_repo: IAgentTaskRepository,
         capture_repo: ICaptureRepository,
@@ -61,6 +67,9 @@ class AgentService:
             llm_provider: LLM provider
             task_repo: Task repository
             project_repo: Project repository
+            project_member_repo: Project member repository
+            project_invitation_repo: Project invitation repository
+            task_assignment_repo: Task assignment repository
             memory_repo: Memory repository
             agent_task_repo: Agent task repository
             capture_repo: Capture repository
@@ -70,6 +79,9 @@ class AgentService:
         self._llm_provider = llm_provider
         self._task_repo = task_repo
         self._project_repo = project_repo
+        self._project_member_repo = project_member_repo
+        self._project_invitation_repo = project_invitation_repo
+        self._task_assignment_repo = task_assignment_repo
         self._memory_repo = memory_repo
         self._agent_task_repo = agent_task_repo
         self._capture_repo = capture_repo
@@ -102,6 +114,9 @@ class AgentService:
             llm_provider=self._llm_provider,
             task_repo=self._task_repo,
             project_repo=self._project_repo,
+            project_member_repo=self._project_member_repo,
+            project_invitation_repo=self._project_invitation_repo,
+            task_assignment_repo=self._task_assignment_repo,
             memory_repo=self._memory_repo,
             agent_task_repo=self._agent_task_repo,
             user_id=user_id,
@@ -712,20 +727,19 @@ class AgentService:
                                 "tool_result": tool_result_str,
                             }
 
-                            # If this is a proposal tool, send a proposal chunk
-                            if tool_name in ["propose_task", "propose_project", "propose_skill"]:
-                                if isinstance(result, dict) and "proposal_id" in result:
-                                    proposal_id = result.get("proposal_id")
-                                    proposal_type = result.get("proposal_type")
-                                    if hasattr(proposal_type, "value"):
-                                        proposal_type = proposal_type.value
-                                    yield {
-                                        "chunk_type": "proposal",
-                                        "proposal_id": str(proposal_id) if proposal_id is not None else None,
-                                        "proposal_type": proposal_type,
-                                        "description": result.get("description", ""),
-                                        "payload": result.get("payload", {}),
-                                    }
+                            # Send proposal chunk whenever a tool returns a proposal payload
+                            if isinstance(result, dict) and "proposal_id" in result:
+                                proposal_id = result.get("proposal_id")
+                                proposal_type = result.get("proposal_type")
+                                if hasattr(proposal_type, "value"):
+                                    proposal_type = proposal_type.value
+                                yield {
+                                    "chunk_type": "proposal",
+                                    "proposal_id": str(proposal_id) if proposal_id is not None else None,
+                                    "proposal_type": proposal_type,
+                                    "description": result.get("description", ""),
+                                    "payload": result.get("payload", {}),
+                                }
 
                         text = getattr(part, "text", None)
                         if text:

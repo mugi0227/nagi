@@ -8,7 +8,7 @@ Includes support for custom endpoints (api_base) for proxy servers.
 import os
 from typing import Any, Optional
 
-from google.adk.models.litellm import LiteLLM
+from google.adk.models.lite_llm import LiteLlm
 
 from app.core.config import get_settings
 from app.interfaces.llm_provider import ILLMProvider
@@ -52,10 +52,10 @@ class LiteLLMProvider(ILLMProvider):
         if self._api_key:
             litellm_kwargs["api_key"] = self._api_key
 
-        # Use ADK's LiteLLM class
-        self._litellm = LiteLLM(**litellm_kwargs)
+        # Use ADK's LiteLlm class
+        self._litellm = LiteLlm(**litellm_kwargs)
 
-    def get_model(self) -> LiteLLM:
+    def get_model(self) -> LiteLlm:
         """
         Get LiteLLM instance for ADK.
 

@@ -1,14 +1,20 @@
 import { useState } from 'react';
 import { FaCheckCircle, FaTimesCircle, FaSpinner } from 'react-icons/fa';
 import { proposalsApi } from '../../api/proposals';
-import type { TaskCreate, ProjectCreate, MemoryCreate } from '../../api/types';
+import type { TaskCreate, ProjectCreate, MemoryCreate, TaskAssignmentProposal } from '../../api/types';
 import './ProposalCard.css';
+
+const formatTime = (date: Date) =>
+  date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+
+const formatDate = (date: Date) =>
+  date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' });
 
 interface ProposalCardProps {
   proposalId: string;
-  proposalType: 'create_task' | 'create_project' | 'create_skill';
+  proposalType: 'create_task' | 'create_project' | 'create_skill' | 'assign_task';
   description: string;
-  payload: TaskCreate | ProjectCreate | MemoryCreate;
+  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal;
   onApprove?: () => void;
   onReject?: () => void;
 }
@@ -57,10 +63,55 @@ export function ProposalCard({
   };
 
   const isTask = proposalType === 'create_task';
+  const isProject = proposalType === 'create_project';
   const isSkill = proposalType === 'create_skill';
+  const isAssignment = proposalType === 'assign_task';
   const taskPayload = isTask ? (payload as TaskCreate) : null;
-  const projectPayload = !isTask && !isSkill ? (payload as ProjectCreate) : null;
+  const projectPayload = isProject ? (payload as ProjectCreate) : null;
   const skillPayload = isSkill ? (payload as MemoryCreate) : null;
+  const assignmentPayload = isAssignment ? (payload as TaskAssignmentProposal) : null;
+  const badgeLabel = isTask
+    ? 'Task proposal'
+    : isSkill
+      ? 'Skill proposal'
+      : isAssignment
+        ? 'Task assignment proposal'
+        : 'Project proposal';
+  const meetingPreview = (() => {
+    if (!isTask || !taskPayload?.is_fixed_time || !taskPayload.start_time || !taskPayload.end_time) {
+      return null;
+    }
+    const start = new Date(taskPayload.start_time);
+    const end = new Date(taskPayload.end_time);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+      return null;
+    }
+    const startMinutes = start.getHours() * 60 + start.getMinutes();
+    const endMinutes = end.getHours() * 60 + end.getMinutes();
+    const hourHeight = 28;
+    const previewStartHour = Math.max(6, Math.min(9, Math.floor(startMinutes / 60) - 1));
+    const previewEndHour = Math.min(22, Math.max(18, Math.ceil(endMinutes / 60) + 1));
+    const hourCount = previewEndHour - previewStartHour;
+    const hours = Array.from(
+      { length: hourCount },
+      (_, index) => previewStartHour + index
+    );
+    const startBound = previewStartHour * 60;
+    const endBound = previewEndHour * 60;
+    const clampedStart = Math.max(startBound, startMinutes);
+    const clampedEnd = Math.min(endBound, Math.max(endMinutes, startMinutes + 15));
+    const top = ((clampedStart - startBound) / 60) * hourHeight;
+    const height = Math.max(14, ((clampedEnd - clampedStart) / 60) * hourHeight);
+    const totalHeight = hourCount * hourHeight;
+    return {
+      start,
+      end,
+      hours,
+      top,
+      height,
+      totalHeight,
+    };
+  })();
 
   if (status === 'done') {
     return null; // Hide after action
@@ -69,9 +120,7 @@ export function ProposalCard({
   return (
     <div className="proposal-card">
       <div className="proposal-header">
-        <span className="proposal-type-badge">
-          {isTask ? '📋 タスク作成の提案' : isSkill ? '🧩 スキル登録の提案' : '📁 プロジェクト作成の提案'}
-        </span>
+        <span className="proposal-type-badge">{badgeLabel}</span>
       </div>
 
       <div className="proposal-body">
@@ -102,10 +151,45 @@ export function ProposalCard({
                   <span className="detail-value">{taskPayload.estimated_minutes}分</span>
                 </div>
               )}
+
+              {meetingPreview && (
+                <div className="proposal-meeting-preview">
+                  <div className="proposal-meeting-label">Scheduler preview</div>
+                  <div className="proposal-meeting-date">{formatDate(meetingPreview.start)}</div>
+                  <div className="proposal-meeting-grid">
+                    <div className="proposal-meeting-times">
+                      {meetingPreview.hours.map(hour => (
+                        <div key={hour} className="proposal-meeting-time-slot">
+                          {String(hour).padStart(2, '0')}:00
+                        </div>
+                      ))}
+                    </div>
+                    <div className="proposal-meeting-track" style={{ height: `${meetingPreview.totalHeight}px` }}>
+                      <div className="proposal-meeting-lines">
+                        {meetingPreview.hours.map(hour => (
+                          <span key={hour} className="proposal-meeting-line" />
+                        ))}
+                      </div>
+                      <div
+                        className="proposal-meeting-block"
+                        style={{ top: `${meetingPreview.top}px`, height: `${meetingPreview.height}px` }}
+                      >
+                        <div className="proposal-meeting-title">{taskPayload.title}</div>
+                        <div className="proposal-meeting-time">
+                          {formatTime(meetingPreview.start)} - {formatTime(meetingPreview.end)}
+                        </div>
+                        {taskPayload.location && (
+                          <div className="proposal-meeting-location">{taskPayload.location}</div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
 
-          {!isTask && projectPayload && (
+          {isProject && projectPayload && (
             <>
               <div className="proposal-detail-row">
                 <span className="detail-label">プロジェクト名:</span>
@@ -154,6 +238,21 @@ export function ProposalCard({
                   </span>
                 </div>
               )}
+            </>
+          )}
+
+          {isAssignment && assignmentPayload && (
+            <>
+              <div className="proposal-detail-row">
+                <span className="detail-label">Task ID:</span>
+                <span className="detail-value">{assignmentPayload.task_id}</span>
+              </div>
+              <div className="proposal-detail-row">
+                <span className="detail-label">Assignees:</span>
+                <span className="detail-value">
+                  {assignmentPayload.assignee_ids.join(', ')}
+                </span>
+              </div>
             </>
           )}
         </div>

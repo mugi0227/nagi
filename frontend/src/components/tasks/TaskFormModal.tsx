@@ -14,6 +14,19 @@ interface TaskFormModalProps {
   isSubmitting?: boolean;
 }
 
+// Convert ISO date string to datetime-local format (YYYY-MM-DDTHH:MM) in local timezone
+function toDatetimeLocal(isoString: string | null | undefined): string {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  // Get local time components
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  const hours = String(date.getHours()).padStart(2, '0');
+  const minutes = String(date.getMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+}
+
 export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSubmit, isSubmitting }: TaskFormModalProps) {
   const { projects } = useProjects();
   const isEditMode = !!task;
@@ -24,14 +37,14 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
     importance: task?.importance || initialData?.importance || 'MEDIUM' as Priority,
     urgency: task?.urgency || initialData?.urgency || 'MEDIUM' as Priority,
     estimated_minutes: task?.estimated_minutes?.toString() || initialData?.estimated_minutes?.toString() || '',
-    due_date: task?.due_date ? new Date(task.due_date).toISOString().slice(0, 16) : (initialData?.due_date ? new Date(initialData.due_date).toISOString().slice(0, 16) : ''),
+    due_date: toDatetimeLocal(task?.due_date) || toDatetimeLocal(initialData?.due_date),
     project_id: task?.project_id || initialData?.project_id || '',
     dependency_ids: task?.dependency_ids || initialData?.dependency_ids || [] as string[],
     energy_level: task?.energy_level || initialData?.energy_level || 'LOW' as EnergyLevel,
     // Meeting fields
     is_fixed_time: task?.is_fixed_time || false,
-    start_time: task?.start_time ? new Date(task.start_time).toISOString().slice(0, 16) : '',
-    end_time: task?.end_time ? new Date(task.end_time).toISOString().slice(0, 16) : '',
+    start_time: toDatetimeLocal(task?.start_time),
+    end_time: toDatetimeLocal(task?.end_time),
     location: task?.location || '',
     attendees: task?.attendees?.join(', ') || '',
     meeting_notes: task?.meeting_notes || '',

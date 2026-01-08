@@ -3,6 +3,7 @@ import { FaCheckCircle, FaCircle } from 'react-icons/fa';
 import type { Task, TaskStatus } from '../../api/types';
 import { MeetingBadge } from './MeetingBadge';
 import { StepNumber } from '../common/StepNumber';
+import { AssigneeSelect } from '../common/AssigneeSelect';
 import './KanbanCard.css';
 import { useMemo } from 'react';
 
@@ -12,8 +13,8 @@ interface KanbanCardProps {
   allTasks?: Task[];
   assigneeName?: string;
   memberOptions?: { id: string; label: string }[];
-  assignedMemberId?: string | null;
-  onAssign?: (taskId: string, memberUserId: string | null) => void;
+  assignedMemberIds?: string[];
+  onAssignMultiple?: (taskId: string, memberUserIds: string[]) => void;
   onEdit?: (task: Task) => void;
   onDelete?: (id: string) => void;
   onClick?: (task: Task) => void;
@@ -28,8 +29,8 @@ export function KanbanCard({
   allTasks = [],
   assigneeName,
   memberOptions,
-  assignedMemberId,
-  onAssign,
+  assignedMemberIds = [],
+  onAssignMultiple,
   onEdit,
   onDelete,
   onClick,
@@ -63,12 +64,6 @@ export function KanbanCard({
   const handleActionClick = (e: React.MouseEvent, action: () => void) => {
     e.stopPropagation();
     action();
-  };
-
-  const handleAssigneeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    if (!onAssign) return;
-    const value = e.target.value;
-    onAssign(task.id, value ? value : null);
   };
 
   const completedSubtasks = subtasks.filter(st => st.status === 'DONE').length;
@@ -194,25 +189,15 @@ export function KanbanCard({
         </span>
       </div>
 
-      {memberOptions && memberOptions.length > 0 && onAssign && (
+      {memberOptions && memberOptions.length > 0 && onAssignMultiple && (
         <div className="card-assignee-row">
-          <label className="assignee-label" htmlFor={`assignee-${task.id}`}>
-            担当
-          </label>
-          <select
-            id={`assignee-${task.id}`}
-            className="assignee-select"
-            value={assignedMemberId ?? ''}
-            onChange={handleAssigneeChange}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <option value="">未割り当て</option>
-            {memberOptions.map((member) => (
-              <option key={member.id} value={member.id}>
-                {member.label}
-              </option>
-            ))}
-          </select>
+          <AssigneeSelect
+            taskId={task.id}
+            selectedIds={assignedMemberIds}
+            options={memberOptions}
+            onChange={onAssignMultiple}
+            compact
+          />
         </div>
       )}
 

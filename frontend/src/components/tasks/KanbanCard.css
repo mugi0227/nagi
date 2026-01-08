@@ -18,6 +18,12 @@
   box-shadow: 0 12px 32px -8px rgba(148, 163, 184, 0.3);
 }
 
+/* When assignee dropdown is open, bring card to front */
+.kanban-card:has(.assignee-select-container.open) {
+  z-index: 1000;
+  transform: none;
+}
+
 .kanban-card:active {
   cursor: grabbing;
 }
@@ -221,34 +227,8 @@
 }
 
 .card-assignee-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
   margin-top: 0.5rem;
   margin-bottom: 0.25rem;
-}
-
-.assignee-label {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-muted);
-}
-
-.assignee-select {
-  flex: 1;
-  min-width: 0;
-  padding: 0.35rem 0.6rem;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-color);
-  background: var(--bg-main);
-  color: var(--text-main);
-  font-size: 0.8rem;
-}
-
-.assignee-select:focus {
-  outline: none;
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
 }
 
 .subtasks-progress {

@@ -11,9 +11,9 @@ interface KanbanBoardProps {
   onDeleteTask?: (id: string) => void;
   onTaskClick?: (task: Task) => void;
   assigneeByTaskId?: Record<string, string>;
-  assignedMemberIdByTaskId?: Record<string, string>;
+  assignedMemberIdsByTaskId?: Record<string, string[]>;
   memberOptions?: { id: string; label: string }[];
-  onAssign?: (taskId: string, memberUserId: string | null) => void;
+  onAssignMultiple?: (taskId: string, memberUserIds: string[]) => void;
   onBreakdownTask?: (id: string) => void;
   breakdownTaskId?: string | null;
 }
@@ -32,9 +32,9 @@ export function KanbanBoard({
   onDeleteTask,
   onTaskClick,
   assigneeByTaskId,
-  assignedMemberIdByTaskId,
+  assignedMemberIdsByTaskId,
   memberOptions,
-  onAssign,
+  onAssignMultiple,
   onBreakdownTask,
   breakdownTaskId,
 }: KanbanBoardProps) {
@@ -91,9 +91,9 @@ export function KanbanBoard({
           allTasks={tasks}
           subtasksMap={subtasksMap}
           assigneeByTaskId={assigneeByTaskId}
-          assignedMemberIdByTaskId={assignedMemberIdByTaskId}
+          assignedMemberIdsByTaskId={assignedMemberIdsByTaskId}
           memberOptions={memberOptions}
-          onAssign={onAssign}
+          onAssignMultiple={onAssignMultiple}
           onEditTask={onEditTask}
           onDeleteTask={onDeleteTask}
           onTaskClick={onTaskClick}

@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { FaPlus } from 'react-icons/fa';
+import { FaPlus, FaFilter } from 'react-icons/fa';
 import { AnimatePresence } from 'framer-motion';
 import { KanbanBoard } from '../components/tasks/KanbanBoard';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
@@ -16,18 +16,34 @@ const TEXT = {
   next: '\u6b21\u3078',
   showing: '\u8868\u793a',
   countUnit: '\u4ef6',
+  filterMyTasks: '\u500b\u4eba\u30bf\u30b9\u30af\u306e\u307f',
+  filterAll: '\u5168\u30bf\u30b9\u30af',
 };
 
 export function TasksPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
+  const [showPersonalOnly, setShowPersonalOnly] = useState(true);
   const offset = (page - 1) * PAGE_SIZE;
-  const { data: tasks = [], isLoading, error, isFetching } = useQuery({
-    queryKey: ['tasks', 'page', page, PAGE_SIZE],
-    queryFn: () => tasksApi.getAll({ limit: PAGE_SIZE, offset, includeDone: true }),
+  const { data: allTasks = [], isLoading, error, isFetching } = useQuery({
+    queryKey: ['tasks', 'page', page, PAGE_SIZE, 'exclude-meetings'],
+    queryFn: () => tasksApi.getAll({
+      limit: PAGE_SIZE,
+      offset,
+      includeDone: true,
+      excludeMeetings: true,
+    }),
     placeholderData: (previousData) => previousData,
   });
-  const hasNext = tasks.length === PAGE_SIZE;
+
+  // Filter tasks based on showPersonalOnly toggle
+  const tasks = useMemo(() => {
+    if (!showPersonalOnly) return allTasks;
+    // Show only tasks that are not associated with a project
+    return allTasks.filter(task => !task.project_id);
+  }, [allTasks, showPersonalOnly]);
+
+  const hasNext = allTasks.length === PAGE_SIZE;
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [taskToEdit, setTaskToEdit] = useState<Task | undefined>(undefined);
@@ -173,6 +189,15 @@ export function TasksPage() {
       <div className="page-header">
         <h2 className="page-title">Tasks</h2>
         <div className="header-actions">
+          <button
+            type="button"
+            className={`filter-toggle-btn ${showPersonalOnly ? 'active' : ''}`}
+            onClick={() => setShowPersonalOnly(!showPersonalOnly)}
+            title={showPersonalOnly ? TEXT.filterAll : TEXT.filterMyTasks}
+          >
+            <FaFilter />
+            {showPersonalOnly ? TEXT.filterMyTasks : TEXT.filterAll}
+          </button>
           <span className="task-total">{TEXT.showing} {tasks.length}{TEXT.countUnit}</span>
           <div className="pagination-controls">
             <button

@@ -18,7 +18,9 @@ from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.memory_repository import IMemoryRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
+from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
+from app.models.collaboration import TaskAssignmentCreate, TaskAssignmentsCreate
 from app.models.enums import CreatedBy, EnergyLevel, Priority
 from app.models.proposal import Proposal, ProposalResponse, ProposalType
 from app.models.task import Task, TaskCreate, TaskUpdate
@@ -145,9 +147,69 @@ class ListTasksInput(BaseModel):
     )
 
 
+
+
+class AssignTaskInput(BaseModel):
+    """Input for assign_task tool."""
+
+    task_id: str = Field(..., description="Task ID")
+    assignee_id: Optional[str] = Field(None, description="Assignee ID (single)")
+    assignee_ids: list[str] = Field(
+        default_factory=list,
+        description="Assignee ID list (multiple)",
+    )
+
+
+
+
+class ListTaskAssignmentsInput(BaseModel):
+    # Input for list_task_assignments tool.
+
+    task_id: str = Field(..., description="Task ID")
+
+
+class ListProjectAssignmentsInput(BaseModel):
+    # Input for list_project_assignments tool.
+
+    project_id: str = Field(..., description="Project ID")
+
+
 # ===========================================
 # Tool Functions
 # ===========================================
+
+
+
+async def list_task_assignments(
+    user_id: str,
+    assignment_repo: ITaskAssignmentRepository,
+    input_data: ListTaskAssignmentsInput,
+) -> dict:
+    # List assignments for a task.
+    task_id = UUID(input_data.task_id)
+    assignments = await assignment_repo.list_by_task(user_id, task_id)
+    return {
+        "assignments": [assignment.model_dump(mode="json") for assignment in assignments],
+        "count": len(assignments),
+    }
+
+
+async def list_project_assignments(
+    user_id: str,
+    assignment_repo: ITaskAssignmentRepository,
+    input_data: ListProjectAssignmentsInput,
+) -> dict:
+    # List assignments for a project.
+    try:
+        project_id = UUID(input_data.project_id)
+    except ValueError:
+        return {"error": f"Invalid project ID format: {input_data.project_id}"}
+
+    assignments = await assignment_repo.list_by_project(user_id, project_id)
+    return {
+        "assignments": [assignment.model_dump(mode="json") for assignment in assignments],
+        "count": len(assignments),
+    }
 
 
 def _normalize_meeting_title(title: str) -> str:
@@ -467,6 +529,126 @@ async def list_tasks(
     }
 
 
+
+
+def _normalize_assignee_ids(input_data: AssignTaskInput) -> list[str]:
+    values: list[str] = []
+    if input_data.assignee_ids:
+        values.extend([value for value in input_data.assignee_ids if value])
+    if input_data.assignee_id:
+        values.append(input_data.assignee_id)
+    seen = set()
+    normalized: list[str] = []
+    for value in values:
+        if value in seen:
+            continue
+        seen.add(value)
+        normalized.append(value)
+    return normalized
+
+
+def _extract_assignment_ids(result: dict) -> list[str]:
+    if not isinstance(result, dict):
+        return []
+    if isinstance(result.get("id"), str):
+        return [result["id"]]
+    assignments = result.get("assignments")
+    if isinstance(assignments, list):
+        return [item.get("id") for item in assignments if isinstance(item, dict) and item.get("id")]
+    return []
+
+
+async def assign_task(
+    user_id: str,
+    assignment_repo: ITaskAssignmentRepository,
+    input_data: AssignTaskInput,
+) -> dict:
+    # Assign a task to one or more members.
+    task_id = UUID(input_data.task_id)
+    assignee_ids = _normalize_assignee_ids(input_data)
+    if not assignee_ids:
+        raise ValueError("assignee_id or assignee_ids is required")
+
+    if len(assignee_ids) == 1:
+        assignment = await assignment_repo.assign(
+            user_id,
+            task_id,
+            TaskAssignmentCreate(assignee_id=assignee_ids[0]),
+        )
+        return assignment.model_dump(mode="json")
+
+    assignments = await assignment_repo.assign_multiple(
+        user_id,
+        task_id,
+        TaskAssignmentsCreate(assignee_ids=assignee_ids),
+    )
+    return {
+        "assignments": [assignment.model_dump(mode="json") for assignment in assignments],
+        "count": len(assignments),
+    }
+
+
+async def propose_task_assignment(
+    user_id: str,
+    session_id: str,
+    proposal_repo: IProposalRepository,
+    assignment_repo: ITaskAssignmentRepository,
+    input_data: AssignTaskInput,
+    description: str = "",
+    auto_approve: bool = False,
+) -> dict:
+    # Propose a task assignment for user approval, or auto-approve if configured.
+    if not description:
+        description = "Assign task owners."
+
+    assignee_ids = _normalize_assignee_ids(input_data)
+    if not assignee_ids:
+        raise ValueError("assignee_id or assignee_ids is required")
+
+    payload = input_data.model_dump(mode="json")
+    payload["assignee_ids"] = assignee_ids
+    payload.pop("assignee_id", None)
+
+    if auto_approve:
+        result = await assign_task(
+            user_id=user_id,
+            assignment_repo=assignment_repo,
+            input_data=input_data,
+        )
+        return {
+            "auto_approved": True,
+            "assignment_ids": _extract_assignment_ids(result),
+            "description": description,
+        }
+
+    user_id_raw = None
+    try:
+        parsed_user_id = UUID(user_id)
+    except (ValueError, AttributeError):
+        import hashlib
+
+        user_id_raw = user_id
+        parsed_user_id = UUID(bytes=hashlib.md5(user_id.encode()).digest())
+
+    proposal = Proposal(
+        user_id=parsed_user_id,
+        user_id_raw=user_id_raw,
+        session_id=session_id,
+        proposal_type=ProposalType.ASSIGN_TASK,
+        payload=payload,
+        description=description,
+    )
+
+    created_proposal = await proposal_repo.create(proposal)
+
+    return ProposalResponse(
+        proposal_id=str(created_proposal.id),
+        proposal_type=ProposalType.ASSIGN_TASK,
+        description=description,
+        payload=payload,
+    ).model_dump(mode="json")
+
+
 async def create_meeting(
     user_id: str,
     repo: ITaskRepository,
@@ -590,37 +772,28 @@ def propose_task_tool(
 ) -> FunctionTool:
     """Create ADK tool for proposing/creating tasks (with auto-approve option)."""
     async def _tool(input_data: dict) -> dict:
-        """propose_task: 新しいタスクを作成します。
-
-        設定に応じて、即座に作成するか、ユーザー承諾を待ちます。
-
-        **⚠️ 依存関係の設定（重要）**:
-        タスク作成時には、以下の手順で依存関係を判断してください：
-        1. list_tasks で同じプロジェクト内の未完了タスク（TODO/IN_PROGRESS）を取得
-        2. 新しいタスクが既存タスクの完了を前提とする場合、dependency_ids に設定
-        3. 例: 「確定申告書を提出する」を提案する場合 → 「領収書を整理する」が未完了なら依存関係を設定
-        4. 並行実行可能なタスク（関係ないタスク）には依存関係を設定しない
+        """propose_task: Propose or create a task based on approval settings.
 
         Parameters:
-            title (str): タスクのタイトル（必須）※task_titleでも可
-            description (str, optional): タスクの詳細説明
-            project_id (str, optional): プロジェクトID
-            importance (str, optional): 重要度 (HIGH/MEDIUM/LOW)、デフォルト: MEDIUM
-            urgency (str, optional): 緊急度 (HIGH/MEDIUM/LOW)、デフォルト: MEDIUM
-            energy_level (str, optional): 必要エネルギー (HIGH/LOW)、デフォルト: LOW
-            estimated_minutes (int, optional): 見積もり時間（分）
-            due_date (str, optional): 期限（ISO形式）
-            dependency_ids (list[str], optional): このタスクが依存する他のタスクのIDリスト（UUID文字列）
-            is_fixed_time (bool, optional): 会議・固定時間イベントの場合true
-            start_time (str, optional): 開始時刻（ISO形式、is_fixed_time=trueの場合必須）
-            end_time (str, optional): 終了時刻（ISO形式、is_fixed_time=trueの場合必須）
-            location (str, optional): 場所（会議用）
-            attendees (list[str], optional): 参加者リスト（会議用）
-            meeting_notes (str, optional): 議事録・メモ（会議用）
-            proposal_description (str, optional): 提案の説明文（なぜこのタスクを作成するか）
+            title (str): Task title
+            description (str, optional): Task description
+            project_id (str, optional): Project ID
+            importance (str, optional): Priority
+            urgency (str, optional): Urgency
+            energy_level (str, optional): Energy level
+            estimated_minutes (int, optional): Estimated minutes
+            due_date (str, optional): Due date (ISO)
+            dependency_ids (list[str], optional): Dependency task IDs
+            is_fixed_time (bool, optional): Fixed-time meeting flag
+            start_time (str, optional): Start time (ISO)
+            end_time (str, optional): End time (ISO)
+            location (str, optional): Location
+            attendees (list[str], optional): Attendees
+            meeting_notes (str, optional): Meeting notes
+            proposal_description (str, optional): Proposal description
 
         Returns:
-            dict: タスクID、説明文、または提案ID（auto_approveの設定による）
+            dict: Task info or proposal id
         """
         # Extract proposal_description if provided
         proposal_desc = input_data.pop("proposal_description", "")
@@ -630,6 +803,33 @@ def propose_task_tool(
         )
 
     _tool.__name__ = "propose_task"
+    return FunctionTool(func=_tool)
+
+
+
+
+def propose_task_assignment_tool(
+    proposal_repo: IProposalRepository,
+    assignment_repo: ITaskAssignmentRepository,
+    user_id: str,
+    session_id: str,
+    auto_approve: bool = False,
+) -> FunctionTool:
+    """Create ADK tool for proposing/assigning task owners (with auto-approve)."""
+    async def _tool(input_data: dict) -> dict:
+        """propose_task_assignment: assign task owners with optional approval."""
+        proposal_desc = input_data.pop("proposal_description", "")
+        return await propose_task_assignment(
+            user_id,
+            session_id,
+            proposal_repo,
+            assignment_repo,
+            AssignTaskInput(**input_data),
+            proposal_desc,
+            auto_approve,
+        )
+
+    _tool.__name__ = "propose_task_assignment"
     return FunctionTool(func=_tool)
 
 
@@ -755,6 +955,42 @@ def list_tasks_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
     return FunctionTool(func=_tool)
 
 
+
+
+def list_task_assignments_tool(
+    assignment_repo: ITaskAssignmentRepository,
+    user_id: str,
+) -> FunctionTool:
+    # Create ADK tool for listing task assignments.
+    async def _tool(input_data: dict) -> dict:
+        # list_task_assignments: List assignments for a task by task ID.
+        return await list_task_assignments(
+            user_id,
+            assignment_repo,
+            ListTaskAssignmentsInput(**input_data),
+        )
+
+    _tool.__name__ = "list_task_assignments"
+    return FunctionTool(func=_tool)
+
+
+def list_project_assignments_tool(
+    assignment_repo: ITaskAssignmentRepository,
+    user_id: str,
+) -> FunctionTool:
+    # Create ADK tool for listing project assignments.
+    async def _tool(input_data: dict) -> dict:
+        # list_project_assignments: List assignments for a project by project ID.
+        return await list_project_assignments(
+            user_id,
+            assignment_repo,
+            ListProjectAssignmentsInput(**input_data),
+        )
+
+    _tool.__name__ = "list_project_assignments"
+    return FunctionTool(func=_tool)
+
+
 async def breakdown_task(
     user_id: str,
     task_repo: ITaskRepository,
@@ -795,31 +1031,78 @@ async def breakdown_task(
     return result.model_dump(mode="json")
 
 
-def create_meeting_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
+def create_meeting_tool(
+    repo: ITaskRepository,
+    proposal_repo: IProposalRepository,
+    user_id: str,
+    session_id: str,
+    auto_approve: bool = False,
+) -> FunctionTool:
     """Create ADK tool for creating meetings."""
     async def _tool(input_data: dict) -> dict:
-        """create_meeting: 固定時間の会議・予定を登録します。
+        """create_meeting: Register a fixed-time meeting event.
 
-        Outlookスクリーンショット等から会議情報を抽出した際に使用してください。
-
-        **複数日にまたがる会議の処理**:
-        2日間の研修や複数日カンファレンスの場合、日ごとに別々のタスクとして登録してください。
-        例: 「1月15-16日 年次研修」→ 2つの会議タスク（1/15分と1/16分）
+        Use when extracting meetings from screenshots or text.
 
         Parameters:
-            title (str): 会議タイトル（必須）
-            start_time (str): 開始時刻（ISO形式: "2024-01-15T14:00:00"）
-            end_time (str): 終了時刻（ISO形式: "2024-01-15T15:30:00"）
-            location (str, optional): 場所（例: "Zoom", "会議室A"）
-            attendees (list[str], optional): 参加者リスト
-            description (str, optional): 会議の目的・議題
-            meeting_notes (str, optional): 議事録・メモ
-            project_id (str, optional): プロジェクトID
+            title (str): Meeting title
+            start_time (str): Start time (ISO)
+            end_time (str): End time (ISO)
+            location (str, optional): Location
+            attendees (list[str], optional): Attendees
+            description (str, optional): Agenda / description
+            meeting_notes (str, optional): Notes
+            project_id (str, optional): Project ID
 
         Returns:
-            dict: 作成された会議タスク情報
+            dict: Meeting task info or proposal id
         """
-        return await create_meeting(user_id, repo, CreateMeetingInput(**input_data))
+        meeting_input = CreateMeetingInput(**input_data)
+        start_dt = datetime.fromisoformat(meeting_input.start_time.replace("Z", "+00:00"))
+        end_dt = datetime.fromisoformat(meeting_input.end_time.replace("Z", "+00:00"))
+
+        if end_dt <= start_dt:
+            raise ValueError("End time must be after start time.")
+
+        duration_minutes = int((end_dt - start_dt).total_seconds() / 60)
+        project_id = UUID(meeting_input.project_id) if meeting_input.project_id else None
+
+        existing = await _find_existing_meeting(
+            repo,
+            user_id,
+            start_dt,
+            end_dt,
+            meeting_input.title,
+            project_id,
+        )
+        if existing:
+            return existing.model_dump(mode="json")
+
+        task_input = CreateTaskInput(
+            title=meeting_input.title,
+            description=meeting_input.description,
+            project_id=meeting_input.project_id,
+            importance=Priority.HIGH,
+            urgency=Priority.HIGH,
+            energy_level=EnergyLevel.LOW,
+            estimated_minutes=duration_minutes,
+            is_fixed_time=True,
+            start_time=meeting_input.start_time,
+            end_time=meeting_input.end_time,
+            location=meeting_input.location,
+            attendees=meeting_input.attendees,
+            meeting_notes=meeting_input.meeting_notes,
+        )
+        proposal_desc = f'Meeting "{meeting_input.title}" will be added to your schedule.'
+        return await propose_task(
+            user_id,
+            session_id,
+            proposal_repo,
+            repo,
+            task_input,
+            proposal_desc,
+            False,
+        )
 
     _tool.__name__ = "create_meeting"
     return FunctionTool(func=_tool)

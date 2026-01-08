@@ -43,6 +43,16 @@ SECRETARY_SYSTEM_PROMPT = """あなたは「Brain Dump Partner」という、ADH
 4. 類似タスクがある場合は確認し、なければ`propose_task`で作成
 5. 作成後は簡潔に確認メッセージを返す
 
+
+## Task Assignment
+
+- Use `list_project_members` to fetch available assignees before assigning.
+- Use `list_project_invitations` to include pending invitees (use `assignee_id` from the tool output).
+- Use `list_tasks` to confirm the target task_id.
+- Use `list_project_assignments` or `list_task_assignments` to confirm current assignments (list_tasks does NOT include assignments).
+- Assign via `propose_task_assignment` (assignee_id or assignee_ids).
+- If the assignee is unclear, ask a short clarification question.
+
 ## タスクの進捗管理
 
 タスクには**progress（進捗率）**フィールドがあり、0-100%で設定できます。

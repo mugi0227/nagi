@@ -12,11 +12,16 @@ from google.adk.tools import FunctionTool
 from pydantic import BaseModel, Field
 
 from app.interfaces.llm_provider import ILLMProvider
+from app.interfaces.project_invitation_repository import IProjectInvitationRepository
+from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
+from app.models.collaboration import ProjectMemberCreate
+from app.models.enums import ProjectRole
 from app.models.project import ProjectCreate, ProjectUpdate
 from app.models.project_kpi import ProjectKpiConfig, ProjectKpiMetric
 from app.models.proposal import Proposal, ProposalResponse, ProposalType
+from app.services.assignee_utils import make_invitation_assignee_id
 from app.services.kpi_templates import get_kpi_templates
 
 
@@ -232,6 +237,7 @@ async def propose_project(
     session_id: str,
     proposal_repo: IProposalRepository,
     project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository | None,
     llm_provider: ILLMProvider,
     input_data: CreateProjectInput,
     description: str = "",
@@ -245,6 +251,7 @@ async def propose_project(
         session_id: Chat session ID
         proposal_repo: Proposal repository
         project_repo: Project repository (for auto-approval)
+        member_repo: Project member repository (for owner membership)
         llm_provider: LLM provider (for auto-approval)
         input_data: Project creation data
         description: AI-generated description of why this project is being proposed
@@ -265,6 +272,7 @@ async def propose_project(
         created_project = await create_project(
             user_id=user_id,
             repo=project_repo,
+            member_repo=member_repo,
             llm_provider=llm_provider,
             input_data=input_data,
         )
@@ -307,6 +315,7 @@ async def propose_project(
 async def create_project(
     user_id: str,
     repo: IProjectRepository,
+    member_repo: IProjectMemberRepository | None,
     llm_provider: ILLMProvider,
     input_data: CreateProjectInput,
 ) -> dict:
@@ -377,12 +386,19 @@ async def create_project(
     )
 
     project = await repo.create(user_id, project_data)
+    if member_repo:
+        await member_repo.create(
+            user_id,
+            project.id,
+            ProjectMemberCreate(member_user_id=user_id, role=ProjectRole.OWNER),
+        )
     return project.model_dump(mode="json")
 
 
 def propose_project_tool(
     proposal_repo: IProposalRepository,
     project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     llm_provider: ILLMProvider,
     user_id: str,
     session_id: str,
@@ -412,7 +428,7 @@ def propose_project_tool(
         # Extract proposal_description if provided
         proposal_desc = input_data.pop("proposal_description", "")
         return await propose_project(
-            user_id, session_id, proposal_repo, project_repo, llm_provider,
+            user_id, session_id, proposal_repo, project_repo, member_repo, llm_provider,
             CreateProjectInput(**input_data), proposal_desc, auto_approve
         )
 
@@ -422,6 +438,7 @@ def propose_project_tool(
 
 def create_project_tool(
     repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     llm_provider: ILLMProvider,
     user_id: str,
 ) -> FunctionTool:
@@ -446,6 +463,7 @@ def create_project_tool(
         return await create_project(
             user_id,
             repo,
+            member_repo,
             llm_provider,
             CreateProjectInput(**input_data),
         )
@@ -462,7 +480,10 @@ async def update_project(
     """Update a project."""
     from uuid import UUID
 
-    project_id = UUID(input_data.project_id)
+    try:
+        project_id = UUID(input_data.project_id)
+    except ValueError:
+        return {"error": f"Invalid project ID format: {input_data.project_id}"}
     update_fields: dict = {}
 
     if input_data.name is not None:
@@ -598,6 +619,103 @@ def list_projects_tool(repo: IProjectRepository, user_id: str) -> FunctionTool:
         return await list_projects(user_id, repo)
 
     _tool.__name__ = "list_projects"
+    return FunctionTool(func=_tool)
+
+
+
+class ListProjectMembersInput(BaseModel):
+    # Input for list_project_members tool.
+
+    project_id: str = Field(..., description="Project ID")
+
+
+async def list_project_members(
+    user_id: str,
+    member_repo: IProjectMemberRepository,
+    input_data: ListProjectMembersInput,
+) -> dict:
+    # List members for a project.
+    from uuid import UUID
+
+    try:
+        project_id = UUID(input_data.project_id)
+    except ValueError:
+        return {"error": f"Invalid project ID format: {input_data.project_id}"}
+    members = await member_repo.list(user_id, project_id)
+    return {
+        "members": [member.model_dump(mode="json") for member in members],
+        "count": len(members),
+    }
+
+
+def list_project_members_tool(
+    member_repo: IProjectMemberRepository,
+    user_id: str,
+) -> FunctionTool:
+    """Create ADK tool for listing project members."""
+    async def _tool(input_data: dict) -> dict:
+        """list_project_members: List project members by project ID."""
+        return await list_project_members(
+            user_id,
+            member_repo,
+            ListProjectMembersInput(**input_data),
+        )
+
+    _tool.__name__ = "list_project_members"
+    return FunctionTool(func=_tool)
+
+
+
+class ListProjectInvitationsInput(BaseModel):
+    # Input for list_project_invitations tool.
+
+    project_id: str = Field(..., description="Project ID")
+
+
+async def list_project_invitations(
+    user_id: str,
+    invitation_repo: IProjectInvitationRepository,
+    input_data: ListProjectInvitationsInput,
+) -> dict:
+    # List invitations for a project.
+    from uuid import UUID
+
+    try:
+        project_id = UUID(input_data.project_id)
+    except ValueError:
+        return {"error": f"Invalid project ID format: {input_data.project_id}"}
+
+    invitations = await invitation_repo.list_by_project(user_id, project_id)
+    result = []
+    for invitation in invitations:
+        data = invitation.model_dump(mode="json")
+        if data.get("status") != "PENDING":
+            continue
+        invitation_id = data.get("id")
+        if invitation_id:
+            data["assignee_id"] = make_invitation_assignee_id(invitation_id)
+        result.append(data)
+
+    return {
+        "invitations": result,
+        "count": len(result),
+    }
+
+
+def list_project_invitations_tool(
+    invitation_repo: IProjectInvitationRepository,
+    user_id: str,
+) -> FunctionTool:
+    # Create ADK tool for listing project invitations.
+    async def _tool(input_data: dict) -> dict:
+        # list_project_invitations: List project invitations by project ID.
+        return await list_project_invitations(
+            user_id,
+            invitation_repo,
+            ListProjectInvitationsInput(**input_data),
+        )
+
+    _tool.__name__ = "list_project_invitations"
     return FunctionTool(func=_tool)
 
 

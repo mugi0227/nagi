@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { FaTimes, FaFire, FaClock, FaLeaf, FaBatteryFull, FaBatteryQuarter, FaArrowLeft, FaBookOpen, FaEdit, FaLock, FaLockOpen } from 'react-icons/fa';
+import { FaTimes, FaFire, FaClock, FaLeaf, FaBatteryFull, FaBatteryQuarter, FaArrowLeft, FaBookOpen, FaEdit, FaLock, FaLockOpen, FaTrash } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -15,6 +15,7 @@ interface TaskDetailModalProps {
   initialSubtask?: Task | null;
   onClose: () => void;
   onEdit?: (task: Task) => void;
+  onDelete?: (task: Task) => void;
   onProgressChange?: (taskId: string, progress: number) => void;
   onTaskCheck?: (taskId: string) => void;
 }
@@ -53,6 +54,7 @@ export function TaskDetailModal({
   initialSubtask = null,
   onClose,
   onEdit,
+  onDelete,
   onProgressChange,
   onTaskCheck
 }: TaskDetailModalProps) {
@@ -195,7 +197,12 @@ export function TaskDetailModal({
                   <FaEdit />
                 </button>
               )}
-              <button className="close-btn" onClick={onClose}>
+                            {onDelete && (
+                <button className="delete-btn" onClick={() => onDelete(task)} title="Delete">
+                  <FaTrash />
+                </button>
+              )}
+<button className="close-btn" onClick={onClose}>
                 <FaTimes />
               </button>
             </div>

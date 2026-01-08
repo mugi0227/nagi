@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FaArrowLeft, FaStar, FaEdit, FaCheckCircle, FaBullseye, FaChartLine, FaLightbulb, FaBookOpen, FaUsers, FaHeartbeat } from 'react-icons/fa';
 import { motion } from 'framer-motion';
@@ -36,34 +36,77 @@ export function ProjectDetailPage() {
   const [isCheckinSaving, setIsCheckinSaving] = useState(false);
   const [checkinError, setCheckinError] = useState<string | null>(null);
   const [isCollabLoading, setIsCollabLoading] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteMode, setInviteMode] = useState<'email' | 'user_id'>('email');
+  const [inviteValue, setInviteValue] = useState('');
   const [isInviting, setIsInviting] = useState(false);
+  const [isInviteMenuOpen, setInviteMenuOpen] = useState(false);
+  const inviteMenuRef = useRef<HTMLDivElement | null>(null);
   const [memberActionId, setMemberActionId] = useState<string | null>(null);
   const [invitationActionId, setInvitationActionId] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
 
   // Fetch tasks for this project
   const { tasks, isLoading: tasksLoading, refetch: refetchTasks, updateTask, deleteTask } = useTasks(projectId);
 
   // Fetch project details
   useEffect(() => {
-    if (!projectId) return;
+    let isActive = true;
+    if (!projectId) {
+      setProject(null);
+      setIsLoading(false);
+      setError('プロジェクトIDが不正です');
+      return () => {
+        isActive = false;
+      };
+    }
 
     const fetchProject = async () => {
       setIsLoading(true);
       setError(null);
       try {
         const data = await getProject(projectId);
+        if (!isActive) return;
+        if (!data) {
+          throw new Error('Empty project response');
+        }
         setProject(data);
       } catch (err) {
+        if (!isActive) return;
         console.error('Failed to fetch project:', err);
         setError('プロジェクトの取得に失敗しました');
+        setProject(null);
       } finally {
-        setIsLoading(false);
+        if (isActive) {
+          setIsLoading(false);
+        }
       }
     };
 
     fetchProject();
-  }, [projectId]);
+
+    return () => {
+      isActive = false;
+    };
+  }, [projectId, reloadToken]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!inviteMenuRef.current) return;
+      if (inviteMenuRef.current.contains(event.target as Node)) return;
+      setInviteMenuOpen(false);
+    };
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setInviteMenuOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, []);
 
   useEffect(() => {
     if (!projectId) return;
@@ -116,6 +159,10 @@ export function ProjectDetailPage() {
     }
   };
 
+  const handleRetry = () => {
+    setReloadToken((prev) => prev + 1);
+  };
+
   const handleUpdate = () => {
     if (!projectId) return;
     // Refetch project data
@@ -129,9 +176,14 @@ export function ProjectDetailPage() {
       <div className="project-detail-page">
         <div className="error-state">
           <p>{error}</p>
-          <button className="back-button" onClick={() => navigate('/projects')}>
-            プロジェクト一覧へ戻る
-          </button>
+          <div className="header-actions">
+            <button className="back-button" onClick={handleRetry}>
+              再読み込み
+            </button>
+            <button className="back-button" onClick={() => navigate('/projects')}>
+              <FaArrowLeft /> プロジェクト一覧へ戻る
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -174,23 +226,30 @@ export function ProjectDetailPage() {
     invitationLabelById[`inv:${inv.id}`] = `${inv.email} (招待中)`;
   });
 
+  // Build assignee display names by task (comma-separated for multiple)
   const assigneeByTaskId: Record<string, string> = {};
+  const assignedMemberIdsByTaskId: Record<string, string[]> = {};
   assignments.forEach((assignment) => {
     if (!assignment.assignee_id) {
       return;
     }
-    // Check if it's an invitation-based assignment
-    if (assignment.assignee_id.startsWith('inv:')) {
-      assigneeByTaskId[assignment.task_id] = invitationLabelById[assignment.assignee_id] || assignment.assignee_id;
-    } else {
-      assigneeByTaskId[assignment.task_id] = memberLabelById[assignment.assignee_id] || assignment.assignee_id;
+    // Build ID list
+    if (!assignedMemberIdsByTaskId[assignment.task_id]) {
+      assignedMemberIdsByTaskId[assignment.task_id] = [];
     }
-  });
+    assignedMemberIdsByTaskId[assignment.task_id].push(assignment.assignee_id);
 
-  const assignedMemberIdByTaskId: Record<string, string> = {};
-  assignments.forEach((assignment) => {
-    if (assignment.assignee_id) {
-      assignedMemberIdByTaskId[assignment.task_id] = assignment.assignee_id;
+    // Build display name
+    let label: string;
+    if (assignment.assignee_id.startsWith('inv:')) {
+      label = invitationLabelById[assignment.assignee_id] || assignment.assignee_id;
+    } else {
+      label = memberLabelById[assignment.assignee_id] || assignment.assignee_id;
+    }
+    if (assigneeByTaskId[assignment.task_id]) {
+      assigneeByTaskId[assignment.task_id] += `, ${label}`;
+    } else {
+      assigneeByTaskId[assignment.task_id] = label;
     }
   });
 
@@ -238,14 +297,14 @@ export function ProjectDetailPage() {
     return Math.round((total / valid.length) * 100);
   })();
 
-  const handleAssign = async (taskId: string, memberUserId: string | null) => {
+  const handleAssignMultiple = async (taskId: string, memberUserIds: string[]) => {
     if (!projectId) return;
     try {
-      if (memberUserId) {
-        const assignment = await tasksApi.assignTask(taskId, { assignee_id: memberUserId });
+      if (memberUserIds.length > 0) {
+        const newAssignments = await tasksApi.assignTaskMultiple(taskId, { assignee_ids: memberUserIds });
         setAssignments((prev) => {
           const filtered = prev.filter((item) => item.task_id !== taskId);
-          return [...filtered, assignment];
+          return [...filtered, ...newAssignments];
         });
       } else {
         await tasksApi.unassignTask(taskId);
@@ -259,21 +318,25 @@ export function ProjectDetailPage() {
 
   const handleInvite = async () => {
     if (!projectId) return;
-    const email = inviteEmail.trim();
-    if (!email) return;
+    const value = inviteValue.trim();
+    if (!value) return;
     setIsInviting(true);
     try {
-      await projectsApi.createInvitation(projectId, { email });
+      if (inviteMode === 'email') {
+        await projectsApi.createInvitation(projectId, { email: value });
+      } else {
+        await projectsApi.addMember(projectId, { member_user_id: value });
+      }
       const [membersData, invitationsData] = await Promise.all([
         projectsApi.listMembers(projectId),
         projectsApi.listInvitations(projectId),
       ]);
       setMembers(membersData);
       setInvitations(invitationsData);
-      setInviteEmail('');
+      setInviteValue('');
     } catch (err) {
       console.error('Failed to invite member:', err);
-      alert('招待の作成に失敗しました');
+      alert('メンバー追加に失敗しました');
     } finally {
       setIsInviting(false);
     }
@@ -591,21 +654,70 @@ export function ProjectDetailPage() {
             ) : (
               <>
                 <div className="members-invite">
-                  <input
-                    className="members-input"
-                    type="email"
-                    placeholder="member@example.com"
-                    value={inviteEmail}
-                    onChange={(e) => setInviteEmail(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="members-invite-btn"
-                    onClick={handleInvite}
-                    disabled={!inviteEmail.trim() || isInviting}
-                  >
-                    招待
-                  </button>
+                  <div className="members-invite-row">
+                    <div
+                      className={`members-invite-select-wrap ${isInviteMenuOpen ? 'is-open' : ''}`}
+                      ref={inviteMenuRef}
+                    >
+                      <button
+                        type="button"
+                        className="members-invite-select"
+                        onClick={() => setInviteMenuOpen((prev) => !prev)}
+                        aria-haspopup="listbox"
+                        aria-expanded={isInviteMenuOpen}
+                        disabled={isInviting}
+                      >
+                        {inviteMode === 'email' ? 'Email' : 'User ID'}
+                      </button>
+                      {isInviteMenuOpen && (
+                        <div className="members-invite-menu" role="listbox">
+                          <button
+                            type="button"
+                            className={`members-invite-option ${inviteMode === 'email' ? 'active' : ''}`}
+                            onClick={() => {
+                              setInviteMode('email');
+                              setInviteMenuOpen(false);
+                            }}
+                            role="option"
+                            aria-selected={inviteMode === 'email'}
+                          >
+                            Email
+                          </button>
+                          <button
+                            type="button"
+                            className={`members-invite-option ${inviteMode === 'user_id' ? 'active' : ''}`}
+                            onClick={() => {
+                              setInviteMode('user_id');
+                              setInviteMenuOpen(false);
+                            }}
+                            role="option"
+                            aria-selected={inviteMode === 'user_id'}
+                          >
+                            User ID
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                    <input
+                      className="members-input"
+                      type="text"
+                      placeholder={inviteMode === 'email' ? 'member@example.com' : 'user-id'}
+                      value={inviteValue}
+                      onChange={(e) => setInviteValue(e.target.value)}
+                      disabled={isInviting}
+                    />
+                    <button
+                      type="button"
+                      className="members-invite-btn"
+                      onClick={handleInvite}
+                      disabled={!inviteValue.trim() || isInviting}
+                    >
+                      {inviteMode === 'email' ? '招待' : '追加'}
+                    </button>
+                  </div>
+                  <p className="members-invite-note">
+                    Email招待かUser IDの直接追加を選べます。
+                  </p>
                 </div>
 
                 {members.length === 0 ? (
@@ -869,9 +981,9 @@ export function ProjectDetailPage() {
             }}
             onTaskClick={handleTaskClick}
             assigneeByTaskId={assigneeByTaskId}
-            assignedMemberIdByTaskId={assignedMemberIdByTaskId}
+            assignedMemberIdsByTaskId={assignedMemberIdsByTaskId}
             memberOptions={memberOptions}
-            onAssign={handleAssign}
+            onAssignMultiple={handleAssignMultiple}
           />
         )}
       </div>

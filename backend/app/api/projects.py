@@ -211,8 +211,15 @@ async def list_project_members(
     user_repo: UserRepo,
 ):
     """List members for a project."""
-    await _get_project_or_404(user, repo, project_id)
+    project = await _get_project_or_404(user, repo, project_id)
     members = await member_repo.list(user.id, project_id)
+    if project.user_id == user.id and not any(m.member_user_id == user.id for m in members):
+        await member_repo.create(
+            user.id,
+            project_id,
+            ProjectMemberCreate(member_user_id=user.id, role=ProjectRole.OWNER),
+        )
+        members = await member_repo.list(user.id, project_id)
     for member in members:
         try:
             member_uuid = UUID(member.member_user_id)
@@ -484,4 +491,3 @@ async def create_project_checkin(
     summary_text = _summarize_checkin(llm_provider, checkin.raw_text)
     payload = checkin.model_copy(update={"summary_text": summary_text})
     return await checkin_repo.create(user.id, project_id, payload)
-

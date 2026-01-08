@@ -1,7 +1,17 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { chatApi } from '../api/chat';
-import type { ChatRequest, ChatResponse, ChatMode, ChatSession, ChatHistoryMessage, TaskCreate, ProjectCreate, MemoryCreate } from '../api/types';
+import type {
+  ChatRequest,
+  ChatResponse,
+  ChatMode,
+  ChatSession,
+  ChatHistoryMessage,
+  TaskCreate,
+  ProjectCreate,
+  MemoryCreate,
+  TaskAssignmentProposal,
+} from '../api/types';
 
 export interface ToolCall {
   id: string;
@@ -14,9 +24,9 @@ export interface ToolCall {
 export interface ProposalInfo {
   id: string;
   proposalId: string;
-  proposalType: 'create_task' | 'create_project' | 'create_skill';
+  proposalType: 'create_task' | 'create_project' | 'create_skill' | 'assign_task';
   description: string;
-  payload: TaskCreate | ProjectCreate | MemoryCreate;
+  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal;
 }
 
 interface Message {
@@ -267,7 +277,7 @@ export function useChat() {
                               proposalId: chunk.proposal_id,
                               proposalType: chunk.proposal_type,
                               description: chunk.description || '',
-                              payload: chunk.payload as TaskCreate | ProjectCreate,
+                              payload: chunk.payload as TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal,
                             },
                           ],
                         }

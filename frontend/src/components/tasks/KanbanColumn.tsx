@@ -9,9 +9,9 @@ interface KanbanColumnProps {
   allTasks: Task[];
   subtasksMap: Record<string, Task[]>;
   assigneeByTaskId?: Record<string, string>;
-  assignedMemberIdByTaskId?: Record<string, string>;
+  assignedMemberIdsByTaskId?: Record<string, string[]>;
   memberOptions?: { id: string; label: string }[];
-  onAssign?: (taskId: string, memberUserId: string | null) => void;
+  onAssignMultiple?: (taskId: string, memberUserIds: string[]) => void;
   onEditTask?: (task: Task) => void;
   onDeleteTask?: (id: string) => void;
   onTaskClick?: (task: Task) => void;
@@ -28,9 +28,9 @@ export function KanbanColumn({
   allTasks,
   subtasksMap,
   assigneeByTaskId,
-  assignedMemberIdByTaskId,
+  assignedMemberIdsByTaskId,
   memberOptions,
-  onAssign,
+  onAssignMultiple,
   onEditTask,
   onDeleteTask,
   onTaskClick,
@@ -84,9 +84,9 @@ export function KanbanColumn({
               subtasks={subtasksMap[task.id] || []}
               allTasks={allTasks}
               assigneeName={assigneeByTaskId?.[task.id]}
-              assignedMemberId={assignedMemberIdByTaskId?.[task.id]}
+              assignedMemberIds={assignedMemberIdsByTaskId?.[task.id] || []}
               memberOptions={memberOptions}
-              onAssign={onAssign}
+              onAssignMultiple={onAssignMultiple}
               onEdit={onEditTask}
               onDelete={onDeleteTask}
               onClick={onTaskClick}

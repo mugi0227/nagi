@@ -1,0 +1,155 @@
+.weekly-meetings-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.weekly-meetings-header {
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.weekly-meetings-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.weekly-meetings-card .tag {
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.weekly-meetings-card .tag.info {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.weekly-meetings-range {
+  display: inline-block;
+  margin-top: 0.35rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.weekly-meetings-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 1.25rem 0;
+}
+
+.weekly-meetings-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.weekly-meetings-header-row {
+  display: grid;
+  grid-template-columns: 70px repeat(var(--days), minmax(0, 1fr));
+  align-items: end;
+  gap: 0.4rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.weekly-meetings-time-header {
+  height: 1rem;
+}
+
+.weekly-meetings-day-header {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.weekly-meetings-body {
+  display: grid;
+  grid-template-columns: 70px repeat(var(--days), minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.weekly-meetings-time-col {
+  display: flex;
+  flex-direction: column;
+}
+
+.weekly-meetings-time-slot {
+  height: var(--hour-height);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  align-items: flex-start;
+  padding-top: 0.15rem;
+}
+
+.weekly-meetings-day-col {
+  position: relative;
+  background: rgba(255, 255, 255, 0.65);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  overflow: hidden;
+}
+
+.weekly-meetings-hour-lines {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+
+.weekly-meetings-hour-line {
+  flex: 1;
+  border-top: 1px dashed rgba(148, 163, 184, 0.3);
+}
+
+.weekly-meeting-block {
+  position: absolute;
+  padding: 0.35rem 0.4rem;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.2));
+  border-left: 3px solid #667eea;
+  border-radius: 6px;
+  box-shadow: var(--shadow-sm);
+  color: var(--text-main);
+  font-size: 0.7rem;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.weekly-meeting-block.done {
+  opacity: 0.55;
+}
+
+.weekly-meeting-block:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-card);
+}
+
+.weekly-meeting-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.weekly-meeting-time {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.weekly-meeting-location {
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

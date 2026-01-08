@@ -15,10 +15,14 @@ from app.api.deps import (
     LLMProvider,
     TaskRepo,
     ProjectRepo,
+    ProjectMemberRepo,
+    ProjectInvitationRepo,
+    TaskAssignmentRepo,
     MemoryRepo,
     TaskRepo,
     MemoryRepo,
     AgentTaskRepo,
+    ProposalRepo,
     StorageProvider,
     ChatRepo,
 )
@@ -151,9 +155,13 @@ async def analyze_capture(
     llm_provider: LLMProvider,
     task_repo: TaskRepo,
     project_repo: ProjectRepo,
+    project_member_repo: ProjectMemberRepo,
+    project_invitation_repo: ProjectInvitationRepo,
+    task_assignment_repo: TaskAssignmentRepo,
     memory_repo: MemoryRepo,
     agent_task_repo: AgentTaskRepo,
     capture_repo: CaptureRepo,
+    proposal_repo: ProposalRepo,
     chat_repo: ChatRepo,
 ):
     """
@@ -165,10 +173,14 @@ async def analyze_capture(
         llm_provider=llm_provider,
         task_repo=task_repo,
         project_repo=project_repo,
+        project_member_repo=project_member_repo,
+        project_invitation_repo=project_invitation_repo,
+        task_assignment_repo=task_assignment_repo,
         memory_repo=memory_repo,
         agent_task_repo=agent_task_repo,
         capture_repo=capture_repo,
         chat_repo=chat_repo,
+        proposal_repo=proposal_repo,
     )
     
     try:

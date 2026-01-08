@@ -199,3 +199,92 @@
     transform: rotate(360deg);
   }
 }
+
+.proposal-meeting-preview {
+  margin-top: 12px;
+  background: rgba(148, 163, 184, 0.08);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 10px;
+  padding: 12px;
+}
+
+.proposal-meeting-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.proposal-meeting-date {
+  margin-top: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.proposal-meeting-grid {
+  display: grid;
+  grid-template-columns: 52px 1fr;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.proposal-meeting-times {
+  display: flex;
+  flex-direction: column;
+}
+
+.proposal-meeting-time-slot {
+  height: 28px;
+  font-size: 10px;
+  color: var(--text-muted);
+  border-top: 1px solid rgba(148, 163, 184, 0.3);
+  padding-top: 2px;
+}
+
+.proposal-meeting-track {
+  position: relative;
+  background: rgba(255, 255, 255, 0.75);
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+.proposal-meeting-lines {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  pointer-events: none;
+}
+
+.proposal-meeting-line {
+  flex: 1;
+  border-top: 1px dashed rgba(148, 163, 184, 0.3);
+}
+
+.proposal-meeting-block {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.25), rgba(118, 75, 162, 0.25));
+  border-left: 3px solid #667eea;
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 10px;
+  color: var(--text-main);
+  overflow: hidden;
+}
+
+.proposal-meeting-title {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.proposal-meeting-time,
+.proposal-meeting-location {
+  font-size: 9px;
+  color: var(--text-muted);
+}

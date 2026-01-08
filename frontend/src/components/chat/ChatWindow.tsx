@@ -1,8 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { FaRobot, FaTrash, FaXmark, FaComments, FaImage, FaClock } from 'react-icons/fa6';
+import { useQuery } from '@tanstack/react-query';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
 import { useChat } from '../../hooks/useChat';
+import { tasksApi } from '../../api/tasks';
+import type { Task } from '../../api/types';
 import './ChatWindow.css';
 
 interface ChatWindowProps {
@@ -28,6 +31,12 @@ export function ChatWindow({ isOpen, onClose }: ChatWindowProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [draggedImage, setDraggedImage] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const { data: meetingTasks = [] } = useQuery<Task[]>({
+    queryKey: ['meetings', 'chat-preview'],
+    queryFn: () => tasksApi.getAll({ includeDone: true, onlyMeetings: true }),
+    staleTime: 30_000,
+    enabled: isOpen,
+  });
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -206,6 +215,7 @@ export function ChatWindow({ isOpen, onClose }: ChatWindowProps) {
               timestamp={message.timestamp}
               toolCalls={message.toolCalls}
               proposals={message.proposals}
+              meetingTasks={meetingTasks}
               isStreaming={message.isStreaming}
               imageUrl={message.imageUrl}
             />

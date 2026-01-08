@@ -23,6 +23,8 @@ export const tasksApi = {
     offset?: number;
     projectId?: string;
     status?: string;
+    onlyMeetings?: boolean;
+    excludeMeetings?: boolean;
   }) => {
     const params = new URLSearchParams();
     const includeDone = query?.includeDone ?? true;
@@ -36,6 +38,12 @@ export const tasksApi = {
     }
     if (query?.status) {
       params.set('status', query.status);
+    }
+    if (query?.onlyMeetings) {
+      params.set('only_meetings', 'true');
+    }
+    if (query?.excludeMeetings) {
+      params.set('exclude_meetings', 'true');
     }
     return api.get<Task[]>(`/tasks?${params.toString()}`);
   },

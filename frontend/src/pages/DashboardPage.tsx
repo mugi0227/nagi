@@ -4,6 +4,7 @@ import { AgentCard } from '../components/dashboard/AgentCard';
 import { DailyBriefingCard } from '../components/dashboard/DailyBriefingCard';
 import { TodayTasksCard } from '../components/dashboard/TodayTasksCard';
 import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
+import { WeeklyMeetingsCard } from '../components/dashboard/WeeklyMeetingsCard';
 import { WeeklyProgress } from '../components/dashboard/WeeklyProgress';
 import './DashboardPage.css';
 
@@ -53,6 +54,7 @@ export function DashboardPage() {
         >
           <TodayTasksCard />
           <ScheduleOverviewCard />
+          <WeeklyMeetingsCard />
         </motion.div>
 
         <motion.div

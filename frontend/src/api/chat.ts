@@ -13,7 +13,7 @@ export interface StreamChunk {
   capture_id?: string;
   // Proposal-specific fields
   proposal_id?: string;
-  proposal_type?: 'create_task' | 'create_project';
+  proposal_type?: 'create_task' | 'create_project' | 'create_skill' | 'assign_task';
   description?: string;
   payload?: Record<string, unknown>;
 }

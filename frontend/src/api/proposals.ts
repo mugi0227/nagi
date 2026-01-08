@@ -6,6 +6,7 @@ export interface ApprovalResult {
   task_id?: string;
   project_id?: string;
   memory_id?: string;
+  assignment_ids?: string[];
 }
 
 export interface RejectionResult {

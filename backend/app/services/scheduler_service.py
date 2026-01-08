@@ -445,11 +445,11 @@ class SchedulerService:
                 allocations.append(TaskAllocation(task_id=meeting.id, minutes=duration))
                 allocated_minutes += duration
 
-                # Mark meeting as scheduled and record its fixed date
+                # Record the fixed date so meeting titles appear in schedule info.
+                task_start[meeting.id] = day_cursor
+                task_end[meeting.id] = day_cursor
                 if meeting.id in remaining_task_ids:
                     remaining_task_ids.remove(meeting.id)
-                    task_start[meeting.id] = day_cursor
-                    task_end[meeting.id] = day_cursor
                     remaining_minutes[meeting.id] = 0  # Meeting is fully allocated on its fixed day
 
             # Check if meetings exceed capacity
@@ -574,7 +574,11 @@ class SchedulerService:
         tasks_info: list[TaskScheduleInfo] = []
         tasks_for_info = scheduled_tasks + [task for task in candidate_tasks if task.id in blocked_task_ids] + all_meetings
         for task in tasks_for_info:
-            total_minutes = get_effective_estimated_minutes(task, tasks) or self.default_task_minutes
+            if task.is_fixed_time and task.start_time and task.end_time:
+                total_minutes = int((task.end_time - task.start_time).total_seconds() / 60)
+                total_minutes = max(0, total_minutes)
+            else:
+                total_minutes = get_effective_estimated_minutes(task, tasks) or self.default_task_minutes
             if task.id in remaining_task_ids:
                 total_minutes = remaining_minutes.get(task.id, total_minutes)
             tasks_info.append(
@@ -641,6 +645,9 @@ class SchedulerService:
         if today_day:
             seen: set[UUID] = set()
             for alloc in today_day.task_allocations:
+                task = task_map.get(alloc.task_id)
+                if task and task.is_fixed_time:
+                    continue
                 allocation_minutes_by_task[alloc.task_id] = (
                     allocation_minutes_by_task.get(alloc.task_id, 0) + alloc.minutes
                 )
@@ -648,7 +655,7 @@ class SchedulerService:
                     continue
                 seen.add(alloc.task_id)
                 today_task_ids.append(alloc.task_id)
-            allocated_minutes = today_day.allocated_minutes
+            allocated_minutes = sum(allocation_minutes_by_task.values())
             overflow_minutes = today_day.overflow_minutes
             capacity_minutes = today_day.capacity_minutes
 
