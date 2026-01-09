@@ -46,7 +46,7 @@ export function ProjectDetailPage() {
   const [reloadToken, setReloadToken] = useState(0);
 
   // Fetch tasks for this project
-  const { tasks, isLoading: tasksLoading, refetch: refetchTasks, updateTask } = useTasks(projectId);
+  const { tasks, isLoading: tasksLoading, refetch: refetchTasks, updateTask, deleteTask } = useTasks(projectId);
 
   // Fetch project details
   useEffect(() => {
@@ -975,6 +975,10 @@ export function ProjectDetailPage() {
             assignedMemberIdsByTaskId={assignedMemberIdsByTaskId}
             memberOptions={memberOptions}
             onAssignMultiple={handleAssignMultiple}
+            onDeleteTask={(taskId: string) => {
+              deleteTask(taskId);
+              refetchTasks();
+            }}
             onRefreshTasks={refetchTasks}
           />
         )}

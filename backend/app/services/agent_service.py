@@ -423,8 +423,49 @@ class AgentService:
                 "created_at": msg.created_at.isoformat() if hasattr(msg, "created_at") else None
             })
         return result
+
+    async def _analyze_image_if_available(
+        self,
+        image_bytes: bytes,
+        mime_type: str,
+        user_text: str | None,
+    ) -> str:
+        """
+        Analyze image using vision model if configured.
+
+        Only works when LLM_PROVIDER=litellm and LITELLM_VISION_MODEL is set.
+
+        Args:
+            image_bytes: Raw image bytes
+            mime_type: MIME type of the image
+            user_text: User's text prompt (for context)
+
+        Returns:
+            Vision model's description of the image, or empty string if not available
+        """
+        # Check if LiteLLMProvider with vision model is being used
+        from app.infrastructure.local.litellm_provider import LiteLLMProvider
+
+        if not isinstance(self._llm_provider, LiteLLMProvider):
+            return ""
+
+        if not self._llm_provider.has_vision_model():
+            return ""
+
+        # Build prompt for vision model
+        prompt = "この画像の内容を詳しく説明してください。"
+        if user_text:
+            prompt = f"ユーザーのメッセージ: {user_text}\n\n上記を踏まえて、この画像の内容を詳しく説明してください。タスクやメモとして重要な情報があれば、それも含めてください。"
+
+        return await self._llm_provider.analyze_image(image_bytes, mime_type, prompt)
+
     async def _construct_user_message(self, request: ChatRequest) -> Content:
-        """Construct multimodal user message."""
+        """Construct multimodal user message.
+
+        If LITELLM_VISION_MODEL is configured and image is present,
+        the image is sent to the vision model first, and its description
+        is added to the message instead of the raw image.
+        """
         parts = []
         if request.text:
             parts.append(Part(text=request.text))
@@ -442,8 +483,20 @@ class AgentService:
                 base64_data = match.group(2)
                 try:
                     image_bytes = base64.b64decode(base64_data)
-                    parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
-                    logger.info(f"Added Base64 image to message: {mime_type}, {len(image_bytes)} bytes")
+
+                    # Check if we should use separate vision model
+                    vision_description = await self._analyze_image_if_available(
+                        image_bytes, mime_type, request.text
+                    )
+
+                    if vision_description:
+                        # Use vision model's description instead of raw image
+                        parts.append(Part(text=f"\n\n[画像の内容（Vision Model解析結果）]\n{vision_description}"))
+                        logger.info(f"Used vision model for image analysis")
+                    else:
+                        # Send raw image to main model
+                        parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
+                        logger.info(f"Added Base64 image to message: {mime_type}, {len(image_bytes)} bytes")
                 except Exception as e:
                     logger.error(f"Failed to decode Base64 image: {e}")
                     parts.append(Part(text=f"[Image decoding failed: {str(e)}]"))
@@ -483,8 +536,18 @@ class AgentService:
                         import mimetypes
                         mime_type, _ = mimetypes.guess_type(str(image_path))
                         mime_type = mime_type or "image/jpeg"
-                        parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
-                        logger.info(f"Loaded image successfully: {image_path} ({len(image_bytes)} bytes)")
+
+                        # Check if we should use separate vision model
+                        vision_description = await self._analyze_image_if_available(
+                            image_bytes, mime_type, request.text
+                        )
+
+                        if vision_description:
+                            parts.append(Part(text=f"\n\n[画像の内容（Vision Model解析結果）]\n{vision_description}"))
+                            logger.info(f"Used vision model for local image analysis")
+                        else:
+                            parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
+                            logger.info(f"Loaded image successfully: {image_path} ({len(image_bytes)} bytes)")
                     else:
                         logger.warning(f"Image file not found: {image_path}")
                         parts.append(Part(text=f"[Image file not found: {image_path}]"))
@@ -500,8 +563,18 @@ class AgentService:
                         if resp.status_code == 200:
                             image_bytes = resp.content
                             mime_type = resp.headers.get("content-type", "image/jpeg")
-                            parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
-                            logger.info(f"Fetched external image via HTTP: {request.image_url}")
+
+                            # Check if we should use separate vision model
+                            vision_description = await self._analyze_image_if_available(
+                                image_bytes, mime_type, request.text
+                            )
+
+                            if vision_description:
+                                parts.append(Part(text=f"\n\n[画像の内容（Vision Model解析結果）]\n{vision_description}"))
+                                logger.info(f"Used vision model for external image analysis")
+                            else:
+                                parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
+                                logger.info(f"Fetched external image via HTTP: {request.image_url}")
                         else:
                             logger.warning(f"Failed to fetch image: Status {resp.status_code}")
                             parts.append(Part(text=f"[Failed to fetch image: {resp.status_code}]"))

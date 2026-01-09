@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     # LiteLLM custom API key (optional, for custom endpoints)
     LITELLM_API_KEY: str = ""
 
+    # LiteLLM Vision model (optional, uses separate model for image processing)
+    # If set, images will be processed by this model instead of the main model.
+    # Example: "openai/qwen3-vl" or "bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0"
+    LITELLM_VISION_MODEL: str = ""
+
     # Google API Key (for gemini-api provider)
     GOOGLE_API_KEY: str = ""
 
