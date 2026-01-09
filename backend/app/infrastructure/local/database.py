@@ -112,6 +112,24 @@ class PhaseORM(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
+class MilestoneORM(Base):
+    """Milestone ORM model."""
+
+    __tablename__ = "milestones"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    project_id = Column(String(36), nullable=False, index=True)
+    phase_id = Column(String(36), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    description = Column(Text, nullable=True)
+    status = Column(String(20), default="ACTIVE")
+    order_in_phase = Column(Integer, default=1, nullable=False)
+    due_date = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 class UserORM(Base):
     """User ORM model."""
 

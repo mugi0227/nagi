@@ -5,7 +5,7 @@ import { motion } from 'framer-motion';
 import { getProject, projectsApi } from '../api/projects';
 import { tasksApi } from '../api/tasks';
 import { useTasks } from '../hooks/useTasks';
-import { KanbanBoard } from '../components/tasks/KanbanBoard';
+import { ProjectTasksView } from '../components/projects/ProjectTasksView';
 import { ProjectDetailModal } from '../components/projects/ProjectDetailModal';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { TaskFormModal } from '../components/tasks/TaskFormModal';
@@ -46,7 +46,7 @@ export function ProjectDetailPage() {
   const [reloadToken, setReloadToken] = useState(0);
 
   // Fetch tasks for this project
-  const { tasks, isLoading: tasksLoading, refetch: refetchTasks, updateTask, deleteTask } = useTasks(projectId);
+  const { tasks, isLoading: tasksLoading, refetch: refetchTasks, updateTask } = useTasks(projectId);
 
   // Fetch project details
   useEffect(() => {
@@ -283,19 +283,6 @@ export function ProjectDetailPage() {
 
   const openBlockerCount = blockers.filter(blocker => blocker.status === 'OPEN').length;
 
-  const kpiProgress = (() => {
-    const metrics = project?.kpi_config?.metrics ?? [];
-    const valid = metrics.filter(metric => typeof metric.target === 'number' && metric.target > 0);
-    if (!valid.length) {
-      return null;
-    }
-    const total = valid.reduce((sum, metric) => {
-      const target = metric.target ?? 1;
-      const current = metric.current ?? 0;
-      return sum + Math.min(current / target, 1);
-    }, 0);
-    return Math.round((total / valid.length) * 100);
-  })();
 
   const handleAssignMultiple = async (taskId: string, memberUserIds: string[]) => {
     if (!projectId) return;
@@ -541,7 +528,7 @@ export function ProjectDetailPage() {
         </div>
       </div>
 
-      {/* Hero Section */}
+      {/* Hero Section - With Goals and Key Points */}
       <div className="project-info-hero">
         <div className="hero-main">
           <div className="project-title-row">
@@ -573,22 +560,18 @@ export function ProjectDetailPage() {
               <span className="value">{project.completed_tasks} / {project.total_tasks}</span>
             </div>
           </div>
-        </div>
-      </div>
 
-      <div className="project-details-grid">
-        <div className="details-main-column">
-          {/* Goals Section */}
+          {/* Goals in Hero */}
           {project.goals && project.goals.length > 0 && (
-            <div className="detail-section">
-              <div className="section-header">
-                <FaBullseye className="section-icon" />
-                <h3 className="section-title">プロジェクト目標</h3>
+            <div className="hero-goals">
+              <div className="hero-section-label">
+                <FaBullseye className="hero-section-icon" />
+                <span>目標</span>
               </div>
-              <ul className="goals-list">
+              <ul className="hero-goals-list">
                 {project.goals.map((goal, index) => (
-                  <li key={index} className="goal-item">
-                    <FaCheckCircle className="goal-icon" />
+                  <li key={index} className="hero-goal-item">
+                    <FaCheckCircle className="hero-goal-icon" />
                     {goal}
                   </li>
                 ))}
@@ -596,53 +579,221 @@ export function ProjectDetailPage() {
             </div>
           )}
 
-          {/* Context/README Section */}
-          {project.context && (
-            <div className="detail-section">
-              <div className="section-header">
-                <FaBookOpen className="section-icon" />
-                <h3 className="section-title">README / コンテキスト</h3>
+          {/* Key Points in Hero */}
+          {project.key_points && project.key_points.length > 0 && (
+            <div className="hero-key-points">
+              <div className="hero-section-label">
+                <FaLightbulb className="hero-section-icon" />
+                <span>重要ポイント</span>
               </div>
-              <div className="context-content markdown-body">
-                <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                  {project.context}
-                </ReactMarkdown>
+              <ul className="hero-key-points-list">
+                {project.key_points.map((point, index) => (
+                  <li key={index} className="hero-key-point-item">{point}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Summary Grid - 3 columns: Team Pulse, KPI, Check-ins */}
+      <div className="project-summary-grid">
+        {/* Team Pulse */}
+        <div className="detail-section team-pulse">
+          <div className="section-header">
+            <FaHeartbeat className="section-icon" />
+            <h3 className="section-title">Team Pulse</h3>
+          </div>
+          {isCollabLoading ? (
+            <div className="pulse-loading">Loading...</div>
+          ) : (
+            <div className="pulse-grid">
+              <div className="pulse-card">
+                <span className="pulse-label">In Progress</span>
+                <span className="pulse-value">{inProgressCount}</span>
+              </div>
+              <div className={`pulse-card ${openBlockerCount > 0 ? 'alert' : ''}`}>
+                <span className="pulse-label">Open Blockers</span>
+                <span className="pulse-value">{openBlockerCount}</span>
+              </div>
+              <div className={`pulse-card ${blockedDependencyCount > 0 ? 'alert' : ''}`}>
+                <span className="pulse-label">Blocked Deps</span>
+                <span className="pulse-value">{blockedDependencyCount}</span>
               </div>
             </div>
           )}
         </div>
 
-        <div className="details-side-column">
-          <div className="detail-section team-pulse">
-            <div className="section-header">
-              <FaHeartbeat className="section-icon" />
-              <h3 className="section-title">Team Pulse</h3>
+        {/* KPI Section */}
+        <div className="detail-section">
+          <div className="section-header">
+            <FaChartLine className="section-icon" />
+            <h3 className="section-title">KPI 指標</h3>
+          </div>
+          {project.kpi_config && project.kpi_config.metrics && project.kpi_config.metrics.length > 0 ? (
+            <div className="kpi-grid">
+              {project.kpi_config.metrics.map((metric, index) => {
+                const current = metric.current ?? 0;
+                const target = metric.target ?? 0;
+                const progress = target > 0
+                  ? Math.min((current / target) * 100, 100)
+                  : 0;
+                return (
+                  <div key={index} className="kpi-card">
+                    <div className="kpi-info">
+                      <span className="kpi-name">{metric.label}</span>
+                      <div className="kpi-values">
+                        <span className="kpi-current">{current}</span>
+                        <span className="kpi-target">/ {target}</span>
+                        <span className="kpi-unit">{metric.unit}</span>
+                      </div>
+                    </div>
+                    <div className="kpi-progress-container">
+                      <div className="kpi-progress-bar">
+                        <div
+                          className="kpi-progress-fill"
+                          style={{ width: `${progress}%` }}
+                        ></div>
+                      </div>
+                      <span className="kpi-percentage">{Math.round(progress)}%</span>
+                    </div>
+                  </div>
+                );
+              })}
             </div>
-            {isCollabLoading ? (
-              <div className="pulse-loading">Loading...</div>
-            ) : (
-              <div className="pulse-grid">
-                <div className="pulse-card">
-                  <span className="pulse-label">KPI Progress</span>
-                  <span className="pulse-value emphasis">
-                    {kpiProgress === null ? '-' : `${kpiProgress}%`}
-                  </span>
-                </div>
-                <div className="pulse-card">
-                  <span className="pulse-label">In Progress</span>
-                  <span className="pulse-value">{inProgressCount}</span>
-                </div>
-                <div className={`pulse-card ${openBlockerCount > 0 ? 'alert' : ''}`}>
-                  <span className="pulse-label">Open Blockers</span>
-                  <span className="pulse-value">{openBlockerCount}</span>
-                </div>
-                <div className={`pulse-card ${blockedDependencyCount > 0 ? 'alert' : ''}`}>
-                  <span className="pulse-label">Blocked Deps</span>
-                  <span className="pulse-value">{blockedDependencyCount}</span>
-                </div>
+          ) : (
+            <p className="no-data-text">KPIは設定されていません。</p>
+          )}
+        </div>
+
+        {/* Check-ins Section - Moved to Summary Grid */}
+        <div className="detail-section checkins-section">
+          <div className="section-header">
+            <FaBookOpen className="section-icon" />
+            <h3 className="section-title">Check-ins</h3>
+          </div>
+          <div className="checkin-actions">
+            <button
+              type="button"
+              className="checkin-btn primary"
+              onClick={handleStartWeeklyCheckin}
+              disabled={!members.length}
+            >
+              週次サマリー
+            </button>
+            <button
+              type="button"
+              className="checkin-btn ghost"
+              onClick={handleStartIssueCheckin}
+              disabled={!members.length}
+            >
+              困りごと
+            </button>
+          </div>
+
+          {!members.length && (
+            <p className="checkin-note">メンバーを追加すると投稿できます。</p>
+          )}
+
+          {checkinMode && (
+            <div className="checkin-editor">
+              <div className="checkin-row">
+                <label className="checkin-label" htmlFor="checkin-member">
+                  投稿者
+                </label>
+                <select
+                  id="checkin-member"
+                  className="checkin-select"
+                  value={selectedCheckinMemberId}
+                  onChange={(e) => setSelectedCheckinMemberId(e.target.value)}
+                >
+                  {members.map((member) => (
+                    <option key={member.id} value={member.member_user_id}>
+                      {member.member_display_name || member.member_user_id}
+                    </option>
+                  ))}
+                </select>
               </div>
+              <textarea
+                className="checkin-textarea"
+                rows={5}
+                value={checkinText}
+                onChange={(e) => setCheckinText(e.target.value)}
+                placeholder={checkinMode === 'weekly'
+                  ? '週次サマリーの内容を調整してください'
+                  : '困りごとや議論したいことを入力してください'}
+              />
+              {checkinError && <p className="checkin-error">{checkinError}</p>}
+              <div className="checkin-editor-actions">
+                <button
+                  type="button"
+                  className="checkin-btn ghost"
+                  onClick={() => {
+                    setCheckinMode(null);
+                    setCheckinText('');
+                  }}
+                  disabled={isCheckinSaving}
+                >
+                  キャンセル
+                </button>
+                <button
+                  type="button"
+                  className="checkin-btn primary"
+                  onClick={handleSubmitCheckin}
+                  disabled={isCheckinSaving}
+                >
+                  {isCheckinSaving ? '保存中...' : '保存'}
+                </button>
+              </div>
+            </div>
+          )}
+
+          <div className="checkin-list">
+            {checkins.length === 0 ? (
+              <p className="checkin-empty">まだチェックインはありません。</p>
+            ) : (
+              checkins.slice(0, 3).map((checkin) => {
+                const name = memberLabelById[checkin.member_user_id] || checkin.member_user_id;
+                const text = checkin.summary_text || checkin.raw_text;
+                const preview = text.length > 80 ? `${text.slice(0, 80)}...` : text;
+                return (
+                  <div key={checkin.id} className="checkin-item">
+                    <div className="checkin-meta">
+                      <span className="checkin-date">{formatCheckinDate(checkin.checkin_date)}</span>
+                      <span className="checkin-author">{name}</span>
+                    </div>
+                    <p className="checkin-preview">{preview}</p>
+                  </div>
+                );
+              })
             )}
           </div>
+        </div>
+      </div>
+
+
+
+      <div className="project-details-grid">
+        <div className="details-main-column">
+          {/* Context/README Section */}
+          <div className="detail-section">
+            <div className="section-header">
+              <FaBookOpen className="section-icon" />
+              <h3 className="section-title">README / コンテキスト</h3>
+            </div>
+            {project.context ? (
+              <div className="context-content markdown-body">
+                <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                  {project.context}
+                </ReactMarkdown>
+              </div>
+            ) : (
+              <p className="no-data-text">コンテキスト情報はありません。</p>
+            )}
+          </div>
+        </div>
+
+        <div className="details-side-column">
 
           <div className="detail-section members-section">
             <div className="section-header">
@@ -802,181 +953,21 @@ export function ProjectDetailPage() {
               </>
             )}
           </div>
-
-          <div className="detail-section checkins-section">
-            <div className="section-header">
-              <FaBookOpen className="section-icon" />
-              <h3 className="section-title">Check-ins</h3>
-            </div>
-            <div className="checkin-actions">
-              <button
-                type="button"
-                className="checkin-btn primary"
-                onClick={handleStartWeeklyCheckin}
-                disabled={!members.length}
-              >
-                週次サマリーを生成
-              </button>
-              <button
-                type="button"
-                className="checkin-btn ghost"
-                onClick={handleStartIssueCheckin}
-                disabled={!members.length}
-              >
-                困りごとを投稿
-              </button>
-            </div>
-
-            {!members.length && (
-              <p className="checkin-note">メンバーを追加すると投稿できます。</p>
-            )}
-
-            {checkinMode && (
-              <div className="checkin-editor">
-                <div className="checkin-row">
-                  <label className="checkin-label" htmlFor="checkin-member">
-                    投稿者
-                  </label>
-                  <select
-                    id="checkin-member"
-                    className="checkin-select"
-                    value={selectedCheckinMemberId}
-                    onChange={(e) => setSelectedCheckinMemberId(e.target.value)}
-                  >
-                    {members.map((member) => (
-                      <option key={member.id} value={member.member_user_id}>
-                        {member.member_display_name || member.member_user_id}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <textarea
-                  className="checkin-textarea"
-                  rows={7}
-                  value={checkinText}
-                  onChange={(e) => setCheckinText(e.target.value)}
-                  placeholder={checkinMode === 'weekly'
-                    ? '週次サマリーの内容を調整してください'
-                    : '困りごとや議論したいことを入力してください'}
-                />
-                {checkinError && <p className="checkin-error">{checkinError}</p>}
-                <div className="checkin-editor-actions">
-                  <button
-                    type="button"
-                    className="checkin-btn ghost"
-                    onClick={() => {
-                      setCheckinMode(null);
-                      setCheckinText('');
-                    }}
-                    disabled={isCheckinSaving}
-                  >
-                    キャンセル
-                  </button>
-                  <button
-                    type="button"
-                    className="checkin-btn primary"
-                    onClick={handleSubmitCheckin}
-                    disabled={isCheckinSaving}
-                  >
-                    {isCheckinSaving ? '保存中...' : '保存'}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            <div className="checkin-list">
-              {checkins.length === 0 ? (
-                <p className="checkin-empty">まだチェックインはありません。</p>
-              ) : (
-                checkins.slice(0, 5).map((checkin) => {
-                  const name = memberLabelById[checkin.member_user_id] || checkin.member_user_id;
-                  const text = checkin.summary_text || checkin.raw_text;
-                  const preview = text.length > 140 ? `${text.slice(0, 140)}...` : text;
-                  return (
-                    <div key={checkin.id} className="checkin-item">
-                      <div className="checkin-meta">
-                        <span className="checkin-date">{formatCheckinDate(checkin.checkin_date)}</span>
-                        <span className="checkin-author">{name}</span>
-                      </div>
-                      <p className="checkin-preview">{preview}</p>
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-
-          {/* KPI Section */}
-          {project.kpi_config && project.kpi_config.metrics && project.kpi_config.metrics.length > 0 && (
-            <div className="detail-section">
-              <div className="section-header">
-                <FaChartLine className="section-icon" />
-                <h3 className="section-title">KPI 指標</h3>
-              </div>
-              <div className="kpi-grid">
-                {project.kpi_config.metrics.map((metric, index) => {
-                  const current = metric.current ?? 0;
-                  const target = metric.target ?? 0;
-                  const progress = target > 0
-                    ? Math.min((current / target) * 100, 100)
-                    : 0;
-                  return (
-                    <div key={index} className="kpi-card">
-                      <div className="kpi-info">
-                        <span className="kpi-name">{metric.label}</span>
-                        <div className="kpi-values">
-                          <span className="kpi-current">{current}</span>
-                          <span className="kpi-target">/ {target}</span>
-                          <span className="kpi-unit">{metric.unit}</span>
-                        </div>
-                      </div>
-                      <div className="kpi-progress-container">
-                        <div className="kpi-progress-bar">
-                          <div
-                            className="kpi-progress-fill"
-                            style={{ width: `${progress}%` }}
-                          ></div>
-                        </div>
-                        <span className="kpi-percentage">{Math.round(progress)}%</span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* Key Points Section */}
-          {project.key_points && project.key_points.length > 0 && (
-            <div className="detail-section">
-              <div className="section-header">
-                <FaLightbulb className="section-icon" />
-                <h3 className="section-title">重要なポイント</h3>
-              </div>
-              <ul className="key-points-list">
-                {project.key_points.map((point, index) => (
-                  <li key={index} className="key-point-item">{point}</li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       </div>
 
+
       {/* Tasks Section */}
       <div className="tasks-section">
-        <h2 className="section-title">タスクボード</h2>
+        <h2 className="section-title">Task Board</h2>
         {tasksLoading ? (
-          <div className="loading-state">タスクを読み込み中...</div>
+          <div className="loading-state">Loading tasks...</div>
         ) : (
-          <KanbanBoard
+          <ProjectTasksView
+            projectId={projectId!}
             tasks={tasks}
             onUpdateTask={(id: string, status: TaskStatus) => {
               updateTask(id, { status });
-              refetchTasks();
-            }}
-            onDeleteTask={(taskId: string) => {
-              deleteTask(taskId);
               refetchTasks();
             }}
             onTaskClick={handleTaskClick}
@@ -984,6 +975,7 @@ export function ProjectDetailPage() {
             assignedMemberIdsByTaskId={assignedMemberIdsByTaskId}
             memberOptions={memberOptions}
             onAssignMultiple={handleAssignMultiple}
+            onRefreshTasks={refetchTasks}
           />
         )}
       </div>

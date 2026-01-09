@@ -1,8 +1,9 @@
-import { useState, useMemo, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { FaTimes, FaSave, FaLock } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { useProjects } from '../../hooks/useProjects';
-import type { Task, TaskCreate, TaskUpdate, Priority, EnergyLevel } from '../../api/types';
+import { phasesApi } from '../../api/phases';
+import type { Task, TaskCreate, TaskUpdate, Priority, EnergyLevel, PhaseWithTaskCount } from '../../api/types';
 import './TaskFormModal.css';
 
 interface TaskFormModalProps {
@@ -30,6 +31,8 @@ function toDatetimeLocal(isoString: string | null | undefined): string {
 export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSubmit, isSubmitting }: TaskFormModalProps) {
   const { projects } = useProjects();
   const isEditMode = !!task;
+  const [phaseOptions, setPhaseOptions] = useState<PhaseWithTaskCount[]>([]);
+  const [isPhaseLoading, setIsPhaseLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     title: task?.title || initialData?.title || '',
@@ -39,6 +42,7 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
     estimated_minutes: task?.estimated_minutes?.toString() || initialData?.estimated_minutes?.toString() || '',
     due_date: toDatetimeLocal(task?.due_date) || toDatetimeLocal(initialData?.due_date),
     project_id: task?.project_id || initialData?.project_id || '',
+    phase_id: task?.phase_id || initialData?.phase_id || '',
     dependency_ids: task?.dependency_ids || initialData?.dependency_ids || [] as string[],
     energy_level: task?.energy_level || initialData?.energy_level || 'LOW' as EnergyLevel,
     // Meeting fields
@@ -58,6 +62,41 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
     );
   }, [allTasks, task?.id]);
 
+  useEffect(() => {
+    let active = true;
+
+    const loadPhases = async () => {
+      if (!formData.project_id) {
+        setPhaseOptions([]);
+        setFormData(prev => ({ ...prev, phase_id: '' }));
+        return;
+      }
+      setIsPhaseLoading(true);
+      try {
+        const data = await phasesApi.listByProject(formData.project_id);
+        if (!active) return;
+        setPhaseOptions(data);
+        const hasPhase = data.some(phase => phase.id === formData.phase_id);
+        if (!hasPhase) {
+          setFormData(prev => ({ ...prev, phase_id: '' }));
+        }
+      } catch (error) {
+        if (!active) return;
+        console.error('Failed to load phases:', error);
+        setPhaseOptions([]);
+      } finally {
+        if (active) {
+          setIsPhaseLoading(false);
+        }
+      }
+    };
+
+    loadPhases();
+    return () => {
+      active = false;
+    };
+  }, [formData.project_id, formData.phase_id]);
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
 
@@ -70,6 +109,7 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
       estimated_minutes: formData.estimated_minutes ? parseInt(formData.estimated_minutes) : undefined,
       due_date: formData.due_date || undefined,
       project_id: formData.project_id || undefined,
+      phase_id: formData.phase_id || undefined,
       dependency_ids: formData.dependency_ids.length > 0 ? formData.dependency_ids : undefined,
       // Meeting fields (only include if is_fixed_time is true)
       ...(formData.is_fixed_time && {
@@ -301,6 +341,27 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
               ))}
             </select>
           </div>
+
+          {formData.project_id && (
+            <div className="form-group">
+              <label htmlFor="phase_id">Phase</label>
+              <select
+                id="phase_id"
+                value={formData.phase_id}
+                onChange={(e) => setFormData({ ...formData, phase_id: e.target.value })}
+                disabled={isPhaseLoading}
+              >
+                <option value="">No phase</option>
+                {phaseOptions.map((phase) => (
+                  <option key={phase.id} value={phase.id}>
+                    {phase.name}
+                  </option>
+                ))}
+              </select>
+              {isPhaseLoading && <p className="field-hint">Loading phases...</p>}
+            </div>
+          )}
+
 
           {/* Dependencies */}
           {availableDependencyTasks.length > 0 && (

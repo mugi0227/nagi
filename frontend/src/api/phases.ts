@@ -1,5 +1,12 @@
 import { api } from './client';
-import type { Phase, PhaseCreate, PhaseUpdate, PhaseWithTaskCount } from './types';
+import type {
+  Phase,
+  PhaseCreate,
+  PhaseUpdate,
+  PhaseWithTaskCount,
+  PhaseTaskBreakdownRequest,
+  PhaseTaskBreakdownResponse,
+} from './types';
 
 export const phasesApi = {
   create: (data: PhaseCreate) =>
@@ -16,4 +23,7 @@ export const phasesApi = {
 
   delete: (id: string) =>
     api.delete(`/phases/${id}`),
+
+  breakdownTasks: (phaseId: string, data: PhaseTaskBreakdownRequest) =>
+    api.post<PhaseTaskBreakdownResponse>(`/phases/${phaseId}/task-breakdown`, data),
 };

@@ -15,6 +15,7 @@ from app.interfaces.auth_provider import IAuthProvider, User
 from app.interfaces.task_repository import ITaskRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.phase_repository import IPhaseRepository
+from app.interfaces.milestone_repository import IMilestoneRepository
 from app.interfaces.proposal_repository import IProposalRepository
 from app.interfaces.agent_task_repository import IAgentTaskRepository
 from app.interfaces.memory_repository import IMemoryRepository
@@ -68,6 +69,17 @@ def get_phase_repository() -> IPhaseRepository:
     else:
         from app.infrastructure.local.phase_repository import SqlitePhaseRepository
         return SqlitePhaseRepository()
+
+
+@lru_cache()
+def get_milestone_repository() -> IMilestoneRepository:
+    """Get milestone repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Firestore not implemented yet")
+    else:
+        from app.infrastructure.local.milestone_repository import SqliteMilestoneRepository
+        return SqliteMilestoneRepository()
 
 
 @lru_cache()
@@ -318,6 +330,7 @@ async def get_current_user(
 TaskRepo = Annotated[ITaskRepository, Depends(get_task_repository)]
 ProjectRepo = Annotated[IProjectRepository, Depends(get_project_repository)]
 PhaseRepo = Annotated[IPhaseRepository, Depends(get_phase_repository)]
+MilestoneRepo = Annotated[IMilestoneRepository, Depends(get_milestone_repository)]
 ProposalRepo = Annotated[IProposalRepository, Depends(get_proposal_repository)]
 AgentTaskRepo = Annotated[IAgentTaskRepository, Depends(get_agent_task_repository)]
 MemoryRepo = Annotated[IMemoryRepository, Depends(get_memory_repository)]

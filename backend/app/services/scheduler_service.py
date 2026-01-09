@@ -456,7 +456,7 @@ class SchedulerService:
             if meeting_minutes > capacity_minutes_today:
                 overflow_minutes = meeting_minutes - capacity_minutes_today
 
-            energy_minutes = {EnergyLevel.HIGH: 0, EnergyLevel.LOW: 0}
+            energy_minutes = {EnergyLevel.HIGH: 0, EnergyLevel.MEDIUM: 0, EnergyLevel.LOW: 0}
             # Count meeting energy levels
             for meeting in day_meetings:
                 duration = int((meeting.end_time - meeting.start_time).total_seconds() / 60)

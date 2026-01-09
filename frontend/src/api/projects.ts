@@ -15,6 +15,8 @@ import type {
   Checkin,
   CheckinCreate,
   ProjectKpiTemplate,
+  PhaseBreakdownRequest,
+  PhaseBreakdownResponse,
 } from './types';
 
 export const projectsApi = {
@@ -82,6 +84,9 @@ export const projectsApi = {
 
   createCheckin: (projectId: string, data: CheckinCreate) =>
     api.post<Checkin>(`/projects/${projectId}/checkins`, data),
+
+  breakdownPhases: (projectId: string, data: PhaseBreakdownRequest) =>
+    api.post<PhaseBreakdownResponse>(`/projects/${projectId}/phase-breakdown`, data),
 };
 
 // Convenience export

@@ -56,12 +56,25 @@ def create_app() -> FastAPI:
     )
 
     # Include routers
-    from app.api import chat, tasks, projects, phases, proposals, captures, agent_tasks, memories, heartbeat, today
+    from app.api import (
+        agent_tasks,
+        captures,
+        chat,
+        heartbeat,
+        memories,
+        milestones,
+        phases,
+        projects,
+        proposals,
+        tasks,
+        today,
+    )
 
     app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
     app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
     app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
     app.include_router(phases.router, prefix="/api", tags=["phases"])
+    app.include_router(milestones.router, prefix="/api", tags=["milestones"])
     app.include_router(proposals.router, prefix="/api/proposals", tags=["proposals"])
     app.include_router(captures.router, prefix="/api/captures", tags=["captures"])
     app.include_router(agent_tasks.router, prefix="/api/agent-tasks", tags=["agent_tasks"])

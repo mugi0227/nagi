@@ -61,6 +61,14 @@ class PhaseStatus(str, Enum):
     ARCHIVED = "ARCHIVED"
 
 
+class MilestoneStatus(str, Enum):
+    """Milestone status."""
+
+    ACTIVE = "ACTIVE"
+    COMPLETED = "COMPLETED"
+    ARCHIVED = "ARCHIVED"
+
+
 class ProjectRole(str, Enum):
     """Role of a member within a project."""
 

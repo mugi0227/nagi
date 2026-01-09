@@ -15,11 +15,14 @@ from app.api.deps import (
     CheckinRepo,
     CurrentUser,
     LLMProvider,
+    MilestoneRepo,
     ProjectMemberRepo,
     ProjectInvitationRepo,
     ProjectRepo,
+    PhaseRepo,
     TaskAssignmentRepo,
     TaskRepo,
+    MemoryRepo,
     UserRepo,
 )
 from app.core.exceptions import NotFoundError
@@ -37,9 +40,11 @@ from app.models.collaboration import (
 )
 from app.models.project import Project, ProjectCreate, ProjectUpdate, ProjectWithTaskCount
 from app.models.project_kpi import ProjectKpiTemplate
+from app.models.phase_breakdown import PhaseBreakdownRequest, PhaseBreakdownResponse
 from app.models.enums import InvitationStatus, ProjectRole
 from app.services.kpi_calculator import apply_project_kpis
 from app.services.kpi_templates import get_kpi_templates
+from app.services.phase_planner_service import PhasePlannerService
 
 router = APIRouter()
 
@@ -491,3 +496,33 @@ async def create_project_checkin(
     summary_text = _summarize_checkin(llm_provider, checkin.raw_text)
     payload = checkin.model_copy(update={"summary_text": summary_text})
     return await checkin_repo.create(user.id, project_id, payload)
+
+
+@router.post("/{project_id}/phase-breakdown", response_model=PhaseBreakdownResponse)
+async def breakdown_project_phases(
+    project_id: UUID,
+    request: PhaseBreakdownRequest,
+    user: CurrentUser,
+    repo: ProjectRepo,
+    phase_repo: PhaseRepo,
+    milestone_repo: MilestoneRepo,
+    task_repo: TaskRepo,
+    memory_repo: MemoryRepo,
+    llm_provider: LLMProvider,
+) -> PhaseBreakdownResponse:
+    """Generate phases and milestones for a project using AI."""
+    await _get_project_or_404(user, repo, project_id)
+
+    service = PhasePlannerService(
+        llm_provider=llm_provider,
+        memory_repo=memory_repo,
+        project_repo=repo,
+        phase_repo=phase_repo,
+        milestone_repo=milestone_repo,
+        task_repo=task_repo,
+    )
+    return await service.breakdown_project_phases(
+        user_id=user.id,
+        project_id=project_id,
+        request=request,
+    )

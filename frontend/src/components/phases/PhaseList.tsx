@@ -1,24 +1,77 @@
-import { useState } from 'react';
-import { FaPlus, FaEdit, FaTrash, FaCheck, FaTimes, FaChevronUp, FaChevronDown } from 'react-icons/fa';
+import { useMemo, useState } from 'react';
+import { FaPlus, FaEdit, FaTrash, FaCheck, FaTimes, FaChevronUp, FaChevronDown, FaRobot } from 'react-icons/fa';
 import { motion, AnimatePresence } from 'framer-motion';
-import type { PhaseWithTaskCount, PhaseCreate, PhaseUpdate } from '../../api/types';
+import type {
+  Milestone,
+  MilestoneCreate,
+  MilestoneUpdate,
+  PhaseWithTaskCount,
+  PhaseCreate,
+  PhaseUpdate,
+} from '../../api/types';
 import './PhaseList.css';
 
 interface PhaseListProps {
   phases: PhaseWithTaskCount[];
+  milestones: Milestone[];
+  isMilestonesLoading?: boolean;
   onCreatePhase: (phase: PhaseCreate) => Promise<void>;
   onUpdatePhase: (id: string, phase: PhaseUpdate) => Promise<void>;
   onDeletePhase: (id: string) => Promise<void>;
+  onCreateMilestone: (milestone: MilestoneCreate) => Promise<void>;
+  onUpdateMilestone: (id: string, milestone: MilestoneUpdate) => Promise<void>;
+  onDeleteMilestone: (id: string) => Promise<void>;
+  onGeneratePhases?: () => Promise<void>;
+  onGeneratePhaseTasks?: (phaseId: string) => Promise<void>;
+  isPlanningPhases?: boolean;
+  planningPhaseId?: string | null;
   projectId: string;
 }
 
-export function PhaseList({ phases, onCreatePhase, onUpdatePhase, onDeletePhase, projectId }: PhaseListProps) {
+export function PhaseList({
+  phases,
+  milestones,
+  isMilestonesLoading = false,
+  onCreatePhase,
+  onUpdatePhase,
+  onDeletePhase,
+  onCreateMilestone,
+  onUpdateMilestone,
+  onDeleteMilestone,
+  onGeneratePhases,
+  onGeneratePhaseTasks,
+  isPlanningPhases = false,
+  planningPhaseId = null,
+  projectId,
+}: PhaseListProps) {
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newPhaseName, setNewPhaseName] = useState('');
   const [newPhaseDescription, setNewPhaseDescription] = useState('');
   const [editName, setEditName] = useState('');
   const [editDescription, setEditDescription] = useState('');
+  const [addingMilestonePhaseId, setAddingMilestonePhaseId] = useState<string | null>(null);
+  const [milestoneTitle, setMilestoneTitle] = useState('');
+  const [milestoneDescription, setMilestoneDescription] = useState('');
+  const [milestoneDueDate, setMilestoneDueDate] = useState('');
+  const [editingMilestoneId, setEditingMilestoneId] = useState<string | null>(null);
+  const [editMilestoneTitle, setEditMilestoneTitle] = useState('');
+  const [editMilestoneDescription, setEditMilestoneDescription] = useState('');
+  const [editMilestoneDueDate, setEditMilestoneDueDate] = useState('');
+
+  const milestonesByPhaseId = useMemo(() => {
+    const map: Record<string, Milestone[]> = {};
+    milestones.forEach((milestone) => {
+      if (!map[milestone.phase_id]) {
+        map[milestone.phase_id] = [];
+      }
+      map[milestone.phase_id].push(milestone);
+    });
+    Object.keys(map).forEach((phaseId) => {
+      map[phaseId] = map[phaseId].sort((a, b) => a.order_in_phase - b.order_in_phase);
+    });
+    return map;
+  }, [milestones]);
 
   const handleCreate = async () => {
     if (!newPhaseName.trim()) return;
@@ -87,15 +140,92 @@ export function PhaseList({ phases, onCreatePhase, onUpdatePhase, onDeletePhase,
     await onUpdatePhase(phase.id, { order_in_project: phase.order_in_project + 1 });
   };
 
+  const handleStartAddMilestone = (phaseId: string) => {
+    setAddingMilestonePhaseId(phaseId);
+    setMilestoneTitle('');
+    setMilestoneDescription('');
+    setMilestoneDueDate('');
+  };
+
+  const handleCreateMilestone = async (phaseId: string) => {
+    if (!milestoneTitle.trim()) return;
+    try {
+      await onCreateMilestone({
+        project_id: projectId,
+        phase_id: phaseId,
+        title: milestoneTitle,
+        description: milestoneDescription || undefined,
+        order_in_phase: (milestonesByPhaseId[phaseId]?.length || 0) + 1,
+        due_date: milestoneDueDate || undefined,
+      });
+      setAddingMilestonePhaseId(null);
+      setMilestoneTitle('');
+      setMilestoneDescription('');
+      setMilestoneDueDate('');
+    } catch (error) {
+      console.error('Failed to create milestone:', error);
+      alert('Failed to create milestone.');
+    }
+  };
+
+  const handleStartEditMilestone = (milestone: Milestone) => {
+    setEditingMilestoneId(milestone.id);
+    setEditMilestoneTitle(milestone.title);
+    setEditMilestoneDescription(milestone.description || '');
+    setEditMilestoneDueDate(milestone.due_date ? milestone.due_date.slice(0, 10) : '');
+  };
+
+  const handleUpdateMilestone = async (milestoneId: string) => {
+    if (!editMilestoneTitle.trim()) return;
+    try {
+      await onUpdateMilestone(milestoneId, {
+        title: editMilestoneTitle,
+        description: editMilestoneDescription || undefined,
+        due_date: editMilestoneDueDate || undefined,
+      });
+      setEditingMilestoneId(null);
+    } catch (error) {
+      console.error('Failed to update milestone:', error);
+      alert('Failed to update milestone.');
+    }
+  };
+
+  const handleCancelMilestoneEdit = () => {
+    setEditingMilestoneId(null);
+    setEditMilestoneTitle('');
+    setEditMilestoneDescription('');
+    setEditMilestoneDueDate('');
+  };
+
+  const handleDeleteMilestone = async (milestoneId: string) => {
+    if (!confirm('Delete this milestone?')) return;
+    try {
+      await onDeleteMilestone(milestoneId);
+    } catch (error) {
+      console.error('Failed to delete milestone:', error);
+      alert('Failed to delete milestone.');
+    }
+  };
+
   const sortedPhases = [...phases].sort((a, b) => a.order_in_project - b.order_in_project);
 
   return (
     <div className="phase-list">
       <div className="phase-list-header">
-        <h3>フェーズ管理</h3>
-        <button className="add-phase-btn" onClick={() => setIsAdding(true)}>
-          <FaPlus /> フェーズを追加
-        </button>
+        <h3>Phase Manager</h3>
+        <div className="phase-header-actions">
+          <button
+            className="add-phase-btn"
+            onClick={() => onGeneratePhases?.()}
+            disabled={!onGeneratePhases || isPlanningPhases}
+            title="Generate phases and milestones with AI"
+          >
+            <FaRobot /> {isPlanningPhases ? 'Planning...' : 'AI Plan Phases'}
+          </button>
+          <button className="add-phase-btn" onClick={() => setIsAdding(true)}>
+            <FaPlus /> Add Phase
+          </button>
+        </div>
       </div>
 
       <AnimatePresence>
@@ -227,6 +357,137 @@ export function PhaseList({ phases, onCreatePhase, onUpdatePhase, onDeletePhase,
                         <FaTrash />
                       </button>
                     </div>
+                  </div>
+                  <div className="phase-milestones">
+                    <div className="milestones-header">
+                      <span className="milestones-title">Milestones</span>
+                      <div className="milestones-actions">
+                        <button
+                          className="btn-secondary"
+                          onClick={() => onGeneratePhaseTasks?.(phase.id)}
+                          disabled={!onGeneratePhaseTasks || planningPhaseId === phase.id}
+                        >
+                          <FaRobot /> {planningPhaseId === phase.id ? 'Planning...' : 'AI Tasks'}
+                        </button>
+                        <button
+                          className="btn-secondary"
+                          onClick={() => handleStartAddMilestone(phase.id)}
+                        >
+                          <FaPlus /> Add Milestone
+                        </button>
+                      </div>
+                    </div>
+
+                    {isMilestonesLoading ? (
+                      <div className="milestones-loading">Loading...</div>
+                    ) : (
+                      <div className="milestones-list">
+                        {(milestonesByPhaseId[phase.id] || []).length === 0 && (
+                          <div className="milestones-empty">No milestones yet.</div>
+                        )}
+                        {(milestonesByPhaseId[phase.id] || []).map((milestone) => (
+                          <div key={milestone.id} className="milestone-item">
+                            {editingMilestoneId === milestone.id ? (
+                              <div className="milestone-edit">
+                                <input
+                                  type="text"
+                                  value={editMilestoneTitle}
+                                  onChange={(e) => setEditMilestoneTitle(e.target.value)}
+                                  className="milestone-input"
+                                />
+                                <input
+                                  type="date"
+                                  value={editMilestoneDueDate}
+                                  onChange={(e) => setEditMilestoneDueDate(e.target.value)}
+                                  className="milestone-date"
+                                />
+                                <textarea
+                                  value={editMilestoneDescription}
+                                  onChange={(e) => setEditMilestoneDescription(e.target.value)}
+                                  className="milestone-textarea"
+                                  rows={2}
+                                />
+                                <div className="milestone-actions">
+                                  <button className="btn-save" onClick={() => handleUpdateMilestone(milestone.id)}>
+                                    <FaCheck /> Save
+                                  </button>
+                                  <button className="btn-cancel" onClick={handleCancelMilestoneEdit}>
+                                    <FaTimes /> Cancel
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <>
+                                <div className="milestone-main">
+                                  <div className="milestone-info">
+                                    <span className="milestone-title">{milestone.title}</span>
+                                    {milestone.due_date && (
+                                      <span className="milestone-date">{milestone.due_date.slice(0, 10)}</span>
+                                    )}
+                                  </div>
+                                  <div className="milestone-buttons">
+                                    <button
+                                      className="btn-icon"
+                                      onClick={() => handleStartEditMilestone(milestone)}
+                                      title="Edit milestone"
+                                    >
+                                      <FaEdit />
+                                    </button>
+                                    <button
+                                      className="btn-icon btn-danger"
+                                      onClick={() => handleDeleteMilestone(milestone.id)}
+                                      title="Delete milestone"
+                                    >
+                                      <FaTrash />
+                                    </button>
+                                  </div>
+                                </div>
+                                {milestone.description && (
+                                  <p className="milestone-description">{milestone.description}</p>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {addingMilestonePhaseId === phase.id && (
+                      <div className="milestone-form">
+                        <input
+                          type="text"
+                          placeholder="Milestone title"
+                          value={milestoneTitle}
+                          onChange={(e) => setMilestoneTitle(e.target.value)}
+                          className="milestone-input"
+                          autoFocus
+                        />
+                        <input
+                          type="date"
+                          value={milestoneDueDate}
+                          onChange={(e) => setMilestoneDueDate(e.target.value)}
+                          className="milestone-date"
+                        />
+                        <textarea
+                          placeholder="Description (optional)"
+                          value={milestoneDescription}
+                          onChange={(e) => setMilestoneDescription(e.target.value)}
+                          className="milestone-textarea"
+                          rows={2}
+                        />
+                        <div className="milestone-actions">
+                          <button className="btn-save" onClick={() => handleCreateMilestone(phase.id)}>
+                            <FaCheck /> Save
+                          </button>
+                          <button
+                            className="btn-cancel"
+                            onClick={() => setAddingMilestonePhaseId(null)}
+                          >
+                            <FaTimes /> Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </>
               )}

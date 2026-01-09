@@ -10,6 +10,7 @@ export type CreatedBy = 'USER' | 'AGENT';
 export type ChatMode = 'dump' | 'consult' | 'breakdown';
 export type ProjectStatus = 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
 export type PhaseStatus = 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
+export type MilestoneStatus = 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
 export type ProjectRole = 'OWNER' | 'ADMIN' | 'MEMBER';
 export type BlockerStatus = 'OPEN' | 'RESOLVED';
 export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
@@ -81,6 +82,7 @@ export interface TaskCreate {
   title: string;
   description?: string;
   project_id?: string;
+  phase_id?: string;
   importance?: Priority;
   urgency?: Priority;
   energy_level?: EnergyLevel;
@@ -103,6 +105,7 @@ export interface TaskUpdate {
   title?: string;
   description?: string;
   project_id?: string;
+  phase_id?: string;
   status?: TaskStatus;
   importance?: Priority;
   urgency?: Priority;
@@ -286,6 +289,81 @@ export interface PhaseUpdate {
   order_in_project?: number;
   start_date?: string;
   end_date?: string;
+}
+
+// Milestone models
+export interface Milestone {
+  id: string;
+  user_id: string;
+  project_id: string;
+  phase_id: string;
+  title: string;
+  description?: string;
+  status: MilestoneStatus;
+  order_in_phase: number;
+  due_date?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MilestoneCreate {
+  project_id: string;
+  phase_id: string;
+  title: string;
+  description?: string;
+  order_in_phase?: number;
+  due_date?: string;
+}
+
+export interface MilestoneUpdate {
+  title?: string;
+  description?: string;
+  status?: MilestoneStatus;
+  order_in_phase?: number;
+  due_date?: string;
+}
+
+// Phase AI breakdown models
+export interface MilestoneSuggestion {
+  title: string;
+  description?: string;
+  due_date?: string | null;
+}
+
+export interface PhaseSuggestion {
+  name: string;
+  description?: string;
+  milestones: MilestoneSuggestion[];
+}
+
+export interface PhaseBreakdownRequest {
+  create_phases?: boolean;
+  create_milestones?: boolean;
+}
+
+export interface PhaseBreakdownResponse {
+  phases: PhaseSuggestion[];
+  created_phase_ids: string[];
+  created_milestone_ids: string[];
+}
+
+export interface PhaseTaskSuggestion {
+  title: string;
+  description?: string;
+  estimated_minutes?: number;
+  energy_level?: EnergyLevel;
+  importance?: Priority;
+  urgency?: Priority;
+  due_date?: string | null;
+}
+
+export interface PhaseTaskBreakdownRequest {
+  create_tasks?: boolean;
+}
+
+export interface PhaseTaskBreakdownResponse {
+  tasks: PhaseTaskSuggestion[];
+  created_task_ids: string[];
 }
 
 export interface ProjectCreate {

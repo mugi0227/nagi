@@ -53,8 +53,6 @@ export function DashboardPage() {
           className="grid-main"
         >
           <TodayTasksCard />
-          <ScheduleOverviewCard />
-          <WeeklyMeetingsCard />
         </motion.div>
 
         <motion.div
@@ -64,6 +62,14 @@ export function DashboardPage() {
           <WeeklyProgress />
         </motion.div>
       </div>
+
+      <motion.div
+        variants={itemVariants}
+        className="dashboard-bottom-section"
+      >
+        <ScheduleOverviewCard />
+        <WeeklyMeetingsCard />
+      </motion.div>
 
       {isBriefingOpen && (
         <div className="daily-briefing-modal" role="dialog" aria-modal="true">
