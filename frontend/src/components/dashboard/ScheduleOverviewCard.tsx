@@ -8,6 +8,7 @@ import { FaLock } from 'react-icons/fa6';
 import { FaCalendarAlt, FaList, FaChartBar } from 'react-icons/fa';
 import type { Task, TaskScheduleInfo, TaskStatus } from '../../api/types';
 import { GanttChartView } from './GanttChartView';
+import { userStorage } from '../../utils/userStorage';
 import './ScheduleOverviewCard.css';
 
 const HORIZON_OPTIONS = [7, 14, 30];
@@ -48,6 +49,7 @@ const TEXT = {
   dependencyAlert: '\u4f9d\u5b58\u30bf\u30b9\u30af\u304c\u5b8c\u4e86\u3057\u3066\u3044\u306a\u3044\u305f\u3081\u5b8c\u4e86\u3067\u304d\u307e\u305b\u3093',
   toggleDone: '\u5b8c\u4e86\u306b\u3059\u308b',
   toggleUndone: '\u672a\u5b8c\u4e86\u306b\u623b\u3059',
+  startNotBefore: '\u7740\u624b\u53ef',
   checkMark: '\u2713',
 };
 
@@ -75,6 +77,13 @@ const formatWeekday = (dateStr: string) => {
   return date.toLocaleDateString('ja-JP', { weekday: 'short' });
 };
 
+const formatShortDate = (value?: string) => {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
+};
+
 const getDueTag = (task: TaskScheduleInfo | undefined, day: Date) => {
   if (!task?.due_date) return null;
   const due = new Date(task.due_date);
@@ -83,6 +92,27 @@ const getDueTag = (task: TaskScheduleInfo | undefined, day: Date) => {
   if (toDateKey(due) === toDateKey(day)) return TEXT.dueToday;
   if (dueDateOnly < dayDateOnly) return TEXT.dueOver;
   return null;
+};
+
+const getStartNotBeforeTag = (task?: Task, parent?: Task) => {
+  const dates: Date[] = [];
+  if (task?.start_not_before) {
+    const parsed = new Date(task.start_not_before);
+    if (!Number.isNaN(parsed.getTime())) {
+      dates.push(parsed);
+    }
+  }
+  if (parent?.start_not_before) {
+    const parsed = new Date(parent.start_not_before);
+    if (!Number.isNaN(parsed.getTime())) {
+      dates.push(parsed);
+    }
+  }
+  if (dates.length === 0) return null;
+  const latest = new Date(Math.max(...dates.map(date => date.getTime())));
+  const label = formatShortDate(latest.toISOString());
+  if (!label) return null;
+  return `${TEXT.startNotBefore} ${label}`;
 };
 
 type ScheduleGroupItem = {
@@ -118,16 +148,32 @@ type TodayTasksLock = {
   taskSnapshots?: Record<string, TodayTaskSnapshot>;
 };
 
-export function ScheduleOverviewCard() {
+interface ScheduleOverviewCardProps {
+  projectId?: string;
+  projectTasks?: Task[];
+  title?: string;
+  tag?: string;
+  onTaskClick?: (taskId: string) => void;
+}
+
+export function ScheduleOverviewCard({
+  projectId,
+  projectTasks,
+  title,
+  tag,
+  onTaskClick,
+}: ScheduleOverviewCardProps) {
   const [horizon, setHorizon] = useState(14);
   const [viewMode, setViewMode] = useState<'list' | 'gantt'>('list');
   const { data, isLoading, error, refetch, isFetching } = useSchedule(horizon);
   const { getCapacityForDate } = useCapacitySettings();
   const { projects } = useProjects();
   const [isExcludedOpen, setIsExcludedOpen] = useState(false);
+  const displayTitle = title ?? TEXT.scheduleTitle;
+  const displayTag = tag ?? TEXT.scheduleTag;
   const todayIso = new Date().toISOString().slice(0, 10);
   const lockInfo = useMemo(() => {
-    const raw = localStorage.getItem(LOCK_STORAGE_KEY);
+    const raw = userStorage.get(LOCK_STORAGE_KEY);
     if (!raw) return null;
     try {
       const parsed = JSON.parse(raw) as TodayTasksLock;
@@ -155,33 +201,128 @@ export function ScheduleOverviewCard() {
 
   useEffect(() => {
     if (lockInfo) return;
-    const raw = localStorage.getItem(LOCK_STORAGE_KEY);
+    const raw = userStorage.get(LOCK_STORAGE_KEY);
     if (!raw) return;
     try {
       const parsed = JSON.parse(raw) as TodayTasksLock;
       if (parsed?.date !== todayIso || !Array.isArray(parsed.taskIds)) {
-        localStorage.removeItem(LOCK_STORAGE_KEY);
+        userStorage.remove(LOCK_STORAGE_KEY);
       }
     } catch {
-      localStorage.removeItem(LOCK_STORAGE_KEY);
+      userStorage.remove(LOCK_STORAGE_KEY);
     }
   }, [lockInfo, todayIso]);
 
+  const projectTaskIdSet = useMemo(
+    () => new Set((projectTasks ?? []).map(task => task.id)),
+    [projectTasks]
+  );
+
+  const filteredTasks = useMemo(() => {
+    if (!projectId) return data?.tasks ?? [];
+    return (data?.tasks ?? []).filter(task => task.project_id === projectId);
+  }, [data?.tasks, projectId]);
+
+  const allowedTaskIds = useMemo(
+    () => new Set(filteredTasks.map(task => task.task_id)),
+    [filteredTasks]
+  );
+
+  const filteredUnscheduled = useMemo(() => {
+    if (!projectId) return data?.unscheduled_task_ids ?? [];
+    return (data?.unscheduled_task_ids ?? []).filter(item => allowedTaskIds.has(item.task_id));
+  }, [data?.unscheduled_task_ids, projectId, allowedTaskIds]);
+
+  const filteredExcluded = useMemo(() => {
+    if (!projectId) return data?.excluded_tasks ?? [];
+    const base = data?.excluded_tasks ?? [];
+    if (projectTaskIdSet.size > 0) {
+      return base.filter(item => projectTaskIdSet.has(item.task_id));
+    }
+    return base.filter(item => allowedTaskIds.has(item.task_id));
+  }, [data?.excluded_tasks, projectId, projectTaskIdSet, allowedTaskIds]);
+
+  const filteredDays = useMemo(() => {
+    if (!projectId) return data?.days ?? [];
+    return (data?.days ?? []).map(day => {
+      const task_allocations = day.task_allocations.filter(allocation => allowedTaskIds.has(allocation.task_id));
+      const allocatedMinutes = task_allocations.reduce((sum, allocation) => sum + allocation.minutes, 0);
+      const meetingMinutes = task_allocations.reduce((sum, allocation) => {
+        const details = taskDetailsCache[allocation.task_id];
+        return details?.is_fixed_time ? sum + allocation.minutes : sum;
+      }, 0);
+      const overflowMinutes = Math.max(0, allocatedMinutes - day.capacity_minutes);
+      const availableMinutes = Math.max(0, day.capacity_minutes - allocatedMinutes);
+      return {
+        ...day,
+        task_allocations,
+        allocated_minutes: allocatedMinutes,
+        overflow_minutes: overflowMinutes,
+        meeting_minutes: meetingMinutes,
+        available_minutes: availableMinutes,
+      };
+    });
+  }, [data?.days, projectId, allowedTaskIds, taskDetailsCache]);
+
+  const scheduleData = useMemo(() => {
+    if (!data || !projectId) return data;
+    return {
+      ...data,
+      tasks: filteredTasks,
+      days: filteredDays,
+      unscheduled_task_ids: filteredUnscheduled,
+      excluded_tasks: filteredExcluded,
+    };
+  }, [data, projectId, filteredTasks, filteredDays, filteredUnscheduled, filteredExcluded]);
+
+  const activeLockInfo = useMemo(() => {
+    if (!lockInfo) return null;
+    if (!projectId) return lockInfo;
+    const allowedIds = projectTaskIdSet.size > 0 ? projectTaskIdSet : allowedTaskIds;
+    if (allowedIds.size === 0) return null;
+    const taskIds = lockInfo.taskIds.filter(taskId => allowedIds.has(taskId));
+    if (taskIds.length === 0) return null;
+    const allocations = lockInfo.allocations
+      ? Object.fromEntries(
+          Object.entries(lockInfo.allocations).filter(([taskId]) => allowedIds.has(taskId))
+        )
+      : undefined;
+    const taskSnapshots = lockInfo.taskSnapshots
+      ? Object.fromEntries(
+          Object.entries(lockInfo.taskSnapshots).filter(([taskId]) => allowedIds.has(taskId))
+        )
+      : undefined;
+    return {
+      ...lockInfo,
+      taskIds,
+      allocations,
+      taskSnapshots,
+    };
+  }, [lockInfo, projectId, projectTaskIdSet, allowedTaskIds]);
+
   const scheduleTaskIds = useMemo(() => {
     const ids = new Set<string>();
-    data?.days.forEach(day => {
+    scheduleData?.days.forEach(day => {
       day.task_allocations.forEach(allocation => {
         ids.add(allocation.task_id);
       });
     });
-    lockInfo?.taskIds.forEach(taskId => ids.add(taskId));
+    activeLockInfo?.taskIds.forEach(taskId => ids.add(taskId));
     return Array.from(ids);
-  }, [data?.days, lockInfo]);
+  }, [scheduleData?.days, activeLockInfo]);
 
   useEffect(() => {
     const desiredIds = new Set<string>(scheduleTaskIds);
+    scheduleData?.tasks?.forEach(task => {
+      if (task.parent_id) {
+        desiredIds.add(task.parent_id);
+      }
+    });
     Object.values(taskDetailsCache).forEach(task => {
       (task.dependency_ids || []).forEach(depId => desiredIds.add(depId));
+      if (task.parent_id) {
+        desiredIds.add(task.parent_id);
+      }
     });
     const missingIds = Array.from(desiredIds).filter(id => !(id in taskDetailsCache));
     if (missingIds.length === 0) return;
@@ -198,13 +339,13 @@ export function ScheduleOverviewCard() {
         setTaskDetailsCache(prev => ({ ...prev, ...updates }));
       }
     });
-  }, [scheduleTaskIds, taskDetailsCache]);
+  }, [scheduleTaskIds, scheduleData?.tasks, taskDetailsCache]);
 
   const taskMap = useMemo(() => {
     const map = new Map<string, TaskScheduleInfo>();
-    data?.tasks.forEach(task => map.set(task.task_id, task));
-    if (lockInfo?.taskSnapshots) {
-      Object.entries(lockInfo.taskSnapshots).forEach(([taskId, snapshot]) => {
+    scheduleData?.tasks.forEach(task => map.set(task.task_id, task));
+    if (activeLockInfo?.taskSnapshots) {
+      Object.entries(activeLockInfo.taskSnapshots).forEach(([taskId, snapshot]) => {
         if (!map.has(taskId)) {
           map.set(taskId, {
             task_id: taskId,
@@ -218,7 +359,7 @@ export function ScheduleOverviewCard() {
       });
     }
     return map;
-  }, [data?.tasks, lockInfo]);
+  }, [scheduleData?.tasks, activeLockInfo]);
 
   const projectNameById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -230,29 +371,29 @@ export function ScheduleOverviewCard() {
 
   const taskDayCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    data?.days.forEach(day => {
+    scheduleData?.days.forEach(day => {
       day.task_allocations.forEach(allocation => {
         counts.set(allocation.task_id, (counts.get(allocation.task_id) || 0) + 1);
       });
     });
     return counts;
-  }, [data?.days]);
+  }, [scheduleData?.days]);
 
   const unscheduledReasons = useMemo(() => {
     const buckets: Record<string, number> = {};
-    (data?.unscheduled_task_ids ?? []).forEach(item => {
+    (scheduleData?.unscheduled_task_ids ?? []).forEach(item => {
       buckets[item.reason] = (buckets[item.reason] || 0) + 1;
     });
     return buckets;
-  }, [data?.unscheduled_task_ids]);
+  }, [scheduleData?.unscheduled_task_ids]);
 
   const excludedReasons = useMemo(() => {
     const buckets: Record<string, number> = {};
-    (data?.excluded_tasks ?? []).forEach(item => {
+    (scheduleData?.excluded_tasks ?? []).forEach(item => {
       buckets[item.reason] = (buckets[item.reason] || 0) + 1;
     });
     return buckets;
-  }, [data?.excluded_tasks]);
+  }, [scheduleData?.excluded_tasks]);
 
   const dependencyStatusByTaskId = useMemo(() => {
     const map = new Map<string, { blocked: boolean; reason?: string }>();
@@ -284,6 +425,10 @@ export function ScheduleOverviewCard() {
     });
     return map;
   }, [scheduleTaskIds, taskDetailsCache, statusOverrides]);
+
+  const handleTaskClick = (taskId: string) => {
+    onTaskClick?.(taskId);
+  };
 
 
 
@@ -320,8 +465,8 @@ export function ScheduleOverviewCard() {
     return (
       <div className="schedule-overview-card">
         <div className="card-header">
-          <h3>{TEXT.scheduleTitle}</h3>
-          <span className="tag info">{TEXT.scheduleTag}</span>
+          <h3>{displayTitle}</h3>
+          <span className="tag info">{displayTag}</span>
         </div>
         <div className="error-message">{TEXT.scheduleFetchError}</div>
       </div>
@@ -332,17 +477,17 @@ export function ScheduleOverviewCard() {
     return (
       <div className="schedule-overview-card">
         <div className="card-header">
-          <h3>{TEXT.scheduleTitle}</h3>
-          <span className="tag info">{TEXT.scheduleTag}</span>
+          <h3>{displayTitle}</h3>
+          <span className="tag info">{displayTag}</span>
         </div>
         <div className="loading-state">{TEXT.loading}</div>
       </div>
     );
   }
 
-  const days = data?.days ?? [];
-  const unscheduledCount = data?.unscheduled_task_ids.length ?? 0;
-  const excludedCount = data?.excluded_tasks?.length ?? 0;
+  const days = scheduleData?.days ?? [];
+  const unscheduledCount = scheduleData?.unscheduled_task_ids.length ?? 0;
+  const excludedCount = scheduleData?.excluded_tasks?.length ?? 0;
   const todayKey = toDateKey(new Date());
 
   return (
@@ -350,8 +495,8 @@ export function ScheduleOverviewCard() {
       <div className="card-header schedule-header">
         <div className="schedule-title">
           <div className="schedule-title-row">
-            <h3>{TEXT.scheduleTitle}</h3>
-            {lockInfo && <span className="schedule-lock-badge">{TEXT.locked}</span>}
+            <h3>{displayTitle}</h3>
+            {activeLockInfo && <span className="schedule-lock-badge">{TEXT.locked}</span>}
           </div>
           <span className="schedule-subtitle">{TEXT.recentPrefix}{horizon}{TEXT.dayUnit}</span>
         </div>
@@ -462,7 +607,7 @@ export function ScheduleOverviewCard() {
                 )}
               </div>
               <div className="excluded-list">
-                {(data?.excluded_tasks ?? []).map(item => (
+                {(scheduleData?.excluded_tasks ?? []).map(item => (
                   <div key={item.task_id} className="excluded-item">
                     <span className="excluded-item-title">{item.title}</span>
                     {item.parent_title && (
@@ -488,22 +633,23 @@ export function ScheduleOverviewCard() {
       ) : viewMode === 'gantt' ? (
         <GanttChartView
           days={days}
-          tasks={data?.tasks ?? []}
+          tasks={scheduleData?.tasks ?? []}
           taskDetailsCache={taskDetailsCache}
           statusOverrides={statusOverrides}
           projectNameById={projectNameById}
           getCapacityForDate={getCapacityForDate}
+          onTaskClick={handleTaskClick}
         />
       ) : (
         <div className="schedule-days">
           {days.map(day => {
             const dayDate = new Date(day.date);
             const dayKey = toDateKey(dayDate);
-            const isLockedToday = Boolean(lockInfo && day.date === todayIso);
-            const lockedAllocations = isLockedToday && lockInfo?.allocations
-              ? lockInfo.taskIds.map(taskId => ({
+            const isLockedToday = Boolean(activeLockInfo && day.date === todayIso);
+            const lockedAllocations = isLockedToday && activeLockInfo?.allocations
+              ? activeLockInfo.taskIds.map(taskId => ({
                   task_id: taskId,
-                  minutes: lockInfo.allocations?.[taskId]?.allocated_minutes ?? 0,
+                  minutes: activeLockInfo.allocations?.[taskId]?.allocated_minutes ?? 0,
                 }))
               : null;
             const lockedAllocatedMinutes = lockedAllocations
@@ -614,7 +760,8 @@ export function ScheduleOverviewCard() {
                               return (
                             <div
                               key={`${day.date}-${item.allocation.task_id}`}
-                              className={`schedule-task-row child ${isMeeting ? 'meeting' : ''}`}
+                              className={`schedule-task-row child ${isMeeting ? 'meeting' : ''} ${onTaskClick ? 'clickable' : ''}`}
+                              onClick={onTaskClick ? () => handleTaskClick(item.allocation.task_id) : undefined}
                             >
                               {isMeeting && (
                                 <span className="schedule-task-meeting-icon">
@@ -660,12 +807,24 @@ export function ScheduleOverviewCard() {
                                   </span>
                                 )}
                                 </span>
-                                {item.dayCount > 1 && <span className="schedule-task-tag">{TEXT.split}</span>}
-                                {item.dueTag && (
-                                  <span className="schedule-task-tag warn">{item.dueTag}</span>
-                                )}
-                              </div>
-                            );
+                            {item.dayCount > 1 && <span className="schedule-task-tag">{TEXT.split}</span>}
+                              {item.dueTag && (
+                                <span className="schedule-task-tag warn">{item.dueTag}</span>
+                              )}
+                            {(() => {
+                              const parent = item.info?.parent_id
+                                ? taskDetailsCache[item.info.parent_id]
+                                : undefined;
+                              const startNotBeforeTag = getStartNotBeforeTag(taskDetail, parent);
+                              if (!startNotBeforeTag) return null;
+                              return (
+                                <span className="schedule-task-tag">
+                                  {startNotBeforeTag}
+                                </span>
+                              );
+                            })()}
+                          </div>
+                        );
                             })}
                           </div>
                         );
@@ -675,7 +834,11 @@ export function ScheduleOverviewCard() {
                         const taskDetail = taskDetailsCache[item.allocation.task_id];
                         const isMeeting = taskDetail?.is_fixed_time;
                         return (
-                        <div key={`${day.date}-${item.allocation.task_id}`} className={`schedule-task-row ${isMeeting ? 'meeting' : ''}`}>
+                        <div
+                          key={`${day.date}-${item.allocation.task_id}`}
+                          className={`schedule-task-row ${isMeeting ? 'meeting' : ''} ${onTaskClick ? 'clickable' : ''}`}
+                          onClick={onTaskClick ? () => handleTaskClick(item.allocation.task_id) : undefined}
+                        >
                           {isMeeting && (
                             <span className="schedule-task-meeting-icon">
                               <FaCalendarAlt />
@@ -727,6 +890,18 @@ export function ScheduleOverviewCard() {
                           )}
                           {item.dayCount > 1 && <span className="schedule-task-tag">{TEXT.split}</span>}
                           {item.dueTag && <span className="schedule-task-tag warn">{item.dueTag}</span>}
+                          {(() => {
+                            const parent = item.info?.parent_id
+                              ? taskDetailsCache[item.info.parent_id]
+                              : undefined;
+                            const startNotBeforeTag = getStartNotBeforeTag(taskDetail, parent);
+                            if (!startNotBeforeTag) return null;
+                            return (
+                              <span className="schedule-task-tag">
+                                {startNotBeforeTag}
+                              </span>
+                            );
+                          })()}
                         </div>
                         );
                       });

@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { FaArrowLeft, FaStar, FaEdit, FaCheckCircle, FaBullseye, FaChartLine, FaLightbulb, FaBookOpen, FaUsers, FaHeartbeat } from 'react-icons/fa';
+import { FaArrowLeft, FaStar, FaEdit, FaCheckCircle, FaBullseye, FaChartLine, FaLightbulb, FaBookOpen, FaUsers, FaHeartbeat, FaCalendarAlt } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { getProject, projectsApi } from '../api/projects';
+import { memoriesApi } from '../api/memories';
 import { tasksApi } from '../api/tasks';
 import { useTasks } from '../hooks/useTasks';
 import { ProjectTasksView } from '../components/projects/ProjectTasksView';
 import { ProjectDetailModal } from '../components/projects/ProjectDetailModal';
+import { RecurringMeetingsPanel } from '../components/projects/RecurringMeetingsPanel';
+import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { TaskFormModal } from '../components/tasks/TaskFormModal';
-import type { Blocker, Checkin, ProjectInvitation, ProjectMember, ProjectWithTaskCount, Task, TaskAssignment, TaskStatus } from '../api/types';
+import type { Blocker, Checkin, CheckinSummary, Memory, ProjectInvitation, ProjectKpiMetric, ProjectMember, ProjectWithTaskCount, Task, TaskAssignment, TaskStatus } from '../api/types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -18,6 +21,12 @@ import './ProjectDetailPage.css';
 export function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
+  const formatDateInput = (value: Date) => {
+    const year = value.getFullYear();
+    const month = `${value.getMonth() + 1}`.padStart(2, '0');
+    const day = `${value.getDate()}`.padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
   const [project, setProject] = useState<ProjectWithTaskCount | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +44,20 @@ export function ProjectDetailPage() {
   const [selectedCheckinMemberId, setSelectedCheckinMemberId] = useState('');
   const [isCheckinSaving, setIsCheckinSaving] = useState(false);
   const [checkinError, setCheckinError] = useState<string | null>(null);
+  const [checkinSummaryStart, setCheckinSummaryStart] = useState(() => {
+    const start = new Date();
+    start.setDate(start.getDate() - 7);
+    return formatDateInput(start);
+  });
+  const [checkinSummaryEnd, setCheckinSummaryEnd] = useState(() => formatDateInput(new Date()));
+  const [checkinSummary, setCheckinSummary] = useState<CheckinSummary | null>(null);
+  const [isCheckinSummaryLoading, setIsCheckinSummaryLoading] = useState(false);
+  const [checkinSummaryError, setCheckinSummaryError] = useState<string | null>(null);
+  const [isCheckinSummarySaving, setIsCheckinSummarySaving] = useState(false);
+  const [checkinSummarySaveStatus, setCheckinSummarySaveStatus] = useState<string | null>(null);
+  const [savedCheckinSummaries, setSavedCheckinSummaries] = useState<Memory[]>([]);
+  const [isSavedCheckinSummariesLoading, setIsSavedCheckinSummariesLoading] = useState(false);
+  const [savedCheckinSummariesError, setSavedCheckinSummariesError] = useState<string | null>(null);
   const [isCollabLoading, setIsCollabLoading] = useState(false);
   const [inviteMode, setInviteMode] = useState<'email' | 'user_id'>('email');
   const [inviteValue, setInviteValue] = useState('');
@@ -137,6 +160,30 @@ export function ProjectDetailPage() {
   }, [projectId]);
 
   useEffect(() => {
+    if (!projectId) return;
+    const fetchSavedSummaries = async () => {
+      setIsSavedCheckinSummariesLoading(true);
+      setSavedCheckinSummariesError(null);
+      try {
+        const data = await memoriesApi.list({
+          scope: 'PROJECT',
+          project_id: projectId,
+          limit: 200,
+        });
+        const summaries = data.filter((memory) => memory.tags?.includes('checkin_summary'));
+        summaries.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+        setSavedCheckinSummaries(summaries);
+      } catch (err) {
+        console.error('Failed to load saved checkin summaries:', err);
+        setSavedCheckinSummariesError('保存したサマリーの取得に失敗しました。');
+      } finally {
+        setIsSavedCheckinSummariesLoading(false);
+      }
+    };
+    fetchSavedSummaries();
+  }, [projectId]);
+
+  useEffect(() => {
     if (!members.length) return;
     if (selectedCheckinMemberId) return;
     const owner = members.find(member => member.role === 'OWNER');
@@ -156,6 +203,18 @@ export function ProjectDetailPage() {
     } else {
       setSelectedTask(task);
       setOpenedParentTask(null);
+    }
+  };
+
+  const handleScheduleTaskClick = async (taskId: string) => {
+    const task = tasks.find(item => item.id === taskId);
+    if (task) {
+      handleTaskClick(task);
+      return;
+    }
+    const fetched = await tasksApi.getById(taskId).catch(() => null);
+    if (fetched) {
+      handleTaskClick(fetched);
     }
   };
 
@@ -208,6 +267,35 @@ export function ProjectDetailPage() {
         ))}
       </div>
     );
+  };
+
+  const computeKpiProgress = (metric: ProjectKpiMetric) => {
+    const current = metric.current ?? 0;
+    const target = metric.target ?? 0;
+
+    if (metric.key === 'remaining_hours') {
+      if (target > 0) {
+        const ratio = 1 - current / target;
+        return Math.max(0, Math.min(ratio * 100, 100));
+      }
+      return current <= 0 ? 100 : 0;
+    }
+
+    if (metric.direction === 'down') {
+      if (target <= 0) {
+        return current <= 0 ? 100 : 0;
+      }
+      if (current <= 0) {
+        return 100;
+      }
+      return Math.min((target / current) * 100, 100);
+    }
+
+    if (target <= 0) {
+      return 0;
+    }
+
+    return Math.min((current / target) * 100, 100);
   };
 
   const completionRate = project.total_tasks > 0
@@ -282,6 +370,24 @@ export function ProjectDetailPage() {
   })();
 
   const openBlockerCount = blockers.filter(blocker => blocker.status === 'OPEN').length;
+
+  const meetingTasks = tasks
+    .filter(task => task.is_fixed_time && task.start_time)
+    .slice()
+    .sort((a, b) => new Date(a.start_time as string).getTime() - new Date(b.start_time as string).getTime());
+
+  const formatMeetingDateTime = (value?: string) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleString('ja-JP', {
+      month: 'numeric',
+      day: 'numeric',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
 
 
   const handleAssignMultiple = async (taskId: string, memberUserIds: string[]) => {
@@ -405,7 +511,7 @@ export function ProjectDetailPage() {
     return date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
   };
 
-  const buildWeeklySummary = () => {
+  const getWeeklyMetrics = () => {
     const total = tasks.length;
     const done = tasks.filter(task => task.status === 'DONE').length;
     const inProgress = tasks.filter(task => task.status === 'IN_PROGRESS').length;
@@ -429,25 +535,40 @@ export function ProjectDetailPage() {
       return due >= todayDate && due <= weekAhead;
     });
 
-    const formatTaskList = (items: Task[]) =>
-      items.slice(0, 5).map(task => `- ${task.title}`).join('\n');
+    return {
+      total,
+      done,
+      inProgress,
+      waiting,
+      todo,
+      todayDate,
+      overdueTasks,
+      dueSoonTasks,
+    };
+  };
+
+  const formatTaskList = (items: Task[]) =>
+    items.slice(0, 5).map(task => `- ${task.title}`).join('\n');
+
+  const buildWeeklySummary = () => {
+    const metrics = getWeeklyMetrics();
 
     const lines = [
-      `週次サマリー (${todayDate.toLocaleDateString('ja-JP')})`,
+      `週次サマリー (${metrics.todayDate.toLocaleDateString('ja-JP')})`,
       '',
-      `- タスク合計: ${total}`,
-      `- 完了: ${done} / 進行中: ${inProgress} / 待機: ${waiting} / 未着手: ${todo}`,
-      `- 期限超過: ${overdueTasks.length}`,
-      `- 直近7日以内の期限: ${dueSoonTasks.length}`,
+      `- タスク合計: ${metrics.total}`,
+      `- 完了: ${metrics.done} / 進行中: ${metrics.inProgress} / 待機: ${metrics.waiting} / 未着手: ${metrics.todo}`,
+      `- 期限超過: ${metrics.overdueTasks.length}`,
+      `- 直近7日期限: ${metrics.dueSoonTasks.length}`,
       `- 依存で止まりそう: ${blockedDependencyCount}`,
       `- オープンブロッカー: ${openBlockerCount}`,
     ];
 
-    if (overdueTasks.length > 0) {
-      lines.push('', '期限超過タスク（最大5件）', formatTaskList(overdueTasks));
+    if (metrics.overdueTasks.length > 0) {
+      lines.push('', '期限超過タスク（最大5件）', formatTaskList(metrics.overdueTasks));
     }
-    if (dueSoonTasks.length > 0) {
-      lines.push('', '直近の期限タスク（最大5件）', formatTaskList(dueSoonTasks));
+    if (metrics.dueSoonTasks.length > 0) {
+      lines.push('', '直近期限タスク（最大5件）', formatTaskList(metrics.dueSoonTasks));
     }
 
     lines.push(
@@ -463,6 +584,32 @@ export function ProjectDetailPage() {
     );
 
     return lines.join('\n');
+  };
+
+  const buildWeeklyContext = () => {
+    const metrics = getWeeklyMetrics();
+    if (metrics.total === 0) {
+      return '';
+    }
+
+    const lines = [
+      `週次スナップショット (${metrics.todayDate.toLocaleDateString('ja-JP')})`,
+      `- タスク合計: ${metrics.total}`,
+      `- 完了: ${metrics.done} / 進行中: ${metrics.inProgress} / 待機: ${metrics.waiting} / 未着手: ${metrics.todo}`,
+      `- 期限超過: ${metrics.overdueTasks.length}`,
+      `- 直近7日期限: ${metrics.dueSoonTasks.length}`,
+      `- 依存で止まりそう: ${blockedDependencyCount}`,
+      `- オープンブロッカー: ${openBlockerCount}`,
+    ];
+
+    if (metrics.overdueTasks.length > 0) {
+      lines.push('', '期限超過タスク（最大5件）', formatTaskList(metrics.overdueTasks));
+    }
+    if (metrics.dueSoonTasks.length > 0) {
+      lines.push('', '直近期限タスク（最大5件）', formatTaskList(metrics.dueSoonTasks));
+    }
+
+    return lines.join('\n').trim();
   };
 
   const handleStartWeeklyCheckin = () => {
@@ -490,9 +637,15 @@ export function ProjectDetailPage() {
     setIsCheckinSaving(true);
     setCheckinError(null);
     try {
+      const checkinType = checkinMode === 'issue'
+        ? 'issue'
+        : checkinMode === 'weekly'
+          ? 'weekly'
+          : 'general';
       await projectsApi.createCheckin(projectId, {
         member_user_id: selectedCheckinMemberId,
         checkin_date: new Date().toISOString().slice(0, 10),
+        checkin_type: checkinType,
         raw_text: checkinText.trim(),
       });
       const checkinsData = await projectsApi.listCheckins(projectId);
@@ -504,6 +657,66 @@ export function ProjectDetailPage() {
       setCheckinError('チェックインの保存に失敗しました。');
     } finally {
       setIsCheckinSaving(false);
+    }
+  };
+
+  const getTagValue = (tags: string[] | undefined, prefix: string) => {
+    if (!tags) return null;
+    const tag = tags.find((item) => item.startsWith(prefix));
+    return tag ? tag.slice(prefix.length) : null;
+  };
+
+  const formatMemoryDate = (value: string) => {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    return date.toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' });
+  };
+
+  const handleSummarizeCheckins = async () => {
+    if (!projectId) return;
+    if (checkinSummaryStart && checkinSummaryEnd && checkinSummaryStart > checkinSummaryEnd) {
+      setCheckinSummaryError('Start date must be before end date.');
+      return;
+    }
+    setIsCheckinSummaryLoading(true);
+    setCheckinSummaryError(null);
+    try {
+      const summary = await projectsApi.summarizeCheckins(projectId, {
+        startDate: checkinSummaryStart || undefined,
+        endDate: checkinSummaryEnd || undefined,
+        weeklyContext: buildWeeklyContext() || undefined,
+      });
+      setCheckinSummary(summary);
+      setCheckinSummarySaveStatus(null);
+    } catch (err) {
+      console.error('Failed to summarize checkins:', err);
+      setCheckinSummaryError('Failed to summarize check-ins.');
+    } finally {
+      setIsCheckinSummaryLoading(false);
+    }
+  };
+
+  const handleSaveCheckinSummary = async () => {
+    if (!projectId || !checkinSummary?.summary_text) return;
+    setIsCheckinSummarySaving(true);
+    setCheckinSummarySaveStatus(null);
+    try {
+      const saved = await projectsApi.saveCheckinSummary(projectId, {
+        summary_text: checkinSummary.summary_text,
+        start_date: checkinSummary.start_date || checkinSummaryStart || undefined,
+        end_date: checkinSummary.end_date || checkinSummaryEnd || undefined,
+        checkin_count: checkinSummary.checkin_count || 0,
+      });
+      setSavedCheckinSummaries((prev) => {
+        const next = [saved, ...prev.filter((item) => item.id !== saved.id)];
+        return next;
+      });
+      setCheckinSummarySaveStatus('保存しました');
+    } catch (err) {
+      console.error('Failed to save checkin summary:', err);
+      setCheckinSummarySaveStatus('保存に失敗しました');
+    } finally {
+      setIsCheckinSummarySaving(false);
     }
   };
 
@@ -635,9 +848,7 @@ export function ProjectDetailPage() {
               {project.kpi_config.metrics.map((metric, index) => {
                 const current = metric.current ?? 0;
                 const target = metric.target ?? 0;
-                const progress = target > 0
-                  ? Math.min((current / target) * 100, 100)
-                  : 0;
+                const progress = computeKpiProgress(metric);
                 return (
                   <div key={index} className="kpi-card">
                     <div className="kpi-info">
@@ -752,10 +963,9 @@ export function ProjectDetailPage() {
             {checkins.length === 0 ? (
               <p className="checkin-empty">まだチェックインはありません。</p>
             ) : (
-              checkins.slice(0, 3).map((checkin) => {
+              checkins.map((checkin) => {
                 const name = memberLabelById[checkin.member_user_id] || checkin.member_user_id;
-                const text = checkin.summary_text || checkin.raw_text;
-                const preview = text.length > 80 ? `${text.slice(0, 80)}...` : text;
+                const preview = checkin.raw_text;
                 return (
                   <div key={checkin.id} className="checkin-item">
                     <div className="checkin-meta">
@@ -766,6 +976,117 @@ export function ProjectDetailPage() {
                   </div>
                 );
               })
+            )}
+          </div>
+
+          <div className="checkin-summary">
+            <div className="checkin-summary-header">Check-in Summary</div>
+            <div className="checkin-summary-controls">
+              <label className="checkin-summary-field">
+                <span>From</span>
+                <input
+                  type="date"
+                  className="checkin-summary-input"
+                  value={checkinSummaryStart}
+                  onChange={(e) => setCheckinSummaryStart(e.target.value)}
+                />
+              </label>
+              <label className="checkin-summary-field">
+                <span>To</span>
+                <input
+                  type="date"
+                  className="checkin-summary-input"
+                  value={checkinSummaryEnd}
+                  onChange={(e) => setCheckinSummaryEnd(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                className="checkin-btn primary"
+                onClick={handleSummarizeCheckins}
+                disabled={isCheckinSummaryLoading}
+              >
+                {isCheckinSummaryLoading ? 'Summarizing...' : 'Summarize'}
+              </button>
+            </div>
+            {checkinSummaryError && <p className="checkin-error">{checkinSummaryError}</p>}
+            {checkinSummary && (
+              <div className="checkin-summary-result">
+                <div className="checkin-summary-meta">
+                  {checkinSummary.checkin_count} posts
+                </div>
+                {checkinSummary.summary_error && (
+                  <div className="checkin-summary-warning">
+                    LLM error: {checkinSummary.summary_error}
+                    {checkinSummary.summary_error_detail ? ` (${checkinSummary.summary_error_detail})` : ''}
+                  </div>
+                )}
+                {(checkinSummary.summary_debug_prompt || checkinSummary.summary_debug_output) && (
+                  <div className="checkin-summary-debug">
+                    {checkinSummary.summary_debug_prompt && (
+                      <div className="checkin-summary-debug-block">
+                        <div className="checkin-summary-debug-title">Prompt (debug)</div>
+                        <pre>{checkinSummary.summary_debug_prompt}</pre>
+                      </div>
+                    )}
+                    {checkinSummary.summary_debug_output && (
+                      <div className="checkin-summary-debug-block">
+                        <div className="checkin-summary-debug-title">LLM output (debug)</div>
+                        <pre>{checkinSummary.summary_debug_output}</pre>
+                      </div>
+                    )}
+                  </div>
+                )}
+                <div className="checkin-summary-text">
+                  {checkinSummary.summary_text || 'No check-ins in range.'}
+                </div>
+                <div className="checkin-summary-actions">
+                  <button
+                    type="button"
+                    className="checkin-btn ghost"
+                    onClick={handleSaveCheckinSummary}
+                    disabled={isCheckinSummarySaving || !checkinSummary.summary_text}
+                  >
+                    {isCheckinSummarySaving ? '保存中...' : '保存する'}
+                  </button>
+                  {checkinSummarySaveStatus && (
+                    <span className="checkin-summary-status">{checkinSummarySaveStatus}</span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="checkin-saved">
+            <div className="checkin-summary-header">Saved Summaries</div>
+            {isSavedCheckinSummariesLoading && (
+              <p className="checkin-note">読み込み中...</p>
+            )}
+            {savedCheckinSummariesError && (
+              <p className="checkin-error">{savedCheckinSummariesError}</p>
+            )}
+            {!isSavedCheckinSummariesLoading && !savedCheckinSummariesError && savedCheckinSummaries.length === 0 && (
+              <p className="checkin-empty">保存したサマリーはありません。</p>
+            )}
+            {!isSavedCheckinSummariesLoading && savedCheckinSummaries.length > 0 && (
+              <div className="checkin-saved-list">
+                {savedCheckinSummaries.map((memory) => {
+                  const rangeLabel = getTagValue(memory.tags, 'range:') || '期間不明';
+                  const countLabel = getTagValue(memory.tags, 'count:');
+                  return (
+                    <details key={memory.id} className="checkin-saved-item">
+                      <summary className="checkin-saved-summary">
+                        <span>{rangeLabel}</span>
+                        <span className="checkin-saved-meta">
+                          {countLabel ? `${countLabel}件` : ''}
+                          {memory.created_at ? `・${formatMemoryDate(memory.created_at)}` : ''}
+                        </span>
+                      </summary>
+                      <pre>{memory.content}</pre>
+                    </details>
+                  );
+                })}
+              </div>
             )}
           </div>
         </div>
@@ -794,6 +1115,64 @@ export function ProjectDetailPage() {
         </div>
 
         <div className="details-side-column">
+          <div className="detail-section meeting-list-section">
+            <div className="section-header">
+              <FaCalendarAlt className="section-icon" />
+              <h3 className="section-title">定例会議一覧</h3>
+            </div>
+            {meetingTasks.length === 0 ? (
+              <p className="no-data-text">定例会議タスクはまだありません。</p>
+            ) : (
+              <div className="meeting-list">
+                {meetingTasks.slice(0, 6).map((meeting) => {
+                  const hasNotes = Boolean(meeting.meeting_notes && meeting.meeting_notes.trim());
+                  return (
+                    <div
+                      key={meeting.id}
+                      className="meeting-item"
+                      onClick={() => handleTaskClick(meeting)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter' || event.key === ' ') {
+                          event.preventDefault();
+                          handleTaskClick(meeting);
+                        }
+                      }}
+                    >
+                      <div className="meeting-item-main">
+                        <div className="meeting-item-title">{meeting.title}</div>
+                        <div className="meeting-item-meta">
+                          <span>{formatMeetingDateTime(meeting.start_time)}</span>
+                          {meeting.location && <span>{meeting.location}</span>}
+                        </div>
+                        <span className={`meeting-note-tag ${hasNotes ? 'has-notes' : ''}`}>
+                          {hasNotes ? '議事録あり' : '議事録未入力'}
+                        </span>
+                      </div>
+                      <div className="meeting-item-actions">
+                        <button
+                          type="button"
+                          className="meeting-note-btn"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setTaskToEdit(meeting);
+                          }}
+                        >
+                          議事録を入力
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {meetingTasks.length > 6 && (
+              <p className="meeting-list-note">表示は直近6件までです。</p>
+            )}
+          </div>
+
+          <RecurringMeetingsPanel projectId={projectId!} />
 
           <div className="detail-section members-section">
             <div className="section-header">
@@ -957,11 +1336,21 @@ export function ProjectDetailPage() {
       </div>
 
 
+      <div className="project-schedule-section">
+        <ScheduleOverviewCard
+          projectId={projectId!}
+          projectTasks={tasks}
+          title={`${project.name}\u306e\u30b9\u30b1\u30b8\u30e5\u30fc\u30eb`}
+          tag="\u30d7\u30ed\u30b8\u30a7\u30af\u30c8"
+          onTaskClick={handleScheduleTaskClick}
+        />
+      </div>
+
       {/* Tasks Section */}
       <div className="tasks-section">
-        <h2 className="section-title">Task Board</h2>
+        <h2 className="section-title">タスクボード</h2>
         {tasksLoading ? (
-          <div className="loading-state">Loading tasks...</div>
+          <div className="loading-state">タスクを読み込み中...</div>
         ) : (
           <ProjectTasksView
             projectId={projectId!}
@@ -1011,6 +1400,7 @@ export function ProjectDetailPage() {
           onProgressChange={(taskId, progress) => {
             updateTask(taskId, { progress });
           }}
+          onActionItemsCreated={refetchTasks}
         />
       )}
 

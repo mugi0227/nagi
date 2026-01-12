@@ -12,6 +12,7 @@ from app.core.logger import setup_logger
 from app.interfaces.agent_task_repository import IAgentTaskRepository
 from app.models.agent_task import AgentTask
 from app.models.enums import ActionType
+from app.services.recurring_meeting_service import RecurringMeetingService
 
 logger = setup_logger(__name__)
 
@@ -27,8 +28,13 @@ class HeartbeatService:
     - Error handling and retry logic
     """
 
-    def __init__(self, agent_task_repo: IAgentTaskRepository):
+    def __init__(
+        self,
+        agent_task_repo: IAgentTaskRepository,
+        recurring_meeting_service: RecurringMeetingService | None = None,
+    ):
         self.agent_task_repo = agent_task_repo
+        self.recurring_meeting_service = recurring_meeting_service
         settings = get_settings()
 
         # Parse quiet hours from config
@@ -65,11 +71,19 @@ class HeartbeatService:
             dict with status, processed count, and failed count
         """
         now = datetime.now()
+        recurring_result = None
+        if self.recurring_meeting_service:
+            recurring_result = await self.recurring_meeting_service.ensure_upcoming_meetings(user_id)
 
         # Check quiet hours
         if self._is_quiet_hours(now.time()):
             logger.info(f"Heartbeat skipped for {user_id}: quiet hours")
-            return {"status": "quiet_hours", "processed": 0, "failed": 0}
+            return {
+                "status": "quiet_hours",
+                "processed": 0,
+                "failed": 0,
+                "recurring_meetings": recurring_result,
+            }
 
         # Get pending tasks
         pending_tasks = await self.agent_task_repo.get_pending(
@@ -80,7 +94,12 @@ class HeartbeatService:
 
         if not pending_tasks:
             logger.debug(f"No pending tasks for {user_id}")
-            return {"status": "success", "processed": 0, "failed": 0}
+            return {
+                "status": "success",
+                "processed": 0,
+                "failed": 0,
+                "recurring_meetings": recurring_result,
+            }
 
         logger.info(f"Processing {len(pending_tasks)} pending tasks for {user_id}")
 
@@ -112,7 +131,12 @@ class HeartbeatService:
                     exc_info=True,
                 )
 
-        return {"status": "success", "processed": processed, "failed": failed}
+        return {
+            "status": "success",
+            "processed": processed,
+            "failed": failed,
+            "recurring_meetings": recurring_result,
+        }
 
     async def _execute_agent_task(self, user_id: str, task: AgentTask) -> dict[str, Any]:
         """

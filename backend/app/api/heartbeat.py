@@ -6,17 +6,29 @@ Called periodically to trigger autonomous agent actions.
 
 from fastapi import APIRouter, Depends, status
 
-from app.api.deps import CurrentUser, AgentTaskRepo
+from app.api.deps import CheckinRepo, CurrentUser, AgentTaskRepo, RecurringMeetingRepo, TaskRepo
 from app.services.heartbeat_service import HeartbeatService
+from app.services.recurring_meeting_service import RecurringMeetingService
 
 router = APIRouter()
 
 
 def get_heartbeat_service(
     agent_task_repo: AgentTaskRepo,
+    recurring_meeting_repo: RecurringMeetingRepo,
+    task_repo: TaskRepo,
+    checkin_repo: CheckinRepo,
 ) -> HeartbeatService:
     """Get HeartbeatService instance."""
-    return HeartbeatService(agent_task_repo=agent_task_repo)
+    recurring_service = RecurringMeetingService(
+        recurring_repo=recurring_meeting_repo,
+        task_repo=task_repo,
+        checkin_repo=checkin_repo,
+    )
+    return HeartbeatService(
+        agent_task_repo=agent_task_repo,
+        recurring_meeting_service=recurring_service,
+    )
 
 
 @router.post("", status_code=status.HTTP_200_OK)

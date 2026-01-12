@@ -27,6 +27,7 @@ class SqliteCheckinRepository(ICheckinRepository):
             project_id=UUID(orm.project_id),
             member_user_id=orm.member_user_id,
             checkin_date=orm.checkin_date,
+            checkin_type=orm.checkin_type or "weekly",
             summary_text=orm.summary_text,
             raw_text=orm.raw_text,
             created_at=orm.created_at,
@@ -42,6 +43,7 @@ class SqliteCheckinRepository(ICheckinRepository):
                 project_id=str(project_id),
                 member_user_id=checkin.member_user_id,
                 checkin_date=checkin.checkin_date,
+                checkin_type=checkin.checkin_type,
                 summary_text=checkin.summary_text,
                 raw_text=checkin.raw_text,
             )

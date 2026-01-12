@@ -14,6 +14,8 @@ from app.interfaces.memory_repository import IMemoryRepository
 from app.interfaces.project_invitation_repository import IProjectInvitationRepository
 from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
+from app.interfaces.phase_repository import IPhaseRepository
+from app.interfaces.milestone_repository import IMilestoneRepository
 from app.interfaces.proposal_repository import IProposalRepository
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
@@ -45,6 +47,8 @@ from app.tools import (
     propose_task_tool,
     propose_task_assignment_tool,
     propose_project_tool,
+    plan_project_phases_tool,
+    plan_phase_tasks_tool,
 )
 
 
@@ -52,6 +56,8 @@ def create_secretary_agent(
     llm_provider: ILLMProvider,
     task_repo: ITaskRepository,
     project_repo: IProjectRepository,
+    phase_repo: IPhaseRepository,
+    milestone_repo: IMilestoneRepository,
     project_member_repo: IProjectMemberRepository,
     project_invitation_repo: IProjectInvitationRepository,
     task_assignment_repo: ITaskAssignmentRepository,
@@ -127,6 +133,24 @@ def create_secretary_agent(
         add_to_memory_tool(memory_repo, user_id),
         refresh_user_profile_tool(memory_repo, llm_provider, user_id),
         schedule_agent_task_tool(agent_task_repo, user_id),
+        plan_project_phases_tool(
+            project_repo,
+            phase_repo,
+            milestone_repo,
+            task_repo,
+            memory_repo,
+            llm_provider,
+            user_id,
+        ),
+        plan_phase_tasks_tool(
+            project_repo,
+            phase_repo,
+            milestone_repo,
+            task_repo,
+            memory_repo,
+            llm_provider,
+            user_id,
+        ),
     ]
 
     # Create agent

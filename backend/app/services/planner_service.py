@@ -57,6 +57,7 @@ class PlannerService:
         user_id: str,
         task_id: UUID,
         create_subtasks: bool = True,
+        instruction: Optional[str] = None,
     ) -> BreakdownResponse:
         """
         Break down a task into micro-steps.
@@ -65,6 +66,7 @@ class PlannerService:
             user_id: User ID
             task_id: Task ID to break down
             create_subtasks: Whether to create subtasks from breakdown
+            instruction: Optional instruction or constraints for the breakdown
 
         Returns:
             BreakdownResponse with steps and optional subtask IDs
@@ -95,7 +97,7 @@ class PlannerService:
         runner = InMemoryRunner(agent=agent, app_name=self.APP_NAME)
 
         # Build prompt for breakdown with project context
-        prompt = self._build_breakdown_prompt(task, project)
+        prompt = self._build_breakdown_prompt(task, project, instruction)
 
         # Run with retry logic
         breakdown = await self._run_with_retry(runner, user_id, task, prompt)
@@ -115,7 +117,12 @@ class PlannerService:
             markdown_guide=markdown_guide,
         )
 
-    def _build_breakdown_prompt(self, task: Task, project: Optional[Project] = None) -> str:
+    def _build_breakdown_prompt(
+        self,
+        task: Task,
+        project: Optional[Project] = None,
+        instruction: Optional[str] = None,
+    ) -> str:
         """Build the prompt for task breakdown."""
         # Base task info
         prompt_parts = [
@@ -189,6 +196,12 @@ class PlannerService:
             "分解後、以下のJSON形式で結果を返してください:",
         ])
 
+        if instruction:
+            prompt_parts.extend([
+                "",
+                "## User Instruction",
+                instruction,
+            ])
         prompt = "\n".join(prompt_parts) + "\n"
         prompt += """
 

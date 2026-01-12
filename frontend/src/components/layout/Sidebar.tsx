@@ -4,6 +4,7 @@ import { FaBrain, FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear, FaMoo
 import { useTheme } from '../../context/ThemeContext';
 import { clearAuthToken, getAuthToken } from '../../api/auth';
 import { SettingsModal } from '../settings/SettingsModal';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 import './Sidebar.css';
 
 export function Sidebar() {
@@ -11,8 +12,14 @@ export function Sidebar() {
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
   const { token, source } = getAuthToken();
+  const { data: currentUser } = useCurrentUser();
   const [showSettings, setShowSettings] = useState(false);
   const isAuthLocked = source === 'env' || source === 'mock';
+  const displayName = currentUser?.username
+    || currentUser?.display_name
+    || currentUser?.email
+    || (token ? 'User' : 'Guest');
+  const avatarLabel = displayName ? displayName[0]?.toUpperCase() : '?';
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: FaChartPie },
@@ -57,9 +64,9 @@ export function Sidebar() {
 
       <div className="sidebar-footer">
         <div className="user-profile">
-          <div className="user-avatar">S</div>
+          <div className="user-avatar">{avatarLabel}</div>
           <div className="user-info">
-            <span className="user-name">Shuhei</span>
+            <span className="user-name">{displayName}</span>
             <span className="user-status">{token ? 'Signed in' : 'Guest'}</span>
           </div>
         </div>

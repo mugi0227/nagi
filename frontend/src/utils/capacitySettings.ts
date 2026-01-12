@@ -1,3 +1,5 @@
+import { userStorage } from './userStorage';
+
 export const DEFAULT_DAILY_CAPACITY_HOURS = 8;
 export const DEFAULT_DAILY_BUFFER_HOURS = 1;
 export const DEFAULT_WEEKLY_CAPACITY_HOURS = Array(7).fill(DEFAULT_DAILY_CAPACITY_HOURS);
@@ -27,15 +29,15 @@ const parseWeeklyCapacity = (value: string | null, fallback: number) => {
 
 export const getCapacitySettings = () => {
   const capacityHours = parseNumber(
-    localStorage.getItem('dailyCapacityHours'),
+    userStorage.get('dailyCapacityHours'),
     DEFAULT_DAILY_CAPACITY_HOURS
   );
   const bufferHours = parseNumber(
-    localStorage.getItem('dailyBufferHours'),
+    userStorage.get('dailyBufferHours'),
     DEFAULT_DAILY_BUFFER_HOURS
   );
   const capacityByWeekday = parseWeeklyCapacity(
-    localStorage.getItem('weeklyCapacityHours'),
+    userStorage.get('weeklyCapacityHours'),
     capacityHours
   );
   const todayIndex = new Date().getDay();

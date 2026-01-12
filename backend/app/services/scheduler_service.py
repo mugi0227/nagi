@@ -285,6 +285,10 @@ class SchedulerService:
             return max(0, int(hours * 60))
 
         all_task_map = {task.id: task for task in tasks}
+        effective_start_by_task, effective_due_by_task = self._get_effective_constraints(tasks)
+        effective_due_date_by_task: dict[UUID, date] = {
+            task_id: due.date() for task_id, due in effective_due_by_task.items()
+        }
 
         def get_parent_info(task: Task) -> tuple[Optional[UUID], Optional[str]]:
             if not task.parent_id:
@@ -368,7 +372,7 @@ class SchedulerService:
                     parent_id=get_parent_info(task)[0],
                     parent_title=get_parent_info(task)[1],
                     order_in_parent=task.order_in_parent,
-                    due_date=task.due_date,
+                    due_date=effective_due_by_task.get(task.id, task.due_date),
                     planned_start=None,
                     planned_end=None,
                     total_minutes=get_effective_estimated_minutes(task, tasks) or self.default_task_minutes,
@@ -389,6 +393,9 @@ class SchedulerService:
             )
 
         task_map = {task.id: task for task in scheduled_tasks}
+        def is_available(task_id: UUID, day: date) -> bool:
+            not_before = effective_start_by_task.get(task_id)
+            return not_before is None or not_before <= day
         remaining_minutes: dict[UUID, int] = {}
         base_scores: dict[UUID, float] = {}
 
@@ -462,15 +469,20 @@ class SchedulerService:
                 duration = int((meeting.end_time - meeting.start_time).total_seconds() / 60)
                 energy_minutes[meeting.energy_level] += duration
             day_scores = {
-                task_id: base_scores[task_id] + self._calculate_due_bonus(task_map[task_id], day_cursor)
+                task_id: base_scores[task_id]
+                + self._calculate_due_bonus_for_date(
+                    effective_due_date_by_task.get(task_id),
+                    day_cursor,
+                )
                 for task_id in task_map
             }
 
             forced_today = [
                 task_id
                 for task_id in ready + in_progress
-                if task_map[task_id].due_date
-                and task_map[task_id].due_date.date() <= day_cursor
+                if is_available(task_id, day_cursor)
+                and effective_due_date_by_task.get(task_id)
+                and effective_due_date_by_task[task_id] <= day_cursor
             ]
 
             if forced_today:
@@ -512,8 +524,12 @@ class SchedulerService:
                     continue
 
             # Normal scheduling within remaining capacity
-            while capacity_remaining > 0 and (ready or in_progress):
-                candidate_pool = in_progress if in_progress else ready
+            while capacity_remaining > 0:
+                available_in_progress = [task_id for task_id in in_progress if is_available(task_id, day_cursor)]
+                available_ready = [task_id for task_id in ready if is_available(task_id, day_cursor)]
+                if not available_in_progress and not available_ready:
+                    break
+                candidate_pool = available_in_progress if available_in_progress else available_ready
                 next_id = self._pick_next_task(candidate_pool, day_scores, task_map, energy_minutes)
                 minutes_left = remaining_minutes.get(next_id, 0)
                 if minutes_left <= 0:
@@ -589,7 +605,7 @@ class SchedulerService:
                     parent_id=get_parent_info(task)[0],
                     parent_title=get_parent_info(task)[1],
                     order_in_parent=task.order_in_parent,
-                    due_date=task.due_date,
+                    due_date=effective_due_by_task.get(task.id, task.due_date),
                     planned_start=task_start.get(task.id),
                     planned_end=task_end.get(task.id),
                     total_minutes=total_minutes,
@@ -634,6 +650,10 @@ class SchedulerService:
         today_date = today or date.today()
         task_map = {task.id: task for task in tasks}
         project_priorities = project_priorities or {}
+        _, effective_due_by_task = self._get_effective_constraints(tasks)
+        effective_due_date_by_task: dict[UUID, date] = {
+            task_id: due.date() for task_id, due in effective_due_by_task.items()
+        }
 
         today_day = next((day for day in schedule.days if day.date == today_date), None)
         today_task_ids: list[UUID] = []
@@ -686,7 +706,11 @@ class SchedulerService:
             )
         # Calculate scores for all today's tasks
         task_scores = {
-            task.id: self._calculate_task_score(task, project_priorities, today_date)
+            task.id: self._calculate_base_score(task, project_priorities)
+            + self._calculate_due_bonus_for_date(
+                effective_due_date_by_task.get(task.id),
+                today_date,
+            )
             for task in today_tasks
         }
 
@@ -771,12 +795,65 @@ class SchedulerService:
         return score
 
     @staticmethod
-    def _calculate_due_bonus(task: Task, reference_date: date) -> float:
+    def _get_effective_constraints(
+        tasks: list[Task],
+    ) -> tuple[dict[UUID, date], dict[UUID, datetime]]:
+        task_map = {task.id: task for task in tasks}
+        effective_start_by_task: dict[UUID, date] = {}
+        effective_due_by_task: dict[UUID, datetime] = {}
+
+        def get_parent_bounds(task: Task) -> tuple[Optional[datetime], Optional[datetime]]:
+            parent_start_candidates: list[datetime] = []
+            parent_due_candidates: list[datetime] = []
+            parent_id = task.parent_id
+            seen: set[UUID] = set()
+            while parent_id and parent_id not in seen:
+                seen.add(parent_id)
+                parent = task_map.get(parent_id)
+                if not parent:
+                    break
+                if parent.start_not_before:
+                    parent_start_candidates.append(parent.start_not_before)
+                if parent.due_date:
+                    parent_due_candidates.append(parent.due_date)
+                parent_id = parent.parent_id
+            parent_start = max(parent_start_candidates) if parent_start_candidates else None
+            parent_due = min(parent_due_candidates) if parent_due_candidates else None
+            return parent_start, parent_due
+
+        for task in tasks:
+            parent_start, parent_due = get_parent_bounds(task)
+            start_dt = task.start_not_before
+            if parent_start and (start_dt is None or start_dt < parent_start):
+                start_dt = parent_start
+
+            due_dt = task.due_date
+            if due_dt is None:
+                due_dt = parent_due
+            elif parent_due and due_dt > parent_due:
+                due_dt = parent_due
+
+            if start_dt and due_dt and due_dt < start_dt:
+                if parent_due and parent_due >= start_dt:
+                    due_dt = parent_due
+                elif parent_due:
+                    due_dt = parent_due
+                else:
+                    due_dt = start_dt
+
+            if start_dt:
+                effective_start_by_task[task.id] = start_dt.date()
+            if due_dt:
+                effective_due_by_task[task.id] = due_dt
+
+        return effective_start_by_task, effective_due_by_task
+
+    @staticmethod
+    def _calculate_due_bonus_for_date(due_date: Optional[date], reference_date: date) -> float:
         """Calculate due-date bonus that increases toward the due date."""
-        if not task.due_date:
+        if not due_date:
             return 0.0
 
-        due_date = task.due_date.date()
         days_until = (due_date - reference_date).days
         max_bonus = 30.0
         horizon_days = 14
@@ -788,6 +865,13 @@ class SchedulerService:
 
         step = max_bonus / horizon_days
         return max(0.0, max_bonus - (days_until * step))
+
+    def _calculate_due_bonus(self, task: Task, reference_date: date) -> float:
+        """Calculate due-date bonus that increases toward the due date."""
+        return self._calculate_due_bonus_for_date(
+            task.due_date.date() if task.due_date else None,
+            reference_date,
+        )
 
     @staticmethod
     def _sort_task_ids(

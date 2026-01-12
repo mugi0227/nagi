@@ -77,13 +77,20 @@ class Settings(BaseSettings):
     # ===========================================
     # Auth (OIDC/JWT)
     # ===========================================
-    AUTH_PROVIDER: Literal["mock", "oidc"] = "mock"
+    AUTH_PROVIDER: Literal["mock", "oidc", "local"] = "mock"
     OIDC_ISSUER: str = ""
     OIDC_AUDIENCE: str = ""
     OIDC_JWKS_URL: str = ""
     OIDC_EMAIL_CLAIM: str = "email"
     OIDC_NAME_CLAIM: str = "name"
     OIDC_ALLOW_EMAIL_LINKING: bool = False
+
+    # ===========================================
+    # Local Auth (password + JWT)
+    # ===========================================
+    LOCAL_JWT_SECRET: str = ""
+    LOCAL_JWT_ISSUER: str = "secretary-local"
+    LOCAL_JWT_EXPIRE_MINUTES: int = 60 * 24 * 7
 
     # ===========================================
     # Firebase Auth (legacy placeholder)
@@ -96,7 +103,7 @@ class Settings(BaseSettings):
     HOST: str = "0.0.0.0"
     PORT: int = 8000
     ALLOWED_ORIGINS: List[str] = Field(
-        default=["http://localhost:3000", "http://localhost:5173", "*"]
+        default=["http://localhost:3000", "http://localhost:5173"]
     )
 
     # URL for accessing the backend (for storage and callbacks)

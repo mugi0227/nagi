@@ -51,6 +51,11 @@ class BreakdownRequest(BaseModel):
     create_subtasks: bool = Field(
         False, description="分解結果をサブタスクとして作成するか（デフォルト: False）"
     )
+    instruction: Optional[str] = Field(
+        None,
+        max_length=1000,
+        description="Optional instruction or constraints for the task breakdown",
+    )
 
 
 class BreakdownResponse(BaseModel):

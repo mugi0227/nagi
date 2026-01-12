@@ -18,6 +18,7 @@ from app.interfaces.proposal_repository import IProposalRepository
 from app.models.enums import MemoryScope, MemoryType
 from app.models.memory import MemoryCreate, MemoryUpdate
 from app.models.proposal import Proposal, ProposalResponse, ProposalType
+from app.services.llm_utils import generate_text
 
 
 # ===========================================
@@ -312,27 +313,12 @@ async def refresh_user_profile(
         prompt_lines.append(f"- {memory.content}")
     prompt = "\n".join(prompt_lines)
 
-    summary_text = None
-    settings = getattr(llm_provider, "_settings", None)
-    api_key = getattr(settings, "GOOGLE_API_KEY", None)
-    if api_key:
-        try:
-            from google import genai
-            from google.genai.types import Content, Part, GenerateContentConfig
-
-            client = genai.Client(api_key=api_key)
-            model_name = llm_provider.get_model()
-            response = client.models.generate_content(
-                model=model_name,
-                contents=[Content(role="user", parts=[Part(text=prompt)])],
-                config=GenerateContentConfig(
-                    temperature=0.2,
-                    max_output_tokens=400,
-                ),
-            )
-            summary_text = (response.text or "").strip() or None
-        except Exception:
-            summary_text = None
+    summary_text = generate_text(
+        llm_provider,
+        prompt,
+        temperature=0.2,
+        max_output_tokens=400,
+    )
 
     if not summary_text:
         summary_text = "\n".join([f"- {memory.content}" for memory in base_memories[:10]])

@@ -68,6 +68,18 @@ class LiteLLMProvider(ILLMProvider):
         """
         return self._litellm
 
+    def get_model_id(self) -> str:
+        """Get the raw LiteLLM model identifier."""
+        return self._model_name
+
+    def get_api_base(self) -> Optional[str]:
+        """Get the configured LiteLLM API base, if any."""
+        return self._api_base
+
+    def get_api_key(self) -> Optional[str]:
+        """Get the configured LiteLLM API key, if any."""
+        return self._api_key
+
     def get_model_name(self) -> str:
         """Get human-readable model name."""
         if self._api_base:

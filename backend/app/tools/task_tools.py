@@ -50,6 +50,10 @@ class CreateTaskInput(BaseModel):
     )
     estimated_minutes: Optional[int] = Field(None, ge=1, le=480, description="見積もり時間（分）")
     due_date: Optional[str] = Field(None, description="期限（ISO形式: YYYY-MM-DDTHH:MM:SS）")
+    start_not_before: Optional[str] = Field(
+        None,
+        description="着手可能日時（ISO形式: YYYY-MM-DDTHH:MM:SS）",
+    )
     dependency_ids: list[str] = Field(
         default_factory=list,
         description="このタスクが依存する他のタスクのIDリスト（UUID文字列のリスト）"
@@ -76,6 +80,10 @@ class UpdateTaskInput(BaseModel):
     urgency: Optional[Priority] = Field(None, description="緊急度")
     energy_level: Optional[EnergyLevel] = Field(None, description="必要エネルギー (HIGH/MEDIUM/LOW)")
     progress: Optional[int] = Field(None, ge=0, le=100, description="進捗率（0-100%）")
+    start_not_before: Optional[str] = Field(
+        None,
+        description="着手可能日時（ISO形式: YYYY-MM-DDTHH:MM:SS）",
+    )
     # Meeting fields
     is_fixed_time: Optional[bool] = Field(None, description="会議・固定時間イベントの場合true")
     start_time: Optional[str] = Field(None, description="開始時刻（ISO形式）")
@@ -125,6 +133,10 @@ class BreakdownTaskInput(BaseModel):
     create_subtasks: bool = Field(
         True,
         description="サブタスクを自動作成するか（True: 作成する、False: ステップ案のみ返す）"
+    )
+    instruction: Optional[str] = Field(
+        None,
+        description="Optional instruction or constraints for task breakdown",
     )
 
 
@@ -350,6 +362,14 @@ async def create_task(
         except ValueError:
             pass  # Invalid date format, ignore
 
+    # Parse start_not_before if provided
+    start_not_before = None
+    if input_data.start_not_before:
+        try:
+            start_not_before = datetime.fromisoformat(input_data.start_not_before.replace("Z", "+00:00"))
+        except ValueError:
+            pass  # Invalid date format, ignore
+
     # Parse dependency_ids if provided
     dependency_ids = []
     for dep_id_str in input_data.dependency_ids:
@@ -390,6 +410,7 @@ async def create_task(
         energy_level=input_data.energy_level,
         estimated_minutes=input_data.estimated_minutes,
         due_date=due_date,
+        start_not_before=start_not_before,
         dependency_ids=dependency_ids,
         created_by=CreatedBy.AGENT,
         # Meeting fields
@@ -433,6 +454,13 @@ async def update_task(
         except ValueError:
             pass  # Invalid date format, ignore
 
+    start_not_before = None
+    if input_data.start_not_before:
+        try:
+            start_not_before = datetime.fromisoformat(input_data.start_not_before.replace("Z", "+00:00"))
+        except ValueError:
+            pass  # Invalid date format, ignore
+
     update_data = TaskUpdate(
         title=input_data.title,
         description=input_data.description,
@@ -441,6 +469,7 @@ async def update_task(
         urgency=input_data.urgency,
         energy_level=input_data.energy_level,
         progress=input_data.progress,
+        start_not_before=start_not_before,
         # Meeting fields
         is_fixed_time=input_data.is_fixed_time,
         start_time=start_time,
@@ -783,6 +812,7 @@ def propose_task_tool(
             energy_level (str, optional): Energy level
             estimated_minutes (int, optional): Estimated minutes
             due_date (str, optional): Due date (ISO)
+            start_not_before (str, optional): Earliest start datetime (ISO)
             dependency_ids (list[str], optional): Dependency task IDs
             is_fixed_time (bool, optional): Fixed-time meeting flag
             start_time (str, optional): Start time (ISO)
@@ -854,6 +884,7 @@ def create_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
             energy_level (str, optional): 必要エネルギー (HIGH/LOW)、デフォルト: LOW
             estimated_minutes (int, optional): 見積もり時間（分）
             due_date (str, optional): 期限（ISO形式）
+            start_not_before (str, optional): ???????ISO???
             dependency_ids (list[str], optional): このタスクが依存する他のタスクのIDリスト（UUID文字列）
             is_fixed_time (bool, optional): 会議・固定時間イベントの場合true
             start_time (str, optional): 開始時刻（ISO形式、is_fixed_time=trueの場合必須）
@@ -885,6 +916,7 @@ def update_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
             urgency (str, optional): 緊急度 (HIGH/MEDIUM/LOW)
             energy_level (str, optional): 必要エネルギー (HIGH/LOW)
             progress (int, optional): 進捗率（0-100%）。タスクの完成度を設定
+            start_not_before (str, optional): ???????ISO???
             is_fixed_time (bool, optional): 会議・固定時間イベントの場合true
             start_time (str, optional): 開始時刻（ISO形式）
             end_time (str, optional): 終了時刻（ISO形式）
@@ -1026,6 +1058,7 @@ async def breakdown_task(
         user_id=user_id,
         task_id=task_id,
         create_subtasks=input_data.create_subtasks,
+        instruction=input_data.instruction,
     )
 
     return result.model_dump(mode="json")
@@ -1124,6 +1157,7 @@ def breakdown_task_tool(
         Parameters:
             task_id (str): 分解するタスクのID（UUID文字列、必須）
             create_subtasks (bool, optional): サブタスクを自動作成するか（デフォルト: True）
+            instruction (str, optional): Optional instruction or constraints for breakdown
 
         Returns:
             dict: 分解結果（steps: ステップリスト、subtasks_created: サブタスク作成有無、subtask_ids: 作成されたサブタスクIDリスト、markdown_guide: Markdownガイド）

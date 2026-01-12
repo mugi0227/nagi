@@ -15,7 +15,7 @@ interface KanbanColumnProps {
   onEditTask?: (task: Task) => void;
   onDeleteTask?: (id: string) => void;
   onTaskClick?: (task: Task) => void;
-  onBreakdownTask?: (id: string) => void;
+  onBreakdownTask?: (id: string, instruction?: string) => void;
   breakdownTaskId?: string | null;
   onDrop?: (taskId: string, newStatus: TaskStatus) => void;
   onUpdateTask?: (taskId: string, status: TaskStatus) => void;

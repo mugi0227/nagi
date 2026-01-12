@@ -665,6 +665,86 @@
   gap: 0.75rem;
 }
 
+.meeting-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.meeting-item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-main);
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+
+.meeting-item:hover {
+  transform: translateY(-1px);
+  border-color: var(--primary);
+}
+
+.meeting-item-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.meeting-item-title {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.meeting-item-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.meeting-note-tag {
+  align-self: flex-start;
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-full);
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-muted);
+}
+
+.meeting-note-tag.has-notes {
+  background: rgba(74, 222, 128, 0.2);
+  color: #15803d;
+}
+
+.meeting-item-actions {
+  display: flex;
+  align-items: center;
+}
+
+.meeting-note-btn {
+  border-radius: var(--radius-md);
+  padding: 0.45rem 0.7rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  border: 1px solid var(--border-color);
+  background: transparent;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.meeting-list-note {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0.5rem 0 0;
+}
+
 .checkin-actions {
   display: flex;
   flex-wrap: wrap;
@@ -769,6 +849,178 @@
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+}
+
+.checkin-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-md);
+  border: 1px dashed var(--border-color);
+  background: var(--bg-main);
+}
+
+.checkin-summary-header {
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+.checkin-summary-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+.checkin-summary-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.checkin-summary-input {
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-main);
+  padding: 0.3rem 0.45rem;
+  font-size: 0.8rem;
+}
+
+.checkin-summary-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.12);
+}
+
+.checkin-summary-result {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.checkin-summary-meta {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.checkin-summary-warning {
+  font-size: 0.75rem;
+  color: #b91c1c;
+  font-weight: 600;
+}
+
+.checkin-summary-debug {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.7rem;
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.checkin-summary-debug-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.checkin-summary-debug-title {
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.checkin-summary-debug pre {
+  margin: 0;
+  white-space: pre-wrap;
+  font-size: 0.75rem;
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.6);
+  border-radius: var(--radius-md);
+  padding: 0.4rem 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+}
+
+.checkin-summary-text {
+  font-size: 0.85rem;
+  color: var(--text-main);
+  line-height: 1.5;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 0.6rem 0.7rem;
+  white-space: pre-wrap;
+}
+
+.checkin-summary-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.checkin-summary-status {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.checkin-saved {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.checkin-saved-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.checkin-saved-item {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  background: var(--bg-main);
+  padding: 0.4rem 0.6rem;
+}
+
+.checkin-saved-item[open] {
+  background: var(--bg-card);
+}
+
+.checkin-saved-summary {
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.checkin-saved-meta {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.checkin-saved-item pre {
+  margin: 0.5rem 0 0;
+  white-space: pre-wrap;
+  font-size: 0.8rem;
+  color: var(--text-main);
 }
 
 .checkin-item {
@@ -1056,6 +1308,10 @@
 /* Tasks Section */
 .tasks-section {
   padding-top: 1rem;
+}
+
+.project-schedule-section {
+  margin: 2rem 0;
 }
 
 .tasks-section .section-title {

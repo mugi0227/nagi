@@ -29,6 +29,8 @@ from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
+from app.interfaces.phase_repository import IPhaseRepository
+from app.interfaces.milestone_repository import IMilestoneRepository
 from app.models.capture import CaptureCreate
 from app.models.chat import ChatRequest, ChatResponse
 from app.models.enums import ContentType
@@ -51,6 +53,8 @@ class AgentService:
         llm_provider: ILLMProvider,
         task_repo: ITaskRepository,
         project_repo: IProjectRepository,
+        phase_repo: IPhaseRepository,
+        milestone_repo: IMilestoneRepository,
         project_member_repo: IProjectMemberRepository,
         project_invitation_repo: IProjectInvitationRepository,
         task_assignment_repo: ITaskAssignmentRepository,
@@ -79,6 +83,8 @@ class AgentService:
         self._llm_provider = llm_provider
         self._task_repo = task_repo
         self._project_repo = project_repo
+        self._phase_repo = phase_repo
+        self._milestone_repo = milestone_repo
         self._project_member_repo = project_member_repo
         self._project_invitation_repo = project_invitation_repo
         self._task_assignment_repo = task_assignment_repo
@@ -114,6 +120,8 @@ class AgentService:
             llm_provider=self._llm_provider,
             task_repo=self._task_repo,
             project_repo=self._project_repo,
+            phase_repo=self._phase_repo,
+            milestone_repo=self._milestone_repo,
             project_member_repo=self._project_member_repo,
             project_invitation_repo=self._project_invitation_repo,
             task_assignment_repo=self._task_assignment_repo,
@@ -863,8 +871,6 @@ class AgentService:
         """
         Analyze a capture using the Secretary Agent persona.
         """
-        from google import genai
-        from google.genai.types import GenerateContentConfig
         import json
         from app.agents.prompts.secretary_prompt import SECRETARY_SYSTEM_PROMPT
 
@@ -879,8 +885,13 @@ class AgentService:
         system_instruction = SECRETARY_SYSTEM_PROMPT
         
         prompt_text = "Analyze the following captured content and extract a Task.\n"
-        prompt_text += "Output MUST be a valid JSON object with 'title', 'description', 'importance', 'urgency', 'estimated_minutes', and 'due_date' (if found).\n"
-        
+        prompt_text += (
+            "Output MUST be a valid JSON object with 'title', 'description', 'importance', "
+            "'urgency', 'estimated_minutes', 'due_date' (if found), and 'start_not_before' (if found).\n"
+        )
+        text_payload = ""
+        image_bytes = None
+        mime_type = "image/jpeg"
         parts = [Part(text=prompt_text)]
 
         # Add capture content
@@ -888,17 +899,16 @@ class AgentService:
             try:
                 data = json.loads(capture.raw_text)
                 if isinstance(data, dict):
-                    parts.append(Part(text=f"Metadata: {json.dumps(data, indent=2)}"))
+                    text_payload = f"Metadata: {json.dumps(data, indent=2)}"
                 else:
-                    parts.append(Part(text=f"Text Content:\n{capture.raw_text}"))
+                    text_payload = f"Text Content:\n{capture.raw_text}"
             except:
-                parts.append(Part(text=f"Text Content:\n{capture.raw_text}"))
+                text_payload = f"Text Content:\n{capture.raw_text}"
+            parts.append(Part(text=text_payload))
 
         elif capture.content_type == ContentType.IMAGE and capture.content_url:
             import mimetypes
 
-            image_bytes = None
-            mime_type = "image/jpeg"
             image_path = None
             settings = get_settings()
             storage_prefix = f"{settings.BASE_URL}/storage/"
@@ -923,10 +933,10 @@ class AgentService:
                         image_bytes = image_path.read_bytes()
                         mime_type = mimetypes.guess_type(str(image_path))[0] or "image/jpeg"
                     else:
-                        parts.append(Part(text=f"Image URL: {capture.content_url} (File not found)"))
+                        text_payload = f"Image URL: {capture.content_url} (File not found)"
                 except Exception as e:
                     logger.warning(f"Failed to read image file {image_path}: {e}")
-                    parts.append(Part(text=f"Image URL: {capture.content_url} (Failed to load)"))
+                    text_payload = f"Image URL: {capture.content_url} (Failed to load)"
             else:
                 import httpx
                 try:
@@ -936,19 +946,17 @@ class AgentService:
                             image_bytes = resp.content
                             mime_type = resp.headers.get("content-type", "image/jpeg")
                         else:
-                            parts.append(Part(text=f"Image URL: {capture.content_url} (Could not load)"))
+                            text_payload = f"Image URL: {capture.content_url} (Could not load)"
                 except Exception as e:
                     logger.warning(f"Failed to fetch image for analysis: {e}")
-                    parts.append(Part(text=f"Image URL: {capture.content_url} (Failed to load)"))
+                    text_payload = f"Image URL: {capture.content_url} (Failed to load)"
+
+            if text_payload:
+                parts.append(Part(text=text_payload))
 
             if image_bytes:
                 parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
         
-        # Initialize Client provided by the settings
-        api_key = self._llm_provider._settings.GOOGLE_API_KEY
-        client = genai.Client(api_key=api_key)
-        model_name = self._llm_provider.get_model()
-
         # Schema for structured output
         schema = {
             "type": "OBJECT",
@@ -958,12 +966,68 @@ class AgentService:
                 "importance": {"type": "STRING", "enum": ["HIGH", "MEDIUM", "LOW"]},
                 "urgency": {"type": "STRING", "enum": ["HIGH", "MEDIUM", "LOW"]},
                 "estimated_minutes": {"type": "INTEGER"},
-                "due_date": {"type": "STRING", "description": "ISO 8601 format (YYYY-MM-DDTHH:MM:SS)"}
+                "due_date": {"type": "STRING", "description": "ISO 8601 format (YYYY-MM-DDTHH:MM:SS)"},
+                "start_not_before": {
+                    "type": "STRING",
+                    "description": "ISO 8601 format (YYYY-MM-DDTHH:MM:SS)",
+                },
             },
             "required": ["title", "importance"]
         }
 
         try:
+            settings = getattr(self._llm_provider, "_settings", None)
+            if settings and getattr(settings, "LLM_PROVIDER", None) == "litellm":
+                import base64
+                import litellm
+                from app.infrastructure.local.litellm_provider import LiteLLMProvider
+
+                if not isinstance(self._llm_provider, LiteLLMProvider):
+                    raise ValueError("LiteLLM provider is not configured correctly.")
+
+                schema_text = json.dumps(schema, ensure_ascii=False)
+                full_prompt = prompt_text
+                if text_payload:
+                    full_prompt = f"{full_prompt}\n\n{text_payload}"
+                full_prompt = f"{full_prompt}\n\nReturn JSON only. Schema:\n{schema_text}"
+
+                messages = []
+                if system_instruction:
+                    messages.append({"role": "system", "content": system_instruction})
+
+                if image_bytes:
+                    image_url = f"data:{mime_type};base64,{base64.b64encode(image_bytes).decode('utf-8')}"
+                    content = [
+                        {"type": "text", "text": full_prompt},
+                        {"type": "image_url", "image_url": {"url": image_url}},
+                    ]
+                    messages.append({"role": "user", "content": content})
+                else:
+                    messages.append({"role": "user", "content": full_prompt})
+
+                kwargs: dict = {
+                    "model": self._llm_provider.get_model_id(),
+                    "messages": messages,
+                    "temperature": 0.2,
+                    "max_tokens": 600,
+                }
+                if self._llm_provider.get_api_base():
+                    kwargs["api_base"] = self._llm_provider.get_api_base()
+                if self._llm_provider.get_api_key():
+                    kwargs["api_key"] = self._llm_provider.get_api_key()
+
+                response = litellm.completion(**kwargs)
+                text = response.choices[0].message.content if response.choices else ""
+                if text:
+                    return json.loads(text)
+                return {"title": "Failed to analyze", "description": "Empty response"}
+
+            from google import genai
+            from google.genai.types import GenerateContentConfig
+
+            api_key = self._llm_provider._settings.GOOGLE_API_KEY
+            client = genai.Client(api_key=api_key)
+            model_name = self._llm_provider.get_model()
             response = client.models.generate_content(
                 model=model_name,
                 contents=[Content(role="user", parts=parts)],

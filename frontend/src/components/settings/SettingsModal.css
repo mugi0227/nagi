@@ -142,6 +142,38 @@
   margin: 0;
 }
 
+.setting-action-btn {
+  align-self: flex-start;
+  border: none;
+  background: var(--primary);
+  color: #fff;
+  padding: 0.6rem 1.2rem;
+  border-radius: var(--radius-md);
+  font-weight: 700;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.setting-action-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+.setting-action-btn:not(:disabled):hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 20px -12px rgba(59, 130, 246, 0.5);
+}
+
+.setting-error {
+  color: #dc2626;
+}
+
+.setting-success {
+  color: #16a34a;
+}
+
 .setting-input,
 .setting-select {
   width: 100%;

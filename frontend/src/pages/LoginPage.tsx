@@ -1,23 +1,47 @@
 ﻿import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { getAuthToken, setAuthToken, clearAuthToken } from '../api/auth';
+import { authApi } from '../api/authApi';
+import { ApiError } from '../api/client';
 import { getOidcConfig, startOidcLogin } from '../utils/oidc';
 import { motion } from 'framer-motion';
 import './LoginPage.css';
+
+const getAuthErrorMessage = (error: unknown, fallback: string) => {
+  if (error instanceof ApiError) {
+    const data = error.data as { detail?: string } | null;
+    if (data?.detail) {
+      return data.detail;
+    }
+    return `${fallback} (${error.status})`;
+  }
+  return fallback;
+};
 
 export function LoginPage() {
   const [tokenInput, setTokenInput] = useState('');
   const [isEditingToken, setIsEditingToken] = useState(false);
   const [oidcError, setOidcError] = useState<string | null>(null);
+  const [localMode, setLocalMode] = useState<'login' | 'register'>('login');
+  const [localIdentifier, setLocalIdentifier] = useState('');
+  const [localPassword, setLocalPassword] = useState('');
+  const [registerUsername, setRegisterUsername] = useState('');
+  const [registerEmail, setRegisterEmail] = useState('');
+  const [registerPassword, setRegisterPassword] = useState('');
+  const [localError, setLocalError] = useState<string | null>(null);
+  const [localLoading, setLocalLoading] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { token, source } = getAuthToken();
   const authMode = (import.meta.env.VITE_AUTH_MODE as string | undefined)?.toLowerCase() || '';
   const allowDevLoginOverride = (import.meta.env.VITE_ALLOW_DEV_LOGIN as string | undefined) === 'true';
-  const canUseDevUser = authMode === 'mock' || (allowDevLoginOverride || (import.meta.env.DEV && authMode !== 'oidc'));
+  const isLocalAuth = authMode === 'local';
+  const canUseDevUser = authMode === 'mock'
+    || allowDevLoginOverride
+    || (import.meta.env.DEV && authMode !== 'oidc' && authMode !== 'local');
   const isAuthLocked = source === 'env' || source === 'mock';
   const allowTokenLogin = authMode !== 'oidc'
-    || (import.meta.env.VITE_ALLOW_TOKEN_LOGIN as string | undefined) === 'true';
+    && (!isLocalAuth || (import.meta.env.VITE_ALLOW_TOKEN_LOGIN as string | undefined) === 'true');
   const showTokenForm = allowTokenLogin && (!token || isEditingToken);
   const oidcConfig = getOidcConfig();
   const oidcEnabled = authMode === 'oidc';
@@ -43,6 +67,45 @@ export function LoginPage() {
     if (isAuthLocked) return;
     clearAuthToken();
     setTokenInput('');
+  };
+
+  const handleLocalLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!localIdentifier.trim() || !localPassword.trim()) return;
+    setLocalError(null);
+    setLocalLoading(true);
+    try {
+      const response = await authApi.login({
+        identifier: localIdentifier.trim(),
+        password: localPassword,
+      });
+      setAuthToken(response.access_token);
+      navigate(from, { replace: true });
+    } catch (error) {
+      setLocalError(getAuthErrorMessage(error, 'ログインに失敗しました。'));
+    } finally {
+      setLocalLoading(false);
+    }
+  };
+
+  const handleLocalRegister = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!registerUsername.trim() || !registerEmail.trim() || !registerPassword.trim()) return;
+    setLocalError(null);
+    setLocalLoading(true);
+    try {
+      const response = await authApi.register({
+        username: registerUsername.trim(),
+        email: registerEmail.trim(),
+        password: registerPassword,
+      });
+      setAuthToken(response.access_token);
+      navigate(from, { replace: true });
+    } catch (error) {
+      setLocalError(getAuthErrorMessage(error, '登録に失敗しました。'));
+    } finally {
+      setLocalLoading(false);
+    }
   };
 
   const handleOidcLogin = async () => {
@@ -74,7 +137,9 @@ export function LoginPage() {
           <p className="login-subtitle">
             {oidcEnabled
               ? 'OIDC でログインします。必要に応じてトークン入力も使えます。'
-              : 'JWT のトークンを入力するか、開発用の dev_user でログインできます。'}
+              : isLocalAuth
+                ? 'メールアドレスまたはユーザー名とパスワードでログインします。'
+                : 'JWT のトークンを入力するか、開発用の dev_user でログインできます。'}
           </p>
         </div>
 
@@ -114,6 +179,122 @@ export function LoginPage() {
             </button>
           </form>
         )}
+
+        {!token && isLocalAuth ? (
+          <>
+            <div className="login-toggle">
+              <button
+                type="button"
+                className={`login-tab ${localMode === 'login' ? 'active' : ''}`}
+                onClick={() => {
+                  setLocalMode('login');
+                  setLocalError(null);
+                }}
+                disabled={localLoading}
+              >
+                ログイン
+              </button>
+              <button
+                type="button"
+                className={`login-tab ${localMode === 'register' ? 'active' : ''}`}
+                onClick={() => {
+                  setLocalMode('register');
+                  setLocalError(null);
+                }}
+                disabled={localLoading}
+              >
+                新規登録
+              </button>
+            </div>
+            {localMode === 'login' ? (
+              <form className="login-form" onSubmit={handleLocalLogin}>
+                <label className="login-label" htmlFor="local-identifier">
+                  メールアドレス / ユーザー名
+                </label>
+                <input
+                  id="local-identifier"
+                  className="login-input"
+                  type="text"
+                  value={localIdentifier}
+                  onChange={(event) => setLocalIdentifier(event.target.value)}
+                  placeholder="user@example.com"
+                  autoComplete="username"
+                />
+                <label className="login-label" htmlFor="local-password">
+                  パスワード
+                </label>
+                <input
+                  id="local-password"
+                  className="login-input"
+                  type="password"
+                  value={localPassword}
+                  onChange={(event) => setLocalPassword(event.target.value)}
+                  placeholder="********"
+                  autoComplete="current-password"
+                />
+                <button
+                  type="submit"
+                  className="login-primary"
+                  disabled={!localIdentifier.trim() || !localPassword.trim() || localLoading}
+                >
+                  パスワードでログイン
+                </button>
+              </form>
+            ) : (
+              <form className="login-form" onSubmit={handleLocalRegister}>
+                <label className="login-label" htmlFor="register-username">
+                  ユーザー名
+                </label>
+                <input
+                  id="register-username"
+                  className="login-input"
+                  type="text"
+                  value={registerUsername}
+                  onChange={(event) => setRegisterUsername(event.target.value)}
+                  placeholder="your-name"
+                  autoComplete="username"
+                />
+                <label className="login-label" htmlFor="register-email">
+                  メールアドレス
+                </label>
+                <input
+                  id="register-email"
+                  className="login-input"
+                  type="email"
+                  value={registerEmail}
+                  onChange={(event) => setRegisterEmail(event.target.value)}
+                  placeholder="user@example.com"
+                  autoComplete="email"
+                />
+                <label className="login-label" htmlFor="register-password">
+                  パスワード
+                </label>
+                <input
+                  id="register-password"
+                  className="login-input"
+                  type="password"
+                  value={registerPassword}
+                  onChange={(event) => setRegisterPassword(event.target.value)}
+                  placeholder="********"
+                  autoComplete="new-password"
+                />
+                <button
+                  type="submit"
+                  className="login-primary"
+                  disabled={
+                    !registerUsername.trim()
+                    || !registerEmail.trim()
+                    || !registerPassword.trim()
+                    || localLoading
+                  }
+                >
+                  アカウントを作成
+                </button>
+              </form>
+            )}
+            {localError ? <p className="login-note login-error">{localError}</p> : null}
+          </>
+        ) : null}
 
         {!token && canUseDevUser ? (
           <div className="login-divider">

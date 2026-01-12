@@ -6,7 +6,7 @@ Provides CRUD operations for milestones.
 
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUser, MilestoneRepo
 from app.core.exceptions import NotFoundError
@@ -23,6 +23,24 @@ async def create_milestone(
 ) -> Milestone:
     """Create a new milestone."""
     return await repo.create(user.id, milestone)
+
+
+@router.get("", response_model=list[Milestone])
+async def list_milestones(
+    user: CurrentUser,
+    repo: MilestoneRepo,
+    project_id: UUID | None = Query(None, description="Filter milestones by project ID"),
+    phase_id: UUID | None = Query(None, description="Filter milestones by phase ID"),
+) -> list[Milestone]:
+    """List milestones by project or phase."""
+    if project_id:
+        return await repo.list_by_project(user.id, project_id)
+    if phase_id:
+        return await repo.list_by_phase(user.id, phase_id)
+    raise HTTPException(
+        status_code=status.HTTP_400_BAD_REQUEST,
+        detail="project_id or phase_id query parameter is required",
+    )
 
 
 @router.get("/{milestone_id}", response_model=Milestone)

@@ -25,11 +25,15 @@ from app.api.deps import (
     MemoryRepo,
     UserRepo,
 )
+from app.core.config import get_settings
 from app.core.exceptions import NotFoundError
 from app.models.collaboration import (
     Blocker,
     Checkin,
     CheckinCreate,
+    CheckinSummaryRequest,
+    CheckinSummarySave,
+    CheckinSummary,
     ProjectMember,
     ProjectMemberCreate,
     ProjectMemberUpdate,
@@ -41,9 +45,11 @@ from app.models.collaboration import (
 from app.models.project import Project, ProjectCreate, ProjectUpdate, ProjectWithTaskCount
 from app.models.project_kpi import ProjectKpiTemplate
 from app.models.phase_breakdown import PhaseBreakdownRequest, PhaseBreakdownResponse
-from app.models.enums import InvitationStatus, ProjectRole
+from app.models.enums import CheckinType, InvitationStatus, MemoryScope, MemoryType, ProjectRole
+from app.models.memory import Memory, MemoryCreate
 from app.services.kpi_calculator import apply_project_kpis
 from app.services.kpi_templates import get_kpi_templates
+from app.services.llm_utils import generate_text, generate_text_with_status
 from app.services.phase_planner_service import PhasePlannerService
 
 router = APIRouter()
@@ -78,41 +84,183 @@ def _summarize_checkin(llm_provider: LLMProvider, raw_text: str) -> str | None:
     if not compacted:
         return None
 
-    settings = getattr(llm_provider, "_settings", None)
-    api_key = getattr(settings, "GOOGLE_API_KEY", None)
-    if not api_key:
-        return _truncate_text(compacted, 280)
-
-    try:
-        from google import genai
-        from google.genai.types import Content, Part, GenerateContentConfig
-    except Exception:
-        return _truncate_text(compacted, 280)
-
     prompt = (
         "Summarize this check-in in 2-3 short sentences. "
         "Keep it concise and action-focused.\n\n"
         f"{compacted}"
     )
-
-    try:
-        client = genai.Client(api_key=api_key)
-        model_name = llm_provider.get_model()
-        response = client.models.generate_content(
-            model=model_name,
-            contents=[Content(role="user", parts=[Part(text=prompt)])],
-            config=GenerateContentConfig(
-                temperature=0.2,
-                max_output_tokens=200,
-            ),
-        )
-        summary = _compact_text(response.text or "")
-        if summary:
-            return _truncate_text(summary, 2000)
-    except Exception:
-        pass
-
+    summary_text = generate_text(
+        llm_provider,
+        prompt,
+        temperature=0.2,
+        max_output_tokens=200,
+    )
+    summary = _compact_text(summary_text or "")
+    if summary:
+        return _truncate_text(summary, 2000)
     return _truncate_text(compacted, 280)
+
+
+def _format_checkin_for_summary(checkin: Checkin, max_length: int = 500) -> str:
+    text = _compact_text(checkin.raw_text)
+    if not text:
+        text = "(empty)"
+    text = _truncate_text(text, max_length)
+    checkin_type = getattr(checkin.checkin_type, "value", checkin.checkin_type)
+    return f"- {checkin.checkin_date.isoformat()} {checkin.member_user_id} ({checkin_type}): {text}"
+
+
+def _format_checkin_fallback(checkin: Checkin, max_length: int = 200) -> str:
+    text = _truncate_text(_compact_text(checkin.raw_text), max_length)
+    return f"- {checkin.checkin_date.isoformat()} {checkin.member_user_id}: {text}"
+
+
+def _fallback_checkin_summary(
+    checkins: list[Checkin],
+    start_date: Optional[date],
+    end_date: Optional[date],
+) -> str:
+    period_label = f"{start_date or '...'} to {end_date or '...'}"
+    lines = [f"Check-ins ({period_label})", ""]
+    for checkin in checkins[:20]:
+        text = _truncate_text(_compact_text(checkin.raw_text), 200)
+        lines.append(f"- {checkin.checkin_date.isoformat()} {checkin.member_user_id}: {text}")
+    remaining = len(checkins) - min(len(checkins), 20)
+    if remaining > 0:
+        lines.append(f"- ...and {remaining} more")
+    return "\n".join(lines).strip()
+
+
+def _looks_like_summary(value: str) -> bool:
+    cleaned = value.strip()
+    if not cleaned:
+        return False
+    if any(marker in cleaned for marker in ("- ", "•", "・", "* ")):
+        return True
+    if "\n" in cleaned:
+        return True
+    return len(cleaned) >= 80
+
+
+def _summarize_checkins(
+    llm_provider: LLMProvider,
+    checkins: list[Checkin],
+    start_date: Optional[date],
+    end_date: Optional[date],
+    weekly_context: Optional[str] = None,
+) -> tuple[str, Optional[str], Optional[str], Optional[str], Optional[str]]:
+    if not checkins:
+        return "", None, None, None, None
+
+    period_label = f"{start_date or '...'} to {end_date or '...'}"
+    prompt_lines = [
+        "You are summarizing project check-ins for a recurring meeting.",
+        "Summarize in 5-10 bullet points with clear, actionable phrasing.",
+        "Focus on progress, blockers, decisions, risks, and next actions.",
+        "Write in the same language as the check-ins.",
+        "If you cannot summarize, list the check-ins as bullet points.",
+        f"Period: {period_label}",
+        f"Total check-ins: {len(checkins)}",
+        "",
+        "Check-ins:",
+    ]
+    checkin_lines = [_format_checkin_for_summary(checkin) for checkin in checkins]
+    prompt_lines.extend(checkin_lines)
+    if weekly_context:
+        prompt_lines.extend(["", "Weekly snapshot:", _truncate_text(weekly_context, 1500)])
+    prompt = "\n".join(prompt_lines)
+    summary, error_code, error_detail = generate_text_with_status(
+        llm_provider,
+        prompt,
+        temperature=0.2,
+        max_output_tokens=6000,
+    )
+    debug_prompt = _truncate_text(prompt, 800)
+    debug_output = _truncate_text(summary, 800) if summary else None
+    if summary and _looks_like_summary(summary):
+        return _truncate_text(summary, 5000), None, None, debug_prompt, debug_output
+
+    retriable_errors = {"genai_empty_response", "litellm_empty_response"}
+    if not error_code or error_code in retriable_errors:
+        fallback_lines = [_format_checkin_fallback(checkin) for checkin in checkins]
+        strict_prompt_lines = [
+            "Task: Summarize the check-ins below.",
+            "Output rules:",
+            "- Output ONLY bullet points (5-10 lines).",
+            "- Each line must start with '- ' and be at least 12 characters.",
+            "- Mention concrete content from the check-ins.",
+            "- Do not include introductions or the period line.",
+            "- Use the same language as the check-ins.",
+            "",
+            "If you cannot follow the rules, output the Fallback list exactly as provided.",
+            "",
+            "Check-ins:",
+            *checkin_lines,
+            "",
+            "Weekly snapshot:",
+            _truncate_text(weekly_context or "", 1500) or "(none)",
+            "",
+            "Fallback list:",
+            *fallback_lines,
+        ]
+        strict_prompt = "\n".join(strict_prompt_lines)
+        summary, error_code, error_detail = generate_text_with_status(
+            llm_provider,
+            strict_prompt,
+            temperature=0.2,
+            max_output_tokens=6000,
+        )
+        debug_prompt = _truncate_text(strict_prompt, 800)
+        debug_output = _truncate_text(summary, 800) if summary else None
+        if summary and _looks_like_summary(summary):
+            return _truncate_text(summary, 5000), None, None, debug_prompt, debug_output
+
+    if not error_code:
+        error_code = "llm_response_unusable"
+    return _fallback_checkin_summary(checkins, start_date, end_date), error_code, error_detail, debug_prompt, debug_output
+
+
+def _build_checkin_summary_response(
+    project_id: UUID,
+    checkins: list[Checkin],
+    start_date: Optional[date],
+    end_date: Optional[date],
+    weekly_context: Optional[str],
+    llm_provider: LLMProvider,
+) -> CheckinSummary:
+    if not checkins:
+        return CheckinSummary(
+            project_id=project_id,
+            start_date=start_date,
+            end_date=end_date,
+            checkin_count=0,
+            summary_text=None,
+            summary_error=None,
+            summary_error_detail=None,
+            summary_debug_prompt=None,
+            summary_debug_output=None,
+        )
+
+    summary_text, summary_error, summary_error_detail, debug_prompt, debug_output = _summarize_checkins(
+        llm_provider,
+        checkins[:50],
+        start_date,
+        end_date,
+        weekly_context=weekly_context,
+    )
+    summary_text = summary_text.strip() or None
+    settings = get_settings()
+    return CheckinSummary(
+        project_id=project_id,
+        start_date=start_date,
+        end_date=end_date,
+        checkin_count=len(checkins),
+        summary_text=summary_text,
+        summary_error=summary_error,
+        summary_error_detail=summary_error_detail,
+        summary_debug_prompt=debug_prompt if settings.DEBUG else None,
+        summary_debug_output=debug_output if settings.DEBUG else None,
+    )
 
 
 @router.get("/kpi-templates", response_model=list[ProjectKpiTemplate])
@@ -482,6 +630,99 @@ async def list_project_checkins(
     )
 
 
+@router.get("/{project_id}/checkins/summary", response_model=CheckinSummary)
+async def summarize_project_checkins(
+    project_id: UUID,
+    user: CurrentUser,
+    repo: ProjectRepo,
+    checkin_repo: CheckinRepo,
+    llm_provider: LLMProvider,
+    member_user_id: Optional[str] = Query(None, description="Filter by member user ID"),
+    start_date: Optional[date] = Query(None, description="Start date (inclusive)"),
+    end_date: Optional[date] = Query(None, description="End date (inclusive)"),
+    checkin_type: Optional[CheckinType] = Query(None, description="Filter by check-in type"),
+):
+    """Summarize check-ins for a project within a date range."""
+    await _get_project_or_404(user, repo, project_id)
+    checkins = await checkin_repo.list(
+        user.id,
+        project_id,
+        member_user_id=member_user_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+    if checkin_type is not None:
+        checkins = [checkin for checkin in checkins if checkin.checkin_type == checkin_type]
+    return _build_checkin_summary_response(
+        project_id=project_id,
+        checkins=checkins,
+        start_date=start_date,
+        end_date=end_date,
+        weekly_context=None,
+        llm_provider=llm_provider,
+    )
+
+
+@router.post("/{project_id}/checkins/summary", response_model=CheckinSummary)
+async def summarize_project_checkins_post(
+    project_id: UUID,
+    payload: CheckinSummaryRequest,
+    user: CurrentUser,
+    repo: ProjectRepo,
+    checkin_repo: CheckinRepo,
+    llm_provider: LLMProvider,
+):
+    """Summarize check-ins with optional weekly context."""
+    await _get_project_or_404(user, repo, project_id)
+    checkins = await checkin_repo.list(
+        user.id,
+        project_id,
+        member_user_id=payload.member_user_id,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+    )
+    if payload.checkin_type is not None:
+        checkins = [checkin for checkin in checkins if checkin.checkin_type == payload.checkin_type]
+    return _build_checkin_summary_response(
+        project_id=project_id,
+        checkins=checkins,
+        start_date=payload.start_date,
+        end_date=payload.end_date,
+        weekly_context=payload.weekly_context,
+        llm_provider=llm_provider,
+    )
+
+
+@router.post("/{project_id}/checkins/summary/save", response_model=Memory)
+async def save_project_checkin_summary(
+    project_id: UUID,
+    payload: CheckinSummarySave,
+    user: CurrentUser,
+    repo: ProjectRepo,
+    memory_repo: MemoryRepo,
+):
+    """Save a check-in summary as project memory."""
+    await _get_project_or_404(user, repo, project_id)
+    tags = [
+        "checkin_summary",
+        f"count:{payload.checkin_count}",
+    ]
+    if payload.start_date or payload.end_date:
+        tags.append(f"range:{payload.start_date or '...'}..{payload.end_date or '...'}")
+    memory = await memory_repo.create(
+        user.id,
+        MemoryCreate(
+            content=payload.summary_text,
+            scope=MemoryScope.PROJECT,
+            memory_type=MemoryType.FACT,
+            project_id=project_id,
+            tags=tags,
+            source="agent",
+        ),
+    )
+    return memory
+
+
 @router.post("/{project_id}/checkins", response_model=Checkin, status_code=status.HTTP_201_CREATED)
 async def create_project_checkin(
     project_id: UUID,
@@ -489,13 +730,10 @@ async def create_project_checkin(
     user: CurrentUser,
     repo: ProjectRepo,
     checkin_repo: CheckinRepo,
-    llm_provider: LLMProvider,
 ):
     """Create a new check-in for a project."""
     await _get_project_or_404(user, repo, project_id)
-    summary_text = _summarize_checkin(llm_provider, checkin.raw_text)
-    payload = checkin.model_copy(update={"summary_text": summary_text})
-    return await checkin_repo.create(user.id, project_id, payload)
+    return await checkin_repo.create(user.id, project_id, checkin)
 
 
 @router.post("/{project_id}/phase-breakdown", response_model=PhaseBreakdownResponse)

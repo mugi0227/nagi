@@ -3,7 +3,7 @@ Unit tests for SchedulerService.
 """
 
 from datetime import datetime, timedelta, date
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 
@@ -20,6 +20,8 @@ def make_task(
     energy_level: EnergyLevel = EnergyLevel.LOW,
     estimated_minutes: int | None = 30,
     due_date: datetime | None = None,
+    start_not_before: datetime | None = None,
+    parent_id: UUID | None = None,
     dependency_ids: list | None = None,
     progress: int = 0,
 ) -> Task:
@@ -34,6 +36,8 @@ def make_task(
         energy_level=energy_level,
         estimated_minutes=estimated_minutes,
         due_date=due_date,
+        start_not_before=start_not_before,
+        parent_id=parent_id,
         dependency_ids=dependency_ids or [],
         progress=progress,
         created_by=CreatedBy.USER,
@@ -95,6 +99,134 @@ def test_split_across_days():
 
     assert sum(allocations) == 120
     assert len(allocations) == 2
+
+
+def test_start_not_before_delays_scheduling():
+    service = SchedulerService()
+    start_date = date.today()
+    not_before = start_date + timedelta(days=1)
+    task = make_task(
+        "Delayed task",
+        estimated_minutes=60,
+        start_not_before=datetime.combine(not_before, datetime.min.time()),
+    )
+
+    schedule = service.build_schedule([task], capacity_hours=2, start_date=start_date, max_days=3)
+    allocated_days = [
+        day.date
+        for day in schedule.days
+        for alloc in day.task_allocations
+        if alloc.task_id == task.id
+    ]
+
+    assert allocated_days
+    assert min(allocated_days) >= not_before
+
+
+def test_parent_start_not_before_applies_to_subtask():
+    service = SchedulerService()
+    start_date = date.today()
+    not_before = start_date + timedelta(days=2)
+    parent = make_task(
+        "Parent",
+        estimated_minutes=60,
+        start_not_before=datetime.combine(not_before, datetime.min.time()),
+    )
+    subtask = make_task(
+        "Subtask",
+        estimated_minutes=30,
+        parent_id=parent.id,
+    )
+
+    schedule = service.build_schedule([parent, subtask], capacity_hours=2, start_date=start_date, max_days=5)
+    allocated_days = [
+        day.date
+        for day in schedule.days
+        for alloc in day.task_allocations
+        if alloc.task_id == subtask.id
+    ]
+
+    assert allocated_days
+    assert min(allocated_days) >= not_before
+
+
+def _get_task_info(schedule, task_id):
+    return next((info for info in schedule.tasks if info.task_id == task_id), None)
+
+
+def test_subtask_inherits_parent_due_date():
+    service = SchedulerService()
+    start_date = date.today()
+    parent_due = start_date + timedelta(days=4)
+    parent = make_task(
+        "Parent",
+        estimated_minutes=60,
+        due_date=datetime.combine(parent_due, datetime.min.time()),
+    )
+    subtask = make_task(
+        "Subtask",
+        estimated_minutes=30,
+        parent_id=parent.id,
+    )
+
+    schedule = service.build_schedule([parent, subtask], capacity_hours=2, start_date=start_date, max_days=5)
+    info = _get_task_info(schedule, subtask.id)
+
+    assert info is not None
+    assert info.due_date is not None
+    assert info.due_date.date() == parent_due
+
+
+def test_subtask_due_date_capped_by_parent():
+    service = SchedulerService()
+    start_date = date.today()
+    parent_due = start_date + timedelta(days=3)
+    sub_due = start_date + timedelta(days=6)
+    parent = make_task(
+        "Parent",
+        estimated_minutes=60,
+        due_date=datetime.combine(parent_due, datetime.min.time()),
+    )
+    subtask = make_task(
+        "Subtask",
+        estimated_minutes=30,
+        parent_id=parent.id,
+        due_date=datetime.combine(sub_due, datetime.min.time()),
+    )
+
+    schedule = service.build_schedule([parent, subtask], capacity_hours=2, start_date=start_date, max_days=7)
+    info = _get_task_info(schedule, subtask.id)
+
+    assert info is not None
+    assert info.due_date is not None
+    assert info.due_date.date() == parent_due
+
+
+def test_subtask_due_date_overridden_when_before_start():
+    service = SchedulerService()
+    start_date = date.today()
+    parent_start = start_date + timedelta(days=3)
+    parent_due = start_date + timedelta(days=5)
+    sub_due = start_date + timedelta(days=2)
+    parent = make_task(
+        "Parent",
+        estimated_minutes=60,
+        start_not_before=datetime.combine(parent_start, datetime.min.time()),
+        due_date=datetime.combine(parent_due, datetime.min.time()),
+    )
+    subtask = make_task(
+        "Subtask",
+        estimated_minutes=30,
+        parent_id=parent.id,
+        due_date=datetime.combine(sub_due, datetime.min.time()),
+    )
+
+    schedule = service.build_schedule([parent, subtask], capacity_hours=2, start_date=start_date, max_days=7)
+    info = _get_task_info(schedule, subtask.id)
+
+    assert info is not None
+    assert info.due_date is not None
+    assert info.due_date.date() == parent_due
 
 
 def test_energy_balance_prefers_low_when_high_is_over_ratio():

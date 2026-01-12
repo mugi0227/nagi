@@ -14,7 +14,7 @@ interface KanbanBoardProps {
   assignedMemberIdsByTaskId?: Record<string, string[]>;
   memberOptions?: { id: string; label: string }[];
   onAssignMultiple?: (taskId: string, memberUserIds: string[]) => void;
-  onBreakdownTask?: (id: string) => void;
+  onBreakdownTask?: (id: string, instruction?: string) => void;
   breakdownTaskId?: string | null;
 }
 

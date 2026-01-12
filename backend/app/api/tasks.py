@@ -33,6 +33,7 @@ from app.models.collaboration import (
 )
 from app.models.schedule import ScheduleResponse, TodayTasksResponse
 from app.models.task import Task, TaskCreate, TaskUpdate
+from app.models.enums import CreatedBy
 from app.services.planner_service import PlannerService
 from app.services.scheduler_service import SchedulerService
 
@@ -326,6 +327,7 @@ async def breakdown_task(
             user_id=user.id,
             task_id=task_id,
             create_subtasks=request.create_subtasks,
+            instruction=request.instruction,
         )
     except NotFoundError as e:
         raise HTTPException(
@@ -352,6 +354,64 @@ async def get_subtasks(
 ):
     """Get all subtasks of a parent task."""
     return await repo.get_subtasks(user.id, task_id)
+
+
+def _extract_action_items(text: str) -> list[str]:
+    items: list[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        for prefix in ("- [ ]", "* [ ]", "- TODO", "* TODO", "TODO:"):
+            if line.startswith(prefix):
+                line = line[len(prefix):].strip()
+                break
+        else:
+            continue
+        if line and line not in items:
+            items.append(line)
+    return items
+
+
+@router.post("/{task_id}/action-items", response_model=list[Task], status_code=status.HTTP_201_CREATED)
+async def create_action_items(
+    task_id: UUID,
+    user: CurrentUser,
+    repo: TaskRepo,
+):
+    """Create action item subtasks from meeting notes."""
+    task = await _get_task_or_404(user, repo, task_id)
+    if not task.meeting_notes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="meeting_notes is empty",
+        )
+    action_items = _extract_action_items(task.meeting_notes)
+    if not action_items:
+        return []
+
+    existing_subtasks = await repo.get_subtasks(user.id, task_id)
+    existing_titles = {subtask.title for subtask in existing_subtasks}
+    max_order = max([subtask.order_in_parent or 0 for subtask in existing_subtasks] + [0])
+
+    created_subtasks: list[Task] = []
+    for index, title in enumerate(action_items, start=1):
+        if title in existing_titles:
+            continue
+        created = await repo.create(
+            user.id,
+            TaskCreate(
+                title=title,
+                project_id=task.project_id,
+                phase_id=task.phase_id,
+                parent_id=task.id,
+                order_in_parent=max_order + index,
+                created_by=CreatedBy.AGENT,
+            ),
+        )
+        created_subtasks.append(created)
+
+    return created_subtasks
 
 
 @router.get("/{task_id}/assignment", response_model=TaskAssignment)

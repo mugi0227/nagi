@@ -19,6 +19,29 @@
   color: #1a1a1a;
 }
 
+.phase-plan-input {
+  margin-bottom: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.phase-plan-input label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #4a5568;
+}
+
+.phase-plan-input textarea {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
 .add-phase-btn {
   display: flex;
   align-items: center;
@@ -300,6 +323,17 @@
   font-size: 13px;
   font-weight: 600;
   color: #2d3748;
+}
+
+.milestone-instruction-input {
+  flex: 1;
+  min-width: 180px;
+  padding: 6px 8px;
+  border: 1px solid #cbd5e0;
+  border-radius: 6px;
+  font-size: 12px;
+  color: #4a5568;
+  background: #fff;
 }
 
 .milestones-actions {

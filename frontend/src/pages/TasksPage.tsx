@@ -47,6 +47,7 @@ export function TasksPage() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [taskToEdit, setTaskToEdit] = useState<Task | undefined>(undefined);
+  const [initialFormData, setInitialFormData] = useState<Partial<TaskCreate> | undefined>(undefined);
   const [breakdownTaskId, setBreakdownTaskId] = useState<string | null>(null);
 
   const createMutation = useMutation({
@@ -81,8 +82,8 @@ export function TasksPage() {
   });
 
   const breakdownMutation = useMutation({
-    mutationFn: ({ id }: { id: string }) =>
-      tasksApi.breakdownTask(id, { create_subtasks: true }),
+    mutationFn: ({ id, instruction }: { id: string; instruction?: string }) =>
+      tasksApi.breakdownTask(id, { create_subtasks: true, instruction }),
     onMutate: ({ id }) => {
       setBreakdownTaskId(id);
     },
@@ -116,10 +117,10 @@ export function TasksPage() {
         const missingDeps = task.dependency_ids.filter(depId => !tasks.find(t => t.id === depId));
         const fetchedDeps = missingDeps.length
           ? await Promise.all(
-              missingDeps.map(depId =>
-                tasksApi.getById(depId).catch(() => null)
-              )
+            missingDeps.map(depId =>
+              tasksApi.getById(depId).catch(() => null)
             )
+          )
           : [];
         const allDeps = [
           ...task.dependency_ids
@@ -229,7 +230,9 @@ export function TasksPage() {
         onUpdateTask={handleUpdateStatus}
         onDeleteTask={(taskId) => deleteMutation.mutate(taskId)}
         onTaskClick={handleTaskClick}
-        onBreakdownTask={(taskId) => breakdownMutation.mutate({ id: taskId })}
+        onBreakdownTask={(taskId, instruction) =>
+          breakdownMutation.mutate({ id: taskId, instruction })
+        }
         breakdownTaskId={breakdownTaskId}
       />
 
@@ -248,7 +251,25 @@ export function TasksPage() {
             onProgressChange={(taskId, progress) => {
               updateMutation.mutate({ id: taskId, data: { progress } });
             }}
+            onStatusChange={(taskId, status) => {
+              // 楽観的更新: selectedTask のステータスを即座に更新
+              setSelectedTask(prev => prev ? { ...prev, status: status as Task['status'] } : null);
+              updateMutation.mutate({ id: taskId, data: { status: status as 'TODO' | 'IN_PROGRESS' | 'WAITING' | 'DONE' } });
+            }}
+            onCreateSubtask={(parentTaskId) => {
+              // 新規サブタスク作成モード: task=undefined, initialData に parent_id を設定
+              setTaskToEdit(undefined);
+              setInitialFormData({ parent_id: parentTaskId });
+              setSelectedTask(null);
+              setIsFormOpen(true);
+            }}
+            onActionItemsCreated={() => {
+              queryClient.invalidateQueries({ queryKey: ['tasks'] });
+              queryClient.invalidateQueries({ queryKey: ['subtasks'] });
+            }}
           />
+
+
         )}
       </AnimatePresence>
 
@@ -256,8 +277,12 @@ export function TasksPage() {
         {isFormOpen && (
           <TaskFormModal
             task={taskToEdit}
+            initialData={initialFormData}
             allTasks={tasks}
-            onClose={handleCloseForm}
+            onClose={() => {
+              handleCloseForm();
+              setInitialFormData(undefined);
+            }}
             onSubmit={handleSubmitForm}
             isSubmitting={createMutation.isPending || updateMutation.isPending}
           />

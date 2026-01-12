@@ -14,6 +14,7 @@ from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.checkin_repository import ICheckinRepository
 from app.interfaces.blocker_repository import IBlockerRepository
+from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
 from app.interfaces.user_repository import IUserRepository
 from app.interfaces.project_invitation_repository import IProjectInvitationRepository
 
@@ -34,4 +35,5 @@ __all__ = [
     "ITaskAssignmentRepository",
     "ICheckinRepository",
     "IBlockerRepository",
+    "IRecurringMeetingRepository",
 ]

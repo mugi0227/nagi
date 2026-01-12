@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 from uuid import UUID
 
-from app.models.user import UserAccount, UserCreate
+from app.models.user import UserAccount, UserCreate, UserUpdate
 
 
 class IUserRepository(ABC):
@@ -30,6 +30,11 @@ class IUserRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_by_username(self, username: str) -> Optional[UserAccount]:
+        """Get a user by username."""
+        pass
+
+    @abstractmethod
     async def create(self, data: UserCreate) -> UserAccount:
         """Create a new user."""
         pass
@@ -37,4 +42,9 @@ class IUserRepository(ABC):
     @abstractmethod
     async def update_provider(self, user_id: UUID, issuer: str, sub: str) -> UserAccount:
         """Update provider mapping for a user."""
+        pass
+
+    @abstractmethod
+    async def update(self, user_id: UUID, update: UserUpdate) -> UserAccount:
+        """Update user profile or credentials."""
         pass

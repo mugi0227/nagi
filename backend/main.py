@@ -49,7 +49,7 @@ def create_app() -> FastAPI:
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],
+        allow_origins=settings.ALLOWED_ORIGINS,
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
@@ -58,6 +58,7 @@ def create_app() -> FastAPI:
     # Include routers
     from app.api import (
         agent_tasks,
+        auth,
         captures,
         chat,
         heartbeat,
@@ -66,11 +67,14 @@ def create_app() -> FastAPI:
         phases,
         projects,
         proposals,
+        recurring_meetings,
         tasks,
         today,
+        users,
     )
 
     app.include_router(chat.router, prefix="/api/chat", tags=["chat"])
+    app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
     app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
     app.include_router(projects.router, prefix="/api/projects", tags=["projects"])
     app.include_router(phases.router, prefix="/api", tags=["phases"])
@@ -79,8 +83,10 @@ def create_app() -> FastAPI:
     app.include_router(captures.router, prefix="/api/captures", tags=["captures"])
     app.include_router(agent_tasks.router, prefix="/api/agent-tasks", tags=["agent_tasks"])
     app.include_router(memories.router, prefix="/api/memories", tags=["memories"])
+    app.include_router(recurring_meetings.router, prefix="/api/recurring-meetings", tags=["recurring_meetings"])
     app.include_router(heartbeat.router, prefix="/api/heartbeat", tags=["heartbeat"])
     app.include_router(today.router, prefix="/api/today", tags=["today"])
+    app.include_router(users.router, prefix="/api/users", tags=["users"])
 
     # Mount storage for local development
     storage_path = settings.STORAGE_BASE_PATH

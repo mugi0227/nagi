@@ -23,6 +23,7 @@ from app.models.project_kpi import ProjectKpiConfig, ProjectKpiMetric
 from app.models.proposal import Proposal, ProposalResponse, ProposalType
 from app.services.assignee_utils import make_invitation_assignee_id
 from app.services.kpi_templates import get_kpi_templates
+from app.services.llm_utils import generate_text
 
 
 class ProjectKpiMetricInput(BaseModel):
@@ -174,17 +175,6 @@ def _select_kpis_via_llm(
     input_data: CreateProjectInput,
 ) -> dict:
     """Use LLM to select KPI template or custom metrics."""
-    settings = getattr(llm_provider, "_settings", None)
-    api_key = getattr(settings, "GOOGLE_API_KEY", None)
-    if not api_key:
-        return {}
-
-    try:
-        from google import genai
-        from google.genai.types import Content, Part, GenerateContentConfig
-    except Exception:
-        return {}
-
     prompt = _build_selection_prompt(input_data)
     schema = {
         "type": "OBJECT",
@@ -211,23 +201,20 @@ def _select_kpis_via_llm(
         },
         "required": ["strategy"],
     }
-
-    client = genai.Client(api_key=api_key)
-    model_name = llm_provider.get_model()
-    response = client.models.generate_content(
-        model=model_name,
-        contents=[Content(role="user", parts=[Part(text=prompt)])],
-        config=GenerateContentConfig(
-            response_mime_type="application/json",
-            response_schema=schema,
-        ),
+    response_text = generate_text(
+        llm_provider,
+        prompt,
+        temperature=0.2,
+        max_output_tokens=400,
+        response_schema=schema,
+        response_mime_type="application/json",
     )
-    if not response.text:
+    if not response_text:
         return {}
     try:
         import json
 
-        return json.loads(response.text)
+        return json.loads(response_text)
     except Exception:
         return {}
 

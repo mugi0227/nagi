@@ -36,6 +36,10 @@ from app.tools.scheduler_tools import (
     get_current_datetime_tool,
     schedule_agent_task_tool,
 )
+from app.tools.phase_tools import (
+    plan_project_phases_tool,
+    plan_phase_tasks_tool,
+)
 
 __all__ = [
     "propose_task_tool",
@@ -64,5 +68,7 @@ __all__ = [
     "propose_skill_tool",
     "get_current_datetime_tool",
     "schedule_agent_task_tool",
+    "plan_project_phases_tool",
+    "plan_phase_tasks_tool",
 ]
 

@@ -18,6 +18,8 @@ class UserCreate(BaseModel):
     provider_sub: str = Field(..., min_length=1, max_length=255)
     email: Optional[str] = Field(None, max_length=255)
     display_name: Optional[str] = Field(None, max_length=255)
+    username: Optional[str] = Field(None, max_length=255)
+    password_hash: Optional[str] = Field(None, max_length=255)
 
 
 class UserAccount(BaseModel):
@@ -28,8 +30,20 @@ class UserAccount(BaseModel):
     provider_sub: str
     email: Optional[str] = None
     display_name: Optional[str] = None
+    username: Optional[str] = None
+    password_hash: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     class Config:
         from_attributes = True
+
+
+class UserUpdate(BaseModel):
+    """Update user account fields."""
+
+    provider_sub: Optional[str] = Field(None, min_length=1, max_length=255)
+    email: Optional[str] = Field(None, max_length=255)
+    display_name: Optional[str] = Field(None, max_length=255)
+    username: Optional[str] = Field(None, max_length=255)
+    password_hash: Optional[str] = Field(None, max_length=255)

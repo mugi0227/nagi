@@ -14,9 +14,13 @@ import type {
   Blocker,
   Checkin,
   CheckinCreate,
+  CheckinSummary,
+  CheckinType,
+  CheckinSummarySave,
   ProjectKpiTemplate,
   PhaseBreakdownRequest,
   PhaseBreakdownResponse,
+  Memory,
 } from './types';
 
 export const projectsApi = {
@@ -84,6 +88,23 @@ export const projectsApi = {
 
   createCheckin: (projectId: string, data: CheckinCreate) =>
     api.post<Checkin>(`/projects/${projectId}/checkins`, data),
+
+  summarizeCheckins: (projectId: string, payload?: {
+    memberUserId?: string;
+    startDate?: string;
+    endDate?: string;
+    checkinType?: CheckinType;
+    weeklyContext?: string;
+  }) => api.post<CheckinSummary>(`/projects/${projectId}/checkins/summary`, {
+    member_user_id: payload?.memberUserId,
+    start_date: payload?.startDate,
+    end_date: payload?.endDate,
+    checkin_type: payload?.checkinType,
+    weekly_context: payload?.weeklyContext,
+  }),
+
+  saveCheckinSummary: (projectId: string, data: CheckinSummarySave) =>
+    api.post<Memory>(`/projects/${projectId}/checkins/summary/save`, data),
 
   breakdownPhases: (projectId: string, data: PhaseBreakdownRequest) =>
     api.post<PhaseBreakdownResponse>(`/projects/${projectId}/phase-breakdown`, data),

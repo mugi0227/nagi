@@ -1,11 +1,12 @@
 import { FaFire, FaClock, FaLeaf, FaBatteryFull, FaBatteryQuarter, FaPen, FaTrash, FaHourglass, FaLock, FaLockOpen, FaListCheck, FaUser } from 'react-icons/fa6';
+import { FaCalendarAlt } from 'react-icons/fa';
 import { FaCheckCircle, FaCircle } from 'react-icons/fa';
 import type { Task, TaskStatus } from '../../api/types';
 import { MeetingBadge } from './MeetingBadge';
 import { StepNumber } from '../common/StepNumber';
 import { AssigneeSelect } from '../common/AssigneeSelect';
 import './KanbanCard.css';
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 
 interface KanbanCardProps {
   task: Task;
@@ -18,7 +19,7 @@ interface KanbanCardProps {
   onEdit?: (task: Task) => void;
   onDelete?: (id: string) => void;
   onClick?: (task: Task) => void;
-  onBreakdown?: (id: string) => void;
+  onBreakdown?: (id: string, instruction?: string) => void;
   isBreakdownPending?: boolean;
   onUpdateTask?: (id: string, status: TaskStatus) => void;
 }
@@ -55,6 +56,13 @@ export function KanbanCard({
     return level === 'HIGH' ? <FaBatteryFull /> : <FaBatteryQuarter />;
   };
 
+  const formatStartNotBefore = (value?: string | Date | null) => {
+    if (!value) return null;
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return null;
+    return date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
+  };
+
   const handleCardClick = () => {
     if (onClick) {
       onClick(task);
@@ -69,6 +77,44 @@ export function KanbanCard({
   const completedSubtasks = subtasks.filter(st => st.status === 'DONE').length;
   const totalSubtasks = subtasks.length;
   const isDone = task.status === 'DONE';
+  const [breakdownInstruction, setBreakdownInstruction] = useState('');
+
+  const taskLookup = useMemo(() => {
+    return new Map(allTasks.map(t => [t.id, t]));
+  }, [allTasks]);
+
+  const effectiveStartNotBefore = useMemo(() => {
+    const dates: Date[] = [];
+    if (task.start_not_before) {
+      const parsed = new Date(task.start_not_before);
+      if (!Number.isNaN(parsed.getTime())) {
+        dates.push(parsed);
+      }
+    }
+    let parentId = task.parent_id;
+    const seen = new Set<string>();
+    while (parentId && !seen.has(parentId)) {
+      seen.add(parentId);
+      const parent = taskLookup.get(parentId);
+      if (!parent) break;
+      if (parent.start_not_before) {
+        const parsed = new Date(parent.start_not_before);
+        if (!Number.isNaN(parsed.getTime())) {
+          dates.push(parsed);
+        }
+      }
+      parentId = parent.parent_id;
+    }
+    if (dates.length === 0) return null;
+    return new Date(Math.max(...dates.map(date => date.getTime())));
+  }, [task.start_not_before, task.parent_id, taskLookup]);
+
+  const handleBreakdown = () => {
+    if (!onBreakdown) return;
+    const instruction = breakdownInstruction.trim();
+    onBreakdown(task.id, instruction || undefined);
+    setBreakdownInstruction('');
+  };
 
   // Check if task is blocked by dependencies
   const dependencyStatus = useMemo(() => {
@@ -76,11 +122,10 @@ export function KanbanCard({
       return { isBlocked: false, blockingTasks: [] };
     }
 
-    const taskMap = new Map(allTasks.map(t => [t.id, t]));
     const blockingTasks: Task[] = [];
 
     for (const depId of task.dependency_ids) {
-      const depTask = taskMap.get(depId);
+      const depTask = taskLookup.get(depId);
       if (depTask && depTask.status !== 'DONE') {
         blockingTasks.push(depTask);
       }
@@ -90,7 +135,7 @@ export function KanbanCard({
       isBlocked: blockingTasks.length > 0,
       blockingTasks,
     };
-  }, [task.dependency_ids, allTasks]);
+  }, [task.dependency_ids, taskLookup]);
 
   return (
     <div
@@ -136,17 +181,6 @@ export function KanbanCard({
               <FaPen />
             </button>
           )}
-          {onBreakdown && (
-            <button
-              className="card-action-btn breakdown"
-              onClick={(e) => handleActionClick(e, () => onBreakdown(task.id))}
-              title={isBreakdownPending ? 'タスク分解中...' : 'タスク分解'}
-              disabled={isBreakdownPending}
-              aria-busy={isBreakdownPending}
-            >
-              <FaListCheck />
-            </button>
-          )}
           {onDelete && (
             <button
               className="card-action-btn delete"
@@ -175,6 +209,12 @@ export function KanbanCard({
             <span>{assigneeName}</span>
           </span>
         )}
+        {!task.is_fixed_time && effectiveStartNotBefore && (
+          <span className="meta-badge start-not-before">
+            <FaCalendarAlt />
+            <span>着手可 {formatStartNotBefore(effectiveStartNotBefore)}</span>
+          </span>
+        )}
         <span
           className={`meta-badge urgency-${task.urgency.toLowerCase()}`}
         >
@@ -188,6 +228,38 @@ export function KanbanCard({
           <span>{task.energy_level}</span>
         </span>
       </div>
+
+      {onBreakdown && (
+        <div
+          className="breakdown-control"
+          onClick={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <input
+            type="text"
+            className="breakdown-input"
+            value={breakdownInstruction}
+            onChange={(e) => setBreakdownInstruction(e.target.value)}
+            placeholder="タスク分解の指示（任意）"
+            disabled={isBreakdownPending}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !isBreakdownPending) {
+                handleBreakdown();
+              }
+            }}
+          />
+          <button
+            type="button"
+            className="breakdown-btn"
+            onClick={(e) => handleActionClick(e, handleBreakdown)}
+            disabled={isBreakdownPending}
+            aria-busy={isBreakdownPending}
+          >
+            <FaListCheck />
+            <span>AIで分解</span>
+          </button>
+        </div>
+      )}
 
       {memberOptions && memberOptions.length > 0 && onAssignMultiple && (
         <div className="card-assignee-row">

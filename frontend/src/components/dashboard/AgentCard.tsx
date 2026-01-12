@@ -1,4 +1,5 @@
 import { FaRobot, FaPlay } from 'react-icons/fa6';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 import './AgentCard.css';
 
 type AgentCardProps = {
@@ -6,6 +7,11 @@ type AgentCardProps = {
 };
 
 export function AgentCard({ onOpenDailyBriefing }: AgentCardProps) {
+  const { data: currentUser } = useCurrentUser();
+  const displayName = currentUser?.username
+    || currentUser?.display_name
+    || currentUser?.email
+    || 'there';
   const getGreeting = () => {
     const hour = new Date().getHours();
     if (hour < 12) return 'Good Morning';
@@ -37,7 +43,7 @@ export function AgentCard({ onOpenDailyBriefing }: AgentCardProps) {
 
           <div className="agent-text-content">
             <span className="agent-badge">AI ASSISTANT</span>
-            <h2 className="agent-greeting">{getGreeting()}, Shuhei!</h2>
+            <h2 className="agent-greeting">{getGreeting()}, {displayName}!</h2>
             <p className="agent-message">{getAdviceMessage()}</p>
           </div>
         </div>

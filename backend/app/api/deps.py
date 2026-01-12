@@ -25,6 +25,7 @@ from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.checkin_repository import ICheckinRepository
 from app.interfaces.blocker_repository import IBlockerRepository
+from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
 from app.interfaces.user_repository import IUserRepository
 from app.interfaces.project_invitation_repository import IProjectInvitationRepository
 from app.interfaces.llm_provider import ILLMProvider
@@ -203,6 +204,17 @@ def get_blocker_repository() -> IBlockerRepository:
         return SqliteBlockerRepository()
 
 
+@lru_cache()
+def get_recurring_meeting_repository() -> IRecurringMeetingRepository:
+    """Get recurring meeting repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Recurring meeting repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.recurring_meeting_repository import SqliteRecurringMeetingRepository
+        return SqliteRecurringMeetingRepository()
+
+
 # ===========================================
 # Provider Dependencies
 # ===========================================
@@ -249,6 +261,10 @@ def get_auth_provider() -> IAuthProvider:
         from app.infrastructure.auth.oidc_auth import OidcAuthProvider
 
         return OidcAuthProvider(settings, get_user_repository())
+    if settings.AUTH_PROVIDER == "local":
+        from app.infrastructure.auth.local_auth import LocalAuthProvider
+
+        return LocalAuthProvider(settings, get_user_repository())
 
     from app.infrastructure.local.mock_auth import MockAuthProvider
     return MockAuthProvider(enabled=True)
@@ -340,6 +356,7 @@ ProjectMemberRepo = Annotated[IProjectMemberRepository, Depends(get_project_memb
 TaskAssignmentRepo = Annotated[ITaskAssignmentRepository, Depends(get_task_assignment_repository)]
 CheckinRepo = Annotated[ICheckinRepository, Depends(get_checkin_repository)]
 BlockerRepo = Annotated[IBlockerRepository, Depends(get_blocker_repository)]
+RecurringMeetingRepo = Annotated[IRecurringMeetingRepository, Depends(get_recurring_meeting_repository)]
 UserRepo = Annotated[IUserRepository, Depends(get_user_repository)]
 ProjectInvitationRepo = Annotated[
     IProjectInvitationRepository, Depends(get_project_invitation_repository)

@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FaList, FaChartBar } from 'react-icons/fa';
 import { phasesApi } from '../../api/phases';
 import { milestonesApi } from '../../api/milestones';
 import { projectsApi } from '../../api/projects';
@@ -16,8 +15,6 @@ import type {
   TaskStatus,
 } from '../../api/types';
 import './ProjectTasksView.css';
-
-type ViewMode = 'kanban' | 'gantt';
 
 interface ProjectTasksViewProps {
   projectId: string;
@@ -44,7 +41,6 @@ export function ProjectTasksView({
   onAssignMultiple,
   onRefreshTasks,
 }: ProjectTasksViewProps) {
-  const [viewMode, setViewMode] = useState<ViewMode>('kanban');
   const [phases, setPhases] = useState<PhaseWithTaskCount[]>([]);
   const [isPhasesLoading, setIsPhasesLoading] = useState(false);
   const [showPhaseManager, setShowPhaseManager] = useState(false);
@@ -112,31 +108,32 @@ export function ProjectTasksView({
     await fetchMilestones();
   };
 
-  const handleGeneratePhases = async () => {
+  const handleGeneratePhases = async (instruction?: string) => {
     setIsPlanningPhases(true);
     try {
       await projectsApi.breakdownPhases(projectId, {
         create_phases: true,
         create_milestones: true,
+        instruction,
       });
       await fetchPhases();
       await fetchMilestones();
     } catch (error) {
       console.error('Failed to generate phases:', error);
-      alert('Failed to generate phases.');
+      alert('フェーズの生成に失敗しました。');
     } finally {
       setIsPlanningPhases(false);
     }
   };
 
-  const handleGeneratePhaseTasks = async (phaseId: string) => {
+  const handleGeneratePhaseTasks = async (phaseId: string, instruction?: string) => {
     setPlanningPhaseId(phaseId);
     try {
-      await phasesApi.breakdownTasks(phaseId, { create_tasks: true });
+      await phasesApi.breakdownTasks(phaseId, { create_tasks: true, instruction });
       onRefreshTasks?.();
     } catch (error) {
       console.error('Failed to generate phase tasks:', error);
-      alert('Failed to generate tasks for this phase.');
+      alert('このフェーズのタスク分解に失敗しました。');
     } finally {
       setPlanningPhaseId(null);
     }
@@ -146,29 +143,14 @@ export function ProjectTasksView({
     <div className="project-tasks-view">
       {/* View Controls */}
       <div className="view-controls">
-        <div className="view-mode-tabs">
-          <button
-            className={`tab ${viewMode === 'kanban' ? 'active' : ''}`}
-            onClick={() => setViewMode('kanban')}
-          >
-            <FaList /> カンバンボード
-          </button>
-          <button
-            className={`tab ${viewMode === 'gantt' ? 'active' : ''}`}
-            onClick={() => setViewMode('gantt')}
-          >
-            <FaChartBar /> ガントチャート
-          </button>
-        </div>
-
         <button
           className="phase-manager-btn"
           onClick={() => setShowPhaseManager(!showPhaseManager)}
           disabled={isPhasesLoading}
         >
           {isPhasesLoading
-            ? 'Loading...'
-            : (showPhaseManager ? 'Close phase manager' : 'Open phase manager')}
+            ? '読み込み中...'
+            : (showPhaseManager ? 'フェーズ管理を閉じる' : 'フェーズ管理を開く')}
         </button>
       </div>
 
@@ -196,25 +178,16 @@ export function ProjectTasksView({
 
       {/* Task View */}
       <div className="task-view-container">
-        {viewMode === 'kanban' ? (
-          <KanbanBoard
-            tasks={tasks}
-            onUpdateTask={onUpdateTask}
-            onTaskClick={onTaskClick}
-            onDeleteTask={onDeleteTask}
-            assigneeByTaskId={assigneeByTaskId}
-            assignedMemberIdsByTaskId={assignedMemberIdsByTaskId}
-            memberOptions={memberOptions}
-            onAssignMultiple={onAssignMultiple}
-          />
-        ) : (
-          <div className="gantt-placeholder">
-            <p>ガントチャート表示（実装予定）</p>
-            <p className="text-muted">
-              フェーズごとにタスクをグループ化したガントチャートを表示します
-            </p>
-          </div>
-        )}
+        <KanbanBoard
+          tasks={tasks}
+          onUpdateTask={onUpdateTask}
+          onTaskClick={onTaskClick}
+          onDeleteTask={onDeleteTask}
+          assigneeByTaskId={assigneeByTaskId}
+          assignedMemberIdsByTaskId={assignedMemberIdsByTaskId}
+          memberOptions={memberOptions}
+          onAssignMultiple={onAssignMultiple}
+        />
       </div>
     </div>
   );

@@ -84,6 +84,14 @@ class BlockerStatus(str, Enum):
     RESOLVED = "RESOLVED"
 
 
+class CheckinType(str, Enum):
+    """Type of check-in entry."""
+
+    WEEKLY = "weekly"
+    ISSUE = "issue"
+    GENERAL = "general"
+
+
 class InvitationStatus(str, Enum):
     """Status for project invitations."""
 

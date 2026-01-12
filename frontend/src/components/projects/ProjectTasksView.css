@@ -14,40 +14,6 @@
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.view-mode-tabs {
-  display: flex;
-  gap: 8px;
-  padding: 4px;
-  background: #f7fafc;
-  border-radius: 8px;
-}
-
-.tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 8px 16px;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  color: #718096;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.tab:hover {
-  background: #edf2f7;
-  color: #4a5568;
-}
-
-.tab.active {
-  background: white;
-  color: #4a90e2;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-}
-
 .phase-manager-btn {
   padding: 8px 16px;
   background: white;
@@ -73,21 +39,3 @@
   margin-top: 20px;
 }
 
-.gantt-placeholder {
-  background: white;
-  border-radius: 12px;
-  padding: 60px 40px;
-  text-align: center;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-}
-
-.gantt-placeholder p {
-  margin: 0 0 8px 0;
-  font-size: 16px;
-  color: #1a1a1a;
-}
-
-.gantt-placeholder .text-muted {
-  font-size: 14px;
-  color: #718096;
-}

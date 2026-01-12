@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { chatApi } from '../api/chat';
+import { userStorage } from '../utils/userStorage';
 import type {
   ChatRequest,
   ChatResponse,
@@ -46,7 +47,7 @@ export function useChat() {
   const queryClient = useQueryClient();
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionId, setSessionIdState] = useState<string | undefined>(() => {
-    return localStorage.getItem(SESSION_STORAGE_KEY) || undefined;
+    return userStorage.get(SESSION_STORAGE_KEY) || undefined;
   });
   const [isStreaming, setIsStreaming] = useState(false);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
@@ -57,9 +58,9 @@ export function useChat() {
   const setSessionId = useCallback((id?: string) => {
     setSessionIdState(id);
     if (id) {
-      localStorage.setItem(SESSION_STORAGE_KEY, id);
+      userStorage.set(SESSION_STORAGE_KEY, id);
     } else {
-      localStorage.removeItem(SESSION_STORAGE_KEY);
+      userStorage.remove(SESSION_STORAGE_KEY);
     }
   }, []);
 
@@ -141,6 +142,20 @@ export function useChat() {
     bootstrapHistory();
   }, [loadHistory]);
 
+  useEffect(() => {
+    const handleAuthChange = () => {
+      setMessages([]);
+      setSessions([]);
+      hasLoadedInitialHistory.current = false;
+      const storedSession = userStorage.get(SESSION_STORAGE_KEY) || undefined;
+      setSessionIdState(storedSession);
+    };
+    window.addEventListener('auth-changed', handleAuthChange);
+    return () => {
+      window.removeEventListener('auth-changed', handleAuthChange);
+    };
+  }, []);
+
   const sendMessageStream = useCallback(
     async (text: string, imageBase64?: string, mode?: ChatMode) => {
       // Add user message
@@ -169,8 +184,8 @@ export function useChat() {
       setIsStreaming(true);
 
       try {
-        // Get proposal mode from localStorage
-        const proposalMode = localStorage.getItem('aiProposalMode') === 'true';
+        // Get proposal mode from user-scoped storage
+        const proposalMode = userStorage.get('aiProposalMode') === 'true';
 
         // Stream response
         for await (const chunk of chatApi.streamMessage({

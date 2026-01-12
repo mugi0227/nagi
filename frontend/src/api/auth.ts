@@ -24,10 +24,12 @@ export function getAuthToken(): { token: string | null; source: AuthTokenSource 
 
 export function setAuthToken(token: string, key: 'auth_token' | 'id_token' | 'access_token' = 'auth_token') {
   localStorage.setItem(key, token);
+  window.dispatchEvent(new Event('auth-changed'));
 }
 
 export function clearAuthToken() {
   localStorage.removeItem('auth_token');
   localStorage.removeItem('id_token');
   localStorage.removeItem('access_token');
+  window.dispatchEvent(new Event('auth-changed'));
 }

@@ -10,6 +10,7 @@ import { StepNumber } from '../common/StepNumber';
 import { tasksApi } from '../../api/tasks';
 import type { Task, TaskCreate, TaskUpdate } from '../../api/types';
 import { sortTasksByStepNumber } from '../../utils/taskSort';
+import { userStorage } from '../../utils/userStorage';
 import './TodayTasksCard.css';
 
 const LOCK_STORAGE_KEY = 'todayTasksLock';
@@ -63,14 +64,14 @@ type TodayTaskSnapshot = {
 
 export function TodayTasksCard() {
   const { data, isLoading, error } = useTodayTasks();
-  const { tasks: allTasks, updateTask, createTask, isCreating, isUpdating } = useTasks();
+  const { tasks: allTasks, updateTask, createTask, isCreating, isUpdating, refetch } = useTasks();
   const { getCapacityForDate } = useCapacitySettings();
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [openedParentTask, setOpenedParentTask] = useState<Task | null>(null);
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [taskToEdit, setTaskToEdit] = useState<Task | undefined>(undefined);
   const [lockInfoState, setLockInfoState] = useState<TodayTasksLock | null>(() => {
-    const raw = localStorage.getItem(LOCK_STORAGE_KEY);
+    const raw = userStorage.get(LOCK_STORAGE_KEY);
     if (!raw) return null;
     try {
       return JSON.parse(raw) as TodayTasksLock;
@@ -102,15 +103,15 @@ export function TodayTasksCard() {
 
   useEffect(() => {
     if (lockInfo) return;
-    const raw = localStorage.getItem(LOCK_STORAGE_KEY);
+    const raw = userStorage.get(LOCK_STORAGE_KEY);
     if (!raw) return;
     try {
       const parsed = JSON.parse(raw) as TodayTasksLock;
       if (parsed?.date !== dateLabel || !Array.isArray(parsed.taskIds)) {
-        localStorage.removeItem(LOCK_STORAGE_KEY);
+        userStorage.remove(LOCK_STORAGE_KEY);
       }
     } catch {
-      localStorage.removeItem(LOCK_STORAGE_KEY);
+      userStorage.remove(LOCK_STORAGE_KEY);
     }
   }, [lockInfo, dateLabel]);
 
@@ -404,7 +405,7 @@ export function TodayTasksCard() {
 
   const handleToggleLock = () => {
     if (isLocked) {
-      localStorage.removeItem(LOCK_STORAGE_KEY);
+      userStorage.remove(LOCK_STORAGE_KEY);
       setLockInfoState(null);
       return;
     }
@@ -434,7 +435,7 @@ export function TodayTasksCard() {
       allocations: allocationSnapshot,
       taskSnapshots: taskSnapshot,
     };
-    localStorage.setItem(LOCK_STORAGE_KEY, JSON.stringify(payload));
+    userStorage.set(LOCK_STORAGE_KEY, JSON.stringify(payload));
     setLockInfoState(payload);
   };
 
@@ -626,6 +627,9 @@ export function TodayTasksCard() {
               updateTask(taskId, { progress });
             }}
             onTaskCheck={handleTaskCheck}
+            onActionItemsCreated={() => {
+              refetch();
+            }}
           />
         )}
       </AnimatePresence>

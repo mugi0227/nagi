@@ -31,6 +31,10 @@ class PhaseBreakdownRequest(BaseModel):
 
     create_phases: bool = Field(False, description="Create phases in the database")
     create_milestones: bool = Field(False, description="Create milestones in the database")
+    instruction: Optional[str] = Field(
+        None,
+        description="User instruction or constraints for planning",
+    )
 
 
 class PhaseBreakdownResponse(BaseModel):
@@ -57,6 +61,10 @@ class PhaseTaskBreakdownRequest(BaseModel):
     """Request to generate tasks for a phase."""
 
     create_tasks: bool = Field(False, description="Create tasks in the database")
+    instruction: Optional[str] = Field(
+        None,
+        description="User instruction or constraints for task breakdown",
+    )
 
 
 class PhaseTaskBreakdownResponse(BaseModel):

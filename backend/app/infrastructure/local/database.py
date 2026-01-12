@@ -15,6 +15,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Integer,
     String,
     Text,
@@ -56,6 +57,7 @@ class TaskORM(Base):
     energy_level = Column(String(10), default="LOW")
     estimated_minutes = Column(Integer, nullable=True)
     due_date = Column(DateTime, nullable=True)
+    start_not_before = Column(DateTime, nullable=True)
     parent_id = Column(String(36), nullable=True, index=True)
     order_in_parent = Column(Integer, nullable=True)
     dependency_ids = Column(JSON, nullable=True, default=list)
@@ -143,6 +145,8 @@ class UserORM(Base):
     provider_sub = Column(String(255), nullable=False, index=True)
     email = Column(String(255), nullable=True, index=True)
     display_name = Column(String(255), nullable=True)
+    username = Column(String(255), nullable=True, index=True)
+    password_hash = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -217,6 +221,7 @@ class CheckinORM(Base):
     project_id = Column(String(36), nullable=False, index=True)
     member_user_id = Column(String(255), nullable=False, index=True)
     checkin_date = Column(Date, nullable=False, index=True)
+    checkin_type = Column(String(20), nullable=False, default="weekly")
     summary_text = Column(Text, nullable=True)
     raw_text = Column(Text, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
@@ -252,6 +257,29 @@ class AgentTaskORM(Base):
     retry_count = Column(Integer, default=0)
     last_error = Column(Text, nullable=True)
     executed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class RecurringMeetingORM(Base):
+    """Recurring meeting ORM model."""
+
+    __tablename__ = "recurring_meetings"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    project_id = Column(String(36), nullable=True, index=True)
+    title = Column(String(500), nullable=False)
+    frequency = Column(String(20), nullable=False, default="weekly")
+    weekday = Column(Integer, nullable=False)
+    start_time = Column(String(10), nullable=False)  # HH:MM
+    duration_minutes = Column(Integer, nullable=False)
+    location = Column(String(500), nullable=True)
+    attendees = Column(JSON, nullable=True, default=list)
+    agenda_window_days = Column(Integer, nullable=False, default=7)
+    anchor_date = Column(Date, nullable=False)
+    last_occurrence = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -295,7 +323,7 @@ class ChatSessionORM(Base):
     __tablename__ = "chat_sessions"
 
     session_id = Column(String(100), primary_key=True)
-    user_id = Column(String(255), nullable=False, index=True)
+    user_id = Column(String(255), primary_key=True, index=True)
     title = Column(String(200), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
@@ -305,9 +333,16 @@ class ChatMessageORM(Base):
     """Chat message ORM model."""
 
     __tablename__ = "chat_messages"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["session_id", "user_id"],
+            ["chat_sessions.session_id", "chat_sessions.user_id"],
+            ondelete="CASCADE",
+        ),
+    )
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    session_id = Column(String(100), ForeignKey("chat_sessions.session_id"), index=True)
+    session_id = Column(String(100), nullable=False, index=True)
     user_id = Column(String(255), nullable=False, index=True)
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False, default="")

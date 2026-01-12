@@ -13,6 +13,7 @@ export type PhaseStatus = 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
 export type MilestoneStatus = 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
 export type ProjectRole = 'OWNER' | 'ADMIN' | 'MEMBER';
 export type BlockerStatus = 'OPEN' | 'RESOLVED';
+export type CheckinType = 'weekly' | 'issue' | 'general';
 export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
 export type KpiDirection = 'up' | 'down' | 'neutral';
 export type KpiStrategy = 'template' | 'ai' | 'custom';
@@ -58,6 +59,7 @@ export interface Task {
   energy_level: EnergyLevel;
   estimated_minutes?: number;
   due_date?: string;
+  start_not_before?: string;
   parent_id?: string;
   order_in_parent?: number;
   dependency_ids: string[];
@@ -88,6 +90,7 @@ export interface TaskCreate {
   energy_level?: EnergyLevel;
   estimated_minutes?: number;
   due_date?: string;
+  start_not_before?: string;
   parent_id?: string;
   order_in_parent?: number;
   dependency_ids?: string[];
@@ -112,6 +115,7 @@ export interface TaskUpdate {
   energy_level?: EnergyLevel;
   estimated_minutes?: number;
   due_date?: string;
+  start_not_before?: string;
   parent_id?: string;
   order_in_parent?: number;
   dependency_ids?: string[];
@@ -149,6 +153,7 @@ export interface TaskBreakdown {
 
 export interface BreakdownRequest {
   create_subtasks?: boolean;
+  instruction?: string;
 }
 
 export interface BreakdownResponse {
@@ -339,6 +344,7 @@ export interface PhaseSuggestion {
 export interface PhaseBreakdownRequest {
   create_phases?: boolean;
   create_milestones?: boolean;
+  instruction?: string;
 }
 
 export interface PhaseBreakdownResponse {
@@ -359,6 +365,7 @@ export interface PhaseTaskSuggestion {
 
 export interface PhaseTaskBreakdownRequest {
   create_tasks?: boolean;
+  instruction?: string;
 }
 
 export interface PhaseTaskBreakdownResponse {
@@ -453,15 +460,86 @@ export interface Checkin {
   project_id: string;
   member_user_id: string;
   checkin_date: string;
+  checkin_type: CheckinType;
   summary_text?: string;
   raw_text: string;
   created_at: string;
 }
 
+export interface CheckinSummary {
+  project_id: string;
+  start_date?: string;
+  end_date?: string;
+  checkin_count: number;
+  summary_text?: string;
+  summary_error?: string;
+  summary_error_detail?: string;
+  summary_debug_prompt?: string;
+  summary_debug_output?: string;
+}
+
+export interface CheckinSummarySave {
+  summary_text: string;
+  start_date?: string;
+  end_date?: string;
+  checkin_count: number;
+}
+
 export interface CheckinCreate {
   member_user_id: string;
   checkin_date: string;
+  checkin_type: CheckinType;
   raw_text: string;
+}
+
+export type RecurrenceFrequency = 'weekly' | 'biweekly';
+
+export interface RecurringMeeting {
+  id: string;
+  user_id: string;
+  title: string;
+  project_id?: string;
+  frequency: RecurrenceFrequency;
+  weekday: number;
+  start_time: string;
+  duration_minutes: number;
+  location?: string;
+  attendees: string[];
+  agenda_window_days: number;
+  anchor_date: string;
+  last_occurrence?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecurringMeetingCreate {
+  title: string;
+  project_id?: string;
+  frequency: RecurrenceFrequency;
+  weekday: number;
+  start_time: string;
+  duration_minutes: number;
+  location?: string;
+  attendees?: string[];
+  agenda_window_days?: number;
+  anchor_date?: string;
+  is_active?: boolean;
+}
+
+export interface RecurringMeetingUpdate {
+  title?: string;
+  project_id?: string;
+  frequency?: RecurrenceFrequency;
+  weekday?: number;
+  start_time?: string;
+  duration_minutes?: number;
+  location?: string;
+  attendees?: string[];
+  agenda_window_days?: number;
+  anchor_date?: string;
+  last_occurrence?: string;
+  is_active?: boolean;
 }
 
 export interface Blocker {

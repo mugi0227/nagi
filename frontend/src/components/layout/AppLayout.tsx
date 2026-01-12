@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Sidebar } from './Sidebar';
 import { ChatWindow } from '../chat/ChatWindow';
 import { ChatWidget } from '../chat/ChatWidget';
+import { userStorage } from '../../utils/userStorage';
 import './AppLayout.css';
 
 const CHAT_STORAGE_KEY = 'secretary_chat_state';
@@ -15,36 +16,20 @@ interface ChatState {
 
 export function AppLayout() {
   const location = useLocation();
-  const [isChatOpen, setIsChatOpen] = useState(() => {
-    const saved = localStorage.getItem(CHAT_STORAGE_KEY);
-    if (saved) {
-      try {
-        return (JSON.parse(saved) as ChatState).isOpen;
-      } catch (e) {
-        return false;
-      }
-    }
-    return false;
+  const loadChatState = () => userStorage.getJson<ChatState>(CHAT_STORAGE_KEY, {
+    isOpen: false,
+    width: 400,
   });
 
-  const [chatWidth, setChatWidth] = useState(() => {
-    const saved = localStorage.getItem(CHAT_STORAGE_KEY);
-    if (saved) {
-      try {
-        return (JSON.parse(saved) as ChatState).width;
-      } catch (e) {
-        return 400;
-      }
-    }
-    return 400;
-  });
+  const [isChatOpen, setIsChatOpen] = useState(() => loadChatState().isOpen);
+  const [chatWidth, setChatWidth] = useState(() => loadChatState().width);
 
   const isResizing = useRef(false);
 
   // Persist state changes
   useEffect(() => {
     const state: ChatState = { isOpen: isChatOpen, width: chatWidth };
-    localStorage.setItem(CHAT_STORAGE_KEY, JSON.stringify(state));
+    userStorage.setJson(CHAT_STORAGE_KEY, state);
   }, [isChatOpen, chatWidth]);
 
   const startResizing = useCallback((e: React.MouseEvent) => {
@@ -77,6 +62,18 @@ export function AppLayout() {
       document.removeEventListener('mouseup', stopResizing);
     };
   }, [handleMouseMove, stopResizing]);
+
+  useEffect(() => {
+    const handleAuthChange = () => {
+      const state = loadChatState();
+      setIsChatOpen(state.isOpen);
+      setChatWidth(state.width);
+    };
+    window.addEventListener('auth-changed', handleAuthChange);
+    return () => {
+      window.removeEventListener('auth-changed', handleAuthChange);
+    };
+  }, []);
 
   const toggleChat = () => setIsChatOpen(!isChatOpen);
 

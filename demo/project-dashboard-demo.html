@@ -1,0 +1,1945 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Secretary Partner AI - プロジェクト機能デモ</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --primary: #6366f1;
+      --primary-light: #818cf8;
+      --primary-dark: #4f46e5;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --bg-dark: #0f172a;
+      --bg-card: #1e293b;
+      --bg-hover: #334155;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --border: #334155;
+      --shadow: 0 4px 6px -1px rgba(0,0,0,0.3);
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg-dark);
+      color: var(--text-primary);
+      min-height: 100vh;
+    }
+
+    /* Layout */
+    .app-container {
+      display: flex;
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      width: 260px;
+      background: var(--bg-card);
+      border-right: 1px solid var(--border);
+      padding: 20px 0;
+      position: fixed;
+      height: 100vh;
+      overflow-y: auto;
+    }
+
+    .main-content {
+      flex: 1;
+      margin-left: 260px;
+      padding: 24px;
+    }
+
+    /* Sidebar */
+    .logo {
+      padding: 0 20px 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 20px;
+    }
+
+    .logo h1 {
+      font-size: 18px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo h1 i {
+      color: var(--primary);
+    }
+
+    .nav-section {
+      padding: 0 12px;
+      margin-bottom: 24px;
+    }
+
+    .nav-section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      padding: 0 8px;
+      margin-bottom: 8px;
+      letter-spacing: 0.5px;
+    }
+
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 8px;
+      color: var(--text-secondary);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .nav-item:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    .nav-item.active {
+      background: var(--primary);
+      color: white;
+    }
+
+    .nav-item i {
+      width: 20px;
+      text-align: center;
+    }
+
+    .nav-badge {
+      margin-left: auto;
+      background: var(--danger);
+      color: white;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 10px;
+    }
+
+    /* Project Header */
+    .project-header {
+      background: linear-gradient(135deg, var(--bg-card), var(--bg-hover));
+      border-radius: 16px;
+      padding: 24px;
+      margin-bottom: 24px;
+      border: 1px solid var(--border);
+    }
+
+    .project-header-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 20px;
+    }
+
+    .project-title {
+      font-size: 28px;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+
+    .project-meta {
+      display: flex;
+      gap: 16px;
+      color: var(--text-secondary);
+      font-size: 14px;
+    }
+
+    .project-meta span {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .phase-indicator {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      background: var(--primary);
+      padding: 8px 16px;
+      border-radius: 20px;
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .project-progress {
+      background: var(--bg-dark);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .progress-stats {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .progress-stat {
+      text-align: center;
+    }
+
+    .progress-stat-value {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--primary-light);
+    }
+
+    .progress-stat-label {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .progress-bar-container {
+      height: 8px;
+      background: var(--bg-hover);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--primary), var(--success));
+      border-radius: 4px;
+      transition: width 0.5s ease;
+    }
+
+    /* Tab Navigation */
+    .tab-nav {
+      display: flex;
+      gap: 4px;
+      background: var(--bg-card);
+      padding: 4px;
+      border-radius: 12px;
+      margin-bottom: 24px;
+      border: 1px solid var(--border);
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 12px 20px;
+      border: none;
+      background: transparent;
+      color: var(--text-secondary);
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 500;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .tab-btn:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    .tab-btn.active {
+      background: var(--primary);
+      color: white;
+    }
+
+    .tab-content {
+      display: none;
+    }
+
+    .tab-content.active {
+      display: block;
+    }
+
+    /* Dashboard Grid */
+    .dashboard-grid {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 24px;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border-radius: 16px;
+      padding: 20px;
+      border: 1px solid var(--border);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .card-title i {
+      color: var(--primary);
+    }
+
+    .card-action {
+      background: var(--bg-hover);
+      border: none;
+      color: var(--text-secondary);
+      padding: 6px 12px;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      transition: all 0.2s;
+    }
+
+    .card-action:hover {
+      background: var(--primary);
+      color: white;
+    }
+
+    /* AI Suggestions */
+    .ai-suggestion {
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
+      border: 1px solid rgba(99, 102, 241, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+
+    .ai-suggestion-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+
+    .ai-badge {
+      background: linear-gradient(135deg, var(--primary), #8b5cf6);
+      color: white;
+      font-size: 11px;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-weight: 600;
+    }
+
+    .ai-suggestion-title {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .ai-suggestion-body {
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      line-height: 1.5;
+    }
+
+    .ai-suggestion-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: none;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-dark);
+    }
+
+    .btn-ghost {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--border);
+    }
+
+    .btn-ghost:hover {
+      background: var(--bg-hover);
+      color: var(--text-primary);
+    }
+
+    /* Task List */
+    .task-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: var(--bg-dark);
+      border-radius: 10px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .task-item:hover {
+      background: var(--bg-hover);
+    }
+
+    .task-checkbox {
+      width: 20px;
+      height: 20px;
+      border: 2px solid var(--border);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .task-checkbox.checked {
+      background: var(--success);
+      border-color: var(--success);
+    }
+
+    .task-checkbox.checked i {
+      color: white;
+      font-size: 12px;
+    }
+
+    .task-content {
+      flex: 1;
+    }
+
+    .task-title {
+      font-size: 14px;
+      margin-bottom: 4px;
+    }
+
+    .task-meta {
+      display: flex;
+      gap: 12px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .task-priority {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+    }
+
+    .priority-high { background: var(--danger); }
+    .priority-medium { background: var(--warning); }
+    .priority-low { background: var(--success); }
+
+    .task-assignee {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .task-due {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .task-due.overdue {
+      color: var(--danger);
+    }
+
+    /* Team View */
+    .team-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 16px;
+    }
+
+    .team-member-card {
+      background: var(--bg-dark);
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid var(--border);
+    }
+
+    .team-member-header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .team-member-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--primary), #8b5cf6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      font-weight: 600;
+    }
+
+    .team-member-info h4 {
+      font-size: 15px;
+      margin-bottom: 2px;
+    }
+
+    .team-member-info span {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .team-member-status {
+      margin-left: auto;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--success);
+    }
+
+    .team-member-stats {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .team-stat {
+      text-align: center;
+      padding: 8px;
+      background: var(--bg-card);
+      border-radius: 8px;
+    }
+
+    .team-stat-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--primary-light);
+    }
+
+    .team-stat-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .workload-bar {
+      height: 6px;
+      background: var(--bg-card);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 8px;
+    }
+
+    .workload-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 0.3s;
+    }
+
+    .workload-normal { background: var(--success); }
+    .workload-busy { background: var(--warning); }
+    .workload-overload { background: var(--danger); }
+
+    /* Activity Feed */
+    .activity-item {
+      display: flex;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .activity-item:last-child {
+      border-bottom: none;
+    }
+
+    .activity-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      background: var(--bg-dark);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+    }
+
+    .activity-content {
+      flex: 1;
+    }
+
+    .activity-text {
+      font-size: 13px;
+      margin-bottom: 4px;
+    }
+
+    .activity-text strong {
+      color: var(--primary-light);
+    }
+
+    .activity-time {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* Gantt Chart */
+    .gantt-container {
+      overflow-x: auto;
+    }
+
+    .gantt-header {
+      display: flex;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      margin-bottom: 8px;
+    }
+
+    .gantt-label-col {
+      width: 200px;
+      flex-shrink: 0;
+    }
+
+    .gantt-timeline {
+      display: flex;
+      flex: 1;
+    }
+
+    .gantt-week {
+      width: 100px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--text-muted);
+      flex-shrink: 0;
+    }
+
+    .gantt-row {
+      display: flex;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.05);
+    }
+
+    .gantt-row-label {
+      width: 200px;
+      flex-shrink: 0;
+      font-size: 13px;
+      padding-right: 16px;
+    }
+
+    .gantt-row-bars {
+      display: flex;
+      flex: 1;
+      position: relative;
+      height: 24px;
+    }
+
+    .gantt-bar {
+      position: absolute;
+      height: 20px;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      font-size: 11px;
+      color: white;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+
+    .gantt-bar.phase { background: var(--primary); }
+    .gantt-bar.milestone { background: var(--warning); height: 16px; }
+    .gantt-bar.task { background: var(--success); opacity: 0.8; }
+
+    /* Blockers */
+    .blocker-item {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 8px;
+    }
+
+    .blocker-header {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .blocker-icon {
+      color: var(--danger);
+    }
+
+    .blocker-title {
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .blocker-meta {
+      font-size: 12px;
+      color: var(--text-muted);
+      display: flex;
+      gap: 12px;
+    }
+
+    /* Alert Banner */
+    .alert-banner {
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.1), rgba(239, 68, 68, 0.1));
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .alert-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--warning);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+    }
+
+    .alert-content {
+      flex: 1;
+    }
+
+    .alert-title {
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .alert-text {
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    /* KPI Section */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .kpi-card {
+      background: var(--bg-card);
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid var(--border);
+    }
+
+    .kpi-label {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    .kpi-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--primary-light);
+      margin-bottom: 4px;
+    }
+
+    .kpi-target {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .kpi-progress {
+      height: 4px;
+      background: var(--bg-dark);
+      border-radius: 2px;
+      margin-top: 8px;
+      overflow: hidden;
+    }
+
+    .kpi-progress-fill {
+      height: 100%;
+      background: var(--success);
+      border-radius: 2px;
+    }
+
+    /* Comments Section */
+    .comment-item {
+      display: flex;
+      gap: 12px;
+      padding: 12px 0;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .comment-avatar {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      flex-shrink: 0;
+    }
+
+    .comment-content {
+      flex: 1;
+    }
+
+    .comment-header {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 4px;
+    }
+
+    .comment-author {
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .comment-time {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .comment-text {
+      font-size: 13px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .comment-input {
+      display: flex;
+      gap: 12px;
+      margin-top: 16px;
+    }
+
+    .comment-input input {
+      flex: 1;
+      background: var(--bg-dark);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 14px;
+      color: var(--text-primary);
+      font-size: 13px;
+    }
+
+    .comment-input input::placeholder {
+      color: var(--text-muted);
+    }
+
+    /* Phase View */
+    .phase-timeline {
+      position: relative;
+      padding-left: 30px;
+    }
+
+    .phase-timeline::before {
+      content: '';
+      position: absolute;
+      left: 10px;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: var(--border);
+    }
+
+    .phase-item {
+      position: relative;
+      margin-bottom: 24px;
+    }
+
+    .phase-item::before {
+      content: '';
+      position: absolute;
+      left: -24px;
+      top: 4px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--primary);
+      border: 2px solid var(--bg-card);
+    }
+
+    .phase-item.completed::before {
+      background: var(--success);
+    }
+
+    .phase-item.current::before {
+      background: var(--warning);
+      box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.2);
+    }
+
+    .phase-card {
+      background: var(--bg-dark);
+      border-radius: 12px;
+      padding: 16px;
+      border: 1px solid var(--border);
+    }
+
+    .phase-card.current {
+      border-color: var(--warning);
+      background: rgba(245, 158, 11, 0.05);
+    }
+
+    .phase-name {
+      font-size: 16px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .phase-name .badge {
+      font-size: 10px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: var(--warning);
+      color: var(--bg-dark);
+    }
+
+    .phase-dates {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+
+    .milestone-list {
+      margin-left: 16px;
+    }
+
+    .milestone-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .milestone-item i {
+      color: var(--text-muted);
+    }
+
+    .milestone-item.done i {
+      color: var(--success);
+    }
+
+    /* Notification Badge Pulse */
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+    }
+
+    .pulse {
+      animation: pulse 2s infinite;
+    }
+
+    /* Skeleton Loading */
+    .skeleton {
+      background: linear-gradient(90deg, var(--bg-hover) 25%, var(--bg-card) 50%, var(--bg-hover) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.5s infinite;
+      border-radius: 4px;
+    }
+
+    @keyframes shimmer {
+      0% { background-position: 200% 0; }
+      100% { background-position: -200% 0; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="logo">
+        <h1><i class="fas fa-brain"></i> Secretary AI</h1>
+      </div>
+
+      <nav class="nav-section">
+        <div class="nav-section-title">メイン</div>
+        <div class="nav-item">
+          <i class="fas fa-home"></i>
+          <span>ダッシュボード</span>
+        </div>
+        <div class="nav-item">
+          <i class="fas fa-tasks"></i>
+          <span>今日のタスク</span>
+          <span class="nav-badge">5</span>
+        </div>
+        <div class="nav-item">
+          <i class="fas fa-comments"></i>
+          <span>AIチャット</span>
+        </div>
+      </nav>
+
+      <nav class="nav-section">
+        <div class="nav-section-title">プロジェクト</div>
+        <div class="nav-item active">
+          <i class="fas fa-rocket"></i>
+          <span>新規サービス開発</span>
+        </div>
+        <div class="nav-item">
+          <i class="fas fa-chart-line"></i>
+          <span>売上改善PJ</span>
+        </div>
+        <div class="nav-item">
+          <i class="fas fa-users"></i>
+          <span>採用強化</span>
+        </div>
+        <div class="nav-item">
+          <i class="fas fa-plus"></i>
+          <span>新規プロジェクト</span>
+        </div>
+      </nav>
+
+      <nav class="nav-section">
+        <div class="nav-section-title">設定</div>
+        <div class="nav-item">
+          <i class="fas fa-cog"></i>
+          <span>設定</span>
+        </div>
+      </nav>
+    </aside>
+
+    <!-- Main Content -->
+    <main class="main-content">
+      <!-- Project Header -->
+      <header class="project-header">
+        <div class="project-header-top">
+          <div>
+            <h1 class="project-title">新規サービス開発プロジェクト</h1>
+            <div class="project-meta">
+              <span><i class="fas fa-users"></i> 5人のメンバー</span>
+              <span><i class="fas fa-calendar"></i> 2024/01/15 〜 2024/06/30</span>
+              <span><i class="fas fa-star" style="color: var(--warning)"></i> 優先度 8/10</span>
+            </div>
+          </div>
+          <div class="phase-indicator">
+            <i class="fas fa-code"></i>
+            Phase 2: 開発フェーズ
+          </div>
+        </div>
+        <div class="project-progress">
+          <div class="progress-stats">
+            <div class="progress-stat">
+              <div class="progress-stat-value">47</div>
+              <div class="progress-stat-label">全タスク</div>
+            </div>
+            <div class="progress-stat">
+              <div class="progress-stat-value">18</div>
+              <div class="progress-stat-label">完了</div>
+            </div>
+            <div class="progress-stat">
+              <div class="progress-stat-value">8</div>
+              <div class="progress-stat-label">進行中</div>
+            </div>
+            <div class="progress-stat">
+              <div class="progress-stat-value">38%</div>
+              <div class="progress-stat-label">進捗率</div>
+            </div>
+          </div>
+          <div class="progress-bar-container">
+            <div class="progress-bar" style="width: 38%"></div>
+          </div>
+        </div>
+      </header>
+
+      <!-- Alert Banner -->
+      <div class="alert-banner">
+        <div class="alert-icon pulse">
+          <i class="fas fa-exclamation"></i>
+        </div>
+        <div class="alert-content">
+          <div class="alert-title">2件のタスクが期限超過しています</div>
+          <div class="alert-text">「API設計レビュー」「データベース設計」が予定より遅れています。AIがリスケジュール案を作成しました。</div>
+        </div>
+        <button class="btn btn-primary">提案を確認</button>
+      </div>
+
+      <!-- Tab Navigation -->
+      <div class="tab-nav">
+        <button class="tab-btn active" onclick="showTab('dashboard')">
+          <i class="fas fa-th-large"></i> ダッシュボード
+        </button>
+        <button class="tab-btn" onclick="showTab('team')">
+          <i class="fas fa-users"></i> チーム
+        </button>
+        <button class="tab-btn" onclick="showTab('timeline')">
+          <i class="fas fa-stream"></i> タイムライン
+        </button>
+        <button class="tab-btn" onclick="showTab('board')">
+          <i class="fas fa-columns"></i> ボード
+        </button>
+        <button class="tab-btn" onclick="showTab('gantt')">
+          <i class="fas fa-chart-gantt"></i> ガント
+        </button>
+      </div>
+
+      <!-- Dashboard Tab -->
+      <div id="dashboard" class="tab-content active">
+        <!-- KPI Section -->
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-label">スプリント完了率</div>
+            <div class="kpi-value">78%</div>
+            <div class="kpi-target">目標: 85%</div>
+            <div class="kpi-progress">
+              <div class="kpi-progress-fill" style="width: 78%"></div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">バグ修正数</div>
+            <div class="kpi-value">12</div>
+            <div class="kpi-target">目標: 15件</div>
+            <div class="kpi-progress">
+              <div class="kpi-progress-fill" style="width: 80%"></div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">コードカバレッジ</div>
+            <div class="kpi-value">72%</div>
+            <div class="kpi-target">目標: 80%</div>
+            <div class="kpi-progress">
+              <div class="kpi-progress-fill" style="width: 72%"></div>
+            </div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">リリースまで</div>
+            <div class="kpi-value">23日</div>
+            <div class="kpi-target">2024/02/15</div>
+            <div class="kpi-progress">
+              <div class="kpi-progress-fill" style="width: 65%"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dashboard-grid">
+          <div>
+            <!-- AI Suggestions -->
+            <div class="card" style="margin-bottom: 24px;">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fas fa-magic"></i> AI提案
+                </div>
+              </div>
+
+              <div class="ai-suggestion">
+                <div class="ai-suggestion-header">
+                  <span class="ai-badge"><i class="fas fa-bolt"></i> プロアクティブ</span>
+                  <span class="ai-suggestion-title">ボトルネック検出</span>
+                </div>
+                <div class="ai-suggestion-body">
+                  「認証API実装」タスクに3つのタスクが依存しています。このタスクの遅延がプロジェクト全体に影響する可能性があります。担当の田中さんの負荷を軽減するため、一部を佐藤さんに再割り当てすることを推奨します。
+                </div>
+                <div class="ai-suggestion-actions">
+                  <button class="btn btn-primary"><i class="fas fa-check"></i> 再割り当てを実行</button>
+                  <button class="btn btn-ghost">詳細を見る</button>
+                </div>
+              </div>
+
+              <div class="ai-suggestion">
+                <div class="ai-suggestion-header">
+                  <span class="ai-badge"><i class="fas fa-calendar-alt"></i> リスケジュール</span>
+                  <span class="ai-suggestion-title">期限調整の提案</span>
+                </div>
+                <div class="ai-suggestion-body">
+                  現在の進捗ペースでは、Phase 2の完了が予定より5日遅れる見込みです。以下の調整を提案します：<br>
+                  ・「UI実装」の期限を2日延長<br>
+                  ・「テスト作成」を並行して開始
+                </div>
+                <div class="ai-suggestion-actions">
+                  <button class="btn btn-primary"><i class="fas fa-sync"></i> 適用する</button>
+                  <button class="btn btn-ghost">カスタマイズ</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Today's Priority Tasks -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fas fa-fire"></i> 今日の優先タスク
+                </div>
+                <button class="card-action">すべて見る</button>
+              </div>
+
+              <div class="task-item">
+                <div class="task-checkbox">
+                  <i class="fas fa-check" style="display: none;"></i>
+                </div>
+                <span class="task-priority priority-high"></span>
+                <div class="task-content">
+                  <div class="task-title">認証API実装 - JWT発行処理</div>
+                  <div class="task-meta">
+                    <span><i class="fas fa-clock"></i> 2時間</span>
+                    <span><i class="fas fa-layer-group"></i> Phase 2</span>
+                  </div>
+                </div>
+                <div class="task-assignee">田</div>
+                <div class="task-due overdue">
+                  <i class="fas fa-calendar"></i> 期限超過
+                </div>
+              </div>
+
+              <div class="task-item">
+                <div class="task-checkbox">
+                  <i class="fas fa-check" style="display: none;"></i>
+                </div>
+                <span class="task-priority priority-high"></span>
+                <div class="task-content">
+                  <div class="task-title">データベース設計 - スキーマ定義</div>
+                  <div class="task-meta">
+                    <span><i class="fas fa-clock"></i> 3時間</span>
+                    <span><i class="fas fa-layer-group"></i> Phase 2</span>
+                  </div>
+                </div>
+                <div class="task-assignee">佐</div>
+                <div class="task-due overdue">
+                  <i class="fas fa-calendar"></i> 期限超過
+                </div>
+              </div>
+
+              <div class="task-item">
+                <div class="task-checkbox">
+                  <i class="fas fa-check" style="display: none;"></i>
+                </div>
+                <span class="task-priority priority-medium"></span>
+                <div class="task-content">
+                  <div class="task-title">フロントエンド - ログイン画面実装</div>
+                  <div class="task-meta">
+                    <span><i class="fas fa-clock"></i> 4時間</span>
+                    <span><i class="fas fa-layer-group"></i> Phase 2</span>
+                  </div>
+                </div>
+                <div class="task-assignee">鈴</div>
+                <div class="task-due">
+                  <i class="fas fa-calendar"></i> 今日
+                </div>
+              </div>
+
+              <div class="task-item">
+                <div class="task-checkbox checked">
+                  <i class="fas fa-check"></i>
+                </div>
+                <span class="task-priority priority-medium"></span>
+                <div class="task-content">
+                  <div class="task-title" style="text-decoration: line-through; opacity: 0.6;">API仕様書レビュー</div>
+                  <div class="task-meta">
+                    <span><i class="fas fa-clock"></i> 1時間</span>
+                    <span><i class="fas fa-layer-group"></i> Phase 2</span>
+                  </div>
+                </div>
+                <div class="task-assignee">山</div>
+                <div class="task-due" style="color: var(--success);">
+                  <i class="fas fa-check-circle"></i> 完了
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <!-- Blockers -->
+            <div class="card" style="margin-bottom: 24px;">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fas fa-hand-paper" style="color: var(--danger)"></i> ブロッカー
+                </div>
+                <span class="nav-badge">2</span>
+              </div>
+
+              <div class="blocker-item">
+                <div class="blocker-header">
+                  <i class="fas fa-exclamation-circle blocker-icon"></i>
+                  <span class="blocker-title">外部API仕様が未確定</span>
+                </div>
+                <div class="blocker-meta">
+                  <span><i class="fas fa-user"></i> 田中</span>
+                  <span><i class="fas fa-clock"></i> 2日前</span>
+                </div>
+                <div style="margin-top: 8px;">
+                  <button class="btn btn-ghost" style="font-size: 12px;"><i class="fas fa-comment"></i> コメント (3)</button>
+                  <button class="btn btn-ghost" style="font-size: 12px;"><i class="fas fa-check"></i> 解決</button>
+                </div>
+              </div>
+
+              <div class="blocker-item">
+                <div class="blocker-header">
+                  <i class="fas fa-exclamation-circle blocker-icon"></i>
+                  <span class="blocker-title">テスト環境の構築待ち</span>
+                </div>
+                <div class="blocker-meta">
+                  <span><i class="fas fa-user"></i> 佐藤</span>
+                  <span><i class="fas fa-clock"></i> 1日前</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Activity Feed -->
+            <div class="card">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fas fa-stream"></i> アクティビティ
+                </div>
+              </div>
+
+              <div class="activity-item">
+                <div class="activity-icon">
+                  <i class="fas fa-check"></i>
+                </div>
+                <div class="activity-content">
+                  <div class="activity-text"><strong>山田</strong>が「API仕様書レビュー」を完了</div>
+                  <div class="activity-time">15分前</div>
+                </div>
+              </div>
+
+              <div class="activity-item">
+                <div class="activity-icon">
+                  <i class="fas fa-comment"></i>
+                </div>
+                <div class="activity-content">
+                  <div class="activity-text"><strong>田中</strong>が「認証API実装」にコメント</div>
+                  <div class="activity-time">1時間前</div>
+                </div>
+              </div>
+
+              <div class="activity-item">
+                <div class="activity-icon">
+                  <i class="fas fa-user-plus"></i>
+                </div>
+                <div class="activity-content">
+                  <div class="activity-text"><strong>佐藤</strong>が「DB設計」に割り当て</div>
+                  <div class="activity-time">2時間前</div>
+                </div>
+              </div>
+
+              <div class="activity-item">
+                <div class="activity-icon">
+                  <i class="fas fa-robot"></i>
+                </div>
+                <div class="activity-content">
+                  <div class="activity-text"><strong>AI</strong>がリスケジュールを提案</div>
+                  <div class="activity-time">3時間前</div>
+                </div>
+              </div>
+
+              <div class="activity-item">
+                <div class="activity-icon">
+                  <i class="fas fa-clipboard-check"></i>
+                </div>
+                <div class="activity-content">
+                  <div class="activity-text"><strong>鈴木</strong>がチェックインを投稿</div>
+                  <div class="activity-time">5時間前</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Team Tab -->
+      <div id="team" class="tab-content">
+        <div class="team-grid">
+          <div class="team-member-card">
+            <div class="team-member-header">
+              <div class="team-member-avatar">田</div>
+              <div class="team-member-info">
+                <h4>田中 太郎</h4>
+                <span>バックエンド担当</span>
+              </div>
+              <div class="team-member-status"></div>
+            </div>
+            <div class="team-member-stats">
+              <div class="team-stat">
+                <div class="team-stat-value">5</div>
+                <div class="team-stat-label">担当</div>
+              </div>
+              <div class="team-stat">
+                <div class="team-stat-value">2</div>
+                <div class="team-stat-label">進行中</div>
+              </div>
+              <div class="team-stat">
+                <div class="team-stat-value">8</div>
+                <div class="team-stat-label">完了</div>
+              </div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+                <span style="color: var(--text-muted);">今週の負荷</span>
+                <span style="color: var(--danger);">120%</span>
+              </div>
+              <div class="workload-bar">
+                <div class="workload-fill workload-overload" style="width: 100%"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="team-member-card">
+            <div class="team-member-header">
+              <div class="team-member-avatar" style="background: linear-gradient(135deg, #10b981, #34d399);">佐</div>
+              <div class="team-member-info">
+                <h4>佐藤 花子</h4>
+                <span>フルスタック</span>
+              </div>
+              <div class="team-member-status"></div>
+            </div>
+            <div class="team-member-stats">
+              <div class="team-stat">
+                <div class="team-stat-value">4</div>
+                <div class="team-stat-label">担当</div>
+              </div>
+              <div class="team-stat">
+                <div class="team-stat-value">1</div>
+                <div class="team-stat-label">進行中</div>
+              </div>
+              <div class="team-stat">
+                <div class="team-stat-value">6</div>
+                <div class="team-stat-label">完了</div>
+              </div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+                <span style="color: var(--text-muted);">今週の負荷</span>
+                <span style="color: var(--success);">65%</span>
+              </div>
+              <div class="workload-bar">
+                <div class="workload-fill workload-normal" style="width: 65%"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="team-member-card">
+            <div class="team-member-header">
+              <div class="team-member-avatar" style="background: linear-gradient(135deg, #f59e0b, #fbbf24);">鈴</div>
+              <div class="team-member-info">
+                <h4>鈴木 一郎</h4>
+                <span>フロントエンド担当</span>
+              </div>
+              <div class="team-member-status"></div>
+            </div>
+            <div class="team-member-stats">
+              <div class="team-stat">
+                <div class="team-stat-value">6</div>
+                <div class="team-stat-label">担当</div>
+              </div>
+              <div class="team-stat">
+                <div class="team-stat-value">2</div>
+                <div class="team-stat-label">進行中</div>
+              </div>
+              <div class="team-stat">
+                <div class="team-stat-value">4</div>
+                <div class="team-stat-label">完了</div>
+              </div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+                <span style="color: var(--text-muted);">今週の負荷</span>
+                <span style="color: var(--warning);">85%</span>
+              </div>
+              <div class="workload-bar">
+                <div class="workload-fill workload-busy" style="width: 85%"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="team-member-card">
+            <div class="team-member-header">
+              <div class="team-member-avatar" style="background: linear-gradient(135deg, #ec4899, #f472b6);">山</div>
+              <div class="team-member-info">
+                <h4>山田 美咲</h4>
+                <span>PM</span>
+              </div>
+              <div class="team-member-status"></div>
+            </div>
+            <div class="team-member-stats">
+              <div class="team-stat">
+                <div class="team-stat-value">3</div>
+                <div class="team-stat-label">担当</div>
+              </div>
+              <div class="team-stat">
+                <div class="team-stat-value">1</div>
+                <div class="team-stat-label">進行中</div>
+              </div>
+              <div class="team-stat">
+                <div class="team-stat-value">5</div>
+                <div class="team-stat-label">完了</div>
+              </div>
+            </div>
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 4px;">
+                <span style="color: var(--text-muted);">今週の負荷</span>
+                <span style="color: var(--success);">50%</span>
+              </div>
+              <div class="workload-bar">
+                <div class="workload-fill workload-normal" style="width: 50%"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="team-member-card" style="border: 2px dashed var(--border); background: transparent;">
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; height: 180px; color: var(--text-muted);">
+              <i class="fas fa-user-plus" style="font-size: 32px; margin-bottom: 12px;"></i>
+              <span>メンバーを招待</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- AI Workload Suggestion -->
+        <div class="ai-suggestion" style="margin-top: 24px;">
+          <div class="ai-suggestion-header">
+            <span class="ai-badge"><i class="fas fa-balance-scale"></i> 負荷分散</span>
+            <span class="ai-suggestion-title">ワークロード最適化の提案</span>
+          </div>
+          <div class="ai-suggestion-body">
+            田中さんの負荷が120%を超えています。佐藤さんに空きがあるため、「認証API実装」の一部（トークンリフレッシュ処理）を移管することで、チーム全体のバランスが改善されます。
+          </div>
+          <div class="ai-suggestion-actions">
+            <button class="btn btn-primary"><i class="fas fa-exchange-alt"></i> タスクを再分配</button>
+            <button class="btn btn-ghost">詳細を見る</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Timeline Tab -->
+      <div id="timeline" class="tab-content">
+        <div class="phase-timeline">
+          <div class="phase-item completed">
+            <div class="phase-card">
+              <div class="phase-name">
+                <i class="fas fa-check-circle" style="color: var(--success)"></i>
+                Phase 1: 企画・設計
+              </div>
+              <div class="phase-dates">2024/01/15 - 2024/01/31 (完了)</div>
+              <div class="milestone-list">
+                <div class="milestone-item done">
+                  <i class="fas fa-flag"></i>
+                  要件定義書完成
+                </div>
+                <div class="milestone-item done">
+                  <i class="fas fa-flag"></i>
+                  技術選定完了
+                </div>
+                <div class="milestone-item done">
+                  <i class="fas fa-flag"></i>
+                  アーキテクチャ設計承認
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="phase-item current">
+            <div class="phase-card current">
+              <div class="phase-name">
+                <i class="fas fa-code" style="color: var(--warning)"></i>
+                Phase 2: 開発
+                <span class="badge">進行中</span>
+              </div>
+              <div class="phase-dates">2024/02/01 - 2024/03/31 (38% 完了)</div>
+              <div class="milestone-list">
+                <div class="milestone-item done">
+                  <i class="fas fa-flag"></i>
+                  開発環境構築
+                </div>
+                <div class="milestone-item">
+                  <i class="fas fa-flag"></i>
+                  MVP機能実装 (2/15)
+                </div>
+                <div class="milestone-item">
+                  <i class="fas fa-flag"></i>
+                  結合テスト完了 (3/15)
+                </div>
+                <div class="milestone-item">
+                  <i class="fas fa-flag"></i>
+                  コードレビュー完了 (3/31)
+                </div>
+              </div>
+              <div style="margin-top: 12px;">
+                <button class="btn btn-ghost" style="font-size: 12px;"><i class="fas fa-tasks"></i> タスク一覧を見る</button>
+                <button class="btn btn-ghost" style="font-size: 12px;"><i class="fas fa-magic"></i> AIでタスク追加</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="phase-item">
+            <div class="phase-card">
+              <div class="phase-name">
+                <i class="fas fa-vial" style="color: var(--text-muted)"></i>
+                Phase 3: テスト
+              </div>
+              <div class="phase-dates">2024/04/01 - 2024/05/15 (未開始)</div>
+              <div class="milestone-list">
+                <div class="milestone-item">
+                  <i class="fas fa-flag"></i>
+                  E2Eテスト完了
+                </div>
+                <div class="milestone-item">
+                  <i class="fas fa-flag"></i>
+                  パフォーマンステスト完了
+                </div>
+                <div class="milestone-item">
+                  <i class="fas fa-flag"></i>
+                  セキュリティ監査完了
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="phase-item">
+            <div class="phase-card">
+              <div class="phase-name">
+                <i class="fas fa-rocket" style="color: var(--text-muted)"></i>
+                Phase 4: リリース
+              </div>
+              <div class="phase-dates">2024/05/16 - 2024/06/30 (未開始)</div>
+              <div class="milestone-list">
+                <div class="milestone-item">
+                  <i class="fas fa-flag"></i>
+                  ステージング環境デプロイ
+                </div>
+                <div class="milestone-item">
+                  <i class="fas fa-flag"></i>
+                  本番リリース
+                </div>
+                <div class="milestone-item">
+                  <i class="fas fa-flag"></i>
+                  振り返り完了
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Board Tab (Kanban) -->
+      <div id="board" class="tab-content">
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px;">
+          <!-- TODO Column -->
+          <div class="card" style="background: var(--bg-dark);">
+            <div class="card-header">
+              <div class="card-title" style="font-size: 14px;">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted);"></span>
+                TODO
+                <span style="color: var(--text-muted); font-weight: normal;">(8)</span>
+              </div>
+            </div>
+            <div class="task-item">
+              <span class="task-priority priority-medium"></span>
+              <div class="task-content">
+                <div class="task-title" style="font-size: 13px;">ユーザー登録API</div>
+                <div class="task-meta" style="font-size: 11px;">
+                  <span>3h</span>
+                </div>
+              </div>
+              <div class="task-assignee" style="width: 24px; height: 24px; font-size: 10px;">佐</div>
+            </div>
+            <div class="task-item">
+              <span class="task-priority priority-low"></span>
+              <div class="task-content">
+                <div class="task-title" style="font-size: 13px;">エラーハンドリング</div>
+                <div class="task-meta" style="font-size: 11px;">
+                  <span>2h</span>
+                </div>
+              </div>
+              <div class="task-assignee" style="width: 24px; height: 24px; font-size: 10px;">田</div>
+            </div>
+            <div class="task-item">
+              <span class="task-priority priority-medium"></span>
+              <div class="task-content">
+                <div class="task-title" style="font-size: 13px;">ログイン画面デザイン</div>
+                <div class="task-meta" style="font-size: 11px;">
+                  <span>4h</span>
+                </div>
+              </div>
+              <div class="task-assignee" style="width: 24px; height: 24px; font-size: 10px;">鈴</div>
+            </div>
+          </div>
+
+          <!-- IN PROGRESS Column -->
+          <div class="card" style="background: var(--bg-dark);">
+            <div class="card-header">
+              <div class="card-title" style="font-size: 14px;">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--primary);"></span>
+                進行中
+                <span style="color: var(--text-muted); font-weight: normal;">(3)</span>
+              </div>
+            </div>
+            <div class="task-item" style="border-left: 3px solid var(--danger);">
+              <span class="task-priority priority-high"></span>
+              <div class="task-content">
+                <div class="task-title" style="font-size: 13px;">認証API実装</div>
+                <div class="task-meta" style="font-size: 11px;">
+                  <span style="color: var(--danger);">期限超過</span>
+                </div>
+              </div>
+              <div class="task-assignee" style="width: 24px; height: 24px; font-size: 10px;">田</div>
+            </div>
+            <div class="task-item" style="border-left: 3px solid var(--danger);">
+              <span class="task-priority priority-high"></span>
+              <div class="task-content">
+                <div class="task-title" style="font-size: 13px;">DB設計</div>
+                <div class="task-meta" style="font-size: 11px;">
+                  <span style="color: var(--danger);">期限超過</span>
+                </div>
+              </div>
+              <div class="task-assignee" style="width: 24px; height: 24px; font-size: 10px;">佐</div>
+            </div>
+            <div class="task-item">
+              <span class="task-priority priority-medium"></span>
+              <div class="task-content">
+                <div class="task-title" style="font-size: 13px;">フロント実装</div>
+                <div class="task-meta" style="font-size: 11px;">
+                  <span>今日まで</span>
+                </div>
+              </div>
+              <div class="task-assignee" style="width: 24px; height: 24px; font-size: 10px;">鈴</div>
+            </div>
+          </div>
+
+          <!-- REVIEW Column -->
+          <div class="card" style="background: var(--bg-dark);">
+            <div class="card-header">
+              <div class="card-title" style="font-size: 14px;">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--warning);"></span>
+                レビュー
+                <span style="color: var(--text-muted); font-weight: normal;">(2)</span>
+              </div>
+            </div>
+            <div class="task-item">
+              <span class="task-priority priority-medium"></span>
+              <div class="task-content">
+                <div class="task-title" style="font-size: 13px;">CI/CD設定</div>
+                <div class="task-meta" style="font-size: 11px;">
+                  <span>レビュー待ち</span>
+                </div>
+              </div>
+              <div class="task-assignee" style="width: 24px; height: 24px; font-size: 10px;">山</div>
+            </div>
+            <div class="task-item">
+              <span class="task-priority priority-low"></span>
+              <div class="task-content">
+                <div class="task-title" style="font-size: 13px;">Docker環境整備</div>
+                <div class="task-meta" style="font-size: 11px;">
+                  <span>レビュー待ち</span>
+                </div>
+              </div>
+              <div class="task-assignee" style="width: 24px; height: 24px; font-size: 10px;">佐</div>
+            </div>
+          </div>
+
+          <!-- DONE Column -->
+          <div class="card" style="background: var(--bg-dark);">
+            <div class="card-header">
+              <div class="card-title" style="font-size: 14px;">
+                <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--success);"></span>
+                完了
+                <span style="color: var(--text-muted); font-weight: normal;">(18)</span>
+              </div>
+            </div>
+            <div class="task-item" style="opacity: 0.7;">
+              <div class="task-checkbox checked" style="width: 18px; height: 18px;">
+                <i class="fas fa-check" style="font-size: 10px;"></i>
+              </div>
+              <div class="task-content">
+                <div class="task-title" style="font-size: 13px; text-decoration: line-through;">API仕様書レビュー</div>
+              </div>
+              <div class="task-assignee" style="width: 24px; height: 24px; font-size: 10px;">山</div>
+            </div>
+            <div class="task-item" style="opacity: 0.7;">
+              <div class="task-checkbox checked" style="width: 18px; height: 18px;">
+                <i class="fas fa-check" style="font-size: 10px;"></i>
+              </div>
+              <div class="task-content">
+                <div class="task-title" style="font-size: 13px; text-decoration: line-through;">要件定義</div>
+              </div>
+              <div class="task-assignee" style="width: 24px; height: 24px; font-size: 10px;">田</div>
+            </div>
+            <div class="task-item" style="opacity: 0.7;">
+              <div class="task-checkbox checked" style="width: 18px; height: 18px;">
+                <i class="fas fa-check" style="font-size: 10px;"></i>
+              </div>
+              <div class="task-content">
+                <div class="task-title" style="font-size: 13px; text-decoration: line-through;">技術選定</div>
+              </div>
+              <div class="task-assignee" style="width: 24px; height: 24px; font-size: 10px;">佐</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Gantt Tab -->
+      <div id="gantt" class="tab-content">
+        <div class="card">
+          <div class="card-header">
+            <div class="card-title">
+              <i class="fas fa-chart-gantt"></i> プロジェクトタイムライン
+            </div>
+            <div>
+              <button class="card-action"><i class="fas fa-chevron-left"></i></button>
+              <button class="card-action" style="margin-left: 4px;"><i class="fas fa-chevron-right"></i></button>
+            </div>
+          </div>
+
+          <div class="gantt-container">
+            <div class="gantt-header">
+              <div class="gantt-label-col">タスク</div>
+              <div class="gantt-timeline">
+                <div class="gantt-week">1/15</div>
+                <div class="gantt-week">1/22</div>
+                <div class="gantt-week">1/29</div>
+                <div class="gantt-week">2/5</div>
+                <div class="gantt-week">2/12</div>
+                <div class="gantt-week">2/19</div>
+                <div class="gantt-week">2/26</div>
+                <div class="gantt-week">3/4</div>
+              </div>
+            </div>
+
+            <div class="gantt-row">
+              <div class="gantt-row-label"><strong>Phase 1: 企画・設計</strong></div>
+              <div class="gantt-row-bars">
+                <div class="gantt-bar phase" style="left: 0; width: 200px;">Phase 1</div>
+              </div>
+            </div>
+
+            <div class="gantt-row">
+              <div class="gantt-row-label" style="padding-left: 16px; font-size: 12px;">要件定義</div>
+              <div class="gantt-row-bars">
+                <div class="gantt-bar task" style="left: 0; width: 100px;"></div>
+              </div>
+            </div>
+
+            <div class="gantt-row">
+              <div class="gantt-row-label" style="padding-left: 16px; font-size: 12px;">技術選定</div>
+              <div class="gantt-row-bars">
+                <div class="gantt-bar task" style="left: 50px; width: 80px;"></div>
+              </div>
+            </div>
+
+            <div class="gantt-row">
+              <div class="gantt-row-label" style="padding-left: 16px; font-size: 12px;">アーキテクチャ設計</div>
+              <div class="gantt-row-bars">
+                <div class="gantt-bar task" style="left: 100px; width: 100px;"></div>
+              </div>
+            </div>
+
+            <div class="gantt-row">
+              <div class="gantt-row-label"><strong>Phase 2: 開発</strong></div>
+              <div class="gantt-row-bars">
+                <div class="gantt-bar phase" style="left: 200px; width: 400px; opacity: 0.7;">Phase 2 (進行中)</div>
+              </div>
+            </div>
+
+            <div class="gantt-row">
+              <div class="gantt-row-label" style="padding-left: 16px; font-size: 12px; color: var(--danger);">認証API実装 ⚠️</div>
+              <div class="gantt-row-bars">
+                <div class="gantt-bar task" style="left: 200px; width: 150px; background: var(--danger);"></div>
+              </div>
+            </div>
+
+            <div class="gantt-row">
+              <div class="gantt-row-label" style="padding-left: 16px; font-size: 12px; color: var(--danger);">DB設計 ⚠️</div>
+              <div class="gantt-row-bars">
+                <div class="gantt-bar task" style="left: 200px; width: 120px; background: var(--danger);"></div>
+              </div>
+            </div>
+
+            <div class="gantt-row">
+              <div class="gantt-row-label" style="padding-left: 16px; font-size: 12px;">フロント実装</div>
+              <div class="gantt-row-bars">
+                <div class="gantt-bar task" style="left: 280px; width: 180px;"></div>
+              </div>
+            </div>
+
+            <div class="gantt-row">
+              <div class="gantt-row-label" style="padding-left: 16px; font-size: 12px;">
+                <i class="fas fa-diamond" style="color: var(--warning); font-size: 10px;"></i>
+                MVP完成
+              </div>
+              <div class="gantt-row-bars">
+                <div class="gantt-bar milestone" style="left: 350px; width: 20px;">◆</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Critical Path Alert -->
+        <div class="ai-suggestion" style="margin-top: 24px;">
+          <div class="ai-suggestion-header">
+            <span class="ai-badge"><i class="fas fa-project-diagram"></i> クリティカルパス</span>
+            <span class="ai-suggestion-title">依存関係分析</span>
+          </div>
+          <div class="ai-suggestion-body">
+            「認証API実装」→「ユーザー登録API」→「フロント実装」の経路がクリティカルパスです。<br>
+            認証API実装の遅延により、プロジェクト全体が最大5日遅延する可能性があります。
+          </div>
+          <div class="ai-suggestion-actions">
+            <button class="btn btn-primary"><i class="fas fa-users"></i> リソース追加を検討</button>
+            <button class="btn btn-ghost">依存グラフを見る</button>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    function showTab(tabId) {
+      // Hide all tab contents
+      document.querySelectorAll('.tab-content').forEach(tab => {
+        tab.classList.remove('active');
+      });
+
+      // Remove active from all buttons
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.remove('active');
+      });
+
+      // Show selected tab
+      document.getElementById(tabId).classList.add('active');
+
+      // Mark button as active
+      event.target.closest('.tab-btn').classList.add('active');
+    }
+
+    // Checkbox toggle
+    document.querySelectorAll('.task-checkbox').forEach(checkbox => {
+      checkbox.addEventListener('click', function() {
+        this.classList.toggle('checked');
+        const icon = this.querySelector('i');
+        if (icon) {
+          icon.style.display = this.classList.contains('checked') ? 'block' : 'none';
+        }
+      });
+    });
+  </script>
+</body>
+</html>

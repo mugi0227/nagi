@@ -1,13 +1,13 @@
 import { useMemo, useState } from 'react';
-import { FaPlus, FaEdit, FaTrash, FaCheck, FaTimes, FaChevronUp, FaChevronDown, FaRobot } from 'react-icons/fa';
-import { motion, AnimatePresence } from 'framer-motion';
+import { AnimatePresence, motion } from 'framer-motion';
+import { FaCheck, FaChevronDown, FaChevronUp, FaEdit, FaPlus, FaRobot, FaTimes, FaTrash } from 'react-icons/fa';
 import type {
   Milestone,
   MilestoneCreate,
   MilestoneUpdate,
-  PhaseWithTaskCount,
   PhaseCreate,
   PhaseUpdate,
+  PhaseWithTaskCount,
 } from '../../api/types';
 import './PhaseList.css';
 
@@ -21,8 +21,8 @@ interface PhaseListProps {
   onCreateMilestone: (milestone: MilestoneCreate) => Promise<void>;
   onUpdateMilestone: (id: string, milestone: MilestoneUpdate) => Promise<void>;
   onDeleteMilestone: (id: string) => Promise<void>;
-  onGeneratePhases?: () => Promise<void>;
-  onGeneratePhaseTasks?: (phaseId: string) => Promise<void>;
+  onGeneratePhases?: (instruction?: string) => Promise<void>;
+  onGeneratePhaseTasks?: (phaseId: string, instruction?: string) => Promise<void>;
   isPlanningPhases?: boolean;
   planningPhaseId?: string | null;
   projectId: string;
@@ -58,6 +58,8 @@ export function PhaseList({
   const [editMilestoneTitle, setEditMilestoneTitle] = useState('');
   const [editMilestoneDescription, setEditMilestoneDescription] = useState('');
   const [editMilestoneDueDate, setEditMilestoneDueDate] = useState('');
+  const [phasePlanInstruction, setPhasePlanInstruction] = useState('');
+  const [phaseTaskInstructions, setPhaseTaskInstructions] = useState<Record<string, string>>({});
 
   const milestonesByPhaseId = useMemo(() => {
     const map: Record<string, Milestone[]> = {};
@@ -73,14 +75,19 @@ export function PhaseList({
     return map;
   }, [milestones]);
 
+  const sortedPhases = useMemo(
+    () => [...phases].sort((a, b) => a.order_in_project - b.order_in_project),
+    [phases]
+  );
+
   const handleCreate = async () => {
     if (!newPhaseName.trim()) return;
 
     try {
       await onCreatePhase({
         project_id: projectId,
-        name: newPhaseName,
-        description: newPhaseDescription || undefined,
+        name: newPhaseName.trim(),
+        description: newPhaseDescription.trim() || undefined,
         order_in_project: phases.length + 1,
       });
       setNewPhaseName('');
@@ -88,7 +95,7 @@ export function PhaseList({
       setIsAdding(false);
     } catch (error) {
       console.error('Failed to create phase:', error);
-      alert('フェーズの作成に失敗しました');
+      alert('フェーズの作成に失敗しました。');
     }
   };
 
@@ -97,13 +104,13 @@ export function PhaseList({
 
     try {
       await onUpdatePhase(id, {
-        name: editName,
-        description: editDescription || undefined,
+        name: editName.trim(),
+        description: editDescription.trim() || undefined,
       });
       setEditingId(null);
     } catch (error) {
       console.error('Failed to update phase:', error);
-      alert('フェーズの更新に失敗しました');
+      alert('フェーズの更新に失敗しました。');
     }
   };
 
@@ -114,7 +121,7 @@ export function PhaseList({
       await onDeletePhase(id);
     } catch (error) {
       console.error('Failed to delete phase:', error);
-      alert('フェーズの削除に失敗しました');
+      alert('フェーズの削除に失敗しました。');
     }
   };
 
@@ -132,12 +139,22 @@ export function PhaseList({
 
   const handleMoveUp = async (phase: PhaseWithTaskCount) => {
     if (phase.order_in_project <= 1) return;
-    await onUpdatePhase(phase.id, { order_in_project: phase.order_in_project - 1 });
+    try {
+      await onUpdatePhase(phase.id, { order_in_project: phase.order_in_project - 1 });
+    } catch (error) {
+      console.error('Failed to move phase up:', error);
+      alert('フェーズの並び替えに失敗しました。');
+    }
   };
 
   const handleMoveDown = async (phase: PhaseWithTaskCount) => {
-    if (phase.order_in_project >= phases.length) return;
-    await onUpdatePhase(phase.id, { order_in_project: phase.order_in_project + 1 });
+    if (phase.order_in_project >= sortedPhases.length) return;
+    try {
+      await onUpdatePhase(phase.id, { order_in_project: phase.order_in_project + 1 });
+    } catch (error) {
+      console.error('Failed to move phase down:', error);
+      alert('フェーズの並び替えに失敗しました。');
+    }
   };
 
   const handleStartAddMilestone = (phaseId: string) => {
@@ -153,8 +170,8 @@ export function PhaseList({
       await onCreateMilestone({
         project_id: projectId,
         phase_id: phaseId,
-        title: milestoneTitle,
-        description: milestoneDescription || undefined,
+        title: milestoneTitle.trim(),
+        description: milestoneDescription.trim() || undefined,
         order_in_phase: (milestonesByPhaseId[phaseId]?.length || 0) + 1,
         due_date: milestoneDueDate || undefined,
       });
@@ -164,7 +181,7 @@ export function PhaseList({
       setMilestoneDueDate('');
     } catch (error) {
       console.error('Failed to create milestone:', error);
-      alert('Failed to create milestone.');
+      alert('マイルストーンの作成に失敗しました。');
     }
   };
 
@@ -179,14 +196,14 @@ export function PhaseList({
     if (!editMilestoneTitle.trim()) return;
     try {
       await onUpdateMilestone(milestoneId, {
-        title: editMilestoneTitle,
-        description: editMilestoneDescription || undefined,
+        title: editMilestoneTitle.trim(),
+        description: editMilestoneDescription.trim() || undefined,
         due_date: editMilestoneDueDate || undefined,
       });
       setEditingMilestoneId(null);
     } catch (error) {
       console.error('Failed to update milestone:', error);
-      alert('Failed to update milestone.');
+      alert('マイルストーンの更新に失敗しました。');
     }
   };
 
@@ -198,34 +215,50 @@ export function PhaseList({
   };
 
   const handleDeleteMilestone = async (milestoneId: string) => {
-    if (!confirm('Delete this milestone?')) return;
+    if (!confirm('このマイルストーンを削除しますか？')) return;
     try {
       await onDeleteMilestone(milestoneId);
     } catch (error) {
       console.error('Failed to delete milestone:', error);
-      alert('Failed to delete milestone.');
+      alert('マイルストーンの削除に失敗しました。');
     }
   };
 
-  const sortedPhases = [...phases].sort((a, b) => a.order_in_project - b.order_in_project);
+  const handlePhaseTaskInstructionChange = (phaseId: string, value: string) => {
+    setPhaseTaskInstructions((prev) => ({
+      ...prev,
+      [phaseId]: value,
+    }));
+  };
 
   return (
     <div className="phase-list">
       <div className="phase-list-header">
-        <h3>Phase Manager</h3>
+        <h3>フェーズマネージャー</h3>
         <div className="phase-header-actions">
           <button
             className="add-phase-btn"
-            onClick={() => onGeneratePhases?.()}
+            onClick={() => onGeneratePhases?.(phasePlanInstruction.trim() || undefined)}
             disabled={!onGeneratePhases || isPlanningPhases}
-            title="Generate phases and milestones with AI"
+            title="AIでフェーズとマイルストーンを生成"
           >
-            <FaRobot /> {isPlanningPhases ? 'Planning...' : 'AI Plan Phases'}
+            <FaRobot /> {isPlanningPhases ? '生成中...' : 'AIでフェーズ生成'}
           </button>
           <button className="add-phase-btn" onClick={() => setIsAdding(true)}>
-            <FaPlus /> Add Phase
+            <FaPlus /> フェーズ追加
           </button>
         </div>
+      </div>
+
+      <div className="phase-plan-input">
+        <label htmlFor="phase-plan-instruction">AI指示</label>
+        <textarea
+          id="phase-plan-instruction"
+          value={phasePlanInstruction}
+          onChange={(e) => setPhasePlanInstruction(e.target.value)}
+          placeholder="例: MVP優先、フェーズは3〜5件に絞る"
+          rows={2}
+        />
       </div>
 
       <AnimatePresence>
@@ -255,11 +288,14 @@ export function PhaseList({
               <button className="btn-save" onClick={handleCreate}>
                 <FaCheck /> 作成
               </button>
-              <button className="btn-cancel" onClick={() => {
-                setIsAdding(false);
-                setNewPhaseName('');
-                setNewPhaseDescription('');
-              }}>
+              <button
+                className="btn-cancel"
+                onClick={() => {
+                  setIsAdding(false);
+                  setNewPhaseName('');
+                  setNewPhaseDescription('');
+                }}
+              >
                 <FaTimes /> キャンセル
               </button>
             </div>
@@ -309,7 +345,7 @@ export function PhaseList({
                       <button
                         className="order-btn"
                         onClick={() => handleMoveUp(phase)}
-                        disabled={index === 0}
+                        disabled={phase.order_in_project <= 1}
                         title="上へ移動"
                       >
                         <FaChevronUp />
@@ -318,7 +354,7 @@ export function PhaseList({
                       <button
                         className="order-btn"
                         onClick={() => handleMoveDown(phase)}
-                        disabled={index === sortedPhases.length - 1}
+                        disabled={phase.order_in_project >= sortedPhases.length}
                         title="下へ移動"
                       >
                         <FaChevronDown />
@@ -326,19 +362,17 @@ export function PhaseList({
                     </div>
                     <div className="phase-info">
                       <h4 className="phase-name">{phase.name}</h4>
-                      {phase.description && (
-                        <p className="phase-description">{phase.description}</p>
-                      )}
+                      {phase.description && <p className="phase-description">{phase.description}</p>}
                     </div>
                     <div className="phase-stats">
                       <span className="stat">
-                        全体: <strong>{phase.total_tasks}</strong>
+                        全体 <strong>{phase.total_tasks}</strong>
                       </span>
                       <span className="stat in-progress">
-                        進行中: <strong>{phase.in_progress_tasks}</strong>
+                        進行中 <strong>{phase.in_progress_tasks}</strong>
                       </span>
                       <span className="stat completed">
-                        完了: <strong>{phase.completed_tasks}</strong>
+                        完了 <strong>{phase.completed_tasks}</strong>
                       </span>
                     </div>
                     <div className="phase-actions">
@@ -360,30 +394,43 @@ export function PhaseList({
                   </div>
                   <div className="phase-milestones">
                     <div className="milestones-header">
-                      <span className="milestones-title">Milestones</span>
+                      <span className="milestones-title">マイルストーン</span>
+                      <input
+                        className="milestone-instruction-input"
+                        type="text"
+                        value={phaseTaskInstructions[phase.id] || ''}
+                        onChange={(e) => handlePhaseTaskInstructionChange(phase.id, e.target.value)}
+                        placeholder="タスク分解の指示を入力（任意）"
+                        disabled={!onGeneratePhaseTasks}
+                      />
                       <div className="milestones-actions">
                         <button
                           className="btn-secondary"
-                          onClick={() => onGeneratePhaseTasks?.(phase.id)}
+                          onClick={() =>
+                            onGeneratePhaseTasks?.(
+                              phase.id,
+                              (phaseTaskInstructions[phase.id] || '').trim() || undefined
+                            )
+                          }
                           disabled={!onGeneratePhaseTasks || planningPhaseId === phase.id}
                         >
-                          <FaRobot /> {planningPhaseId === phase.id ? 'Planning...' : 'AI Tasks'}
+                          <FaRobot /> {planningPhaseId === phase.id ? '生成中...' : 'AIでタスク分解'}
                         </button>
                         <button
                           className="btn-secondary"
                           onClick={() => handleStartAddMilestone(phase.id)}
                         >
-                          <FaPlus /> Add Milestone
+                          <FaPlus /> マイルストーン追加
                         </button>
                       </div>
                     </div>
 
                     {isMilestonesLoading ? (
-                      <div className="milestones-loading">Loading...</div>
+                      <div className="milestones-loading">読み込み中...</div>
                     ) : (
                       <div className="milestones-list">
                         {(milestonesByPhaseId[phase.id] || []).length === 0 && (
-                          <div className="milestones-empty">No milestones yet.</div>
+                          <div className="milestones-empty">マイルストーンがまだありません。</div>
                         )}
                         {(milestonesByPhaseId[phase.id] || []).map((milestone) => (
                           <div key={milestone.id} className="milestone-item">
@@ -408,11 +455,14 @@ export function PhaseList({
                                   rows={2}
                                 />
                                 <div className="milestone-actions">
-                                  <button className="btn-save" onClick={() => handleUpdateMilestone(milestone.id)}>
-                                    <FaCheck /> Save
+                                  <button
+                                    className="btn-save"
+                                    onClick={() => handleUpdateMilestone(milestone.id)}
+                                  >
+                                    <FaCheck /> 保存
                                   </button>
                                   <button className="btn-cancel" onClick={handleCancelMilestoneEdit}>
-                                    <FaTimes /> Cancel
+                                    <FaTimes /> キャンセル
                                   </button>
                                 </div>
                               </div>
@@ -422,21 +472,23 @@ export function PhaseList({
                                   <div className="milestone-info">
                                     <span className="milestone-title">{milestone.title}</span>
                                     {milestone.due_date && (
-                                      <span className="milestone-date">{milestone.due_date.slice(0, 10)}</span>
+                                      <span className="milestone-date">
+                                        {milestone.due_date.slice(0, 10)}
+                                      </span>
                                     )}
                                   </div>
                                   <div className="milestone-buttons">
                                     <button
                                       className="btn-icon"
                                       onClick={() => handleStartEditMilestone(milestone)}
-                                      title="Edit milestone"
+                                      title="マイルストーンを編集"
                                     >
                                       <FaEdit />
                                     </button>
                                     <button
                                       className="btn-icon btn-danger"
                                       onClick={() => handleDeleteMilestone(milestone.id)}
-                                      title="Delete milestone"
+                                      title="削除"
                                     >
                                       <FaTrash />
                                     </button>
@@ -456,7 +508,7 @@ export function PhaseList({
                       <div className="milestone-form">
                         <input
                           type="text"
-                          placeholder="Milestone title"
+                          placeholder="マイルストーン名"
                           value={milestoneTitle}
                           onChange={(e) => setMilestoneTitle(e.target.value)}
                           className="milestone-input"
@@ -469,7 +521,7 @@ export function PhaseList({
                           className="milestone-date"
                         />
                         <textarea
-                          placeholder="Description (optional)"
+                          placeholder="説明（任意）"
                           value={milestoneDescription}
                           onChange={(e) => setMilestoneDescription(e.target.value)}
                           className="milestone-textarea"
@@ -477,13 +529,13 @@ export function PhaseList({
                         />
                         <div className="milestone-actions">
                           <button className="btn-save" onClick={() => handleCreateMilestone(phase.id)}>
-                            <FaCheck /> Save
+                            <FaCheck /> 保存
                           </button>
                           <button
                             className="btn-cancel"
                             onClick={() => setAddingMilestonePhaseId(null)}
                           >
-                            <FaTimes /> Cancel
+                            <FaTimes /> キャンセル
                           </button>
                         </div>
                       </div>
@@ -498,7 +550,7 @@ export function PhaseList({
 
       {sortedPhases.length === 0 && !isAdding && (
         <div className="empty-state">
-          <p>フェーズがまだありません</p>
+          <p>フェーズがまだありません。</p>
           <button className="btn-primary" onClick={() => setIsAdding(true)}>
             <FaPlus /> 最初のフェーズを追加
           </button>

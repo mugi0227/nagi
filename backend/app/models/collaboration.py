@@ -10,7 +10,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import BlockerStatus, InvitationStatus, ProjectRole, TaskStatus
+from app.models.enums import BlockerStatus, CheckinType, InvitationStatus, ProjectRole, TaskStatus
 
 
 class ProjectMemberBase(BaseModel):
@@ -102,6 +102,7 @@ class CheckinBase(BaseModel):
     project_id: UUID
     member_user_id: str = Field(..., min_length=1, max_length=255)
     checkin_date: date
+    checkin_type: CheckinType = Field(CheckinType.WEEKLY, description="weekly/issue/general")
     summary_text: Optional[str] = Field(None, max_length=2000)
     raw_text: str = Field(..., max_length=4000)
 
@@ -111,6 +112,7 @@ class CheckinCreate(BaseModel):
 
     member_user_id: str = Field(..., min_length=1, max_length=255)
     checkin_date: date
+    checkin_type: CheckinType = Field(CheckinType.WEEKLY, description="weekly/issue/general")
     summary_text: Optional[str] = Field(None, max_length=2000)
     raw_text: str = Field(..., max_length=4000)
 
@@ -124,6 +126,39 @@ class Checkin(CheckinBase):
 
     class Config:
         from_attributes = True
+
+
+class CheckinSummary(BaseModel):
+    """Summary for a set of check-ins."""
+
+    project_id: UUID
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    checkin_count: int
+    summary_text: Optional[str] = None
+    summary_error: Optional[str] = None
+    summary_error_detail: Optional[str] = None
+    summary_debug_prompt: Optional[str] = None
+    summary_debug_output: Optional[str] = None
+
+
+class CheckinSummaryRequest(BaseModel):
+    """Request payload for generating a check-in summary."""
+
+    member_user_id: Optional[str] = Field(None, min_length=1, max_length=255)
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    checkin_type: Optional[CheckinType] = None
+    weekly_context: Optional[str] = Field(None, max_length=5000)
+
+
+class CheckinSummarySave(BaseModel):
+    """Save a summarized set of check-ins."""
+
+    summary_text: str = Field(..., min_length=1, max_length=5000)
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    checkin_count: int = Field(..., ge=0)
 
 
 class BlockerBase(BaseModel):

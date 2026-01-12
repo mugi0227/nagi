@@ -166,6 +166,8 @@ class SqliteTaskAssignmentRepository(ITaskAssignmentRepository):
         self, user_id: str, task_id: UUID, assignments: TaskAssignmentsCreate
     ) -> list[TaskAssignment]:
         """Assign a task to multiple members. Replaces existing assignments."""
+        # Deduplicate assignee IDs while preserving order to avoid unique constraint errors.
+        unique_assignee_ids = list(dict.fromkeys(assignments.assignee_ids))
         async with self._session_factory() as session:
             # Delete existing assignments for this task
             result = await session.execute(
@@ -178,10 +180,11 @@ class SqliteTaskAssignmentRepository(ITaskAssignmentRepository):
             )
             for orm in result.scalars().all():
                 await session.delete(orm)
+            await session.flush()
 
             # Create new assignments for each assignee
             created_orms = []
-            for assignee_id in assignments.assignee_ids:
+            for assignee_id in unique_assignee_ids:
                 orm = TaskAssignmentORM(
                     id=str(uuid4()),
                     user_id=user_id,

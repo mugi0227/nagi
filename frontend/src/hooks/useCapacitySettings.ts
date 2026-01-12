@@ -8,9 +8,11 @@ export function useCapacitySettings() {
     const handleUpdate = () => setSettings(getCapacitySettings());
     window.addEventListener('storage', handleUpdate);
     window.addEventListener('capacity-settings-updated', handleUpdate);
+    window.addEventListener('auth-changed', handleUpdate);
     return () => {
       window.removeEventListener('storage', handleUpdate);
       window.removeEventListener('capacity-settings-updated', handleUpdate);
+      window.removeEventListener('auth-changed', handleUpdate);
     };
   }, []);
 

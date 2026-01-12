@@ -22,6 +22,7 @@ from app.interfaces.task_repository import ITaskRepository
 from app.models.enums import MemoryScope, MemoryType, TaskStatus
 from app.models.memory import MemoryCreate
 from app.services.kpi_calculator import apply_project_kpis
+from app.services.llm_utils import generate_text
 
 
 class CreateProjectSummaryInput(BaseModel):
@@ -90,30 +91,13 @@ async def _generate_summary_text(
     llm_provider: ILLMProvider,
     prompt: str,
 ) -> Optional[str]:
-    settings = getattr(llm_provider, "_settings", None)
-    api_key = getattr(settings, "GOOGLE_API_KEY", None)
-    if not api_key:
-        return None
-
     try:
-        from google import genai
-        from google.genai.types import Content, Part, GenerateContentConfig
-    except Exception:
-        return None
-
-    try:
-        client = genai.Client(api_key=api_key)
-        model_name = llm_provider.get_model()
-        response = client.models.generate_content(
-            model=model_name,
-            contents=[Content(role="user", parts=[Part(text=prompt)])],
-            config=GenerateContentConfig(
-                temperature=0.2,
-                max_output_tokens=600,
-            ),
+        return generate_text(
+            llm_provider,
+            prompt,
+            temperature=0.2,
+            max_output_tokens=600,
         )
-        text = (response.text or "").strip()
-        return text or None
     except Exception as exc:
         logger.warning(f"Project summary generation failed: {exc}")
         return None

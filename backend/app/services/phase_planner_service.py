@@ -81,7 +81,7 @@ class PhasePlannerService:
         )
         runner = InMemoryRunner(agent=agent, app_name=self.APP_NAME)
 
-        prompt = self._build_project_prompt(project)
+        prompt = self._build_project_prompt(project, request.instruction)
         plan = await self._run_with_retry(
             runner=runner,
             user_id=user_id,
@@ -152,7 +152,7 @@ class PhasePlannerService:
         )
         runner = InMemoryRunner(agent=agent, app_name=self.APP_NAME)
 
-        prompt = self._build_phase_task_prompt(phase, project)
+        prompt = self._build_phase_task_prompt(phase, project, request.instruction)
         tasks = await self._run_with_retry(
             runner=runner,
             user_id=user_id,
@@ -186,7 +186,7 @@ class PhasePlannerService:
             created_task_ids=created_task_ids,
         )
 
-    def _build_project_prompt(self, project: Project) -> str:
+    def _build_project_prompt(self, project: Project, instruction: Optional[str]) -> str:
         prompt_parts = [
             "Break the following project into 3-6 phases.",
             "Each phase should include 2-5 milestones.",
@@ -211,6 +211,12 @@ class PhasePlannerService:
         if project.context:
             prompt_parts.append("- Context:")
             prompt_parts.append(project.context)
+        if instruction:
+            prompt_parts.extend([
+                "",
+                "User instruction:",
+                instruction,
+            ])
 
         prompt_parts.extend([
             "",
@@ -234,7 +240,12 @@ class PhasePlannerService:
 
         return "\n".join(prompt_parts)
 
-    def _build_phase_task_prompt(self, phase, project: Optional[Project]) -> str:
+    def _build_phase_task_prompt(
+        self,
+        phase,
+        project: Optional[Project],
+        instruction: Optional[str],
+    ) -> str:
         prompt_parts = [
             "Break the following phase into 4-8 tasks.",
             "Tasks should be actionable and scoped to 15-180 minutes when possible.",
@@ -260,9 +271,15 @@ class PhasePlannerService:
                 prompt_parts.append("- Key points:")
                 for point in project.key_points:
                     prompt_parts.append(f"  - {point}")
-            if project.context:
-                prompt_parts.append("- Context:")
-                prompt_parts.append(project.context)
+        if project.context:
+            prompt_parts.append("- Context:")
+            prompt_parts.append(project.context)
+        if instruction:
+            prompt_parts.extend([
+                "",
+                "User instruction:",
+                instruction,
+            ])
 
         prompt_parts.extend([
             "",

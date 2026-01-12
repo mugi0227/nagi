@@ -138,4 +138,7 @@ export const tasksApi = {
 
   updateBlocker: (blockerId: string, data: BlockerUpdate) =>
     api.patch<Blocker>(`/tasks/blockers/${blockerId}`, data),
+
+  createActionItems: (id: string) =>
+    api.post<Task[]>(`/tasks/${id}/action-items`, {}),
 };

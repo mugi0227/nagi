@@ -12,7 +12,7 @@ from sqlalchemy import select, and_
 
 from app.infrastructure.local.database import UserORM, get_session_factory
 from app.interfaces.user_repository import IUserRepository
-from app.models.user import UserAccount, UserCreate
+from app.models.user import UserAccount, UserCreate, UserUpdate
 
 
 class SqliteUserRepository(IUserRepository):
@@ -28,6 +28,8 @@ class SqliteUserRepository(IUserRepository):
             provider_sub=orm.provider_sub,
             email=orm.email,
             display_name=orm.display_name,
+            username=orm.username,
+            password_hash=orm.password_hash,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
         )
@@ -58,6 +60,14 @@ class SqliteUserRepository(IUserRepository):
             orm = result.scalar_one_or_none()
             return self._orm_to_model(orm) if orm else None
 
+    async def get_by_username(self, username: str) -> Optional[UserAccount]:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(UserORM).where(UserORM.username == username)
+            )
+            orm = result.scalar_one_or_none()
+            return self._orm_to_model(orm) if orm else None
+
     async def create(self, data: UserCreate) -> UserAccount:
         async with self._session_factory() as session:
             orm = UserORM(
@@ -66,6 +76,8 @@ class SqliteUserRepository(IUserRepository):
                 provider_sub=data.provider_sub,
                 email=data.email,
                 display_name=data.display_name,
+                username=data.username,
+                password_hash=data.password_hash,
             )
             session.add(orm)
             await session.commit()
@@ -82,6 +94,31 @@ class SqliteUserRepository(IUserRepository):
                 raise ValueError(f"User {user_id} not found")
             orm.provider_issuer = issuer
             orm.provider_sub = sub
+            orm.updated_at = datetime.utcnow()
+            await session.commit()
+            await session.refresh(orm)
+            return self._orm_to_model(orm)
+
+    async def update(self, user_id: UUID, update: UserUpdate) -> UserAccount:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(UserORM).where(UserORM.id == str(user_id))
+            )
+            orm = result.scalar_one_or_none()
+            if not orm:
+                raise ValueError(f"User {user_id} not found")
+
+            if update.provider_sub is not None:
+                orm.provider_sub = update.provider_sub
+            if update.email is not None:
+                orm.email = update.email
+            if update.display_name is not None:
+                orm.display_name = update.display_name
+            if update.username is not None:
+                orm.username = update.username
+            if update.password_hash is not None:
+                orm.password_hash = update.password_hash
+
             orm.updated_at = datetime.utcnow()
             await session.commit()
             await session.refresh(orm)

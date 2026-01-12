@@ -60,6 +60,14 @@ class SqlitePhaseRepository(IPhaseRepository):
                 end_date=phase.end_date,
             )
             session.add(orm)
+            await session.flush()
+            await self._reorder_in_project(
+                session,
+                user_id=user_id,
+                project_id=str(phase.project_id),
+                target_id=orm.id,
+                target_order=phase.order_in_project,
+            )
             await session.commit()
             await session.refresh(orm)
             return self._orm_to_model(orm)
@@ -92,6 +100,29 @@ class SqlitePhaseRepository(IPhaseRepository):
                 .order_by(PhaseORM.order_in_project)
             )
             phases = phase_result.scalars().all()
+            if phases:
+                expected_orders = list(range(1, len(phases) + 1))
+                actual_orders = sorted(phase.order_in_project for phase in phases)
+                if actual_orders != expected_orders:
+                    await self._reorder_in_project(
+                        session,
+                        user_id=user_id,
+                        project_id=str(project_id),
+                        target_id=None,
+                        target_order=None,
+                    )
+                    await session.commit()
+                    phase_result = await session.execute(
+                        select(PhaseORM)
+                        .where(
+                            and_(
+                                PhaseORM.project_id == str(project_id),
+                                PhaseORM.user_id == user_id,
+                            )
+                        )
+                        .order_by(PhaseORM.order_in_project)
+                    )
+                    phases = phase_result.scalars().all()
 
             # Get task counts for each phase
             result_with_counts = []
@@ -157,6 +188,7 @@ class SqlitePhaseRepository(IPhaseRepository):
                 raise NotFoundError(f"Phase {phase_id} not found")
 
             update_data = update.model_dump(exclude_unset=True)
+            target_order = update_data.pop("order_in_project", None)
             for field, value in update_data.items():
                 if value is not None:
                     if hasattr(value, "value"):  # Enum
@@ -164,6 +196,15 @@ class SqlitePhaseRepository(IPhaseRepository):
                     setattr(orm, field, value)
 
             orm.updated_at = datetime.utcnow()
+
+            if target_order is not None:
+                await self._reorder_in_project(
+                    session,
+                    user_id=user_id,
+                    project_id=orm.project_id,
+                    target_id=orm.id,
+                    target_order=target_order,
+                )
 
             await session.commit()
             await session.refresh(orm)
@@ -183,5 +224,48 @@ class SqlitePhaseRepository(IPhaseRepository):
                 return False
 
             await session.delete(orm)
+            await session.flush()
+            await self._reorder_in_project(
+                session,
+                user_id=user_id,
+                project_id=orm.project_id,
+                target_id=None,
+                target_order=None,
+            )
             await session.commit()
             return True
+
+    async def _reorder_in_project(
+        self,
+        session: AsyncSession,
+        user_id: str,
+        project_id: str,
+        target_id: str | None,
+        target_order: int | None,
+    ) -> None:
+        """Normalize order_in_project for all phases in a project."""
+        result = await session.execute(
+            select(PhaseORM)
+            .where(
+                and_(
+                    PhaseORM.project_id == project_id,
+                    PhaseORM.user_id == user_id,
+                )
+            )
+            .order_by(PhaseORM.order_in_project, PhaseORM.created_at)
+        )
+        phases = list(result.scalars().all())
+        if not phases:
+            return
+
+        ids = [phase.id for phase in phases]
+        if target_id and target_id in ids:
+            ids.remove(target_id)
+            insert_index = max(0, min((target_order or 1) - 1, len(ids)))
+            ids.insert(insert_index, target_id)
+
+        id_to_phase = {phase.id: phase for phase in phases}
+        for index, phase_id in enumerate(ids, start=1):
+            phase = id_to_phase[phase_id]
+            phase.order_in_project = index
+            phase.updated_at = datetime.utcnow()
