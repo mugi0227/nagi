@@ -206,6 +206,41 @@ export function ProjectDetailPage() {
     }
   };
 
+  const handleTaskCheck = async (taskId: string) => {
+    const localTask = tasks.find(item => item.id === taskId);
+    if (localTask?.status === 'DONE') {
+      updateTask(taskId, { status: 'TODO' });
+      refetchTasks();
+      return;
+    }
+
+    const task = localTask ?? await tasksApi.getById(taskId).catch(() => null);
+    if (!task) return;
+
+    if (task.dependency_ids && task.dependency_ids.length > 0) {
+      const missingDeps = task.dependency_ids.filter(depId => !tasks.find(t => t.id === depId));
+      const fetchedDeps = missingDeps.length
+        ? await Promise.all(missingDeps.map(depId => tasksApi.getById(depId).catch(() => null)))
+        : [];
+      const allDeps = [
+        ...task.dependency_ids
+          .map(depId => tasks.find(t => t.id === depId))
+          .filter(Boolean),
+        ...fetchedDeps.filter(Boolean),
+      ] as Task[];
+      const hasMissingDependencies = fetchedDeps.some(depTask => !depTask);
+      const hasPendingDependencies = hasMissingDependencies
+        || allDeps.some(depTask => depTask.status !== 'DONE');
+      if (hasPendingDependencies) {
+        alert('依存タスクが完了していないためチェックできません。');
+        return;
+      }
+    }
+
+    updateTask(taskId, { status: 'DONE' });
+    refetchTasks();
+  };
+
   const handleScheduleTaskClick = async (taskId: string) => {
     const task = tasks.find(item => item.id === taskId);
     if (task) {
@@ -1400,6 +1435,7 @@ export function ProjectDetailPage() {
           onProgressChange={(taskId, progress) => {
             updateTask(taskId, { progress });
           }}
+          onTaskCheck={handleTaskCheck}
           onActionItemsCreated={refetchTasks}
         />
       )}
