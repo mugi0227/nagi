@@ -23,13 +23,19 @@ export async function apiClient<T>(
 ): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
   const { token } = getAuthToken();
-  const authHeader = token ? { Authorization: `Bearer ${token}` } : {};
+
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
 
   const response = await fetch(url, {
     ...options,
     headers: {
-      'Content-Type': 'application/json',
-      ...authHeader,
+      ...headers,
       ...options?.headers,
     },
   });

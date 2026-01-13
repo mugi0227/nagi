@@ -47,12 +47,12 @@ export function AchievementPage() {
   );
 
   // Fetch completed tasks for the period
-  const { data: allTasks = [], isLoading } = useQuery({
+  const { data: allTasks = [], isLoading } = useQuery<Task[]>({
     queryKey: ['tasks'],
-    queryFn: tasksApi.getAll,
+    queryFn: () => tasksApi.getAll(),
   });
 
-  const completedTasks = allTasks.filter((task) => {
+  const completedTasks = allTasks.filter((task: Task) => {
     if (task.status !== 'DONE' || !task.updated_at) return false;
     const taskDate = new Date(task.updated_at);
     const start = new Date(currentOption?.startDate || '');
@@ -61,7 +61,7 @@ export function AchievementPage() {
   });
 
   // Group by project
-  const tasksByProject = completedTasks.reduce((acc, task) => {
+  const tasksByProject = completedTasks.reduce((acc: Record<string, Task[]>, task: Task) => {
     const key = task.project_id || 'inbox';
     if (!acc[key]) acc[key] = [];
     acc[key].push(task);
@@ -136,14 +136,14 @@ export function AchievementPage() {
             </div>
           ) : (
             <div className="project-groups">
-              {Object.entries(tasksByProject).map(([projectId, tasks]) => (
+              {Object.entries(tasksByProject).map(([projectId, tasks]: [string, Task[]]) => (
                 <div key={projectId} className="project-group">
                   <h4 className="project-header">
-                    {projectId === 'inbox' ? '📥 Inbox' : `📁 ${tasks[0].project_id}`}
+                    {projectId === 'inbox' ? '📥 Inbox' : `📁 ${tasks[0]?.project_id || projectId}`}
                     <span className="task-count">{tasks.length}件</span>
                   </h4>
                   <ul className="achievement-list">
-                    {tasks.map((task) => (
+                    {tasks.map((task: Task) => (
                       <li key={task.id} className="achievement-item">
                         <FaCheckCircle className="check-icon" />
                         <div className="achievement-info">

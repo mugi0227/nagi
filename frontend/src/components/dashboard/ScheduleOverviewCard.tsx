@@ -154,6 +154,7 @@ interface ScheduleOverviewCardProps {
   title?: string;
   tag?: string;
   onTaskClick?: (taskId: string) => void;
+  defaultViewMode?: 'list' | 'gantt';
 }
 
 export function ScheduleOverviewCard({
@@ -162,9 +163,10 @@ export function ScheduleOverviewCard({
   title,
   tag,
   onTaskClick,
+  defaultViewMode,
 }: ScheduleOverviewCardProps) {
   const [horizon, setHorizon] = useState(14);
-  const [viewMode, setViewMode] = useState<'list' | 'gantt'>('list');
+  const [viewMode, setViewMode] = useState<'list' | 'gantt'>(defaultViewMode ?? 'list');
   const { data, isLoading, error, refetch, isFetching } = useSchedule(horizon);
   const { getCapacityForDate } = useCapacitySettings();
   const { projects } = useProjects();

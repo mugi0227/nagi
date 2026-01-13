@@ -46,13 +46,13 @@ export function InboxWidget() {
             parent_id: data.parent_id,
             order_in_parent: data.order_in_parent,
             dependency_ids: data.dependency_ids,
-            source_capture_id: processedSourceId || data.source_capture_id,
+            source_capture_id: processedSourceId || ('source_capture_id' in data ? data.source_capture_id : undefined),
         };
 
         await createTask(payload);
 
         // Mark capture as processed after successful task creation
-        if (processedSourceId) {
+        if (processedSourceId && typeof processedSourceId === 'string') {
             processCapture(processedSourceId);
         }
 
@@ -152,7 +152,7 @@ export function InboxWidget() {
 }
 
 function getDisplayText(capture: Capture) {
-    if (capture.content_type === 'TEXT') {
+    if (capture.content_type === 'TEXT' && capture.raw_text) {
         try {
             // Chrome Extension sends JSON in raw_text
             const data = JSON.parse(capture.raw_text);

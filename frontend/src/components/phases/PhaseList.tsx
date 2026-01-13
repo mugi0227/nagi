@@ -305,7 +305,7 @@ export function PhaseList({
 
       <div className="phases-container">
         <AnimatePresence>
-          {sortedPhases.map((phase, index) => (
+          {sortedPhases.map((phase) => (
             <motion.div
               key={phase.id}
               className={`phase-item ${phase.status === 'COMPLETED' ? 'phase-completed' : ''}`}

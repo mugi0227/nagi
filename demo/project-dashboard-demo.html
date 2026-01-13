@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -562,7 +562,86 @@
     .workload-normal { background: var(--success); }
     .workload-busy { background: var(--warning); }
     .workload-overload { background: var(--danger); }
+    .phase-load-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
 
+    .phase-load-table th,
+    .phase-load-table td {
+      padding: 8px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: top;
+    }
+
+    .phase-load-table th {
+      text-align: left;
+      color: var(--text-muted);
+      font-weight: 600;
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .phase-load-value {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .phase-load-bar {
+      height: 6px;
+      background: var(--bg-card);
+      border-radius: 3px;
+      overflow: hidden;
+      margin-top: 6px;
+    }
+
+    .phase-load-fill {
+      height: 100%;
+      border-radius: 3px;
+    }
+
+    .phase-load-fill.ok { background: var(--success); }
+    .phase-load-fill.warn { background: var(--warning); }
+    .phase-load-fill.over { background: var(--danger); }
+
+    .buffer-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      background: rgba(16, 185, 129, 0.15);
+      color: var(--success);
+      font-weight: 600;
+    }
+
+    .buffer-pill.warn {
+      background: rgba(245, 158, 11, 0.15);
+      color: var(--warning);
+    }
+
+    .baseline-meta {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    .baseline-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .baseline-list {
+      display: grid;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
     /* Activity Feed */
     .activity-item {
       display: flex;
@@ -1074,7 +1153,6 @@
           </div>
         </div>
       </header>
-
       <!-- Alert Banner -->
       <div class="alert-banner">
         <div class="alert-icon pulse">
@@ -1082,13 +1160,12 @@
         </div>
         <div class="alert-content">
           <div class="alert-title">2件のタスクが期限超過しています</div>
-          <div class="alert-text">「API設計レビュー」「データベース設計」が予定より遅れています。AIがリスケジュール案を作成しました。</div>
+          <div class="alert-text">「API設計レビュー」「データベース設計」が予定より遅れています。ベースラインとの差分が+2日になりました。</div>
         </div>
-        <button class="btn btn-primary">提案を確認</button>
+        <button class="btn btn-primary">差分を見る</button>
       </div>
-
       <!-- Tab Navigation -->
-      <div class="tab-nav">
+<div class="tab-nav">
         <button class="tab-btn active" onclick="showTab('dashboard')">
           <i class="fas fa-th-large"></i> ダッシュボード
         </button>
@@ -1168,19 +1245,19 @@
                 </div>
               </div>
 
-              <div class="ai-suggestion">
+                            <div class="ai-suggestion">
                 <div class="ai-suggestion-header">
-                  <span class="ai-badge"><i class="fas fa-calendar-alt"></i> リスケジュール</span>
-                  <span class="ai-suggestion-title">期限調整の提案</span>
+                  <span class="ai-badge"><i class="fas fa-clipboard-check"></i> ベースライン更新</span>
+                  <span class="ai-suggestion-title">ベースライン再生成の提案</span>
                 </div>
                 <div class="ai-suggestion-body">
-                  現在の進捗ペースでは、Phase 2の完了が予定より5日遅れる見込みです。以下の調整を提案します：<br>
-                  ・「UI実装」の期限を2日延長<br>
-                  ・「テスト作成」を並行して開始
+                  Phase 2のバッファ残量が28%まで低下しています。start_not_beforeは物理制約として固定したまま、計画ベースラインを再生成します。<br>
+                  ・「UI実装」を+2日延長<br>
+                  ・「テスト作成」を前倒しで並行
                 </div>
                 <div class="ai-suggestion-actions">
-                  <button class="btn btn-primary"><i class="fas fa-sync"></i> 適用する</button>
-                  <button class="btn btn-ghost">カスタマイズ</button>
+                  <button class="btn btn-primary"><i class="fas fa-sync"></i> ベースラインを生成</button>
+                  <button class="btn btn-ghost">差分をプレビュー</button>
                 </div>
               </div>
             </div>
@@ -1304,7 +1381,32 @@
                 </div>
               </div>
             </div>
-
+            <!-- Baseline & Buffer -->
+            <div class="card" style="margin-bottom: 24px;">
+              <div class="card-header">
+                <div class="card-title">
+                  <i class="fas fa-layer-group"></i> ベースライン & バッファ
+                </div>
+                <button class="card-action">差分を見る</button>
+              </div>
+              <div class="baseline-row">
+                <div>
+                  <div class="baseline-meta">アクティブ計画</div>
+                  <div style="font-size: 16px; font-weight: 600;">Baseline v3</div>
+                  <div class="baseline-meta">2024/02/01 09:30 作成</div>
+                </div>
+                <div class="buffer-pill warn"><i class="fas fa-hourglass-half"></i> バッファ残り 28%</div>
+              </div>
+              <div class="baseline-list">
+                <div>差分: Phase 2 +3日 / クリティカルチェーン +2日</div>
+                <div>制約: start_not_before は物理制約として固定</div>
+                <div>未見積タスク: 5件（計算対象外）</div>
+              </div>
+              <div style="margin-top: 12px;">
+                <button class="btn btn-primary"><i class="fas fa-sync"></i> ベースラインを切替</button>
+                <button class="btn btn-ghost">スナップショット履歴</button>
+              </div>
+            </div>
             <!-- Activity Feed -->
             <div class="card">
               <div class="card-header">
@@ -1348,7 +1450,7 @@
                   <i class="fas fa-robot"></i>
                 </div>
                 <div class="activity-content">
-                  <div class="activity-text"><strong>AI</strong>がリスケジュールを提案</div>
+                  <div class="activity-text"><strong>AI</strong>がベースライン更新案を生成</div>
                   <div class="activity-time">3時間前</div>
                 </div>
               </div>
@@ -1369,6 +1471,89 @@
 
       <!-- Team Tab -->
       <div id="team" class="tab-content">
+        <div class="card" style="margin-bottom: 24px;">
+          <div class="card-header">
+            <div class="card-title">
+              <i class="fas fa-layer-group"></i> フェーズ別 負荷積み上げ
+            </div>
+            <button class="card-action">キャパ設定</button>
+          </div>
+          <table class="phase-load-table">
+            <thead>
+              <tr>
+                <th>Phase</th>
+                <th>田中</th>
+                <th>佐藤</th>
+                <th>鈴木</th>
+                <th>山田</th>
+                <th>Buffer</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Phase 1</td>
+                <td>
+                  <div class="phase-load-value">10h / 18h</div>
+                  <div class="phase-load-bar"><div class="phase-load-fill ok" style="width: 56%"></div></div>
+                </td>
+                <td>
+                  <div class="phase-load-value">8h / 16h</div>
+                  <div class="phase-load-bar"><div class="phase-load-fill ok" style="width: 50%"></div></div>
+                </td>
+                <td>
+                  <div class="phase-load-value">12h / 20h</div>
+                  <div class="phase-load-bar"><div class="phase-load-fill ok" style="width: 60%"></div></div>
+                </td>
+                <td>
+                  <div class="phase-load-value">6h / 12h</div>
+                  <div class="phase-load-bar"><div class="phase-load-fill ok" style="width: 50%"></div></div>
+                </td>
+                <td><span class="buffer-pill"><i class="fas fa-hourglass"></i> 62%</span></td>
+              </tr>
+              <tr>
+                <td>Phase 2 (進行中)</td>
+                <td>
+                  <div class="phase-load-value">22h / 20h</div>
+                  <div class="phase-load-bar"><div class="phase-load-fill over" style="width: 110%"></div></div>
+                </td>
+                <td>
+                  <div class="phase-load-value">14h / 20h</div>
+                  <div class="phase-load-bar"><div class="phase-load-fill warn" style="width: 70%"></div></div>
+                </td>
+                <td>
+                  <div class="phase-load-value">18h / 22h</div>
+                  <div class="phase-load-bar"><div class="phase-load-fill warn" style="width: 82%"></div></div>
+                </td>
+                <td>
+                  <div class="phase-load-value">9h / 16h</div>
+                  <div class="phase-load-bar"><div class="phase-load-fill ok" style="width: 56%"></div></div>
+                </td>
+                <td><span class="buffer-pill warn"><i class="fas fa-hourglass-half"></i> 28%</span></td>
+              </tr>
+              <tr>
+                <td>Phase 3</td>
+                <td>
+                  <div class="phase-load-value">4h / 18h</div>
+                  <div class="phase-load-bar"><div class="phase-load-fill ok" style="width: 22%"></div></div>
+                </td>
+                <td>
+                  <div class="phase-load-value">6h / 16h</div>
+                  <div class="phase-load-bar"><div class="phase-load-fill ok" style="width: 38%"></div></div>
+                </td>
+                <td>
+                  <div class="phase-load-value">5h / 20h</div>
+                  <div class="phase-load-bar"><div class="phase-load-fill ok" style="width: 25%"></div></div>
+                </td>
+                <td>
+                  <div class="phase-load-value">3h / 12h</div>
+                  <div class="phase-load-bar"><div class="phase-load-fill ok" style="width: 25%"></div></div>
+                </td>
+                <td><span class="buffer-pill"><i class="fas fa-hourglass"></i> 78%</span></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="baseline-meta" style="margin-top: 10px;">フェーズ期間と現在日付からキャパを動的算出</div>
+        </div>
         <div class="team-grid">
           <div class="team-member-card">
             <div class="team-member-header">
@@ -1898,10 +2083,9 @@
             <span class="ai-badge"><i class="fas fa-project-diagram"></i> クリティカルパス</span>
             <span class="ai-suggestion-title">依存関係分析</span>
           </div>
-          <div class="ai-suggestion-body">
-            「認証API実装」→「ユーザー登録API」→「フロント実装」の経路がクリティカルパスです。<br>
-            認証API実装の遅延により、プロジェクト全体が最大5日遅延する可能性があります。
-          </div>
+          <div class="ai-suggestion-body">            「認証API実装」→「ユーザー登録API」→「フロント実装」の経路がクリティカルチェーンです。<br>
+            Phase 2 バッファ残量: 28%（消費見込み +2日）<br>
+            遅延が続く場合はベースライン再生成を推奨します。</div>
           <div class="ai-suggestion-actions">
             <button class="btn btn-primary"><i class="fas fa-users"></i> リソース追加を検討</button>
             <button class="btn btn-ghost">依存グラフを見る</button>
@@ -1943,3 +2127,4 @@
   </script>
 </body>
 </html>
+

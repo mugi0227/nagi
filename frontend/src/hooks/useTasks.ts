@@ -56,7 +56,7 @@ export function useTasks(projectId?: string) {
 
       return { previousTasks, previousSubtasks };
     },
-    onError: (err, newTodo, context) => {
+    onError: (_err, _newTodo, context) => {
       // Rollback
       if (context?.previousTasks) {
         queryClient.setQueryData(['tasks'], context.previousTasks);

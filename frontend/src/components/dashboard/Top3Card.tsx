@@ -85,8 +85,8 @@ export function Top3Card() {
   const dependencyStatusByTaskId = useMemo(() => {
     const map = new Map<string, { blocked: boolean; reason?: string }>();
     const taskMap = new Map<string, Task>([
-      ...allTasks.map(task => [task.id, task]),
-      ...Object.values(dependencyCache).map(task => [task.id, task]),
+      ...allTasks.map((task): [string, Task] => [task.id, task]),
+      ...Object.values(dependencyCache).map((task): [string, Task] => [task.id, task]),
     ]);
     allTasks.forEach(task => {
       if (!task.dependency_ids || task.dependency_ids.length === 0) return;

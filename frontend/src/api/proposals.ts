@@ -30,7 +30,9 @@ export const proposalsApi = {
    * List pending proposals for current user
    */
   listPending: (sessionId?: string) => {
-    const params = sessionId ? { session_id: sessionId } : {};
-    return api.get<{ proposals: Proposal[]; count: number }>('/proposals/pending', { params });
+    const endpoint = sessionId
+      ? `/proposals/pending?session_id=${sessionId}`
+      : '/proposals/pending';
+    return api.get<{ proposals: Proposal[]; count: number }>(endpoint);
   },
 };

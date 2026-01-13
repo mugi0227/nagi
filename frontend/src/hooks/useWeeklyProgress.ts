@@ -12,7 +12,7 @@ interface DayData {
 export function useWeeklyProgress() {
   const { data: allTasks = [] } = useQuery({
     queryKey: ['tasks'],
-    queryFn: tasksApi.getAll,
+    queryFn: () => tasksApi.getAll(),
   });
 
   // Get current week (Mon-Sun)

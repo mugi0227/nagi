@@ -1,7 +1,7 @@
 import { api } from './client';
 import type { Memory, MemoryCreate, MemorySearchResult, MemoryScope, MemoryType, MemoryUpdate } from './types';
 
-interface ListMemoriesParams {
+interface ListMemoriesParams extends Record<string, string | number | undefined> {
   scope?: MemoryScope;
   memory_type?: MemoryType;
   project_id?: string;
@@ -9,7 +9,7 @@ interface ListMemoriesParams {
   offset?: number;
 }
 
-interface SearchMemoriesParams {
+interface SearchMemoriesParams extends Record<string, string | number | undefined> {
   query: string;
   scope?: MemoryScope;
   project_id?: string;

@@ -6,6 +6,7 @@ import { DashboardPage } from './pages/DashboardPage';
 import { TasksPage } from './pages/TasksPage';
 import { ProjectsPage } from './pages/ProjectsPage';
 import { ProjectDetailPage } from './pages/ProjectDetailPage';
+import { ProjectDetailV2Page } from './pages/ProjectDetailV2Page';
 import { AchievementPage } from './pages/AchievementPage';
 import { MemoriesPage } from './pages/MemoriesPage';
 import { SkillsPage } from './pages/SkillsPage';
@@ -41,6 +42,7 @@ function AppRoutes() {
         <Route path="tasks" element={<TasksPage />} />
         <Route path="projects" element={<ProjectsPage />} />
         <Route path="projects/:projectId" element={<ProjectDetailPage />} />
+        <Route path="projects/:projectId/v2" element={<ProjectDetailV2Page />} />
         <Route path="achievement" element={<AchievementPage />} />
         <Route path="skills" element={<SkillsPage />} />
         <Route path="memories" element={<MemoriesPage />} />

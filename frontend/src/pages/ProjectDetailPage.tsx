@@ -12,7 +12,7 @@ import { RecurringMeetingsPanel } from '../components/projects/RecurringMeetings
 import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { TaskFormModal } from '../components/tasks/TaskFormModal';
-import type { Blocker, Checkin, CheckinSummary, Memory, ProjectInvitation, ProjectKpiMetric, ProjectMember, ProjectWithTaskCount, Task, TaskAssignment, TaskStatus } from '../api/types';
+import type { Blocker, Checkin, CheckinSummary, Memory, ProjectInvitation, ProjectKpiMetric, ProjectMember, ProjectWithTaskCount, Task, TaskAssignment, TaskStatus, TaskUpdate } from '../api/types';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
@@ -1444,9 +1444,10 @@ export function ProjectDetailPage() {
       {taskToEdit && (
         <TaskFormModal
           task={taskToEdit}
-          projectId={projectId}
+          initialData={{ project_id: projectId }}
           onClose={() => setTaskToEdit(null)}
-          onSuccess={() => {
+          onSubmit={async (data) => {
+            await updateTask(taskToEdit.id, data as TaskUpdate);
             setTaskToEdit(null);
             refetchTasks();
           }}

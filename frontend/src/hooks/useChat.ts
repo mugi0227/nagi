@@ -30,7 +30,7 @@ export interface ProposalInfo {
   payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal;
 }
 
-interface Message {
+export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
@@ -101,7 +101,7 @@ export function useChat() {
       const history = await chatApi.getHistory(targetSessionId);
       const mapped = history
         .filter((item) => item.role !== 'system')
-        .map((item: ChatHistoryMessage) => ({
+        .map((item: ChatHistoryMessage): Message => ({
           id: crypto.randomUUID(),
           role: item.role === 'assistant' ? 'assistant' : 'user',
           content: item.content,
@@ -280,6 +280,13 @@ export function useChat() {
             case 'proposal':
               // Add proposal to message
               if (chunk.proposal_id && chunk.proposal_type && chunk.payload) {
+                const proposalInfo: ProposalInfo = {
+                  id: crypto.randomUUID(),
+                  proposalId: chunk.proposal_id,
+                  proposalType: chunk.proposal_type as 'create_task' | 'create_project' | 'create_skill' | 'assign_task',
+                  description: chunk.description || '',
+                  payload: chunk.payload as unknown as TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal,
+                };
                 setMessages((prev) =>
                   prev.map((msg) =>
                     msg.id === assistantMessageId
@@ -287,13 +294,7 @@ export function useChat() {
                           ...msg,
                           proposals: [
                             ...(msg.proposals || []),
-                            {
-                              id: crypto.randomUUID(),
-                              proposalId: chunk.proposal_id,
-                              proposalType: chunk.proposal_type,
-                              description: chunk.description || '',
-                              payload: chunk.payload as TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal,
-                            },
+                            proposalInfo,
                           ],
                         }
                       : msg
