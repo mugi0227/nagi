@@ -63,3 +63,9 @@ class InfrastructureError(SecretaryException):
     """Infrastructure-related error (DB, external services, etc.)."""
 
     pass
+
+
+class BusinessLogicError(SecretaryException):
+    """Business logic constraint violation."""
+
+    pass

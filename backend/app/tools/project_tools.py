@@ -393,9 +393,7 @@ def propose_project_tool(
 ) -> FunctionTool:
     """Create ADK tool for proposing/creating projects (with auto-approve option)."""
     async def _tool(input_data: dict) -> dict:
-        """propose_project: 新しいプロジェクトを作成します。
-
-        設定に応じて、即座に作成するか、ユーザー承諾を待ちます。
+        """propose_project: 新しいプロジェクトを作成します。設定に応じて、即座に作成するか、ユーザー承諾を待ちます。
 
         Parameters:
             name (str): プロジェクト名（必須）

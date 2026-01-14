@@ -20,7 +20,7 @@ from app.api.deps import (
     TaskAssignmentRepo,
     TaskRepo,
 )
-from app.core.exceptions import LLMValidationError, NotFoundError
+from app.core.exceptions import BusinessLogicError, LLMValidationError, NotFoundError
 from app.models.breakdown import BreakdownRequest, BreakdownResponse
 from app.models.collaboration import (
     Blocker,
@@ -36,6 +36,7 @@ from app.models.task import Task, TaskCreate, TaskUpdate
 from app.models.enums import CreatedBy
 from app.services.planner_service import PlannerService
 from app.services.scheduler_service import SchedulerService
+from app.utils.dependency_validator import DependencyValidator
 
 router = APIRouter()
 
@@ -120,6 +121,35 @@ async def create_task(
     repo: TaskRepo,
 ):
     """Create a new task."""
+    # Validate dependencies before creating
+    if task.dependency_ids or task.parent_id:
+        validator = DependencyValidator(repo)
+
+        # For new tasks, use a temporary UUID for validation
+        from uuid import uuid4
+        temp_task_id = uuid4()
+
+        try:
+            if task.dependency_ids:
+                await validator.validate_dependencies(
+                    temp_task_id,
+                    task.dependency_ids,
+                    user.id,
+                    task.parent_id,
+                )
+
+            if task.parent_id:
+                await validator.validate_parent_child_consistency(
+                    temp_task_id,
+                    task.parent_id,
+                    user.id,
+                )
+        except BusinessLogicError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            )
+
     return await repo.create(user.id, task)
 
 
@@ -276,6 +306,54 @@ async def update_task(
     repo: TaskRepo,
 ):
     """Update a task."""
+    # Validate dependencies before updating
+    if update.dependency_ids is not None or update.parent_id is not None:
+        validator = DependencyValidator(repo)
+
+        try:
+            # Get current task to merge with updates
+            current_task = await repo.get(user.id, task_id)
+            if not current_task:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Task {task_id} not found",
+                )
+
+            # Use updated values if provided, otherwise use current values
+            new_dependency_ids = (
+                update.dependency_ids
+                if update.dependency_ids is not None
+                else current_task.dependency_ids
+            )
+            new_parent_id = (
+                update.parent_id
+                if update.parent_id is not None
+                else current_task.parent_id
+            )
+
+            # Validate dependencies
+            if new_dependency_ids:
+                await validator.validate_dependencies(
+                    task_id,
+                    new_dependency_ids,
+                    user.id,
+                    new_parent_id,
+                )
+
+            # Validate parent-child consistency
+            if update.parent_id is not None:
+                await validator.validate_parent_child_consistency(
+                    task_id,
+                    update.parent_id,
+                    user.id,
+                )
+
+        except BusinessLogicError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            )
+
     try:
         return await repo.update(user.id, task_id, update)
     except NotFoundError as e:
