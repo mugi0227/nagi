@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { FaRobot, FaTrash, FaXmark, FaComments, FaImage, FaClock } from 'react-icons/fa6';
+import { FaRobot, FaPlus, FaXmark, FaComments, FaImage, FaClock } from 'react-icons/fa6';
 import { useQuery } from '@tanstack/react-query';
 import { ChatMessage } from './ChatMessage';
 import { ChatInput } from './ChatInput';
@@ -155,8 +155,8 @@ export function ChatWindow({ isOpen, onClose }: ChatWindowProps) {
             <button className="header-btn" onClick={() => setIsHistoryOpen((prev) => !prev)} title="History">
               <FaClock />
             </button>
-            <button className="header-btn" onClick={clearChat} title="Clear chat">
-              <FaTrash />
+            <button className="header-btn" onClick={clearChat} title="New chat">
+              <FaPlus />
             </button>
             <button className="header-btn close-btn" onClick={onClose} title="Close">
               <FaXmark />
