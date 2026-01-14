@@ -27,6 +27,9 @@ from app.api.deps import (
     ProposalRepo,
     StorageProvider,
     ChatRepo,
+    CheckinRepo,
+    MeetingAgendaRepo,
+    RecurringMeetingRepo,
 )
 from app.core.exceptions import NotFoundError
 from app.models.capture import Capture, CaptureCreate
@@ -167,6 +170,9 @@ async def analyze_capture(
     capture_repo: CaptureRepo,
     proposal_repo: ProposalRepo,
     chat_repo: ChatRepo,
+    checkin_repo: CheckinRepo,
+    meeting_agenda_repo: MeetingAgendaRepo,
+    recurring_meeting_repo: RecurringMeetingRepo,
 ):
     """
     Analyze a capture using AI to suggest task details.
@@ -187,6 +193,9 @@ async def analyze_capture(
         capture_repo=capture_repo,
         chat_repo=chat_repo,
         proposal_repo=proposal_repo,
+        checkin_repo=checkin_repo,
+        meeting_agenda_repo=meeting_agenda_repo,
+        recurring_meeting_repo=recurring_meeting_repo,
     )
     
     try:

@@ -1,33 +1,34 @@
-import { useEffect, useState, useMemo } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  FaTimes,
+  FaArrowLeft,
   FaEdit,
-  FaTrash,
+  FaLayerGroup,
   FaLock,
   FaLockOpen,
-  FaArrowLeft,
   FaProjectDiagram,
-  FaLayerGroup,
+  FaTimes,
+  FaTrash,
 } from 'react-icons/fa';
 import {
+  HiOutlineBookOpen,
+  HiOutlineCalendar,
+  HiOutlineCheckCircle,
+  HiOutlineClock,
   HiOutlineFire,
   HiOutlineLightningBolt,
-  HiOutlineClock,
-  HiOutlineBookOpen,
   HiOutlineLocationMarker,
-  HiOutlineUserGroup,
-  HiOutlineCalendar,
-  HiOutlineCheckCircle
+  HiOutlineUserGroup
 } from 'react-icons/hi';
 import {
   HiFire,
 } from 'react-icons/hi2';
-import { motion, AnimatePresence } from 'framer-motion';
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import remarkBreaks from 'remark-breaks';
-import type { Task } from '../../api/types';
+import remarkGfm from 'remark-gfm';
 import { tasksApi } from '../../api/tasks';
+import type { Task } from '../../api/types';
+import { AgendaList } from '../agenda';
 import { StepNumber } from '../common/StepNumber';
 import './TaskDetailModal.css';
 
@@ -91,23 +92,30 @@ export function TaskDetailModal({
 }: TaskDetailModalProps) {
   const [selectedSubtask, setSelectedSubtask] = useState<Task | null>(initialSubtask);
   const [localProgress, setLocalProgress] = useState<number>(task.progress ?? 0);
+  const [localStatus, setLocalStatus] = useState<string>(task.status);
   const [isActionItemSaving, setIsActionItemSaving] = useState(false);
   const [actionItemMessage, setActionItemMessage] = useState<string | null>(null);
+  const [localSubtasks, setLocalSubtasks] = useState<Task[]>(subtasks);
 
   useEffect(() => {
     setActionItemMessage(null);
     setIsActionItemSaving(false);
     setLocalProgress(task.progress ?? 0);
-  }, [task.id, task.progress]);
+    setLocalStatus(task.status);
+  }, [task.id, task.progress, task.status]);
+
+  useEffect(() => {
+    setLocalSubtasks(subtasks);
+  }, [subtasks]);
 
   const sortedSubtasks = useMemo(() => {
-    return [...subtasks].sort((a, b) => {
+    return [...localSubtasks].sort((a, b) => {
       const aOrder = a.order_in_parent ?? Number.POSITIVE_INFINITY;
       const bOrder = b.order_in_parent ?? Number.POSITIVE_INFINITY;
       if (aOrder !== bOrder) return aOrder - bOrder;
       return a.title.localeCompare(b.title);
     });
-  }, [subtasks]);
+  }, [localSubtasks]);
 
   const stepNumberBySubtaskId = useMemo(() => {
     const map = new Map<string, number>();
@@ -196,6 +204,27 @@ export function TaskDetailModal({
     e.stopPropagation();
     e.preventDefault();
     console.log('[TaskDetailModal] Subtask check:', subtaskId);
+
+    // Optimistic update: toggle subtask status in local state
+    setLocalSubtasks(prev =>
+      prev.map(subtask => {
+        if (subtask.id === subtaskId) {
+          const newStatus = subtask.status === 'DONE' ? 'TODO' : 'DONE';
+          return { ...subtask, status: newStatus };
+        }
+        return subtask;
+      })
+    );
+
+    // Update selectedSubtask if it matches
+    if (selectedSubtask?.id === subtaskId) {
+      setSelectedSubtask(prev => {
+        if (!prev) return prev;
+        const newStatus = prev.status === 'DONE' ? 'TODO' : 'DONE';
+        return { ...prev, status: newStatus };
+      });
+    }
+
     if (onTaskCheck) {
       onTaskCheck(subtaskId);
     } else {
@@ -296,52 +325,62 @@ export function TaskDetailModal({
               )}
 
               {isMeeting && (
-                <div className="detail-section meeting-section">
-                  <div className="section-header-with-icon">
-                    <HiOutlineCalendar />
-                    <h3>会議情報</h3>
-                  </div>
-                  <div className="meeting-meta-box">
-                    <div className="meeting-meta-grid">
-                      <div className="meta-info-item">
-                        <HiOutlineClock />
-                        <span>{meetingTimeLabel}</span>
-                      </div>
-                      {task.location && (
-                        <div className="meta-info-item">
-                          <HiOutlineLocationMarker />
-                          <span>{task.location}</span>
-                        </div>
-                      )}
-                      {task.attendees?.length > 0 && (
-                        <div className="meta-info-item">
-                          <HiOutlineUserGroup />
-                          <span>{task.attendees.join(', ')}</span>
-                        </div>
-                      )}
+                <>
+                  <div className="detail-section meeting-section">
+                    <div className="section-header-with-icon">
+                      <HiOutlineCalendar />
+                      <h3>会議情報</h3>
                     </div>
-                    {task.meeting_notes ? (
-                      <div className="meeting-notes-content markdown-content">
-                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                          {task.meeting_notes}
-                        </ReactMarkdown>
+                    <div className="meeting-meta-box">
+                      <div className="meeting-meta-grid">
+                        <div className="meta-info-item">
+                          <HiOutlineClock />
+                          <span>{meetingTimeLabel}</span>
+                        </div>
+                        {task.location && (
+                          <div className="meta-info-item">
+                            <HiOutlineLocationMarker />
+                            <span>{task.location}</span>
+                          </div>
+                        )}
+                        {task.attendees?.length > 0 && (
+                          <div className="meta-info-item">
+                            <HiOutlineUserGroup />
+                            <span>{task.attendees.join(', ')}</span>
+                          </div>
+                        )}
                       </div>
-                    ) : (
-                      <p className="empty-hint">議事録はまだありません。</p>
-                    )}
-                    <div className="meeting-actions">
-                      <button
-                        type="button"
-                        className="premium-action-btn"
-                        onClick={handleCreateActionItems}
-                        disabled={isActionItemSaving || !task.meeting_notes}
-                      >
-                        {isActionItemSaving ? '作成中...' : 'アクションアイテムを生成'}
-                      </button>
-                      {actionItemMessage && <p className="action-status-msg">{actionItemMessage}</p>}
+                      {task.meeting_notes ? (
+                        <div className="meeting-notes-content markdown-content">
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                            {task.meeting_notes}
+                          </ReactMarkdown>
+                        </div>
+                      ) : (
+                        <p className="empty-hint">議事録はまだありません。</p>
+                      )}
+                      <div className="meeting-actions">
+                        <button
+                          type="button"
+                          className="premium-action-btn"
+                          onClick={handleCreateActionItems}
+                          disabled={isActionItemSaving || !task.meeting_notes}
+                        >
+                          {isActionItemSaving ? '作成中...' : 'アクションアイテムを生成'}
+                        </button>
+                        {actionItemMessage && <p className="action-status-msg">{actionItemMessage}</p>}
+                      </div>
                     </div>
                   </div>
-                </div>
+
+                  {/* Agenda Section */}
+                  <div className="detail-section agenda-section">
+                    <AgendaList
+                      meetingId={task.recurring_meeting_id || task.id}
+                      eventDate={task.start_time ? task.start_time.split('T')[0] : undefined}
+                    />
+                  </div>
+                </>
               )}
 
               {/* Subtasks Section - 常時表示 */}
@@ -411,18 +450,20 @@ export function TaskDetailModal({
                 <h3 className="sidebar-label">状況</h3>
                 <button
                   type="button"
-                  className={`status-badge-lg status-${task.status.toLowerCase()} clickable`}
+                  className={`status-badge-lg status-${localStatus.toLowerCase()} clickable`}
                   onClick={() => {
                     const statusOrder = ['TODO', 'IN_PROGRESS', 'WAITING', 'DONE'];
-                    const currentIndex = statusOrder.indexOf(task.status);
+                    const currentIndex = statusOrder.indexOf(localStatus);
                     const nextIndex = (currentIndex + 1) % statusOrder.length;
                     const nextStatus = statusOrder[nextIndex];
-                    console.log('[TaskDetailModal] Status change:', task.id, task.status, '->', nextStatus);
+                    console.log('[TaskDetailModal] Status change:', task.id, localStatus, '->', nextStatus);
+                    // Optimistic update - update local state immediately
+                    setLocalStatus(nextStatus);
                     onStatusChange?.(task.id, nextStatus);
                   }}
                   title="クリックでステータス変更"
                 >
-                  {getStatusLabel(task.status)}
+                  {getStatusLabel(localStatus)}
                 </button>
 
                 <div className="progress-mini-item">

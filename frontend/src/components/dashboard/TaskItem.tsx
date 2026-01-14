@@ -1,6 +1,6 @@
+import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
 import { FaCheck } from 'react-icons/fa';
-import { FaFire, FaClock, FaLeaf, FaBatteryFull, FaBatteryQuarter, FaEllipsis, FaLock } from 'react-icons/fa6';
-import { motion, AnimatePresence, useAnimationControls } from 'framer-motion';
+import { FaBatteryFull, FaBatteryQuarter, FaClock, FaEllipsis, FaFire, FaLeaf, FaLock } from 'react-icons/fa6';
 import type { Task } from '../../api/types';
 import './TaskItem.css';
 
@@ -130,11 +130,21 @@ export function TaskItem({
               <span>{TEXT.blocked}</span>
             </span>
           )}
+
+          {task.due_date && (
+            <span className="meta-tag due-date">
+              <FaClock />
+              <span>{new Date(task.due_date).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}まで</span>
+            </span>
+          )}
+
+          {/* Tag for Priority */}
           <span className={`meta-tag urgency-${task.urgency.toLowerCase()}`}>
             {getPriorityIcon(task.urgency)}
             <span>{task.urgency === 'HIGH' ? 'High Urgency' : task.urgency === 'MEDIUM' ? 'Medium' : 'Low'}</span>
           </span>
 
+          {/* Tag for Energy */}
           <span className={`meta-tag energy-${task.energy_level.toLowerCase()}`}>
             {getEnergyIcon(task.energy_level)}
             <span>{getEnergyLabel(task.energy_level)}</span>

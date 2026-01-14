@@ -19,8 +19,8 @@ class IPhaseRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_by_id(self, user_id: str, phase_id: UUID) -> Phase | None:
-        """Get a phase by ID."""
+    async def get_by_id(self, user_id: str, phase_id: UUID, project_id: UUID | None = None) -> Phase | None:
+        """Get a phase by ID. If project_id is given, uses project-based access."""
         pass
 
     @abstractmethod
@@ -31,11 +31,11 @@ class IPhaseRepository(ABC):
         pass
 
     @abstractmethod
-    async def update(self, user_id: str, phase_id: UUID, phase: PhaseUpdate) -> Phase:
-        """Update a phase."""
+    async def update(self, user_id: str, phase_id: UUID, phase: PhaseUpdate, project_id: UUID | None = None) -> Phase:
+        """Update a phase. If project_id is given, uses project-based access."""
         pass
 
     @abstractmethod
-    async def delete(self, user_id: str, phase_id: UUID) -> bool:
-        """Delete a phase. Returns True if deleted, False if not found."""
+    async def delete(self, user_id: str, phase_id: UUID, project_id: UUID | None = None) -> bool:
+        """Delete a phase. If project_id is given, uses project-based access. Returns True if deleted, False if not found."""
         pass

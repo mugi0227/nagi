@@ -1,21 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
-import { FaArrowLeft, FaStar, FaEdit, FaCheckCircle, FaBullseye, FaChartLine, FaLightbulb, FaBookOpen, FaUsers, FaHeartbeat, FaCalendarAlt } from 'react-icons/fa';
 import { motion } from 'framer-motion';
-import { getProject, projectsApi } from '../api/projects';
+import { useEffect, useRef, useState } from 'react';
+import { FaArrowLeft, FaBookOpen, FaBullseye, FaCalendarAlt, FaChartLine, FaCheckCircle, FaEdit, FaHeartbeat, FaLightbulb, FaStar, FaUsers } from 'react-icons/fa';
+import ReactMarkdown from 'react-markdown';
+import { useNavigate, useParams } from 'react-router-dom';
+import remarkBreaks from 'remark-breaks';
+import remarkGfm from 'remark-gfm';
 import { memoriesApi } from '../api/memories';
+import { getProject, projectsApi } from '../api/projects';
 import { tasksApi } from '../api/tasks';
-import { useTasks } from '../hooks/useTasks';
-import { ProjectTasksView } from '../components/projects/ProjectTasksView';
-import { ProjectDetailModal } from '../components/projects/ProjectDetailModal';
-import { RecurringMeetingsPanel } from '../components/projects/RecurringMeetingsPanel';
+import type { Blocker, Checkin, CheckinSummary, Memory, ProjectInvitation, ProjectKpiMetric, ProjectMember, ProjectWithTaskCount, Task, TaskAssignment, TaskStatus, TaskUpdate } from '../api/types';
+import type { UserSearchResult } from '../api/users';
+import { UserSearchInput } from '../components/common/UserSearchInput';
 import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
+import { ProjectDetailModal } from '../components/projects/ProjectDetailModal';
+import { ProjectTasksView } from '../components/projects/ProjectTasksView';
+import { RecurringMeetingsPanel } from '../components/projects/RecurringMeetingsPanel';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { TaskFormModal } from '../components/tasks/TaskFormModal';
-import type { Blocker, Checkin, CheckinSummary, Memory, ProjectInvitation, ProjectKpiMetric, ProjectMember, ProjectWithTaskCount, Task, TaskAssignment, TaskStatus, TaskUpdate } from '../api/types';
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkBreaks from 'remark-breaks';
+import { useTasks } from '../hooks/useTasks';
 import './ProjectDetailPage.css';
 
 export function ProjectDetailPage() {
@@ -1232,7 +1234,7 @@ export function ProjectDetailPage() {
                         aria-expanded={isInviteMenuOpen}
                         disabled={isInviting}
                       >
-                        {inviteMode === 'email' ? 'Email' : 'User ID'}
+                        {inviteMode === 'email' ? 'Email' : 'ユーザー検索'}
                       </button>
                       {isInviteMenuOpen && (
                         <div className="members-invite-menu" role="listbox">
@@ -1258,30 +1260,59 @@ export function ProjectDetailPage() {
                             role="option"
                             aria-selected={inviteMode === 'user_id'}
                           >
-                            User ID
+                            ユーザー検索
                           </button>
                         </div>
                       )}
                     </div>
-                    <input
-                      className="members-input"
-                      type="text"
-                      placeholder={inviteMode === 'email' ? 'member@example.com' : 'user-id'}
-                      value={inviteValue}
-                      onChange={(e) => setInviteValue(e.target.value)}
-                      disabled={isInviting}
-                    />
-                    <button
-                      type="button"
-                      className="members-invite-btn"
-                      onClick={handleInvite}
-                      disabled={!inviteValue.trim() || isInviting}
-                    >
-                      {inviteMode === 'email' ? '招待' : '追加'}
-                    </button>
+                    {inviteMode === 'email' ? (
+                      <>
+                        <input
+                          className="members-input"
+                          type="text"
+                          placeholder="member@example.com"
+                          value={inviteValue}
+                          onChange={(e) => setInviteValue(e.target.value)}
+                          disabled={isInviting}
+                        />
+                        <button
+                          type="button"
+                          className="members-invite-btn"
+                          onClick={handleInvite}
+                          disabled={!inviteValue.trim() || isInviting}
+                        >
+                          招待
+                        </button>
+                      </>
+                    ) : (
+                      <UserSearchInput
+                        placeholder="ユーザー名またはメールで検索..."
+                        disabled={isInviting}
+                        onSelect={async (user: UserSearchResult) => {
+                          if (!projectId) return;
+                          setIsInviting(true);
+                          try {
+                            await projectsApi.addMember(projectId, { member_user_id: user.id });
+                            const [membersData, invitationsData] = await Promise.all([
+                              projectsApi.listMembers(projectId),
+                              projectsApi.listInvitations(projectId),
+                            ]);
+                            setMembers(membersData);
+                            setInvitations(invitationsData);
+                          } catch (err) {
+                            console.error('Failed to add member:', err);
+                            alert('メンバー追加に失敗しました');
+                          } finally {
+                            setIsInviting(false);
+                          }
+                        }}
+                      />
+                    )}
                   </div>
                   <p className="members-invite-note">
-                    Email招待かUser IDの直接追加を選べます。
+                    {inviteMode === 'email'
+                      ? 'メールアドレスで招待します。'
+                      : 'ユーザー名またはメールで検索して追加します。'}
                   </p>
                 </div>
 
@@ -1448,6 +1479,14 @@ export function ProjectDetailPage() {
           onClose={() => setTaskToEdit(null)}
           onSubmit={async (data) => {
             await updateTask(taskToEdit.id, data as TaskUpdate);
+            // Update selectedTask if it matches the edited task
+            if (selectedTask?.id === taskToEdit.id) {
+              setSelectedTask({ ...selectedTask, ...data } as Task);
+            }
+            // Update openedParentTask if it matches
+            if (openedParentTask?.id === taskToEdit.id) {
+              setOpenedParentTask({ ...openedParentTask, ...data } as Task);
+            }
             setTaskToEdit(null);
             refetchTasks();
           }}

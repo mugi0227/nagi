@@ -49,7 +49,7 @@ export function Sidebar() {
           alt="Nagi AI"
           className="logo-icon-img"
         />
-        <span className="logo-text">凪 (Nagi AI)</span>
+        <span className="logo-text">秘書AI 凪</span>
       </div>
 
       <nav className="sidebar-nav">

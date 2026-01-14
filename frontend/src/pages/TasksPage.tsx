@@ -164,7 +164,17 @@ export function TasksPage() {
       }
     }
 
-    updateMutation.mutate({ id: taskId, data: { status: newStatus } });
+    // Optimistic update for selectedTask if it matches
+    if (selectedTask?.id === taskId) {
+      setSelectedTask(prev => prev ? { ...prev, status: newStatus } : null);
+    }
+
+    updateMutation.mutate({ id: taskId, data: { status: newStatus } }, {
+      onSuccess: () => {
+        // Invalidate queries to refresh subtasks and tasks list
+        queryClient.invalidateQueries({ queryKey: ['subtasks', selectedTask?.id] });
+      }
+    });
   };
 
   const handleTaskClick = (task: Task) => {

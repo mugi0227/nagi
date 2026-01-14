@@ -82,24 +82,18 @@ class SqliteTaskAssignmentRepository(ITaskAssignmentRepository):
             return self._orm_to_model(orm) if orm else None
 
     async def list_by_project(self, user_id: str, project_id: UUID) -> list[TaskAssignment]:
+        """List assignments for a project (project-based access)."""
         async with self._session_factory() as session:
+            # Project-based: find tasks by project_id only
             task_ids_result = await session.execute(
-                select(TaskORM.id).where(
-                    and_(
-                        TaskORM.project_id == str(project_id),
-                        TaskORM.user_id == user_id,
-                    )
-                )
+                select(TaskORM.id).where(TaskORM.project_id == str(project_id))
             )
             task_ids = [row[0] for row in task_ids_result.fetchall()]
             if not task_ids:
                 return []
             result = await session.execute(
                 select(TaskAssignmentORM).where(
-                    and_(
-                        TaskAssignmentORM.user_id == user_id,
-                        TaskAssignmentORM.task_id.in_(task_ids),
-                    )
+                    TaskAssignmentORM.task_id.in_(task_ids)
                 )
             )
             return [self._orm_to_model(orm) for orm in result.scalars().all()]
@@ -207,6 +201,16 @@ class SqliteTaskAssignmentRepository(ITaskAssignmentRepository):
             result = await session.execute(
                 select(TaskAssignmentORM).where(
                     TaskAssignmentORM.user_id == user_id
+                )
+            )
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]
+
+    async def list_for_assignee(self, user_id: str) -> list[TaskAssignment]:
+        """List assignments where the user is the assignee."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(TaskAssignmentORM).where(
+                    TaskAssignmentORM.assignee_id == user_id
                 )
             )
             return [self._orm_to_model(orm) for orm in result.scalars().all()]

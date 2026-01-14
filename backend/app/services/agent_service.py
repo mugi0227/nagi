@@ -31,6 +31,9 @@ from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.interfaces.phase_repository import IPhaseRepository
 from app.interfaces.milestone_repository import IMilestoneRepository
+from app.interfaces.meeting_agenda_repository import IMeetingAgendaRepository
+from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
+from app.interfaces.checkin_repository import ICheckinRepository
 from app.models.capture import CaptureCreate
 from app.models.chat import ChatRequest, ChatResponse
 from app.models.enums import ContentType
@@ -60,9 +63,12 @@ class AgentService:
         task_assignment_repo: ITaskAssignmentRepository,
         memory_repo: IMemoryRepository,
         agent_task_repo: IAgentTaskRepository,
+        meeting_agenda_repo: IMeetingAgendaRepository,
         capture_repo: ICaptureRepository,
         chat_repo: IChatSessionRepository,
         proposal_repo: IProposalRepository,
+        checkin_repo: ICheckinRepository,
+        recurring_meeting_repo: IRecurringMeetingRepository,
     ):
         """
         Initialize Agent Service.
@@ -79,6 +85,7 @@ class AgentService:
             capture_repo: Capture repository
             chat_repo: Chat session repository
             proposal_repo: Proposal repository
+            checkin_repo: Check-in repository
         """
         self._llm_provider = llm_provider
         self._task_repo = task_repo
@@ -90,9 +97,12 @@ class AgentService:
         self._task_assignment_repo = task_assignment_repo
         self._memory_repo = memory_repo
         self._agent_task_repo = agent_task_repo
+        self._meeting_agenda_repo = meeting_agenda_repo
         self._capture_repo = capture_repo
         self._chat_repo = chat_repo
         self._proposal_repo = proposal_repo
+        self._checkin_repo = checkin_repo
+        self._recurring_meeting_repo = recurring_meeting_repo
 
     def _get_or_create_runner(
         self,
@@ -127,6 +137,9 @@ class AgentService:
             task_assignment_repo=self._task_assignment_repo,
             memory_repo=self._memory_repo,
             agent_task_repo=self._agent_task_repo,
+            meeting_agenda_repo=self._meeting_agenda_repo,
+            recurring_meeting_repo=self._recurring_meeting_repo,
+            checkin_repo=self._checkin_repo,
             user_id=user_id,
             proposal_repo=self._proposal_repo,
             session_id=session_id,

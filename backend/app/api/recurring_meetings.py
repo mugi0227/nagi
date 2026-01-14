@@ -6,9 +6,10 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status, Depends
 
-from app.api.deps import CheckinRepo, CurrentUser, RecurringMeetingRepo, TaskRepo
+from app.api.deps import CheckinRepo, CurrentUser, RecurringMeetingRepo, TaskRepo, ProjectRepo
+from app.api.deps import get_project_repository
 from app.core.exceptions import NotFoundError
 from app.models.recurring_meeting import RecurringMeeting, RecurringMeetingCreate, RecurringMeetingUpdate
 from app.services.recurring_meeting_service import RecurringMeetingService
@@ -21,7 +22,7 @@ def _align_to_weekday(current, target_weekday: int):
     return current + timedelta(days=delta)
 
 
-def _compute_anchor_date(start_time, weekday: int, now: datetime) -> datetime.date:
+def _compute_anchor_date(start_time, weekday: int, now: datetime):
     candidate_date = _align_to_weekday(now.date(), weekday)
     candidate_dt = datetime.combine(candidate_date, start_time)
     if candidate_dt <= now:
@@ -72,7 +73,7 @@ async def list_recurring_meetings(
     include_inactive: bool = Query(False, description="Include inactive recurring meetings"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-):
+) -> list[RecurringMeeting]:
     """List recurring meetings."""
     return await repo.list(
         user.id,
@@ -88,9 +89,15 @@ async def get_recurring_meeting(
     meeting_id: UUID,
     user: CurrentUser,
     repo: RecurringMeetingRepo,
-):
+) -> RecurringMeeting:
     """Get a recurring meeting by ID."""
-    return await _get_or_404(user, repo, meeting_id)
+    meeting = await repo.get(user.id, meeting_id)
+    if not meeting:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"RecurringMeeting {meeting_id} not found",
+        )
+    return meeting
 
 
 @router.patch("/{meeting_id}", response_model=RecurringMeeting)
@@ -101,38 +108,17 @@ async def update_recurring_meeting(
     repo: RecurringMeetingRepo,
     task_repo: TaskRepo,
     checkin_repo: CheckinRepo,
-):
+    project_repo: ProjectRepo,
+) -> RecurringMeeting:
     """Update a recurring meeting."""
-    existing = await _get_or_404(user, repo, meeting_id)
-
-    effective_weekday = update.weekday if update.weekday is not None else existing.weekday
-    effective_start_time = update.start_time if update.start_time is not None else existing.start_time
-
-    anchor_date = update.anchor_date
-    if anchor_date and anchor_date.weekday() != effective_weekday:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="anchor_date weekday must match weekday",
-        )
-
-    if anchor_date is None and (
-        update.weekday is not None
-        or update.start_time is not None
-        or update.frequency is not None
-    ):
-        anchor_date = _compute_anchor_date(effective_start_time, effective_weekday, datetime.now())
-        update = update.model_copy(update={"anchor_date": anchor_date})
-
+    await _get_or_404(user, repo, meeting_id)
     try:
-        updated = await repo.update(user.id, meeting_id, update)
-        service = RecurringMeetingService(repo, task_repo, checkin_repo)
-        await service.ensure_upcoming_meetings(user.id)
-        return updated
+        return await repo.update(user.id, meeting_id, update, None)
     except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
-        )
+        ) from exc
 
 
 @router.delete("/{meeting_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -140,9 +126,11 @@ async def delete_recurring_meeting(
     meeting_id: UUID,
     user: CurrentUser,
     repo: RecurringMeetingRepo,
+    project_repo: ProjectRepo,
 ):
     """Delete a recurring meeting."""
-    deleted = await repo.delete(user.id, meeting_id)
+    await _get_or_404(user, repo, meeting_id)
+    deleted = await repo.delete(user.id, meeting_id, None)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

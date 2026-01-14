@@ -74,6 +74,7 @@ class TaskORM(Base):
     location = Column(String(500), nullable=True)
     attendees = Column(JSON, nullable=True, default=list)
     meeting_notes = Column(Text, nullable=True)
+    recurring_meeting_id = Column(String(36), nullable=True, index=True)
 
 
 class ProjectORM(Base):
@@ -280,6 +281,24 @@ class RecurringMeetingORM(Base):
     anchor_date = Column(Date, nullable=False)
     last_occurrence = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class MeetingAgendaItemORM(Base):
+    """Meeting agenda item ORM model."""
+
+    __tablename__ = "meeting_agenda_items"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    meeting_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    title = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
+    duration_minutes = Column(Integer, nullable=True)
+    order_index = Column(Integer, nullable=False, default=0)
+    is_completed = Column(Boolean, default=False)
+    event_date = Column(Date, nullable=True, index=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

@@ -1,12 +1,11 @@
-import { FaFire, FaClock, FaLeaf, FaBatteryFull, FaBatteryQuarter, FaPen, FaTrash, FaHourglass, FaLock, FaLockOpen, FaListCheck, FaUser } from 'react-icons/fa6';
-import { FaCalendarAlt } from 'react-icons/fa';
-import { FaCheckCircle, FaCircle } from 'react-icons/fa';
-import type { Task, TaskStatus } from '../../api/types';
-import { MeetingBadge } from './MeetingBadge';
-import { StepNumber } from '../common/StepNumber';
-import { AssigneeSelect } from '../common/AssigneeSelect';
-import './KanbanCard.css';
 import { useMemo, useState } from 'react';
+import { FaCalendarAlt, FaCheckCircle, FaCircle } from 'react-icons/fa';
+import { FaBatteryFull, FaBatteryQuarter, FaClock, FaFire, FaHourglass, FaLeaf, FaListCheck, FaLock, FaLockOpen, FaPen, FaTrash, FaUser } from 'react-icons/fa6';
+import type { Task, TaskStatus } from '../../api/types';
+import { AssigneeSelect } from '../common/AssigneeSelect';
+import { StepNumber } from '../common/StepNumber';
+import './KanbanCard.css';
+import { MeetingBadge } from './MeetingBadge';
 
 interface KanbanCardProps {
   task: Task;
@@ -137,6 +136,10 @@ export function KanbanCard({
     };
   }, [task.dependency_ids, taskLookup]);
 
+  const authorName = useMemo(() => {
+    return memberOptions?.find(m => m.id === task.user_id)?.label;
+  }, [memberOptions, task.user_id]);
+
   return (
     <div
       className={`kanban-card ${dependencyStatus.isBlocked ? 'blocked' : ''}`}
@@ -204,15 +207,27 @@ export function KanbanCard({
 
       <div className="card-meta">
         {assigneeName && (
-          <span className="meta-badge assignee">
+          <span className="meta-badge assignee" title="担当者">
             <FaUser />
             <span>{assigneeName}</span>
           </span>
         )}
+        {authorName && authorName !== assigneeName && (
+          <span className="meta-badge author" title="作成者">
+            <FaPen style={{ fontSize: '0.8em' }} />
+            <span>{authorName}</span>
+          </span>
+        )}
+        {task.due_date && (
+          <span className="meta-badge due-date" title="期限">
+            <FaClock />
+            <span>{new Date(task.due_date).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}期限</span>
+          </span>
+        )}
         {!task.is_fixed_time && effectiveStartNotBefore && (
-          <span className="meta-badge start-not-before">
+          <span className="meta-badge start-not-before" title="着手可能日">
             <FaCalendarAlt />
-            <span>着手可 {formatStartNotBefore(effectiveStartNotBefore)}</span>
+            <span>{formatStartNotBefore(effectiveStartNotBefore)}〜</span>
           </span>
         )}
         <span

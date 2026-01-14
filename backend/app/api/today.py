@@ -10,7 +10,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from datetime import date
-from app.api.deps import CurrentUser, ProjectRepo, TaskRepo
+from app.api.deps import CurrentUser, ProjectRepo, TaskRepo, TaskAssignmentRepo
 from app.models.task import Task
 from app.services.scheduler_service import SchedulerService
 
@@ -94,6 +94,7 @@ async def get_top3_tasks(
     user: CurrentUser,
     task_repo: TaskRepo,
     project_repo: ProjectRepo,
+    assignment_repo: TaskAssignmentRepo,
     scheduler_service: SchedulerService = Depends(get_scheduler_service),
     capacity_hours: Optional[float] = Query(None, description="Daily capacity in hours (default: 8)"),
     buffer_hours: Optional[float] = Query(None, description="Daily buffer hours"),
@@ -120,7 +121,21 @@ async def get_top3_tasks(
     Returns:
         Top3Response: Top 3 tasks with capacity information
     """
-    tasks = await task_repo.list(user.id, include_done=True, limit=1000)
+    # 1. Get assigned tasks
+    assignments = await assignment_repo.list_for_assignee(user.id)
+    assigned_ids = [a.task_id for a in assignments]
+    assigned_tasks = await task_repo.get_many(assigned_ids)
+
+    # 2. Get personal tasks (Inbox/Memo)
+    personal_tasks = await task_repo.list_personal_tasks(user.id, include_done=True, limit=1000)
+
+    # Merge unique tasks
+    all_tasks_map = {t.id: t for t in personal_tasks}
+    for t in assigned_tasks:
+        all_tasks_map[t.id] = t
+    
+    tasks = list(all_tasks_map.values())
+
     project_priorities = {project.id: project.priority for project in await project_repo.list(user.id, limit=1000)}
     parsed_weekly = parse_capacity_by_weekday(capacity_by_weekday)
     effective_capacity, effective_weekly = apply_capacity_buffer(

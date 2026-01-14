@@ -66,13 +66,12 @@ class SqliteProjectMemberRepository(IProjectMemberRepository):
             return self._orm_to_model(orm) if orm else None
 
     async def list(self, user_id: str, project_id: UUID) -> list[ProjectMember]:
+        """List members for a project (project-based access)."""
         async with self._session_factory() as session:
+            # Project-based access: filter by project_id only
             result = await session.execute(
                 select(ProjectMemberORM).where(
-                    and_(
-                        ProjectMemberORM.user_id == user_id,
-                        ProjectMemberORM.project_id == str(project_id),
-                    )
+                    ProjectMemberORM.project_id == str(project_id)
                 )
             )
             return [self._orm_to_model(orm) for orm in result.scalars().all()]

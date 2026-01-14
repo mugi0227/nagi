@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, or_
 
 from app.infrastructure.local.database import UserORM, get_session_factory
 from app.interfaces.user_repository import IUserRepository
@@ -123,3 +123,20 @@ class SqliteUserRepository(IUserRepository):
             await session.commit()
             await session.refresh(orm)
             return self._orm_to_model(orm)
+
+    async def search(self, query: str, limit: int = 10) -> list[UserAccount]:
+        """Search users by username or email (partial match)."""
+        async with self._session_factory() as session:
+            pattern = f"%{query}%"
+            result = await session.execute(
+                select(UserORM)
+                .where(
+                    or_(
+                        UserORM.username.ilike(pattern),
+                        UserORM.email.ilike(pattern),
+                        UserORM.display_name.ilike(pattern),
+                    )
+                )
+                .limit(limit)
+            )
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]

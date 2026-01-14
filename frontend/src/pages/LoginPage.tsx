@@ -1,16 +1,32 @@
-﻿import { useState } from 'react';
+﻿import { motion } from 'framer-motion';
+import { useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { getAuthToken, setAuthToken, clearAuthToken } from '../api/auth';
+import { clearAuthToken, getAuthToken, setAuthToken } from '../api/auth';
 import { authApi } from '../api/authApi';
 import { ApiError } from '../api/client';
 import { getOidcConfig, startOidcLogin } from '../utils/oidc';
-import { motion } from 'framer-motion';
 import './LoginPage.css';
+
+interface ValidationErrorDetail {
+  type?: string;
+  loc?: (string | number)[];
+  msg?: string;
+  input?: unknown;
+  ctx?: unknown;
+}
 
 const getAuthErrorMessage = (error: unknown, fallback: string) => {
   if (error instanceof ApiError) {
-    const data = error.data as { detail?: string } | null;
+    const data = error.data as { detail?: string | ValidationErrorDetail[] } | null;
     if (data?.detail) {
+      // FastAPI validation error: detail is an array of error objects
+      if (Array.isArray(data.detail)) {
+        const messages = data.detail
+          .map((err) => err.msg || 'Invalid input')
+          .filter((msg, idx, arr) => arr.indexOf(msg) === idx); // unique messages
+        return messages.join(', ');
+      }
+      // Simple string error
       return data.detail;
     }
     return `${fallback} (${error.status})`;

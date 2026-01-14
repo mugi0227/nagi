@@ -65,6 +65,31 @@ async def _get_project_or_404(user: CurrentUser, repo: ProjectRepo, project_id: 
     return project
 
 
+async def _get_project_owner_id(
+    user: CurrentUser,
+    repo: ProjectRepo,
+    project_id: UUID,
+) -> str:
+    """
+    Get the project owner's user_id after verifying the current user has access.
+    
+    This function checks if the user is either:
+    - The project owner
+    - A member of the project
+    
+    Returns the owner's user_id, which should be used for repository queries.
+    Raises 404 if the user doesn't have access to the project.
+    """
+    project = await repo.get(user.id, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+    # project.user_id is the owner's ID
+    return project.user_id
+
+
 def _compact_text(value: str) -> str:
     return " ".join(value.strip().split())
 
@@ -365,14 +390,16 @@ async def list_project_members(
 ):
     """List members for a project."""
     project = await _get_project_or_404(user, repo, project_id)
-    members = await member_repo.list(user.id, project_id)
-    if project.user_id == user.id and not any(m.member_user_id == user.id for m in members):
+    owner_id = project.user_id  # Use owner's user_id for queries
+    
+    members = await member_repo.list(owner_id, project_id)
+    if owner_id == user.id and not any(m.member_user_id == user.id for m in members):
         await member_repo.create(
-            user.id,
+            owner_id,
             project_id,
             ProjectMemberCreate(member_user_id=user.id, role=ProjectRole.OWNER),
         )
-        members = await member_repo.list(user.id, project_id)
+        members = await member_repo.list(owner_id, project_id)
     for member in members:
         try:
             member_uuid = UUID(member.member_user_id)
@@ -391,9 +418,24 @@ async def add_project_member(
     user: CurrentUser,
     repo: ProjectRepo,
     member_repo: ProjectMemberRepo,
+    user_repo: UserRepo,
 ):
     """Add a member to a project."""
     await _get_project_or_404(user, repo, project_id)
+
+    # Validate that the member user exists
+    try:
+        member_uuid = UUID(member.member_user_id)
+        existing_user = await user_repo.get(member_uuid)
+    except ValueError:
+        existing_user = None
+
+    if not existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"User {member.member_user_id} not found",
+        )
+
     return await member_repo.create(user.id, project_id, member)
 
 
@@ -449,8 +491,9 @@ async def list_project_invitations(
     invitation_repo: ProjectInvitationRepo,
 ):
     """List invitations for a project."""
-    await _get_project_or_404(user, repo, project_id)
-    return await invitation_repo.list_by_project(user.id, project_id)
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
+    return await invitation_repo.list_by_project(owner_id, project_id)
 
 
 @router.post("/{project_id}/invitations", response_model=ProjectInvitation, status_code=status.HTTP_201_CREATED)
@@ -464,18 +507,19 @@ async def create_project_invitation(
     user_repo: UserRepo,
 ):
     """Create a project invitation (or add member if user exists)."""
-    await _get_project_or_404(user, repo, project_id)
+    """Create a project invitation (or add member if user exists)."""
+    project = await _get_project_or_404(user, repo, project_id)
     normalized_email = _normalize_email(invitation.email)
-    pending = await invitation_repo.get_pending_by_email(user.id, project_id, normalized_email)
+    pending = await invitation_repo.get_pending_by_email(project.user_id, project_id, normalized_email)
 
     existing_user = await user_repo.get_by_email(normalized_email)
     member_user_id = str(existing_user.id) if existing_user else None
 
     if pending and member_user_id:
-        members = await member_repo.list(user.id, project_id)
+        members = await member_repo.list(project.user_id, project_id)
         if not any(m.member_user_id == member_user_id for m in members):
             await member_repo.create(
-                user.id,
+                project.user_id,
                 project_id,
                 ProjectMemberCreate(member_user_id=member_user_id, role=invitation.role),
             )
@@ -485,17 +529,17 @@ async def create_project_invitation(
         return pending
 
     created = await invitation_repo.create(
-        user.id,
+        project.user_id,
         project_id,
         invited_by=user.id,
         data=ProjectInvitationCreate(email=normalized_email, role=invitation.role),
     )
 
     if member_user_id:
-        members = await member_repo.list(user.id, project_id)
+        members = await member_repo.list(project.user_id, project_id)
         if not any(m.member_user_id == member_user_id for m in members):
             await member_repo.create(
-                user.id,
+                project.user_id,
                 project_id,
                 ProjectMemberCreate(member_user_id=member_user_id, role=invitation.role),
             )
@@ -593,8 +637,9 @@ async def list_project_assignments(
     assignment_repo: TaskAssignmentRepo,
 ):
     """List task assignments for a project."""
-    await _get_project_or_404(user, repo, project_id)
-    return await assignment_repo.list_by_project(user.id, project_id)
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
+    return await assignment_repo.list_by_project(owner_id, project_id)
 
 
 @router.get("/{project_id}/blockers", response_model=list[Blocker])
@@ -605,8 +650,9 @@ async def list_project_blockers(
     blocker_repo: BlockerRepo,
 ):
     """List blockers for a project."""
-    await _get_project_or_404(user, repo, project_id)
-    return await blocker_repo.list_by_project(user.id, project_id)
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
+    return await blocker_repo.list_by_project(owner_id, project_id)
 
 
 @router.get("/{project_id}/checkins", response_model=list[Checkin])
@@ -620,9 +666,10 @@ async def list_project_checkins(
     end_date: Optional[date] = Query(None, description="End date (inclusive)"),
 ):
     """List check-ins for a project."""
-    await _get_project_or_404(user, repo, project_id)
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
     return await checkin_repo.list(
-        user.id,
+        owner_id,
         project_id,
         member_user_id=member_user_id,
         start_date=start_date,

@@ -6,25 +6,16 @@ from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.deps import (
     CurrentUser,
-    get_proposal_repository,
-    get_task_repository,
-    get_task_assignment_repository,
-    get_project_repository,
-    get_project_member_repository,
-    get_phase_repository,
-    get_milestone_repository,
-    get_llm_provider,
-    get_memory_repository,
+    ProposalRepo,
+    TaskRepo,
+    TaskAssignmentRepo,
+    ProjectRepo,
+    PhaseRepo,
+    MilestoneRepo,
+    ProjectMemberRepo,
+    MemoryRepo,
+    LLMProvider,
 )
-from app.interfaces.llm_provider import ILLMProvider
-from app.interfaces.memory_repository import IMemoryRepository
-from app.interfaces.project_repository import IProjectRepository
-from app.interfaces.project_member_repository import IProjectMemberRepository
-from app.interfaces.proposal_repository import IProposalRepository
-from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
-from app.interfaces.task_repository import ITaskRepository
-from app.interfaces.phase_repository import IPhaseRepository
-from app.interfaces.milestone_repository import IMilestoneRepository
 from app.models.proposal import ApprovalResult, ProposalStatus, RejectionResult
 from app.models.project import ProjectCreate
 from app.models.task import TaskCreate
@@ -59,17 +50,17 @@ def _proposal_belongs_to_user(proposal, user_id: str) -> bool:
 async def approve_proposal(
     proposal_id: UUID,
     user: CurrentUser,
-    proposal_repo: IProposalRepository = Depends(get_proposal_repository),
-    task_repo: ITaskRepository = Depends(get_task_repository),
-    assignment_repo: ITaskAssignmentRepository = Depends(get_task_assignment_repository),
-    project_repo: IProjectRepository = Depends(get_project_repository),
-    phase_repo: IPhaseRepository = Depends(get_phase_repository),
-    milestone_repo: IMilestoneRepository = Depends(get_milestone_repository),
-    member_repo: IProjectMemberRepository = Depends(get_project_member_repository),
-    memory_repo: IMemoryRepository = Depends(get_memory_repository),
-    llm_provider: ILLMProvider = Depends(get_llm_provider),
+    proposal_repo: ProposalRepo,
+    task_repo: TaskRepo,
+    assignment_repo: TaskAssignmentRepo,
+    project_repo: ProjectRepo,
+    phase_repo: PhaseRepo,
+    milestone_repo: MilestoneRepo,
+    member_repo: ProjectMemberRepo,
+    memory_repo: MemoryRepo,
+    llm_provider: LLMProvider,
 ) -> ApprovalResult:
-    """Approve a proposal and create the task/project.
+    """Approve a proposal and create task/project.
 
     Args:
         proposal_id: The proposal ID
@@ -153,6 +144,9 @@ async def approve_proposal(
                 result.assignment_ids = [assignment_result.get("id")]
             else:
                 assignments = assignment_result.get("assignments")
+                if assignments:
+                    result.assignment_ids = [str(a["id"]) for a in assignments]
+                assignments = assignment_result.get("assignments")
                 if isinstance(assignments, list):
                     result.assignment_ids = [
                         item.get("id")
@@ -193,7 +187,7 @@ async def approve_proposal(
 async def reject_proposal(
     proposal_id: UUID,
     user: CurrentUser,
-    proposal_repo: IProposalRepository = Depends(get_proposal_repository),
+    proposal_repo: ProposalRepo,
 ) -> RejectionResult:
     """Reject a proposal without creating anything.
 
@@ -230,10 +224,10 @@ async def reject_proposal(
 @router.get("/pending")
 async def list_pending_proposals(
     user: CurrentUser,
+    proposal_repo: ProposalRepo,
     session_id: str | None = None,
-    proposal_repo: IProposalRepository = Depends(get_proposal_repository),
 ):
-    """List pending proposals for the current user.
+    """List pending proposals for current user.
 
     Args:
         session_id: Optional session ID to filter proposals

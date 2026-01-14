@@ -97,14 +97,23 @@ class SqliteTaskRepository(ITaskRepository):
             await session.refresh(orm)
             return self._orm_to_model(orm)
 
-    async def get(self, user_id: str, task_id: UUID) -> Optional[Task]:
-        """Get a task by ID."""
+    async def get(self, user_id: str, task_id: UUID, project_id: Optional[UUID] = None) -> Optional[Task]:
+        """Get a task by ID. If project_id is given, uses project-based access (no user_id check)."""
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(TaskORM).where(
-                    and_(TaskORM.id == str(task_id), TaskORM.user_id == user_id)
+            if project_id:
+                # Project-based access: filter by project_id only
+                result = await session.execute(
+                    select(TaskORM).where(
+                        and_(TaskORM.id == str(task_id), TaskORM.project_id == str(project_id))
+                    )
                 )
-            )
+            else:
+                # Personal access: require user_id match
+                result = await session.execute(
+                    select(TaskORM).where(
+                        and_(TaskORM.id == str(task_id), TaskORM.user_id == user_id)
+                    )
+                )
             orm = result.scalar_one_or_none()
             return self._orm_to_model(orm) if orm else None
 
@@ -118,12 +127,14 @@ class SqliteTaskRepository(ITaskRepository):
         limit: int = 100,
         offset: int = 0,
     ) -> list[Task]:
-        """List tasks with optional filters."""
+        """List tasks. If project_id specified, uses project-based access (no user_id filter)."""
         async with self._session_factory() as session:
-            query = select(TaskORM).where(TaskORM.user_id == user_id)
-
             if project_id is not None:
-                query = query.where(TaskORM.project_id == str(project_id))
+                # Project-based access: filter by project_id only
+                query = select(TaskORM).where(TaskORM.project_id == str(project_id))
+            else:
+                # Personal access (Inbox/schedule): filter by user_id
+                query = select(TaskORM).where(TaskORM.user_id == user_id)
 
             if status:
                 query = query.where(TaskORM.status == status)
@@ -139,14 +150,21 @@ class SqliteTaskRepository(ITaskRepository):
             result = await session.execute(query)
             return [self._orm_to_model(orm) for orm in result.scalars().all()]
 
-    async def update(self, user_id: str, task_id: UUID, update: TaskUpdate) -> Task:
-        """Update an existing task."""
+    async def update(self, user_id: str, task_id: UUID, update: TaskUpdate, project_id: Optional[UUID] = None) -> Task:
+        """Update an existing task. If project_id given, uses project-based access."""
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(TaskORM).where(
-                    and_(TaskORM.id == str(task_id), TaskORM.user_id == user_id)
+            if project_id:
+                result = await session.execute(
+                    select(TaskORM).where(
+                        and_(TaskORM.id == str(task_id), TaskORM.project_id == str(project_id))
+                    )
                 )
-            )
+            else:
+                result = await session.execute(
+                    select(TaskORM).where(
+                        and_(TaskORM.id == str(task_id), TaskORM.user_id == user_id)
+                    )
+                )
             orm = result.scalar_one_or_none()
 
             if not orm:
@@ -168,12 +186,20 @@ class SqliteTaskRepository(ITaskRepository):
 
             orm.updated_at = datetime.utcnow()
 
+            # Cascade status to subtasks
             if status_value is not None:
-                subtask_result = await session.execute(
-                    select(TaskORM).where(
-                        and_(TaskORM.parent_id == str(task_id), TaskORM.user_id == user_id)
+                if orm.project_id:
+                    subtask_result = await session.execute(
+                        select(TaskORM).where(
+                            and_(TaskORM.parent_id == str(task_id), TaskORM.project_id == orm.project_id)
+                        )
                     )
-                )
+                else:
+                    subtask_result = await session.execute(
+                        select(TaskORM).where(
+                            and_(TaskORM.parent_id == str(task_id), TaskORM.user_id == user_id)
+                        )
+                    )
                 for subtask in subtask_result.scalars().all():
                     subtask.status = status_value
                     subtask.updated_at = datetime.utcnow()
@@ -182,14 +208,21 @@ class SqliteTaskRepository(ITaskRepository):
             await session.refresh(orm)
             return self._orm_to_model(orm)
 
-    async def delete(self, user_id: str, task_id: UUID) -> bool:
-        """Delete a task."""
+    async def delete(self, user_id: str, task_id: UUID, project_id: Optional[UUID] = None) -> bool:
+        """Delete a task. If project_id given, uses project-based access."""
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(TaskORM).where(
-                    and_(TaskORM.id == str(task_id), TaskORM.user_id == user_id)
+            if project_id:
+                result = await session.execute(
+                    select(TaskORM).where(
+                        and_(TaskORM.id == str(task_id), TaskORM.project_id == str(project_id))
+                    )
                 )
-            )
+            else:
+                result = await session.execute(
+                    select(TaskORM).where(
+                        and_(TaskORM.id == str(task_id), TaskORM.user_id == user_id)
+                    )
+                )
             orm = result.scalar_one_or_none()
 
             if not orm:
@@ -209,13 +242,12 @@ class SqliteTaskRepository(ITaskRepository):
     ) -> list[SimilarTask]:
         """Find similar tasks using simple string matching within the same project."""
         async with self._session_factory() as session:
-            # Filter by user and project (None = Inbox)
-            conditions = [TaskORM.user_id == user_id]
             if project_id is not None:
-                conditions.append(TaskORM.project_id == str(project_id))
+                # Project-based access
+                conditions = [TaskORM.project_id == str(project_id)]
             else:
-                # Search in Inbox (tasks without project)
-                conditions.append(TaskORM.project_id.is_(None))
+                # Personal Inbox access
+                conditions = [TaskORM.user_id == user_id, TaskORM.project_id.is_(None)]
 
             result = await session.execute(
                 select(TaskORM).where(and_(*conditions))
@@ -247,9 +279,52 @@ class SqliteTaskRepository(ITaskRepository):
             )
             return [self._orm_to_model(orm) for orm in result.scalars().all()]
 
-    async def get_subtasks(self, user_id: str, parent_id: UUID) -> list[Task]:
+    async def get_subtasks(self, user_id: str, parent_id: UUID, project_id: Optional[UUID] = None) -> list[Task]:
         """Get all subtasks of a parent task."""
-        return await self.list(user_id, parent_id=parent_id, include_done=True)
+        return await self.list(user_id, project_id=project_id, parent_id=parent_id, include_done=True)
+
+    async def get_many(self, task_ids: list[UUID]) -> list[Task]:
+        """Get multiple tasks by ID."""
+        if not task_ids:
+            return []
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(TaskORM).where(TaskORM.id.in_([str(tid) for tid in task_ids]))
+            )
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]
+
+    async def list_personal_tasks(
+        self,
+        user_id: str,
+        status: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[Task]:
+        """List personal tasks (Inbox/Memo) - excluding project tasks."""
+        async with self._session_factory() as session:
+            query = select(TaskORM).where(
+                and_(
+                    TaskORM.user_id == user_id,
+                    TaskORM.project_id.is_(None)
+                )
+            )
+
+            if status:
+                query = query.where(TaskORM.status == status)
+            else:
+                # Default behavior: exclude DONE unless specified? 
+                # Replicating list() default behavior logic or just basic filtering?
+                # list() implementation: if not include_done: query = query.where(status != DONE)
+                # But here we stick to the args. If status is None, we return all statuses unless caller filters.
+                # Actually, list() has include_done. 
+                # Let's add include_done to signature to match list().
+                pass
+
+            query = query.order_by(TaskORM.created_at.desc())
+            query = query.limit(limit).offset(offset)
+
+            result = await session.execute(query)
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]
 
     async def count(
         self,
@@ -259,10 +334,10 @@ class SqliteTaskRepository(ITaskRepository):
     ) -> int:
         """Count tasks matching filters."""
         async with self._session_factory() as session:
-            query = select(func.count(TaskORM.id)).where(TaskORM.user_id == user_id)
-
             if project_id is not None:
-                query = query.where(TaskORM.project_id == str(project_id))
+                query = select(func.count(TaskORM.id)).where(TaskORM.project_id == str(project_id))
+            else:
+                query = select(func.count(TaskORM.id)).where(TaskORM.user_id == user_id)
 
             if status:
                 query = query.where(TaskORM.status == status)

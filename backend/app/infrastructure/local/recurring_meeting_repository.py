@@ -33,26 +33,11 @@ class SqliteRecurringMeetingRepository(IRecurringMeetingRepository):
         return value.strftime("%H:%M")
 
     def _orm_to_model(self, orm: RecurringMeetingORM) -> RecurringMeeting:
-        return RecurringMeeting(
-            id=UUID(orm.id),
-            user_id=orm.user_id,
-            project_id=UUID(orm.project_id) if orm.project_id else None,
-            title=orm.title,
-            frequency=orm.frequency,
-            weekday=orm.weekday,
-            start_time=self._parse_time(orm.start_time),
-            duration_minutes=orm.duration_minutes,
-            location=orm.location,
-            attendees=orm.attendees or [],
-            agenda_window_days=orm.agenda_window_days,
-            anchor_date=orm.anchor_date,
-            last_occurrence=orm.last_occurrence,
-            is_active=bool(orm.is_active),
-            created_at=orm.created_at,
-            updated_at=orm.updated_at,
-        )
+        """Convert ORM object to Pydantic model."""
+        return RecurringMeeting.model_validate(orm, from_attributes=True)
 
     async def create(self, user_id: str, data: RecurringMeetingCreate) -> RecurringMeeting:
+        """Create a new recurring meeting."""
         async with self._session_factory() as session:
             orm = RecurringMeetingORM(
                 id=str(uuid4()),
@@ -75,13 +60,21 @@ class SqliteRecurringMeetingRepository(IRecurringMeetingRepository):
             await session.refresh(orm)
             return self._orm_to_model(orm)
 
-    async def get(self, user_id: str, meeting_id: UUID) -> Optional[RecurringMeeting]:
+    async def get(self, user_id: str, meeting_id: UUID, project_id: UUID | None = None) -> Optional[RecurringMeeting]:
+        """Get a recurring meeting by ID. If project_id is given, uses project-based access."""
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(RecurringMeetingORM).where(
-                    and_(RecurringMeetingORM.id == str(meeting_id), RecurringMeetingORM.user_id == user_id)
+            if project_id:
+                result = await session.execute(
+                    select(RecurringMeetingORM).where(
+                        and_(RecurringMeetingORM.id == str(meeting_id), RecurringMeetingORM.project_id == str(project_id))
+                    )
                 )
-            )
+            else:
+                result = await session.execute(
+                    select(RecurringMeetingORM).where(
+                        and_(RecurringMeetingORM.id == str(meeting_id), RecurringMeetingORM.user_id == user_id)
+                    )
+                )
             orm = result.scalar_one_or_none()
             return self._orm_to_model(orm) if orm else None
 
@@ -110,13 +103,22 @@ class SqliteRecurringMeetingRepository(IRecurringMeetingRepository):
         user_id: str,
         meeting_id: UUID,
         update: RecurringMeetingUpdate,
+        project_id: UUID | None = None,
     ) -> RecurringMeeting:
+        """Update a recurring meeting. If project_id is given, uses project-based access."""
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(RecurringMeetingORM).where(
-                    and_(RecurringMeetingORM.id == str(meeting_id), RecurringMeetingORM.user_id == user_id)
+            if project_id:
+                result = await session.execute(
+                    select(RecurringMeetingORM).where(
+                        and_(RecurringMeetingORM.id == str(meeting_id), RecurringMeetingORM.project_id == str(project_id))
+                    )
                 )
-            )
+            else:
+                result = await session.execute(
+                    select(RecurringMeetingORM).where(
+                        and_(RecurringMeetingORM.id == str(meeting_id), RecurringMeetingORM.user_id == user_id)
+                    )
+                )
             orm = result.scalar_one_or_none()
             if not orm:
                 raise NotFoundError(f"RecurringMeeting {meeting_id} not found")
@@ -138,16 +140,25 @@ class SqliteRecurringMeetingRepository(IRecurringMeetingRepository):
             await session.refresh(orm)
             return self._orm_to_model(orm)
 
-    async def delete(self, user_id: str, meeting_id: UUID) -> bool:
+    async def delete(self, user_id: str, meeting_id: UUID, project_id: UUID | None = None) -> bool:
+        """Delete a recurring meeting. If project_id is given, uses project-based access."""
         async with self._session_factory() as session:
-            result = await session.execute(
-                select(RecurringMeetingORM).where(
-                    and_(RecurringMeetingORM.id == str(meeting_id), RecurringMeetingORM.user_id == user_id)
+            if project_id:
+                result = await session.execute(
+                    select(RecurringMeetingORM).where(
+                        and_(RecurringMeetingORM.id == str(meeting_id), RecurringMeetingORM.project_id == str(project_id))
+                    )
                 )
-            )
+            else:
+                result = await session.execute(
+                    select(RecurringMeetingORM).where(
+                        and_(RecurringMeetingORM.id == str(meeting_id), RecurringMeetingORM.user_id == user_id)
+                    )
+                )
             orm = result.scalar_one_or_none()
             if not orm:
                 return False
+
             await session.delete(orm)
             await session.commit()
             return True

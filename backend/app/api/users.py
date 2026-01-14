@@ -7,7 +7,7 @@ from __future__ import annotations
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import CurrentUser, UserRepo
@@ -25,11 +25,39 @@ class UserProfile(BaseModel):
     username: Optional[str] = None
 
 
+class UserSearchResult(BaseModel):
+    """User search result with limited public info."""
+    id: str
+    display_name: Optional[str] = None
+    username: Optional[str] = None
+    email: Optional[str] = None
+
+
 class UpdateCredentialsRequest(BaseModel):
     current_password: str = Field(..., min_length=8, max_length=128)
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     email: Optional[str] = Field(None, min_length=3, max_length=255)
     new_password: Optional[str] = Field(None, min_length=8, max_length=128)
+
+
+@router.get("/search", response_model=list[UserSearchResult])
+async def search_users(
+    user: CurrentUser,
+    user_repo: UserRepo,
+    q: str = Query(..., min_length=1, max_length=100, description="Search query"),
+    limit: int = Query(10, ge=1, le=50, description="Maximum results"),
+) -> list[UserSearchResult]:
+    """Search users by username, email, or display name."""
+    results = await user_repo.search(q, limit)
+    return [
+        UserSearchResult(
+            id=str(u.id),
+            display_name=u.display_name,
+            username=u.username,
+            email=u.email,
+        )
+        for u in results
+    ]
 
 
 @router.get("/me", response_model=UserProfile)

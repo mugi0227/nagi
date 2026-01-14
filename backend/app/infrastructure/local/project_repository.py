@@ -8,14 +8,14 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
 from app.interfaces.project_repository import IProjectRepository
 from app.models.project import Project, ProjectCreate, ProjectUpdate, ProjectWithTaskCount
 from app.models.enums import ProjectStatus, TaskStatus
-from app.infrastructure.local.database import ProjectORM, TaskORM, get_session_factory
+from app.infrastructure.local.database import ProjectORM, ProjectMemberORM, TaskORM, get_session_factory
 
 
 class SqliteProjectRepository(IProjectRepository):
@@ -64,14 +64,27 @@ class SqliteProjectRepository(IProjectRepository):
             return self._orm_to_model(orm)
 
     async def get(self, user_id: str, project_id: UUID) -> Optional[Project]:
-        """Get a project by ID."""
+        """Get a project by ID (accessible if user is owner or member)."""
         async with self._session_factory() as session:
+            # Check if user is owner or member of this project
             result = await session.execute(
-                select(ProjectORM).where(
-                    and_(ProjectORM.id == str(project_id), ProjectORM.user_id == user_id)
+                select(ProjectORM)
+                .outerjoin(
+                    ProjectMemberORM,
+                    ProjectORM.id == ProjectMemberORM.project_id
                 )
+                .where(
+                    and_(
+                        ProjectORM.id == str(project_id),
+                        or_(
+                            ProjectORM.user_id == user_id,
+                            ProjectMemberORM.member_user_id == user_id,
+                        ),
+                    )
+                )
+                .distinct()
             )
-            orm = result.scalar_one_or_none()
+            orm = result.scalars().first()
             return self._orm_to_model(orm) if orm else None
 
     async def list(
@@ -81,9 +94,23 @@ class SqliteProjectRepository(IProjectRepository):
         limit: int = 100,
         offset: int = 0,
     ) -> list[Project]:
-        """List projects with optional filters."""
+        """List projects with optional filters (includes projects where user is owner or member)."""
         async with self._session_factory() as session:
-            query = select(ProjectORM).where(ProjectORM.user_id == user_id)
+            # Select projects where user is owner OR member
+            query = (
+                select(ProjectORM)
+                .outerjoin(
+                    ProjectMemberORM,
+                    ProjectORM.id == ProjectMemberORM.project_id
+                )
+                .where(
+                    or_(
+                        ProjectORM.user_id == user_id,
+                        ProjectMemberORM.member_user_id == user_id,
+                    )
+                )
+                .distinct()
+            )
 
             if status:
                 query = query.where(ProjectORM.status == status)
@@ -105,20 +132,19 @@ class SqliteProjectRepository(IProjectRepository):
 
         async with self._session_factory() as session:
             for project in projects:
+                # Use project.user_id for task queries (tasks belong to project owner)
+                project_owner_id = project.user_id
+
                 # Total tasks
                 total = await session.execute(
                     select(func.count(TaskORM.id)).where(
-                        and_(
-                            TaskORM.user_id == user_id,
-                            TaskORM.project_id == str(project.id),
-                        )
+                        TaskORM.project_id == str(project.id)
                     )
                 )
                 # Completed tasks
                 completed = await session.execute(
                     select(func.count(TaskORM.id)).where(
                         and_(
-                            TaskORM.user_id == user_id,
                             TaskORM.project_id == str(project.id),
                             TaskORM.status == TaskStatus.DONE.value,
                         )
@@ -128,7 +154,6 @@ class SqliteProjectRepository(IProjectRepository):
                 in_progress = await session.execute(
                     select(func.count(TaskORM.id)).where(
                         and_(
-                            TaskORM.user_id == user_id,
                             TaskORM.project_id == str(project.id),
                             TaskORM.status == TaskStatus.IN_PROGRESS.value,
                         )

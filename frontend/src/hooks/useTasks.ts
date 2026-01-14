@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tasksApi } from '../api/tasks';
 import type { TaskCreate, TaskUpdate } from '../api/types';
 
@@ -8,12 +8,9 @@ export function useTasks(projectId?: string) {
   const query = useQuery({
     queryKey: projectId ? ['tasks', 'project', projectId] : ['tasks'],
     queryFn: async () => {
-      const allTasks = await tasksApi.getAll();
-      // Filter by project_id if provided
-      if (projectId) {
-        return allTasks.filter(task => task.project_id === projectId);
-      }
-      return allTasks;
+      // Pass projectId to API so backend can do project-based filtering
+      const tasks = await tasksApi.getAll({ projectId });
+      return tasks;
     },
   });
 

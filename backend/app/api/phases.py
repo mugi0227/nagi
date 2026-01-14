@@ -67,10 +67,15 @@ async def update_phase(
     phase: PhaseUpdate,
     user: CurrentUser,
     repo: PhaseRepo,
+    project_repo: ProjectRepo,
 ) -> Phase:
     """Update a phase."""
+    project_id = await repo.get_project_id(phase_id)
+    if project_id:
+        await _get_project_or_404(user, project_repo, project_id)
+
     try:
-        return await repo.update(user.id, phase_id, phase)
+        return await repo.update(user.id, phase_id, phase, project_id=project_id)
     except NotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -83,9 +88,14 @@ async def delete_phase(
     phase_id: UUID,
     user: CurrentUser,
     repo: PhaseRepo,
+    project_repo: ProjectRepo,
 ) -> None:
     """Delete a phase."""
-    deleted = await repo.delete(user.id, phase_id)
+    project_id = await repo.get_project_id(phase_id)
+    if project_id:
+        await _get_project_or_404(user, project_repo, project_id)
+
+    deleted = await repo.delete(user.id, phase_id, project_id=project_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -119,3 +129,13 @@ async def breakdown_phase_tasks(
         phase_id=phase_id,
         request=request,
     )
+
+
+async def _get_project_or_404(user: CurrentUser, repo: ProjectRepo, project_id: UUID):
+    project = await repo.get(user.id, project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+    return project

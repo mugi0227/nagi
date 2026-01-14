@@ -1,9 +1,9 @@
+import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useState } from 'react';
-import { phasesApi } from '../../api/phases';
 import { milestonesApi } from '../../api/milestones';
+import { phasesApi } from '../../api/phases';
 import { projectsApi } from '../../api/projects';
-import { KanbanBoard } from '../tasks/KanbanBoard';
-import { PhaseList } from '../phases/PhaseList';
+import { tasksApi } from '../../api/tasks';
 import type {
   Milestone,
   MilestoneCreate,
@@ -14,6 +14,8 @@ import type {
   Task,
   TaskStatus,
 } from '../../api/types';
+import { PhaseList } from '../phases/PhaseList';
+import { KanbanBoard } from '../tasks/KanbanBoard';
 import './ProjectTasksView.css';
 
 interface ProjectTasksViewProps {
@@ -41,6 +43,7 @@ export function ProjectTasksView({
   onAssignMultiple,
   onRefreshTasks,
 }: ProjectTasksViewProps) {
+  const queryClient = useQueryClient();
   const [phases, setPhases] = useState<PhaseWithTaskCount[]>([]);
   const [isPhasesLoading, setIsPhasesLoading] = useState(false);
   const [showPhaseManager, setShowPhaseManager] = useState(false);
@@ -48,6 +51,8 @@ export function ProjectTasksView({
   const [isMilestonesLoading, setIsMilestonesLoading] = useState(false);
   const [isPlanningPhases, setIsPlanningPhases] = useState(false);
   const [planningPhaseId, setPlanningPhaseId] = useState<string | null>(null);
+  const [breakdownTaskId, setBreakdownTaskId] = useState<string | null>(null);
+  const [sortBy, setSortBy] = useState<'default' | 'dueDate'>('default');
 
   const fetchPhases = useCallback(async () => {
     setIsPhasesLoading(true);
@@ -139,10 +144,45 @@ export function ProjectTasksView({
     }
   };
 
+  const breakdownMutation = useMutation({
+    mutationFn: ({ id, instruction }: { id: string; instruction?: string }) =>
+      tasksApi.breakdownTask(id, { create_subtasks: true, instruction }),
+    onMutate: ({ id }) => {
+      setBreakdownTaskId(id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['top3'] });
+      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['schedule'] });
+      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
+      onRefreshTasks?.();
+    },
+    onError: () => {
+      alert('タスク分解に失敗しました。');
+    },
+    onSettled: () => {
+      setBreakdownTaskId(null);
+    },
+  });
+
+  const handleBreakdownTask = (id: string, instruction?: string) => {
+    breakdownMutation.mutate({ id, instruction });
+  };
+
   return (
     <div className="project-tasks-view">
       {/* View Controls */}
       <div className="view-controls">
+        <select
+          className="sort-select"
+          value={sortBy}
+          onChange={(e) => setSortBy(e.target.value as 'default' | 'dueDate')}
+          style={{ marginRight: '1rem', padding: '0.5rem', borderRadius: '6px', border: '1px solid #ccc' }}
+        >
+          <option value="default">デフォルト順</option>
+          <option value="dueDate">期限が近い順</option>
+        </select>
         <button
           className="phase-manager-btn"
           onClick={() => setShowPhaseManager(!showPhaseManager)}
@@ -187,6 +227,9 @@ export function ProjectTasksView({
           assignedMemberIdsByTaskId={assignedMemberIdsByTaskId}
           memberOptions={memberOptions}
           onAssignMultiple={onAssignMultiple}
+          onBreakdownTask={handleBreakdownTask}
+          breakdownTaskId={breakdownTaskId}
+          sortBy={sortBy}
         />
       </div>
     </div>

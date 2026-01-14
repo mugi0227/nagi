@@ -76,24 +76,18 @@ class SqliteBlockerRepository(IBlockerRepository):
             return [self._orm_to_model(orm) for orm in result.scalars().all()]
 
     async def list_by_project(self, user_id: str, project_id: UUID) -> list[Blocker]:
+        """List blockers for a project (project-based access)."""
         async with self._session_factory() as session:
+            # Project-based: find tasks by project_id only
             task_ids_result = await session.execute(
-                select(TaskORM.id).where(
-                    and_(
-                        TaskORM.project_id == str(project_id),
-                        TaskORM.user_id == user_id,
-                    )
-                )
+                select(TaskORM.id).where(TaskORM.project_id == str(project_id))
             )
             task_ids = [row[0] for row in task_ids_result.fetchall()]
             if not task_ids:
                 return []
             result = await session.execute(
                 select(BlockerORM).where(
-                    and_(
-                        BlockerORM.user_id == user_id,
-                        BlockerORM.task_id.in_(task_ids),
-                    )
+                    BlockerORM.task_id.in_(task_ids)
                 ).order_by(BlockerORM.created_at.desc())
             )
             return [self._orm_to_model(orm) for orm in result.scalars().all()]

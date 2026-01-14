@@ -54,6 +54,12 @@ async def run_migrations():
         if "order_in_parent" not in columns:
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN order_in_parent INTEGER"))
 
+        if "recurring_meeting_id" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN recurring_meeting_id VARCHAR(36)"))
+            await conn.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_tasks_recurring_meeting_id ON tasks(recurring_meeting_id)")
+            )
+
         # Check checkins table for checkin_type
         checkin_result = await conn.execute(text("PRAGMA table_info(checkins)"))
         checkin_columns = {row[1] for row in checkin_result}
@@ -106,6 +112,50 @@ async def run_migrations():
             await conn.execute(
                 text("CREATE INDEX idx_recurring_meetings_project_id ON recurring_meetings(project_id)")
             )
+
+        # check for meeting_agenda_items table
+        agenda_result = await conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_agenda_items'")
+        )
+        if not agenda_result.scalar():
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE meeting_agenda_items (
+                        id VARCHAR(36) PRIMARY KEY,
+                        meeting_id VARCHAR(36) NOT NULL,
+                        user_id VARCHAR(255) NOT NULL,
+                        title VARCHAR(500) NOT NULL,
+                        description TEXT,
+                        duration_minutes INTEGER,
+                        order_index INTEGER DEFAULT 0,
+                        is_completed BOOLEAN DEFAULT 0,
+                        event_date DATE,
+                        created_at DATETIME,
+                        updated_at DATETIME
+                    )
+                    """
+                )
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_meeting_agenda_items_meeting_id ON meeting_agenda_items(meeting_id)")
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_meeting_agenda_items_user_id ON meeting_agenda_items(user_id)")
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_meeting_agenda_items_event_date ON meeting_agenda_items(event_date)")
+            )
+        else:
+            # Check for event_date column
+            agenda_cols_result = await conn.execute(text("PRAGMA table_info(meeting_agenda_items)"))
+            agenda_columns = {row[1] for row in agenda_cols_result}
+            
+            if "event_date" not in agenda_columns:
+                await conn.execute(text("ALTER TABLE meeting_agenda_items ADD COLUMN event_date DATE"))
+                await conn.execute(
+                    text("CREATE INDEX idx_meeting_agenda_items_event_date ON meeting_agenda_items(event_date)")
+                )
 
         # Ensure chat session primary key is scoped by user_id.
         await _ensure_chat_sessions_composite_pk(conn)

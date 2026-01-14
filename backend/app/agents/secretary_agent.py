@@ -10,15 +10,9 @@ from google.adk import Agent
 
 from app.agents.prompts.secretary_prompt import SECRETARY_SYSTEM_PROMPT
 from app.interfaces.agent_task_repository import IAgentTaskRepository
-from app.interfaces.memory_repository import IMemoryRepository
-from app.interfaces.project_invitation_repository import IProjectInvitationRepository
-from app.interfaces.project_member_repository import IProjectMemberRepository
-from app.interfaces.project_repository import IProjectRepository
-from app.interfaces.phase_repository import IPhaseRepository
-from app.interfaces.milestone_repository import IMilestoneRepository
-from app.interfaces.proposal_repository import IProposalRepository
-from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
-from app.interfaces.task_repository import ITaskRepository
+from app.interfaces.checkin_repository import ICheckinRepository
+from app.interfaces.meeting_agenda_repository import IMeetingAgendaRepository
+from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
 from app.interfaces.llm_provider import ILLMProvider
 from app.tools import (
     create_meeting_tool,
@@ -54,6 +48,12 @@ from app.tools import (
     list_phases_tool,
     get_phase_tool,
     update_phase_tool,
+    add_agenda_item_tool,
+    update_agenda_item_tool,
+    delete_agenda_item_tool,
+    list_agenda_items_tool,
+    reorder_agenda_items_tool,
+    fetch_meeting_context_tool,
 )
 
 
@@ -68,6 +68,9 @@ def create_secretary_agent(
     task_assignment_repo: ITaskAssignmentRepository,
     memory_repo: IMemoryRepository,
     agent_task_repo: IAgentTaskRepository,
+    meeting_agenda_repo: IMeetingAgendaRepository,
+    recurring_meeting_repo: IRecurringMeetingRepository,
+    checkin_repo: ICheckinRepository,
     user_id: str,
     proposal_repo: IProposalRepository,
     session_id: str,
@@ -172,6 +175,12 @@ def create_secretary_agent(
         list_phases_tool(phase_repo, user_id),
         get_phase_tool(phase_repo, user_id),
         update_phase_tool(phase_repo, user_id),
+        add_agenda_item_tool(meeting_agenda_repo, user_id),
+        update_agenda_item_tool(meeting_agenda_repo, user_id),
+        delete_agenda_item_tool(meeting_agenda_repo, user_id),
+        list_agenda_items_tool(meeting_agenda_repo, user_id),
+        reorder_agenda_items_tool(meeting_agenda_repo, user_id),
+        fetch_meeting_context_tool(checkin_repo, task_repo, meeting_agenda_repo, project_repo, recurring_meeting_repo, user_id),
     ]
 
     # Create agent

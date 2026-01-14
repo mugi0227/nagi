@@ -45,6 +45,16 @@ from app.tools.phase_tools import (
     get_phase_tool,
     update_phase_tool,
 )
+from app.tools.meeting_agenda_tools import (
+    add_agenda_item_tool,
+    update_agenda_item_tool,
+    delete_agenda_item_tool,
+    list_agenda_items_tool,
+    reorder_agenda_items_tool,
+)
+from app.tools.meeting_context_tools import (
+    fetch_meeting_context_tool,
+)
 
 __all__ = [
     "propose_task_tool",
@@ -80,5 +90,11 @@ __all__ = [
     "list_phases_tool",
     "get_phase_tool",
     "update_phase_tool",
+    "add_agenda_item_tool",
+    "update_agenda_item_tool",
+    "delete_agenda_item_tool",
+    "list_agenda_items_tool",
+    "reorder_agenda_items_tool",
+    "fetch_meeting_context_tool",
 ]
 

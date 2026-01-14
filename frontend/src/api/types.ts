@@ -78,6 +78,7 @@ export interface Task {
   location?: string;
   attendees: string[];
   meeting_notes?: string;
+  recurring_meeting_id?: string;
 }
 
 export interface TaskCreate {
@@ -798,6 +799,42 @@ export interface ScheduleSnapshotSummary {
 
 // Diff Types
 export type TaskDiffStatus = 'on_track' | 'delayed' | 'ahead' | 'new' | 'removed' | 'completed';
+
+
+
+
+// Meeting Agenda Models
+export interface MeetingAgendaItem {
+  id: string;
+  meeting_id: string;
+  user_id: string;
+  title: string;
+  description?: string;
+  duration_minutes?: number;
+  order_index: number;
+  is_completed: boolean;
+  event_date?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface MeetingAgendaItemCreate {
+  title: string;
+  description?: string;
+  duration_minutes?: number;
+  order_index?: number;
+  event_date?: string;
+}
+
+export interface MeetingAgendaItemUpdate {
+  title?: string;
+  description?: string;
+  duration_minutes?: number;
+  order_index?: number;
+  is_completed?: boolean;
+  event_date?: string;
+}
+
 
 export interface TaskScheduleDiff {
   task_id: string;

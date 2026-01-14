@@ -58,6 +58,7 @@ class PlannerService:
         task_id: UUID,
         create_subtasks: bool = True,
         instruction: Optional[str] = None,
+        task_obj: Optional[Task] = None,
     ) -> BreakdownResponse:
         """
         Break down a task into micro-steps.
@@ -67,7 +68,8 @@ class PlannerService:
             task_id: Task ID to break down
             create_subtasks: Whether to create subtasks from breakdown
             instruction: Optional instruction or constraints for the breakdown
-
+            task_obj: Optional Task object if already fetched (avoids ownership check issues)
+        
         Returns:
             BreakdownResponse with steps and optional subtask IDs
 
@@ -76,9 +78,12 @@ class PlannerService:
             LLMValidationError: If LLM output validation fails after retries
         """
         # Get the task
-        task = await self._task_repo.get(user_id, task_id)
-        if not task:
-            raise NotFoundError(f"Task {task_id} not found")
+        if task_obj:
+            task = task_obj
+        else:
+            task = await self._task_repo.get(user_id, task_id)
+            if not task:
+                raise NotFoundError(f"Task {task_id} not found")
 
         # Get project context if task belongs to a project
         project: Optional[Project] = None

@@ -63,6 +63,7 @@ class RecurringMeetingService:
                     attendees=meeting.attendees,
                     description=description,
                     project_id=str(meeting.project_id) if meeting.project_id else None,
+                    recurring_meeting_id=str(meeting.id),
                 ),
             )
             created.append(created_task)

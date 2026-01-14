@@ -1,0 +1,655 @@
+/* ============================================
+   ProjectGanttChart - Modern Gantt Chart
+   ============================================ */
+
+.pgantt-container {
+  --day-width: 40px;
+  --row-height: 44px;
+  --sidebar-width: 260px;
+  --header-height: 32px;
+  --month-header-height: 28px;
+
+  /* Premium Color Palette */
+  --c-bg: #ffffff;
+  --c-bg-alt: #f8fafc;
+  --c-bg-hover: #f1f5f9;
+  --c-border: #e2e8f0;
+  --c-border-light: #f1f5f9;
+  --c-text: #1e293b;
+  --c-text-secondary: #64748b;
+  --c-text-muted: #94a3b8;
+
+  /* Accent Colors */
+  --c-primary: #6366f1;
+  --c-primary-light: #818cf8;
+  --c-success: #10b981;
+  --c-warning: #f59e0b;
+  --c-danger: #ef4444;
+  --c-milestone: #a855f7;
+
+  display: flex;
+  flex-direction: column;
+  background: var(--c-bg);
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.03),
+    0 2px 4px rgba(0, 0, 0, 0.02),
+    0 12px 24px rgba(0, 0, 0, 0.04);
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.pgantt-empty {
+  padding: 80px 40px;
+  text-align: center;
+  color: var(--c-text-muted);
+}
+
+.pgantt-empty p:first-child {
+  font-size: 1rem;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+/* ============================================
+   Controls
+   ============================================ */
+
+.pgantt-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  background: linear-gradient(to bottom, var(--c-bg), var(--c-bg-alt));
+  border-bottom: 1px solid var(--c-border);
+}
+
+.pgantt-controls-left {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.pgantt-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--c-text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+.pgantt-checkbox:hover {
+  color: var(--c-text);
+}
+
+.pgantt-checkbox input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--c-primary);
+  cursor: pointer;
+}
+
+.pgantt-expand-buttons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding-left: 16px;
+  border-left: 1px solid var(--c-border-light);
+}
+
+.pgantt-expand-buttons button {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--c-text-secondary);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pgantt-expand-buttons button:hover {
+  background: var(--c-bg-hover);
+  border-color: var(--c-border);
+  color: var(--c-text);
+}
+
+.pgantt-expand-count {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  margin-left: 8px;
+  padding: 2px 8px;
+  background: var(--c-bg-alt);
+  border-radius: 10px;
+}
+
+.pgantt-view-modes {
+  display: flex;
+  background: var(--c-bg-alt);
+  padding: 4px;
+  border-radius: 10px;
+  border: 1px solid var(--c-border-light);
+}
+
+.pgantt-view-modes button {
+  padding: 6px 16px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--c-text-secondary);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.pgantt-view-modes button:hover {
+  color: var(--c-text);
+}
+
+.pgantt-view-modes button.active {
+  background: var(--c-bg);
+  color: var(--c-primary);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+/* ============================================
+   Main Layout
+   ============================================ */
+
+.pgantt-main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 400px;
+}
+
+/* ============================================
+   Sidebar (Task List)
+   ============================================ */
+
+.pgantt-sidebar {
+  width: var(--sidebar-width);
+  min-width: var(--sidebar-width);
+  display: flex;
+  flex-direction: column;
+  background: var(--c-bg);
+  border-right: 1px solid var(--c-border);
+  z-index: 10;
+}
+
+.pgantt-sidebar-header {
+  height: calc(var(--month-header-height) + var(--header-height));
+  padding: 0 16px;
+  display: flex;
+  align-items: flex-end;
+  padding-bottom: 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--c-text-muted);
+  background: var(--c-bg-alt);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.pgantt-sidebar-body {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.pgantt-sidebar-row {
+  height: var(--row-height);
+  padding: 0 16px;
+  padding-left: calc(16px + var(--depth, 0) * 16px);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-bottom: 1px solid var(--c-border-light);
+  cursor: default;
+  transition: background 0.1s;
+}
+
+.pgantt-sidebar-row:hover {
+  background: var(--c-bg-hover);
+}
+
+.pgantt-sidebar-row.phase {
+  background: var(--c-bg-alt);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pgantt-sidebar-row.phase:hover {
+  background: var(--c-bg-hover);
+}
+
+.pgantt-sidebar-row.milestone {
+  color: var(--c-milestone);
+}
+
+.pgantt-sidebar-row.buffer {
+  color: var(--c-text-muted);
+  font-style: italic;
+}
+
+.pgantt-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  color: var(--c-text-muted);
+  transition: color 0.15s;
+}
+
+.pgantt-sidebar-row.phase:hover .pgantt-toggle {
+  color: var(--c-text);
+}
+
+.pgantt-milestone-icon {
+  color: var(--c-milestone);
+  font-size: 0.9rem;
+}
+
+.pgantt-row-title {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.85rem;
+  color: var(--c-text);
+}
+
+.pgantt-sidebar-row.milestone .pgantt-row-title {
+  color: var(--c-milestone);
+  font-weight: 500;
+}
+
+.pgantt-child-count {
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border-light);
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+/* ============================================
+   Timeline
+   ============================================ */
+
+.pgantt-timeline {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  position: relative;
+}
+
+/* Month Header */
+.pgantt-month-header {
+  height: var(--month-header-height);
+  position: relative;
+  background: var(--c-bg-alt);
+  border-bottom: 1px solid var(--c-border-light);
+}
+
+.pgantt-month-cell {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--c-text);
+  border-right: 1px solid var(--c-border);
+  background: linear-gradient(to bottom, var(--c-bg), var(--c-bg-alt));
+}
+
+.pgantt-month-cell:last-child {
+  border-right: none;
+}
+
+/* Day Header */
+.pgantt-day-header {
+  height: var(--header-height);
+  display: flex;
+  background: var(--c-bg-alt);
+  border-bottom: 1px solid var(--c-border);
+}
+
+.pgantt-day-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  border-right: 1px solid var(--c-border-light);
+  transition: background 0.15s;
+}
+
+.pgantt-day-cell:last-child {
+  border-right: none;
+}
+
+.pgantt-day-cell.weekend {
+  background: rgba(239, 68, 68, 0.03);
+}
+
+.pgantt-day-cell.today {
+  background: rgba(99, 102, 241, 0.08);
+  position: relative;
+}
+
+.pgantt-day-cell.today::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--c-primary);
+}
+
+.pgantt-day-num {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--c-text);
+  line-height: 1;
+}
+
+.pgantt-day-weekday {
+  font-size: 0.55rem;
+  font-weight: 500;
+  color: var(--c-text-muted);
+  text-transform: uppercase;
+  margin-top: 1px;
+}
+
+.pgantt-day-cell.weekend .pgantt-day-weekday {
+  color: var(--c-danger);
+}
+
+/* ============================================
+   Rows Area
+   ============================================ */
+
+.pgantt-rows {
+  position: relative;
+  min-height: 100%;
+}
+
+/* Grid Background */
+.pgantt-grid {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.pgantt-grid-cell {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-right: 1px solid var(--c-border-light);
+}
+
+.pgantt-grid-cell.weekend {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 0, 0.015) 3px,
+    rgba(0, 0, 0, 0.015) 6px
+  );
+}
+
+.pgantt-grid-cell.today {
+  background: rgba(99, 102, 241, 0.04);
+  box-shadow: inset 2px 0 0 var(--c-primary);
+}
+
+/* ============================================
+   Bars
+   ============================================ */
+
+.pgantt-bar-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--row-height);
+  display: flex;
+  align-items: center;
+  border-bottom: 1px solid var(--c-border-light);
+}
+
+.pgantt-bar-row.phase {
+  background: rgba(248, 250, 252, 0.5);
+}
+
+.pgantt-bar {
+  position: absolute;
+  height: 28px;
+  border-radius: 6px;
+  cursor: grab;
+  transition: transform 0.15s, box-shadow 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pgantt-bar:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 10;
+}
+
+.pgantt-bar:active {
+  cursor: grabbing;
+}
+
+/* Phase Bar */
+.pgantt-bar.phase {
+  height: 32px;
+  background: linear-gradient(135deg, #e2e8f0 0%, #cbd5e1 100%);
+  border: 1px solid #94a3b8;
+  border-radius: 4px;
+}
+
+/* Task Bar */
+.pgantt-bar.task {
+  background: linear-gradient(135deg, var(--c-primary-light) 0%, var(--c-primary) 100%);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+}
+
+.pgantt-bar.task.done {
+  background: linear-gradient(135deg, #34d399 0%, var(--c-success) 100%);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+.pgantt-bar.task.in-progress {
+  background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
+  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+/* Milestone */
+.pgantt-bar.milestone {
+  background: transparent;
+  box-shadow: none;
+  height: 28px;
+  cursor: default;
+}
+
+.pgantt-bar.milestone:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.pgantt-bar-milestone {
+  font-size: 1.4rem;
+  color: var(--c-milestone);
+  filter: drop-shadow(0 2px 4px rgba(168, 85, 247, 0.4));
+}
+
+/* Buffer Bar */
+.pgantt-bar.buffer {
+  height: 20px;
+  background: var(--c-bg);
+  border: 2px dashed var(--buffer-color, var(--c-success));
+  cursor: default;
+  opacity: 0.8;
+}
+
+.pgantt-bar.buffer:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+/* Progress */
+.pgantt-bar-progress {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: var(--progress, 0%);
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 6px 0 0 6px;
+  pointer-events: none;
+}
+
+/* Resize Handles */
+.pgantt-resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 10px;
+  cursor: ew-resize;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.pgantt-bar:hover .pgantt-resize-handle {
+  opacity: 1;
+}
+
+.pgantt-resize-handle.start {
+  left: -2px;
+  background: linear-gradient(to right, rgba(0,0,0,0.15), transparent);
+  border-radius: 6px 0 0 6px;
+}
+
+.pgantt-resize-handle.end {
+  right: -2px;
+  background: linear-gradient(to left, rgba(0,0,0,0.15), transparent);
+  border-radius: 0 6px 6px 0;
+}
+
+/* ============================================
+   Dependency Arrows
+   ============================================ */
+
+.pgantt-arrows {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.pgantt-arrow-path {
+  fill: none;
+  stroke: var(--c-text-muted);
+  stroke-width: 1.5;
+  opacity: 0.5;
+  transition: opacity 0.15s, stroke 0.15s;
+}
+
+.pgantt-arrow-path:hover {
+  stroke: var(--c-primary);
+  opacity: 1;
+}
+
+/* ============================================
+   Responsive
+   ============================================ */
+
+@media (max-width: 768px) {
+  .pgantt-container {
+    --sidebar-width: 180px;
+    --row-height: 40px;
+  }
+
+  .pgantt-controls {
+    flex-direction: column;
+    gap: 12px;
+    padding: 12px;
+  }
+
+  .pgantt-expand-buttons button span {
+    display: none;
+  }
+
+  .pgantt-sidebar-row {
+    padding-left: calc(12px + var(--depth, 0) * 12px);
+  }
+
+  .pgantt-row-title {
+    font-size: 0.75rem;
+  }
+
+  .pgantt-bar {
+    height: 24px;
+  }
+
+  .pgantt-bar.phase {
+    height: 28px;
+  }
+}
+
+/* ============================================
+   Scrollbar Styling
+   ============================================ */
+
+.pgantt-timeline::-webkit-scrollbar {
+  height: 8px;
+}
+
+.pgantt-timeline::-webkit-scrollbar-track {
+  background: var(--c-bg-alt);
+  border-radius: 4px;
+}
+
+.pgantt-timeline::-webkit-scrollbar-thumb {
+  background: var(--c-border);
+  border-radius: 4px;
+}
+
+.pgantt-timeline::-webkit-scrollbar-thumb:hover {
+  background: var(--c-text-muted);
+}
+
+.pgantt-sidebar-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.pgantt-sidebar-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.pgantt-sidebar-body::-webkit-scrollbar-thumb {
+  background: var(--c-border);
+  border-radius: 3px;
+}

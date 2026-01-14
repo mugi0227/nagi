@@ -1,11 +1,11 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { AnimatePresence, motion } from 'framer-motion';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
-import { motion, AnimatePresence } from 'framer-motion';
-import { Sidebar } from './Sidebar';
-import { ChatWindow } from '../chat/ChatWindow';
-import { ChatWidget } from '../chat/ChatWidget';
 import { userStorage } from '../../utils/userStorage';
+import { ChatWidget } from '../chat/ChatWidget';
+import { ChatWindow } from '../chat/ChatWindow';
 import './AppLayout.css';
+import { Sidebar } from './Sidebar';
 
 const CHAT_STORAGE_KEY = 'secretary_chat_state';
 
@@ -23,6 +23,7 @@ export function AppLayout() {
 
   const [isChatOpen, setIsChatOpen] = useState(() => loadChatState().isOpen);
   const [chatWidth, setChatWidth] = useState(() => loadChatState().width);
+  const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
   const isResizing = useRef(false);
 
@@ -75,6 +76,20 @@ export function AppLayout() {
     };
   }, []);
 
+  useEffect(() => {
+    const handleOpenChat = (e: CustomEvent<{ message?: string }>) => {
+      if (e.detail?.message) {
+        setPendingMessage(e.detail.message);
+      }
+      setIsChatOpen(true);
+    };
+
+    window.addEventListener('secretary:chat-open', handleOpenChat as EventListener);
+    return () => {
+      window.removeEventListener('secretary:chat-open', handleOpenChat as EventListener);
+    };
+  }, []);
+
   const toggleChat = () => setIsChatOpen(!isChatOpen);
 
   return (
@@ -105,7 +120,12 @@ export function AppLayout() {
             className="chat-sidebar"
             style={{ width: `${chatWidth}px` }}
           >
-            <ChatWindow isOpen={isChatOpen} onClose={() => setIsChatOpen(false)} />
+            <ChatWindow
+              isOpen={isChatOpen}
+              onClose={() => setIsChatOpen(false)}
+              initialMessage={pendingMessage}
+              onInitialMessageConsumed={() => setPendingMessage(null)}
+            />
           </aside>
         </>
       )}

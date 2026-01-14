@@ -157,6 +157,8 @@ async def create_task(
 async def list_tasks(
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
+    assignment_repo: TaskAssignmentRepo,
     project_id: Optional[UUID] = Query(None, description="Filter by project ID"),
     status: Optional[str] = Query(None, description="Filter by status"),
     include_done: bool = Query(False, description="Include completed tasks"),
@@ -166,16 +168,65 @@ async def list_tasks(
     offset: int = Query(0, ge=0),
 ):
     """List tasks with optional filters."""
-    tasks = await repo.list(
-        user.id,
-        project_id=project_id,
-        status=status,
-        include_done=include_done,
-        limit=limit,
-        offset=offset,
-    )
+    # If project_id is specified, check membership and use project owner's user_id
+    if project_id:
+        project = await project_repo.get(user.id, project_id)
+        if project:
+            query_user_id = project.user_id  # Use project owner's ID
+            tasks = await repo.list(
+                query_user_id,
+                project_id=project_id,
+                status=status,
+                include_done=include_done,
+                limit=limit,
+                offset=offset,
+            )
+        else:
+            # If project not found/accessible, return empty? Or error?
+            # Existing code defaulted to user.id if project not found?
+            # "if project: query_user_id = project.user_id"
+            # If project_id provided but not found, repo.list runs with user.id + project_id filter.
+            # Which returns nothing. So existing behavior is fine.
+            tasks = await repo.list(
+                user.id,
+                project_id=project_id,
+                status=status,
+                include_done=include_done,
+                limit=limit,
+                offset=offset,
+            )
+    else:
+        # My Tasks mode (No project_id) - Show Assigned + Personal
+        # 1. Assigned
+        assignments = await assignment_repo.list_for_assignee(user.id)
+        assigned_ids = [a.task_id for a in assignments]
+        assigned_tasks = await repo.get_many(assigned_ids)
 
-    # Apply meeting filters in-memory (simple KISS approach)
+        # 2. Personal (Inbox)
+        # Fetching more than limit to ensure we have enough after merge/filter
+        personal_tasks = await repo.list_personal_tasks(
+            user.id, status=status, limit=limit + 100, offset=0
+        )
+        
+        # Merge
+        all_tasks_map = {t.id: t for t in personal_tasks}
+        for t in assigned_tasks:
+            # Apply filters to assigned tasks manually if needed?
+            if status and t.status.value != status:
+                continue
+            if not include_done and t.status.value == "done": # assuming "done" value
+                continue
+            all_tasks_map[t.id] = t
+        
+        tasks = list(all_tasks_map.values())
+        
+        # Sort by created_at desc (default) or whatever
+        tasks.sort(key=lambda t: t.created_at, reverse=True)
+        
+        # Manual pagination
+        tasks = tasks[offset : offset + limit]
+
+    # Apply meeting filters in-memory
     if only_meetings:
         tasks = [t for t in tasks if t.is_fixed_time]
     elif exclude_meetings:
@@ -287,15 +338,25 @@ async def get_task(
     task_id: UUID,
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
 ):
     """Get a task by ID."""
+    # First try personal access (Inbox tasks)
     task = await repo.get(user.id, task_id)
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found",
-        )
-    return task
+    if task:
+        return task
+    
+    # If not found, try to find via projects user has access to
+    projects = await project_repo.list(user.id, limit=1000)
+    for project in projects:
+        task = await repo.get(user.id, task_id, project_id=project.id)
+        if task:
+            return task
+    
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Task {task_id} not found",
+    )
 
 
 @router.patch("/{task_id}", response_model=Task)
@@ -304,22 +365,35 @@ async def update_task(
     update: TaskUpdate,
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
 ):
     """Update a task."""
+    # Find task - try personal access first, then project-based
+    current_task = await repo.get(user.id, task_id)
+    task_project_id = None
+    
+    if not current_task:
+        # Try to find via projects user has access to
+        projects = await project_repo.list(user.id, limit=1000)
+        for project in projects:
+            current_task = await repo.get(user.id, task_id, project_id=project.id)
+            if current_task:
+                task_project_id = project.id
+                break
+    else:
+        task_project_id = current_task.project_id
+    
+    if not current_task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found",
+        )
+
     # Validate dependencies before updating
     if update.dependency_ids is not None or update.parent_id is not None:
         validator = DependencyValidator(repo)
 
         try:
-            # Get current task to merge with updates
-            current_task = await repo.get(user.id, task_id)
-            if not current_task:
-                raise HTTPException(
-                    status_code=status.HTTP_404_NOT_FOUND,
-                    detail=f"Task {task_id} not found",
-                )
-
-            # Use updated values if provided, otherwise use current values
             new_dependency_ids = (
                 update.dependency_ids
                 if update.dependency_ids is not None
@@ -331,7 +405,6 @@ async def update_task(
                 else current_task.parent_id
             )
 
-            # Validate dependencies
             if new_dependency_ids:
                 await validator.validate_dependencies(
                     task_id,
@@ -340,7 +413,6 @@ async def update_task(
                     new_parent_id,
                 )
 
-            # Validate parent-child consistency
             if update.parent_id is not None:
                 await validator.validate_parent_child_consistency(
                     task_id,
@@ -355,7 +427,7 @@ async def update_task(
             )
 
     try:
-        return await repo.update(user.id, task_id, update)
+        return await repo.update(user.id, task_id, update, project_id=task_project_id)
     except NotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -383,6 +455,7 @@ async def breakdown_task(
     task_id: UUID,
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
     memory_repo: MemoryRepo,
     llm_provider: LLMProvider,
     request: BreakdownRequest = BreakdownRequest(),
@@ -396,16 +469,37 @@ async def breakdown_task(
     Optionally creates subtasks from the breakdown.
     """
     try:
+        # Check permissions (Owner or Project Member)
+        task = await repo.get(user.id, task_id)
+        if not task:
+            # Not owner, check if member of project
+            tasks = await repo.get_many([task_id])
+            if tasks:
+                t = tasks[0]
+                if t.project_id:
+                    # Check project access
+                    project = await project_repo.get(user.id, t.project_id)
+                    if project:
+                        task = t
+        
+        if not task:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Task {task_id} not found",
+            )
+
         service = PlannerService(
             llm_provider=llm_provider,
             task_repo=repo,
             memory_repo=memory_repo,
+            project_repo=project_repo,
         )
         return await service.breakdown_task(
             user_id=user.id,
             task_id=task_id,
             create_subtasks=request.create_subtasks,
             instruction=request.instruction,
+            task_obj=task,
         )
     except NotFoundError as e:
         raise HTTPException(

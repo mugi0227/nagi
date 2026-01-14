@@ -120,6 +120,13 @@ export function DashboardPage() {
       }
     }
 
+    // Optimistic update for modal display
+    if (selectedTask?.id === taskId) {
+      setSelectedTask(prev => prev ? { ...prev, status: newStatus } : null);
+    } else if (openedParentTask?.id === taskId) {
+      setOpenedParentTask(prev => prev ? { ...prev, status: newStatus } : null);
+    }
+
     await updateTask(taskId, { status: newStatus });
     refetchTasks();
   };

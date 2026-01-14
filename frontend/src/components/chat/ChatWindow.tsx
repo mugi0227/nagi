@@ -1,19 +1,21 @@
-import { useEffect, useRef, useState } from 'react';
-import { FaRobot, FaPlus, FaXmark, FaComments, FaImage, FaClock } from 'react-icons/fa6';
 import { useQuery } from '@tanstack/react-query';
-import { ChatMessage } from './ChatMessage';
-import { ChatInput } from './ChatInput';
-import { useChat } from '../../hooks/useChat';
+import { useEffect, useRef, useState } from 'react';
+import { FaClock, FaComments, FaImage, FaPlus, FaRobot, FaXmark } from 'react-icons/fa6';
 import { tasksApi } from '../../api/tasks';
 import type { Task } from '../../api/types';
+import { useChat } from '../../hooks/useChat';
+import { ChatInput } from './ChatInput';
+import { ChatMessage } from './ChatMessage';
 import './ChatWindow.css';
 
 interface ChatWindowProps {
   isOpen: boolean;
   onClose: () => void;
+  initialMessage?: string | null;
+  onInitialMessageConsumed?: () => void;
 }
 
-export function ChatWindow({ isOpen, onClose }: ChatWindowProps) {
+export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageConsumed }: ChatWindowProps) {
   const {
     messages,
     sendMessageStream,
@@ -51,6 +53,15 @@ export function ChatWindow({ isOpen, onClose }: ChatWindowProps) {
       fetchSessions();
     }
   }, [isHistoryOpen, fetchSessions]);
+
+  useEffect(() => {
+    if (initialMessage && isOpen) {
+      sendMessageStream(initialMessage);
+      if (onInitialMessageConsumed) {
+        onInitialMessageConsumed();
+      }
+    }
+  }, [initialMessage, isOpen, sendMessageStream, onInitialMessageConsumed]);
 
   const processImageFile = (file: File) => {
     // Check file size (max 5MB)
@@ -131,104 +142,104 @@ export function ChatWindow({ isOpen, onClose }: ChatWindowProps) {
   };
 
   return (
-      <div
-        className={`chat-window ${isDragging ? 'dragging' : ''}`}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-      >
-        {isDragging && (
-          <div className="chat-drag-overlay">
-            <div className="drag-overlay-content">
-              <FaImage size={64} />
-              <p>画像をドロップしてください</p>
-            </div>
+    <div
+      className={`chat-window ${isDragging ? 'dragging' : ''}`}
+      onDragEnter={handleDragEnter}
+      onDragLeave={handleDragLeave}
+      onDragOver={handleDragOver}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div className="chat-drag-overlay">
+          <div className="drag-overlay-content">
+            <FaImage size={64} />
+            <p>画像をドロップしてください</p>
           </div>
-        )}
-        <div className="chat-header">
-          <div className="chat-title">
-            <FaRobot />
-            <span>Secretary Partner</span>
-          </div>
-          <div className="chat-header-actions">
-            <button className="header-btn" onClick={() => setIsHistoryOpen((prev) => !prev)} title="History">
-              <FaClock />
-            </button>
-            <button className="header-btn" onClick={clearChat} title="New chat">
-              <FaPlus />
-            </button>
-            <button className="header-btn close-btn" onClick={onClose} title="Close">
+        </div>
+      )}
+      <div className="chat-header">
+        <div className="chat-title">
+          <FaRobot />
+          <span>Secretary Partner</span>
+        </div>
+        <div className="chat-header-actions">
+          <button className="header-btn" onClick={() => setIsHistoryOpen((prev) => !prev)} title="History">
+            <FaClock />
+          </button>
+          <button className="header-btn" onClick={clearChat} title="New chat">
+            <FaPlus />
+          </button>
+          <button className="header-btn close-btn" onClick={onClose} title="Close">
+            <FaXmark />
+          </button>
+        </div>
+      </div>
+
+      {isHistoryOpen && (
+        <div className="chat-history-panel">
+          <div className="history-panel-header">
+            <span>Recent Chats</span>
+            <button className="header-btn close-btn" onClick={() => setIsHistoryOpen(false)} title="Close history">
               <FaXmark />
             </button>
           </div>
-        </div>
-
-        {isHistoryOpen && (
-          <div className="chat-history-panel">
-            <div className="history-panel-header">
-              <span>Recent Chats</span>
-              <button className="header-btn close-btn" onClick={() => setIsHistoryOpen(false)} title="Close history">
-                <FaXmark />
+          <div className="history-panel-list">
+            {(isLoadingSessions || isLoadingHistory) && (
+              <div className="history-panel-empty">Loading history...</div>
+            )}
+            {!isLoadingSessions && !isLoadingHistory && sessions.length === 0 && (
+              <div className="history-panel-empty">No sessions yet.</div>
+            )}
+            {!isLoadingSessions && !isLoadingHistory && sessions.map((session) => (
+              <button
+                key={session.session_id}
+                className={`history-panel-item ${session.session_id === sessionId ? 'active' : ''}`}
+                onClick={() => handleSelectSession(session.session_id)}
+                type="button"
+                disabled={isLoadingHistory}
+              >
+                <span className="history-panel-title">{session.title || 'New Chat'}</span>
+                <span className="history-panel-date">{formatSessionDate(session.updated_at)}</span>
               </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="chat-history">
+        {messages.length === 0 && (
+          <div className="chat-empty">
+            <div className="empty-icon">
+              <FaComments />
             </div>
-            <div className="history-panel-list">
-              {(isLoadingSessions || isLoadingHistory) && (
-                <div className="history-panel-empty">Loading history...</div>
-              )}
-              {!isLoadingSessions && !isLoadingHistory && sessions.length === 0 && (
-                <div className="history-panel-empty">No sessions yet.</div>
-              )}
-              {!isLoadingSessions && !isLoadingHistory && sessions.map((session) => (
-                <button
-                  key={session.session_id}
-                  className={`history-panel-item ${session.session_id === sessionId ? 'active' : ''}`}
-                  onClick={() => handleSelectSession(session.session_id)}
-                  type="button"
-                  disabled={isLoadingHistory}
-                >
-                  <span className="history-panel-title">{session.title || 'New Chat'}</span>
-                  <span className="history-panel-date">{formatSessionDate(session.updated_at)}</span>
-                </button>
-              ))}
-            </div>
+            <p className="empty-title">会話を始めましょう</p>
+            <p className="empty-hint">
+              何か頭にあることを書き出しますか？それともタスクの相談をしますか？
+            </p>
           </div>
         )}
-
-        <div className="chat-history">
-          {messages.length === 0 && (
-            <div className="chat-empty">
-              <div className="empty-icon">
-                <FaComments />
-              </div>
-              <p className="empty-title">会話を始めましょう</p>
-              <p className="empty-hint">
-                何か頭にあることを書き出しますか？それともタスクの相談をしますか？
-              </p>
-            </div>
-          )}
-          {messages.map((message) => (
-            <ChatMessage
-              key={message.id}
-              role={message.role}
-              content={message.content}
-              timestamp={message.timestamp}
-              toolCalls={message.toolCalls}
-              proposals={message.proposals}
-              meetingTasks={meetingTasks}
-              isStreaming={message.isStreaming}
-              imageUrl={message.imageUrl}
-            />
-          ))}
-          <div ref={messagesEndRef} />
-        </div>
-
-        <ChatInput
-          onSend={sendMessageStream}
-          disabled={isLoading}
-          externalImage={draggedImage}
-          onImageClear={() => setDraggedImage(null)}
-        />
+        {messages.map((message) => (
+          <ChatMessage
+            key={message.id}
+            role={message.role}
+            content={message.content}
+            timestamp={message.timestamp}
+            toolCalls={message.toolCalls}
+            proposals={message.proposals}
+            meetingTasks={meetingTasks}
+            isStreaming={message.isStreaming}
+            imageUrl={message.imageUrl}
+          />
+        ))}
+        <div ref={messagesEndRef} />
       </div>
+
+      <ChatInput
+        onSend={sendMessageStream}
+        disabled={isLoading}
+        externalImage={draggedImage}
+        onImageClear={() => setDraggedImage(null)}
+      />
+    </div>
   );
 }

@@ -48,3 +48,8 @@ class IUserRepository(ABC):
     async def update(self, user_id: UUID, update: UserUpdate) -> UserAccount:
         """Update user profile or credentials."""
         pass
+
+    @abstractmethod
+    async def search(self, query: str, limit: int = 10) -> list[UserAccount]:
+        """Search users by username or email (partial match)."""
+        pass

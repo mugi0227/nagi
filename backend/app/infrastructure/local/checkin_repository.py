@@ -60,11 +60,10 @@ class SqliteCheckinRepository(ICheckinRepository):
         start_date: date | None = None,
         end_date: date | None = None,
     ) -> list[Checkin]:
+        """List check-ins for a project (project-based access)."""
         async with self._session_factory() as session:
-            conditions = [
-                CheckinORM.user_id == user_id,
-                CheckinORM.project_id == str(project_id),
-            ]
+            # Project-based access: filter by project_id only
+            conditions = [CheckinORM.project_id == str(project_id)]
             if member_user_id:
                 conditions.append(CheckinORM.member_user_id == member_user_id)
             if start_date:

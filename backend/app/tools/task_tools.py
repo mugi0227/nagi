@@ -75,15 +75,23 @@ class UpdateTaskInput(BaseModel):
     task_id: str = Field(..., description="タスクID（UUID文字列）")
     title: Optional[str] = Field(None, description="タスクのタイトル")
     description: Optional[str] = Field(None, description="タスクの詳細説明")
+    project_id: Optional[str] = Field(None, description="プロジェクトID（UUID文字列）")
+    phase_id: Optional[str] = Field(None, description="フェーズID（UUID文字列）")
     status: Optional[str] = Field(None, description="ステータス (TODO/IN_PROGRESS/WAITING/DONE)")
     importance: Optional[Priority] = Field(None, description="重要度")
     urgency: Optional[Priority] = Field(None, description="緊急度")
     energy_level: Optional[EnergyLevel] = Field(None, description="必要エネルギー (HIGH/MEDIUM/LOW)")
-    progress: Optional[int] = Field(None, ge=0, le=100, description="進捗率（0-100%）")
+    estimated_minutes: Optional[int] = Field(None, ge=1, le=480, description="見積もり時間（分）")
+    due_date: Optional[str] = Field(None, description="期限（ISO形式: YYYY-MM-DDTHH:MM:SS）")
     start_not_before: Optional[str] = Field(
         None,
         description="着手可能日時（ISO形式: YYYY-MM-DDTHH:MM:SS）",
     )
+    parent_id: Optional[str] = Field(None, description="親タスクID（UUID文字列、サブタスク化/解除）")
+    order_in_parent: Optional[int] = Field(None, ge=1, description="親タスク内での順序")
+    dependency_ids: Optional[list[str]] = Field(None, description="依存タスクIDリスト（UUID文字列）")
+    progress: Optional[int] = Field(None, ge=0, le=100, description="進捗率（0-100%）")
+    source_capture_id: Optional[str] = Field(None, description="元Capture ID（UUID文字列）")
     # Meeting fields
     is_fixed_time: Optional[bool] = Field(None, description="会議・固定時間イベントの場合true")
     start_time: Optional[str] = Field(None, description="開始時刻（ISO形式）")
@@ -124,6 +132,7 @@ class CreateMeetingInput(BaseModel):
     description: Optional[str] = Field(None, description="会議の目的・議題")
     meeting_notes: Optional[str] = Field(None, description="議事録・メモ")
     project_id: Optional[str] = Field(None, description="プロジェクトID（UUID文字列）")
+    recurring_meeting_id: Optional[str] = Field(None, description="定例会議ID（定例から生成する場合）")
 
 
 class BreakdownTaskInput(BaseModel):
@@ -444,16 +453,57 @@ async def update_task(
     """
     task_id = UUID(input_data.task_id)
 
-    # Parse meeting times if provided
-    start_time = None
-    end_time = None
-    if input_data.start_time and input_data.end_time:
+    # Parse project_id if provided
+    project_id = None
+    if input_data.project_id:
         try:
-            start_time = datetime.fromisoformat(input_data.start_time.replace("Z", "+00:00"))
-            end_time = datetime.fromisoformat(input_data.end_time.replace("Z", "+00:00"))
+            project_id = UUID(input_data.project_id)
+        except ValueError:
+            pass  # Invalid UUID format, ignore
+
+    # Parse phase_id if provided
+    phase_id = None
+    if input_data.phase_id:
+        try:
+            phase_id = UUID(input_data.phase_id)
+        except ValueError:
+            pass  # Invalid UUID format, ignore
+
+    # Parse parent_id if provided
+    parent_id = None
+    if input_data.parent_id:
+        try:
+            parent_id = UUID(input_data.parent_id)
+        except ValueError:
+            pass  # Invalid UUID format, ignore
+
+    # Parse source_capture_id if provided
+    source_capture_id = None
+    if input_data.source_capture_id:
+        try:
+            source_capture_id = UUID(input_data.source_capture_id)
+        except ValueError:
+            pass  # Invalid UUID format, ignore
+
+    # Parse dependency_ids if provided
+    dependency_ids = None
+    if input_data.dependency_ids is not None:
+        dependency_ids = []
+        for dep_id_str in input_data.dependency_ids:
+            try:
+                dependency_ids.append(UUID(dep_id_str))
+            except (ValueError, AttributeError):
+                pass  # Invalid UUID format, skip this dependency
+
+    # Parse due_date if provided
+    due_date = None
+    if input_data.due_date:
+        try:
+            due_date = datetime.fromisoformat(input_data.due_date.replace("Z", "+00:00"))
         except ValueError:
             pass  # Invalid date format, ignore
 
+    # Parse start_not_before if provided
     start_not_before = None
     if input_data.start_not_before:
         try:
@@ -461,15 +511,37 @@ async def update_task(
         except ValueError:
             pass  # Invalid date format, ignore
 
+    # Parse meeting times if provided
+    start_time = None
+    end_time = None
+    if input_data.start_time:
+        try:
+            start_time = datetime.fromisoformat(input_data.start_time.replace("Z", "+00:00"))
+        except ValueError:
+            pass  # Invalid date format, ignore
+    if input_data.end_time:
+        try:
+            end_time = datetime.fromisoformat(input_data.end_time.replace("Z", "+00:00"))
+        except ValueError:
+            pass  # Invalid date format, ignore
+
     update_data = TaskUpdate(
         title=input_data.title,
         description=input_data.description,
+        project_id=project_id,
+        phase_id=phase_id,
         status=input_data.status,
         importance=input_data.importance,
         urgency=input_data.urgency,
         energy_level=input_data.energy_level,
-        progress=input_data.progress,
+        estimated_minutes=input_data.estimated_minutes,
+        due_date=due_date,
         start_not_before=start_not_before,
+        parent_id=parent_id,
+        order_in_parent=input_data.order_in_parent,
+        dependency_ids=dependency_ids,
+        progress=input_data.progress,
+        source_capture_id=source_capture_id,
         # Meeting fields
         is_fixed_time=input_data.is_fixed_time,
         start_time=start_time,
@@ -719,6 +791,9 @@ async def create_meeting(
     if existing:
         return existing.model_dump(mode="json")
 
+    # Parse recurring_meeting_id if provided
+    recurring_meeting_id = UUID(input_data.recurring_meeting_id) if input_data.recurring_meeting_id else None
+
     task_data = TaskCreate(
         title=input_data.title,
         description=input_data.description,
@@ -730,6 +805,7 @@ async def create_meeting(
         attendees=input_data.attendees,
         meeting_notes=input_data.meeting_notes,
         project_id=project_id,
+        recurring_meeting_id=recurring_meeting_id,
         importance=Priority.HIGH,  # 会議は重要度HIGH（変更不可）
         urgency=Priority.HIGH,      # 緊急度HIGH（リスケ不可）
         energy_level=EnergyLevel.LOW,  # 受動的参加
@@ -905,18 +981,26 @@ def create_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
 def update_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
     """Create ADK tool for updating tasks."""
     async def _tool(input_data: dict) -> dict:
-        """update_task: 既存のタスクを更新します（タイトル、説明、ステータス、進捗率等）。
+        """update_task: 既存のタスクを更新します（タイトル、説明、ステータス、進捗率、日付等）。
 
         Parameters:
             task_id (str): タスクID（UUID文字列、必須）
             title (str, optional): タスクのタイトル
             description (str, optional): タスクの詳細説明
+            project_id (str, optional): プロジェクトID（UUID文字列、タスクを別プロジェクトに移動）
+            phase_id (str, optional): フェーズID（UUID文字列、プロジェクト内での分類）
             status (str, optional): ステータス (TODO/IN_PROGRESS/WAITING/DONE)
             importance (str, optional): 重要度 (HIGH/MEDIUM/LOW)
             urgency (str, optional): 緊急度 (HIGH/MEDIUM/LOW)
-            energy_level (str, optional): 必要エネルギー (HIGH/LOW)
+            energy_level (str, optional): 必要エネルギー (HIGH/MEDIUM/LOW)
+            estimated_minutes (int, optional): 見積もり時間（分、1-480）
+            due_date (str, optional): 期限（ISO形式: YYYY-MM-DDTHH:MM:SS）
+            start_not_before (str, optional): 着手可能日時（ISO形式: YYYY-MM-DDTHH:MM:SS）
+            parent_id (str, optional): 親タスクID（UUID文字列、サブタスク化/解除）
+            order_in_parent (int, optional): 親タスク内での順序（1から始まる整数）
+            dependency_ids (list[str], optional): 依存タスクIDリスト（UUID文字列のリスト）
             progress (int, optional): 進捗率（0-100%）。タスクの完成度を設定
-            start_not_before (str, optional): ???????ISO???
+            source_capture_id (str, optional): 元Capture ID（UUID文字列）
             is_fixed_time (bool, optional): 会議・固定時間イベントの場合true
             start_time (str, optional): 開始時刻（ISO形式）
             end_time (str, optional): 終了時刻（ISO形式）

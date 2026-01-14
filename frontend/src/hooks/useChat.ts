@@ -1,19 +1,19 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { chatApi } from '../api/chat';
-import { userStorage } from '../utils/userStorage';
 import type {
+  ChatHistoryMessage,
+  ChatMode,
   ChatRequest,
   ChatResponse,
-  ChatMode,
   ChatSession,
-  ChatHistoryMessage,
-  TaskCreate,
-  ProjectCreate,
   MemoryCreate,
-  TaskAssignmentProposal,
   PhaseBreakdownProposal,
+  ProjectCreate,
+  TaskAssignmentProposal,
+  TaskCreate,
 } from '../api/types';
+import { userStorage } from '../utils/userStorage';
 
 export interface ToolCall {
   id: string;
@@ -37,9 +37,9 @@ export interface Message {
   content: string;
   timestamp: Date;
   toolCalls?: ToolCall[];
-  proposals?: ProposalInfo[]; // AI提案リスト
+  proposals?: ProposalInfo[];
   isStreaming?: boolean;
-  imageUrl?: string;  // For image attachments
+  imageUrl?: string;
 }
 
 const SESSION_STORAGE_KEY = 'chat_session_id';
@@ -68,7 +68,6 @@ export function useChat() {
   const mutation = useMutation({
     mutationFn: (request: ChatRequest) => chatApi.sendMessage(request),
     onSuccess: (response: ChatResponse) => {
-      // Add assistant message
       setMessages((prev) => [
         ...prev,
         {
@@ -79,7 +78,6 @@ export function useChat() {
         },
       ]);
 
-      // Update session ID
       if (response.session_id) {
         setSessionId(response.session_id);
       }
@@ -159,7 +157,6 @@ export function useChat() {
 
   const sendMessageStream = useCallback(
     async (text: string, imageBase64?: string, mode?: ChatMode) => {
-      // Add user message
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: 'user',
@@ -169,7 +166,6 @@ export function useChat() {
       };
       setMessages((prev) => [...prev, userMessage]);
 
-      // Create assistant message placeholder
       const assistantMessageId = crypto.randomUUID();
       const assistantMessage: Message = {
         id: assistantMessageId,
@@ -185,10 +181,8 @@ export function useChat() {
       setIsStreaming(true);
 
       try {
-        // Get proposal mode from user-scoped storage
         const proposalMode = userStorage.get('aiProposalMode') === 'true';
 
-        // Stream response
         for await (const chunk of chatApi.streamMessage({
           text,
           image_base64: imageBase64,
@@ -198,72 +192,68 @@ export function useChat() {
         })) {
           switch (chunk.chunk_type) {
             case 'tool_start':
-              // Add new tool call
               setMessages((prev) =>
                 prev.map((msg) =>
                   msg.id === assistantMessageId
                     ? {
-                        ...msg,
-                        toolCalls: [
-                          ...(msg.toolCalls || []),
-                          {
-                            id: crypto.randomUUID(),
-                            name: chunk.tool_name || 'unknown',
-                            args: chunk.tool_args,
-                            status: 'running' as const,
-                          },
-                        ],
-                      }
+                      ...msg,
+                      toolCalls: [
+                        ...(msg.toolCalls || []),
+                        {
+                          id: crypto.randomUUID(),
+                          name: chunk.tool_name || 'unknown',
+                          args: chunk.tool_args,
+                          status: 'running' as const,
+                        },
+                      ],
+                    }
                     : msg
                 )
               );
               break;
 
             case 'tool_end':
-              // Update tool call with result
               setMessages((prev) =>
                 prev.map((msg) =>
                   msg.id === assistantMessageId
                     ? {
-                        ...msg,
-                        toolCalls: msg.toolCalls?.map((tc) =>
-                          tc.name === chunk.tool_name && tc.status === 'running'
-                            ? {
-                                ...tc,
-                                result: chunk.tool_result,
-                                status: 'completed' as const,
-                              }
-                            : tc
-                        ),
-                      }
+                      ...msg,
+                      toolCalls: msg.toolCalls?.map((tc) =>
+                        tc.name === chunk.tool_name && tc.status === 'running'
+                          ? {
+                            ...tc,
+                            result: chunk.tool_result,
+                            status: 'completed' as const,
+                          }
+                          : tc
+                      ),
+                    }
                     : msg
                 )
               );
               break;
 
             case 'text':
-              // Append text character by character
               setMessages((prev) =>
                 prev.map((msg) =>
                   msg.id === assistantMessageId
                     ? {
-                        ...msg,
-                        content: msg.content + (chunk.content || ''),
-                      }
+                      ...msg,
+                      content: msg.content + (chunk.content || ''),
+                    }
                     : msg
                 )
               );
               break;
 
             case 'done':
-              // Finalize message
               setMessages((prev) =>
                 prev.map((msg) =>
                   msg.id === assistantMessageId
                     ? {
-                        ...msg,
-                        isStreaming: false,
-                      }
+                      ...msg,
+                      isStreaming: false,
+                    }
                     : msg
                 )
               );
@@ -272,14 +262,13 @@ export function useChat() {
                 setSessionId(chunk.session_id);
               }
 
-              // Invalidate queries to refresh data
               queryClient.invalidateQueries({ queryKey: ['tasks'] });
               queryClient.invalidateQueries({ queryKey: ['top3'] });
               queryClient.invalidateQueries({ queryKey: ['projects'] });
+              queryClient.invalidateQueries({ queryKey: ['meeting-agendas'] });
               break;
 
             case 'proposal':
-              // Add proposal to message
               if (chunk.proposal_id && chunk.proposal_type && chunk.payload) {
                 const proposalInfo: ProposalInfo = {
                   id: crypto.randomUUID(),
@@ -292,12 +281,12 @@ export function useChat() {
                   prev.map((msg) =>
                     msg.id === assistantMessageId
                       ? {
-                          ...msg,
-                          proposals: [
-                            ...(msg.proposals || []),
-                            proposalInfo,
-                          ],
-                        }
+                        ...msg,
+                        proposals: [
+                          ...(msg.proposals || []),
+                          proposalInfo,
+                        ],
+                      }
                       : msg
                   )
                 );
@@ -305,15 +294,14 @@ export function useChat() {
               break;
 
             case 'error':
-              // Show error
               setMessages((prev) =>
                 prev.map((msg) =>
                   msg.id === assistantMessageId
                     ? {
-                        ...msg,
-                        content: chunk.content || 'エラーが発生しました',
-                        isStreaming: false,
-                      }
+                      ...msg,
+                      content: chunk.content || 'エラーが発生しました',
+                      isStreaming: false,
+                    }
                     : msg
                 )
               );
@@ -326,10 +314,10 @@ export function useChat() {
           prev.map((msg) =>
             msg.id === assistantMessageId
               ? {
-                  ...msg,
-                  content: 'エラーが発生しました',
-                  isStreaming: false,
-                }
+                ...msg,
+                content: 'エラーが発生しました',
+                isStreaming: false,
+              }
               : msg
           )
         );
@@ -342,22 +330,20 @@ export function useChat() {
 
   const sendMessage = useCallback(
     (text: string, mode?: ChatMode, imageUrl?: string) => {
-      // Add user message
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: 'user',
         content: text,
         timestamp: new Date(),
-        imageUrl,  // Include image URL in message
+        imageUrl,
       };
       setMessages((prev) => [...prev, userMessage]);
 
-      // Send to API
       mutation.mutate({
         text,
         mode,
         session_id: sessionId,
-        image_url: imageUrl,  // Send image URL to API
+        image_url: imageUrl,
       });
     },
     [mutation, sessionId]

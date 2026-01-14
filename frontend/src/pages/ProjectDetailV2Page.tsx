@@ -1,19 +1,13 @@
-﻿import { useEffect, useMemo, useState } from 'react';
-import type { ReactElement } from 'react';
+﻿import type { ReactElement } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { FaChartBar, FaColumns, FaStream, FaThLarge, FaUsers } from 'react-icons/fa';
 import { useNavigate, useParams } from 'react-router-dom';
-import { getProject, projectsApi } from '../api/projects';
 import { memoriesApi } from '../api/memories';
 import { milestonesApi } from '../api/milestones';
 import { phasesApi } from '../api/phases';
-import { tasksApi } from '../api/tasks';
+import { getProject, projectsApi } from '../api/projects';
 import { scheduleSnapshotsApi } from '../api/scheduleSnapshots';
-import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
-import { ProjectTasksView } from '../components/projects/ProjectTasksView';
-import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
-import { TaskFormModal } from '../components/tasks/TaskFormModal';
-import { ProjectGanttContent } from '../components/gantt/ProjectGanttContent';
-import { useTasks } from '../hooks/useTasks';
-import { FaChartBar, FaColumns, FaStream, FaThLarge, FaUsers } from 'react-icons/fa';
+import { tasksApi } from '../api/tasks';
 import type {
   Blocker,
   Checkin,
@@ -25,16 +19,26 @@ import type {
   ProjectKpiMetric,
   ProjectMember,
   ProjectWithTaskCount,
+  ScheduleDiff,
+  ScheduleSnapshot,
   Task,
   TaskAssignment,
   TaskStatus,
   TaskUpdate,
-  ScheduleSnapshot,
-  ScheduleDiff,
 } from '../api/types';
+import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
+import { ProjectGanttChart } from '../components/gantt/ProjectGanttChart';
+import { MeetingsTab } from '../components/meetings/MeetingsTab';
+import { ProjectTasksView } from '../components/projects/ProjectTasksView';
+import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
+import { TaskFormModal } from '../components/tasks/TaskFormModal';
+import { useCurrentUser } from '../hooks/useCurrentUser';
+import { useTasks } from '../hooks/useTasks';
 import './ProjectDetailV2Page.css';
 
-type TabId = 'dashboard' | 'team' | 'timeline' | 'board' | 'gantt';
+import { FaCalendarAlt } from 'react-icons/fa';
+
+type TabId = 'dashboard' | 'team' | 'timeline' | 'board' | 'gantt' | 'meetings';
 type InviteMode = 'email' | 'user_id';
 
 const TAB_LABELS: Record<TabId, string> = {
@@ -43,6 +47,7 @@ const TAB_LABELS: Record<TabId, string> = {
   timeline: 'タイムライン',
   board: 'ボード',
   gantt: 'ガント',
+  meetings: 'ミーティング',
 };
 
 const TAB_ICONS: Record<TabId, ReactElement> = {
@@ -51,6 +56,7 @@ const TAB_ICONS: Record<TabId, ReactElement> = {
   timeline: <FaStream />,
   board: <FaColumns />,
   gantt: <FaChartBar />,
+  meetings: <FaCalendarAlt />,
 };
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -201,6 +207,7 @@ export function ProjectDetailV2Page() {
     updateTask,
     deleteTask,
   } = useTasks(projectId);
+  const { data: currentUser } = useCurrentUser();
 
   useEffect(() => {
     let isActive = true;
@@ -347,9 +354,20 @@ export function ProjectDetailV2Page() {
   useEffect(() => {
     if (!members.length) return;
     if (selectedCheckinMemberId) return;
+
+    // Default to current user if they are a member
+    if (currentUser) {
+      const me = members.find(m => m.member_user_id === currentUser.id);
+      if (me) {
+        setSelectedCheckinMemberId(me.member_user_id);
+        return;
+      }
+    }
+
+    // Fallback to owner or first member
     const owner = members.find(member => member.role === 'OWNER');
     setSelectedCheckinMemberId(owner?.member_user_id || members[0].member_user_id);
-  }, [members, selectedCheckinMemberId]);
+  }, [members, selectedCheckinMemberId, currentUser]);
 
   useEffect(() => {
     if (members.length === 0) {
@@ -2029,14 +2047,34 @@ export function ProjectDetailV2Page() {
           <div className="project-v2-section">
             <div className="project-v2-grid">
               <div className="project-v2-card">
-                <ProjectGanttContent
+                <ProjectGanttChart
                   tasks={tasks}
+                  phases={phases}
+                  milestones={milestones}
                   baselineDiff={baselineDiff}
+                  onTaskUpdate={async (taskId, updates) => {
+                    try {
+                      await tasksApi.update(taskId, updates);
+                      fetchTasks();
+                    } catch (err) {
+                      console.error('Failed to update task:', err);
+                    }
+                  }}
+                  onPhaseUpdate={async (phaseId, updates) => {
+                    try {
+                      await phasesApi.update(phaseId, updates);
+                      fetchPhases();
+                    } catch (err) {
+                      console.error('Failed to update phase:', err);
+                    }
+                  }}
                 />
               </div>
             </div>
           </div>
         )}
+
+        {activeTab === 'meetings' && <MeetingsTab projectId={projectId!} />}
       </section>
 
       {selectedTask && (

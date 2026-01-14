@@ -87,13 +87,11 @@ class SqliteProjectInvitationRepository(IProjectInvitationRepository):
             return self._orm_to_model(orm) if orm else None
 
     async def list_by_project(self, user_id: str, project_id: UUID) -> list[ProjectInvitation]:
+        """List invitations for a project (project-based access)."""
         async with self._session_factory() as session:
             result = await session.execute(
                 select(ProjectInvitationORM).where(
-                    and_(
-                        ProjectInvitationORM.user_id == user_id,
-                        ProjectInvitationORM.project_id == str(project_id),
-                    )
+                    ProjectInvitationORM.project_id == str(project_id)
                 ).order_by(ProjectInvitationORM.created_at.desc())
             )
             return [self._orm_to_model(orm) for orm in result.scalars().all()]

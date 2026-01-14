@@ -1,7 +1,7 @@
 """
 Recurring meeting repository interface.
 
-Defines the contract for recurring meeting persistence operations.
+Defines contract for recurring meeting persistence operations.
 """
 
 from __future__ import annotations
@@ -44,11 +44,12 @@ class IRecurringMeetingRepository(ABC):
         user_id: str,
         meeting_id: UUID,
         update: RecurringMeetingUpdate,
+        project_id: UUID | None = None,
     ) -> RecurringMeeting:
-        """Update a recurring meeting."""
+        """Update a recurring meeting. If project_id is given, uses project-based access."""
         pass
 
     @abstractmethod
-    async def delete(self, user_id: str, meeting_id: UUID) -> bool:
-        """Delete a recurring meeting."""
+    async def delete(self, user_id: str, meeting_id: UUID, project_id: UUID | None = None) -> bool:
+        """Delete a recurring meeting. If project_id is given, uses project-based access."""
         pass
