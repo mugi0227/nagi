@@ -5,6 +5,7 @@ import { useTheme } from '../../context/ThemeContext';
 import { clearAuthToken, getAuthToken } from '../../api/auth';
 import { SettingsModal } from '../settings/SettingsModal';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
+import nagiIcon from '../../assets/nagi_icon.png';
 import './Sidebar.css';
 
 export function Sidebar() {
@@ -44,7 +45,7 @@ export function Sidebar() {
     <aside className="sidebar">
       <div className="sidebar-logo">
         <img
-          src="/src/assets/nagi_icon.png"
+          src={nagiIcon}
           alt="Nagi AI"
           className="logo-icon-img"
         />

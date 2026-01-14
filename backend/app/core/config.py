@@ -134,6 +134,13 @@ class Settings(BaseSettings):
     # Whisper model size for local development
     WHISPER_MODEL_SIZE: str = "base"  # tiny, base, small, medium, large
 
+    # ===========================================
+    # Input Validation Limits
+    # ===========================================
+    MAX_TEXT_LENGTH: int = 10000
+    MAX_TRANSCRIPTION_LENGTH: int = 10000
+    MAX_IMAGE_ANALYSIS_LENGTH: int = 5000
+
     @property
     def is_gcp(self) -> bool:
         """Check if running in GCP environment."""

@@ -11,7 +11,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.core.config import get_settings
 from app.models.enums import ContentType
+
+settings = get_settings()
 
 
 class CaptureBase(BaseModel):
@@ -22,13 +25,13 @@ class CaptureBase(BaseModel):
         None, max_length=500, description="Cloud Storage URL (AUDIO/IMAGEの場合)"
     )
     raw_text: Optional[str] = Field(
-        None, max_length=100000, description="生テキスト (TEXTの場合)"
+        None, max_length=settings.MAX_TEXT_LENGTH, description="生テキスト (TEXTの場合)"
     )
     transcription: Optional[str] = Field(
-        None, max_length=100000, description="文字起こし結果 (AUDIOの場合)"
+        None, max_length=settings.MAX_TRANSCRIPTION_LENGTH, description="文字起こし結果 (AUDIOの場合)"
     )
     image_analysis: Optional[str] = Field(
-        None, max_length=5000, description="画像解析結果 (IMAGEの場合)"
+        None, max_length=settings.MAX_IMAGE_ANALYSIS_LENGTH, description="画像解析結果 (IMAGEの場合)"
     )
 
 

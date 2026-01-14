@@ -9,13 +9,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.core.config import get_settings
 from app.models.enums import ChatMode
+
+settings = get_settings()
 
 
 class ChatRequest(BaseModel):
     """Request model for chat endpoint."""
 
-    text: Optional[str] = Field(None, max_length=100000, description="テキスト入力")
+    text: Optional[str] = Field(None, max_length=settings.MAX_TEXT_LENGTH, description="テキスト入力")
     audio_url: Optional[str] = Field(None, description="音声ファイルURL")
     image_url: Optional[str] = Field(None, description="画像ファイルURL")
     image_base64: Optional[str] = Field(None, description="Base64エンコードされた画像データ（data:image/...形式）")
