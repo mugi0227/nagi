@@ -16,6 +16,7 @@ interface KanbanBoardProps {
   onAssignMultiple?: (taskId: string, memberUserIds: string[]) => void;
   onBreakdownTask?: (id: string, instruction?: string) => void;
   breakdownTaskId?: string | null;
+  sortBy?: 'default' | 'dueDate';
 }
 
 const COLUMNS: { status: TaskStatus; title: string }[] = [
@@ -37,6 +38,7 @@ export function KanbanBoard({
   onAssignMultiple,
   onBreakdownTask,
   breakdownTaskId,
+  sortBy: _sortBy,
 }: KanbanBoardProps) {
   // Group tasks: parent tasks only (no parent_id)
   const parentTasks = useMemo(() => {

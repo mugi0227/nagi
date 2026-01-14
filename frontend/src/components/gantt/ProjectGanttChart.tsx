@@ -492,6 +492,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
 
     rows.forEach((row, rowIndex) => {
       if (row.type === 'task' && row.dependencyIds && row.bar) {
+        const currentBar = row.bar;
         row.dependencyIds.forEach(depId => {
           const depRowIndex = rowIndexMap.get(depId);
           const depRow = rows.find(r => r.id === depId);
@@ -500,7 +501,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
               fromId: depId,
               toId: row.id,
               fromIndex: depRow.bar.endIndex,
-              toIndex: row.bar.startIndex,
+              toIndex: currentBar.startIndex,
               fromRow: depRowIndex,
               toRow: rowIndex,
             });

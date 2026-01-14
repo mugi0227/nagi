@@ -3,7 +3,7 @@
  */
 
 import React from 'react';
-import { Trash2, Edit2, GripVertical, Clock, CheckCircle2, Circle } from 'lucide-react';
+import { Trash2, Edit2, GripVertical, Clock, CheckCircle2 } from 'lucide-react';
 import type { MeetingAgendaItem } from '../../types/agenda';
 
 interface AgendaItemProps {

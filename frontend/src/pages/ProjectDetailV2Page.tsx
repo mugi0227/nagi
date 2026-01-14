@@ -2055,7 +2055,7 @@ export function ProjectDetailV2Page() {
                   onTaskUpdate={async (taskId, updates) => {
                     try {
                       await tasksApi.update(taskId, updates);
-                      fetchTasks();
+                      refetchTasks();
                     } catch (err) {
                       console.error('Failed to update task:', err);
                     }
@@ -2063,7 +2063,7 @@ export function ProjectDetailV2Page() {
                   onPhaseUpdate={async (phaseId, updates) => {
                     try {
                       await phasesApi.update(phaseId, updates);
-                      fetchPhases();
+                      refreshPhases();
                     } catch (err) {
                       console.error('Failed to update phase:', err);
                     }

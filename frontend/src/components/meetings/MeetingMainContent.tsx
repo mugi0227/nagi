@@ -24,7 +24,7 @@ export function MeetingMainContent({
 
     const dateStr = selectedDate ? getDateStr(selectedDate) : '';
 
-    const { data: agendaItems = [], isLoading: isAgendaLoading } = useQuery({
+    const { data: agendaItems = [] } = useQuery({
         queryKey: ['meeting-agendas', selectedMeeting?.id, dateStr],
         queryFn: () => meetingAgendaApi.listByMeeting(selectedMeeting!.id, dateStr),
         enabled: !!selectedMeeting && !!selectedDate && !!dateStr,

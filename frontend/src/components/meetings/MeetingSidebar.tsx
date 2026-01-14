@@ -10,7 +10,7 @@ interface MeetingSidebarProps {
 }
 
 export function MeetingSidebar({
-    projectId,
+    projectId: _projectId,
     recurringMeetings,
     selectedDate,
     onSelectDate,
