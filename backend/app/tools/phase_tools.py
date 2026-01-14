@@ -376,3 +376,224 @@ def propose_phase_breakdown_tool(
 
     _tool.__name__ = "propose_phase_breakdown"
     return FunctionTool(func=_tool)
+
+
+class ListPhasesInput(BaseModel):
+    """Input for list_phases tool."""
+
+    project_id: str = Field(..., description="プロジェクトID")
+
+
+class GetPhaseInput(BaseModel):
+    """Input for get_phase tool."""
+
+    phase_id: str = Field(..., description="フェーズID")
+
+
+class UpdatePhaseInput(BaseModel):
+    """Input for update_phase tool."""
+
+    phase_id: str = Field(..., description="フェーズID")
+    name: Optional[str] = Field(None, description="フェーズ名")
+    description: Optional[str] = Field(None, description="フェーズの説明")
+    status: Optional[str] = Field(None, description="ステータス (ACTIVE/COMPLETED/ARCHIVED)")
+    order_in_project: Optional[int] = Field(None, ge=1, description="プロジェクト内での順序")
+    start_date: Optional[str] = Field(None, description="開始予定日（ISO形式）")
+    end_date: Optional[str] = Field(None, description="終了予定日（ISO形式）")
+
+
+async def list_phases(
+    user_id: str,
+    phase_repo: IPhaseRepository,
+    input_data: ListPhasesInput,
+) -> dict:
+    """List phases for a project."""
+    try:
+        project_id = UUID(input_data.project_id)
+    except ValueError:
+        return {"error": f"Invalid project ID format: {input_data.project_id}"}
+
+    phases = await phase_repo.list_by_project(user_id, project_id)
+    return {
+        "phases": [phase.model_dump(mode="json") for phase in phases],
+        "count": len(phases),
+    }
+
+
+def list_phases_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionTool:
+    """Create ADK tool for listing phases."""
+
+    async def _tool(input_data: dict) -> dict:
+        """list_phases: 指定されたプロジェクトのフェーズ一覧を取得します。
+
+        このツールは、プロジェクト内のすべてのフェーズを順序付きで取得し、
+        各フェーズのタスク統計情報（総数、完了数、進行中数）も含めて返します。
+        フェーズの概要を把握したい場合や、フェーズごとの進捗状況を確認したい場合に使用してください。
+
+        Parameters:
+            project_id (str): プロジェクトID（UUID形式、必須）
+
+        Returns:
+            dict: {
+                "phases": [
+                    {
+                        "id": "フェーズID",
+                        "name": "フェーズ名",
+                        "description": "説明",
+                        "project_id": "プロジェクトID",
+                        "order_in_project": 順序番号,
+                        "status": "ACTIVE/COMPLETED/ARCHIVED",
+                        "start_date": "開始日（ISO形式）",
+                        "end_date": "終了日（ISO形式）",
+                        "total_tasks": 総タスク数,
+                        "completed_tasks": 完了タスク数,
+                        "in_progress_tasks": 進行中タスク数,
+                        "created_at": "作成日時",
+                        "updated_at": "更新日時"
+                    }
+                ],
+                "count": フェーズ数
+            }
+        """
+        return await list_phases(user_id, phase_repo, ListPhasesInput(**input_data))
+
+    _tool.__name__ = "list_phases"
+    return FunctionTool(func=_tool)
+
+
+async def get_phase(
+    user_id: str,
+    phase_repo: IPhaseRepository,
+    input_data: GetPhaseInput,
+) -> dict:
+    """Get detailed phase information."""
+    try:
+        phase_id = UUID(input_data.phase_id)
+    except ValueError:
+        return {"error": f"Invalid phase ID format: {input_data.phase_id}"}
+
+    phase = await phase_repo.get_by_id(user_id, phase_id)
+    if not phase:
+        return {"error": f"Phase not found: {input_data.phase_id}"}
+
+    return phase.model_dump(mode="json")
+
+
+def get_phase_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionTool:
+    """Create ADK tool for getting phase details."""
+
+    async def _tool(input_data: dict) -> dict:
+        """get_phase: フェーズの詳細情報を取得します。
+
+        特定のフェーズの詳細情報を取得します。フェーズIDを指定して、
+        そのフェーズの名前、説明、ステータス、日付などの情報を確認できます。
+        フェーズを編集する前に現在の状態を確認したい場合などに使用してください。
+
+        Parameters:
+            phase_id (str): フェーズID（UUID形式、必須）
+
+        Returns:
+            dict: {
+                "id": "フェーズID",
+                "name": "フェーズ名",
+                "description": "フェーズの説明",
+                "project_id": "所属プロジェクトID",
+                "user_id": "所有者ユーザーID",
+                "order_in_project": プロジェクト内での順序,
+                "status": "ACTIVE/COMPLETED/ARCHIVED",
+                "start_date": "開始予定日（ISO形式）",
+                "end_date": "終了予定日（ISO形式）",
+                "created_at": "作成日時",
+                "updated_at": "更新日時"
+            }
+
+            エラー時: {"error": "エラーメッセージ"}
+        """
+        return await get_phase(user_id, phase_repo, GetPhaseInput(**input_data))
+
+    _tool.__name__ = "get_phase"
+    return FunctionTool(func=_tool)
+
+
+async def update_phase(
+    user_id: str,
+    phase_repo: IPhaseRepository,
+    input_data: UpdatePhaseInput,
+) -> dict:
+    """Update phase information."""
+    from app.models.phase import PhaseUpdate
+    from app.models.enums import PhaseStatus
+
+    try:
+        phase_id = UUID(input_data.phase_id)
+    except ValueError:
+        return {"error": f"Invalid phase ID format: {input_data.phase_id}"}
+
+    update_fields: dict = {}
+
+    if input_data.name is not None:
+        update_fields["name"] = input_data.name
+    if input_data.description is not None:
+        update_fields["description"] = input_data.description
+    if input_data.status is not None:
+        try:
+            update_fields["status"] = PhaseStatus[input_data.status.upper()]
+        except KeyError:
+            return {"error": f"Invalid status: {input_data.status}. Must be ACTIVE, COMPLETED, or ARCHIVED"}
+    if input_data.order_in_project is not None:
+        update_fields["order_in_project"] = input_data.order_in_project
+    if input_data.start_date is not None:
+        update_fields["start_date"] = _parse_optional_datetime(input_data.start_date)
+    if input_data.end_date is not None:
+        update_fields["end_date"] = _parse_optional_datetime(input_data.end_date)
+
+    if not update_fields:
+        return {"error": "No fields to update"}
+
+    update_model = PhaseUpdate(**update_fields)
+    phase = await phase_repo.update(user_id, phase_id, update_model)
+    return phase.model_dump(mode="json")
+
+
+def update_phase_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionTool:
+    """Create ADK tool for updating phases."""
+
+    async def _tool(input_data: dict) -> dict:
+        """update_phase: 既存フェーズの情報を更新します。
+
+        フェーズの名前、説明、ステータス、順序、日付などを更新できます。
+        更新したいフィールドのみを指定してください（指定しないフィールドは変更されません）。
+        フェーズの状態を変更したり、スケジュールを調整したりする場合に使用します。
+
+        Parameters:
+            phase_id (str): 更新対象のフェーズID（UUID形式、必須）
+            name (str, optional): フェーズ名（最大200文字）
+            description (str, optional): フェーズの説明（最大2000文字）
+            status (str, optional): ステータス。以下のいずれか:
+                - "ACTIVE": アクティブ（進行中）
+                - "COMPLETED": 完了
+                - "ARCHIVED": アーカイブ済み
+            order_in_project (int, optional): プロジェクト内での順序（1以上の整数）
+            start_date (str, optional): 開始予定日（ISO 8601形式、例: "2026-01-15T09:00:00Z"）
+            end_date (str, optional): 終了予定日（ISO 8601形式、例: "2026-02-15T18:00:00Z"）
+
+        Returns:
+            dict: 更新されたフェーズの完全な情報（get_phaseと同じ形式）
+
+            エラー時: {"error": "エラーメッセージ"}
+                - 無効なフェーズID形式
+                - フェーズが見つからない
+                - 無効なステータス値
+                - 更新するフィールドが指定されていない
+
+        Example:
+            # ステータスを完了に変更
+            {"phase_id": "123e4567-e89b-12d3-a456-426614174000", "status": "COMPLETED"}
+
+            # 名前と説明を更新
+            {"phase_id": "123e4567-...", "name": "新しいフェーズ名", "description": "更新された説明"}
+        """
+        return await update_phase(user_id, phase_repo, UpdatePhaseInput(**input_data))
+
+    _tool.__name__ = "update_phase"
+    return FunctionTool(func=_tool)

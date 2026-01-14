@@ -50,6 +50,9 @@ from app.tools import (
     plan_project_phases_tool,
     plan_phase_tasks_tool,
     propose_phase_breakdown_tool,
+    list_phases_tool,
+    get_phase_tool,
+    update_phase_tool,
 )
 
 
@@ -164,6 +167,9 @@ def create_secretary_agent(
             session_id,
             auto_approve,
         ),
+        list_phases_tool(phase_repo, user_id),
+        get_phase_tool(phase_repo, user_id),
+        update_phase_tool(phase_repo, user_id),
     ]
 
     # Create agent

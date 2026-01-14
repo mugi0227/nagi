@@ -40,6 +40,9 @@ from app.tools.phase_tools import (
     plan_project_phases_tool,
     plan_phase_tasks_tool,
     propose_phase_breakdown_tool,
+    list_phases_tool,
+    get_phase_tool,
+    update_phase_tool,
 )
 
 __all__ = [
@@ -72,5 +75,8 @@ __all__ = [
     "plan_project_phases_tool",
     "plan_phase_tasks_tool",
     "propose_phase_breakdown_tool",
+    "list_phases_tool",
+    "get_phase_tool",
+    "update_phase_tool",
 ]
 

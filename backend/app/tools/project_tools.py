@@ -393,7 +393,7 @@ def propose_project_tool(
 ) -> FunctionTool:
     """Create ADK tool for proposing/creating projects (with auto-approve option)."""
     async def _tool(input_data: dict) -> dict:
-        """propose_project: 新しいプロジェクトを作成します。設定に応じて、即座に作成するか、ユーザー承諾を待ちます。
+        """propose_project: 新しいプロジェクトを作成します。
 
         Parameters:
             name (str): プロジェクト名（必須）
@@ -410,7 +410,15 @@ def propose_project_tool(
         Returns:
             dict: プロジェクトID、説明文、または提案ID（auto_approveの設定による）
         """
+        # Debug: Log input_data type
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"propose_project called with input_data type: {type(input_data)}, value: {input_data}")
+
         # Extract proposal_description if provided
+        if not isinstance(input_data, dict):
+            logger.error(f"Expected dict but got {type(input_data)}: {input_data}")
+            raise TypeError(f"input_data must be dict, got {type(input_data)}")
         proposal_desc = input_data.pop("proposal_description", "")
         return await propose_project(
             user_id, session_id, proposal_repo, project_repo, member_repo, llm_provider,
