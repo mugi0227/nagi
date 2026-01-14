@@ -349,6 +349,29 @@ class ChatMessageORM(Base):
     created_at = Column(DateTime, default=datetime.utcnow, index=True)
 
 
+class ScheduleSnapshotORM(Base):
+    """Schedule snapshot ORM model for baseline management."""
+
+    __tablename__ = "schedule_snapshots"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    project_id = Column(String(36), nullable=False, index=True)
+    name = Column(String(200), nullable=False)
+    is_active = Column(Boolean, default=False, index=True)
+    start_date = Column(Date, nullable=False)
+    tasks_json = Column(JSON, nullable=False, default=list)  # List of SnapshotTaskScheduleInfo
+    days_json = Column(JSON, nullable=False, default=list)  # List of SnapshotDayAllocation
+    phase_buffers_json = Column(JSON, nullable=True, default=list)  # List of PhaseBufferInfo
+    total_buffer_minutes = Column(Integer, default=0)
+    consumed_buffer_minutes = Column(Integer, default=0)
+    capacity_hours = Column(Float, default=8.0)
+    capacity_by_weekday = Column(JSON, nullable=True)  # List of 7 floats
+    max_days = Column(Integer, default=60)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
 # ===========================================
 # Database Session Management
 # ===========================================

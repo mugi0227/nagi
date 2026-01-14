@@ -6,10 +6,12 @@ import { memoriesApi } from '../api/memories';
 import { milestonesApi } from '../api/milestones';
 import { phasesApi } from '../api/phases';
 import { tasksApi } from '../api/tasks';
+import { scheduleSnapshotsApi } from '../api/scheduleSnapshots';
 import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
 import { ProjectTasksView } from '../components/projects/ProjectTasksView';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { TaskFormModal } from '../components/tasks/TaskFormModal';
+import { ProjectGanttContent } from '../components/gantt/ProjectGanttContent';
 import { useTasks } from '../hooks/useTasks';
 import { FaChartBar, FaColumns, FaStream, FaThLarge, FaUsers } from 'react-icons/fa';
 import type {
@@ -27,6 +29,8 @@ import type {
   TaskAssignment,
   TaskStatus,
   TaskUpdate,
+  ScheduleSnapshot,
+  ScheduleDiff,
 } from '../api/types';
 import './ProjectDetailV2Page.css';
 
@@ -185,6 +189,10 @@ export function ProjectDetailV2Page() {
   const [isPlanningPhases, setIsPlanningPhases] = useState(false);
   const [capacityDrafts, setCapacityDrafts] = useState<Record<string, string>>({});
   const [capacityActionId, setCapacityActionId] = useState<string | null>(null);
+  const [activeBaseline, setActiveBaseline] = useState<ScheduleSnapshot | null>(null);
+  const [baselineDiff, setBaselineDiff] = useState<ScheduleDiff | null>(null);
+  const [isBaselineLoading, setIsBaselineLoading] = useState(false);
+  const [isCreatingBaseline, setIsCreatingBaseline] = useState(false);
 
   const {
     tasks,
@@ -313,6 +321,29 @@ export function ProjectDetailV2Page() {
     refreshMilestones();
   }, [projectId]);
 
+  // Fetch active baseline and diff
+  useEffect(() => {
+    if (!projectId) return;
+    const fetchBaseline = async () => {
+      setIsBaselineLoading(true);
+      try {
+        const baseline = await scheduleSnapshotsApi.getActive(projectId);
+        setActiveBaseline(baseline);
+        if (baseline) {
+          const diff = await scheduleSnapshotsApi.getDiff(projectId);
+          setBaselineDiff(diff);
+        } else {
+          setBaselineDiff(null);
+        }
+      } catch (err) {
+        console.error('Failed to fetch baseline:', err);
+      } finally {
+        setIsBaselineLoading(false);
+      }
+    };
+    fetchBaseline();
+  }, [projectId]);
+
   useEffect(() => {
     if (!members.length) return;
     if (selectedCheckinMemberId) return;
@@ -348,7 +379,7 @@ export function ProjectDetailV2Page() {
 
   const openBlockerCount = useMemo(() =>
     blockers.filter(blocker => blocker.status === 'OPEN').length
-  , [blockers]);
+    , [blockers]);
 
   const blockedDependencyCount = useMemo(() => {
     if (tasks.length === 0) return 0;
@@ -384,7 +415,7 @@ export function ProjectDetailV2Page() {
 
   const pendingInvitations = useMemo(() =>
     invitations.filter((inv) => inv.status === 'PENDING')
-  , [invitations]);
+    , [invitations]);
 
   const taskTitleById = useMemo(() => {
     const map = new Map<string, string>();
@@ -1019,6 +1050,23 @@ export function ProjectDetailV2Page() {
     }
   };
 
+  const handleCreateBaseline = async () => {
+    if (!projectId) return;
+    setIsCreatingBaseline(true);
+    try {
+      const newBaseline = await scheduleSnapshotsApi.create(projectId, {});
+      setActiveBaseline(newBaseline);
+      // Fetch diff for the new baseline
+      const diff = await scheduleSnapshotsApi.getDiff(projectId);
+      setBaselineDiff(diff);
+    } catch (err) {
+      console.error('Failed to create baseline:', err);
+      alert('ベースラインの作成に失敗しました。');
+    } finally {
+      setIsCreatingBaseline(false);
+    }
+  };
+
   const handleRevokeInvitation = async (invitation: ProjectInvitation) => {
     if (!projectId) return;
     setInvitationActionId(invitation.id);
@@ -1455,7 +1503,7 @@ export function ProjectDetailV2Page() {
                       && !savedCheckinSummariesError
                       && savedCheckinSummaries.length === 0 && (
                         <p className="project-v2-muted">保存したサマリーはありません。</p>
-                    )}
+                      )}
                     {!isSavedCheckinSummariesLoading && savedCheckinSummaries.length > 0 && (
                       <div className="project-v2-list">
                         {savedCheckinSummaries.map((memory) => {
@@ -1481,6 +1529,68 @@ export function ProjectDetailV2Page() {
               </div>
 
               <div className="project-v2-dashboard-side">
+                {/* Baseline & Buffer Card */}
+                <div className="project-v2-card project-v2-baseline-card">
+                  <div className="project-v2-card-header">
+                    <h3>ベースライン & バッファ</h3>
+                    {baselineDiff && (
+                      <button className="project-v2-button ghost">差分を見る</button>
+                    )}
+                  </div>
+                  {isBaselineLoading ? (
+                    <p className="project-v2-muted">読み込み中...</p>
+                  ) : activeBaseline ? (
+                    <>
+                      <div className="project-v2-baseline-row">
+                        <div>
+                          <div className="project-v2-baseline-meta">アクティブ計画</div>
+                          <div className="project-v2-baseline-name">{activeBaseline.name}</div>
+                          <div className="project-v2-baseline-meta">
+                            {new Date(activeBaseline.created_at).toLocaleDateString('ja-JP')} 作成
+                          </div>
+                        </div>
+                        {(() => {
+                          const total = activeBaseline.total_buffer_minutes;
+                          const consumed = activeBaseline.consumed_buffer_minutes;
+                          const remaining = total > 0 ? Math.round(((total - consumed) / total) * 100) : 100;
+                          const statusClass: string = remaining >= 67 ? 'healthy' : remaining >= 33 ? 'warn' : 'critical';
+                          return (
+                            <div className={`project-v2-buffer-pill ${statusClass}`}>
+                              バッファ残り {remaining}%
+                            </div>
+                          );
+                        })()}
+                      </div>
+                      {baselineDiff && (
+                        <div className="project-v2-baseline-summary">
+                          <div>差分: 遅延 {baselineDiff.summary.delayed_count}件 / 前倒し {baselineDiff.summary.ahead_count}件</div>
+                          <div>完了 {baselineDiff.summary.completed_count}件 / 順調 {baselineDiff.summary.on_track_count}件</div>
+                        </div>
+                      )}
+                      <div className="project-v2-baseline-actions">
+                        <button
+                          className="project-v2-button primary"
+                          onClick={handleCreateBaseline}
+                          disabled={isCreatingBaseline}
+                        >
+                          {isCreatingBaseline ? '作成中...' : 'ベースラインを更新'}
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <p className="project-v2-muted">ベースラインが設定されていません。</p>
+                      <button
+                        className="project-v2-button primary"
+                        onClick={handleCreateBaseline}
+                        disabled={isCreatingBaseline}
+                      >
+                        {isCreatingBaseline ? '作成中...' : 'ベースラインを作成'}
+                      </button>
+                    </>
+                  )}
+                </div>
+
                 <div className="project-v2-card">
                   <div className="project-v2-card-header">
                     <h3>ブロッカー</h3>
@@ -1919,12 +2029,9 @@ export function ProjectDetailV2Page() {
           <div className="project-v2-section">
             <div className="project-v2-grid">
               <div className="project-v2-card">
-                <ScheduleOverviewCard
-                  projectId={projectId}
-                  projectTasks={tasks}
-                  title="プロジェクトガント"
-                  tag="ガント"
-                  defaultViewMode="gantt"
+                <ProjectGanttContent
+                  tasks={tasks}
+                  baselineDiff={baselineDiff}
                 />
               </div>
             </div>

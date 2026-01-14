@@ -12,6 +12,7 @@ import type {
   ProjectCreate,
   MemoryCreate,
   TaskAssignmentProposal,
+  PhaseBreakdownProposal,
 } from '../api/types';
 
 export interface ToolCall {
@@ -25,9 +26,9 @@ export interface ToolCall {
 export interface ProposalInfo {
   id: string;
   proposalId: string;
-  proposalType: 'create_task' | 'create_project' | 'create_skill' | 'assign_task';
+  proposalType: 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown';
   description: string;
-  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal;
+  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal;
 }
 
 export interface Message {
@@ -283,9 +284,9 @@ export function useChat() {
                 const proposalInfo: ProposalInfo = {
                   id: crypto.randomUUID(),
                   proposalId: chunk.proposal_id,
-                  proposalType: chunk.proposal_type as 'create_task' | 'create_project' | 'create_skill' | 'assign_task',
+                  proposalType: chunk.proposal_type as 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown',
                   description: chunk.description || '',
-                  payload: chunk.payload as unknown as TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal,
+                  payload: chunk.payload as unknown as TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal,
                 };
                 setMessages((prev) =>
                   prev.map((msg) =>

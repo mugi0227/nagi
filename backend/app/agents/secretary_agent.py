@@ -49,6 +49,7 @@ from app.tools import (
     propose_project_tool,
     plan_project_phases_tool,
     plan_phase_tasks_tool,
+    propose_phase_breakdown_tool,
 )
 
 
@@ -150,6 +151,18 @@ def create_secretary_agent(
             memory_repo,
             llm_provider,
             user_id,
+        ),
+        propose_phase_breakdown_tool(
+            proposal_repo,
+            project_repo,
+            phase_repo,
+            milestone_repo,
+            task_repo,
+            memory_repo,
+            llm_provider,
+            user_id,
+            session_id,
+            auto_approve,
         ),
     ]
 

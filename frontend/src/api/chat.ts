@@ -13,7 +13,7 @@ export interface StreamChunk {
   capture_id?: string;
   // Proposal-specific fields
   proposal_id?: string;
-  proposal_type?: 'create_task' | 'create_project' | 'create_skill' | 'assign_task';
+  proposal_type?: 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown';
   description?: string;
   payload?: Record<string, unknown>;
 }
@@ -30,7 +30,8 @@ export const chatApi = {
    * Stream chat response using Server-Sent Events
    */
   async *streamMessage(request: ChatRequest): AsyncGenerator<StreamChunk, void, unknown> {
-    const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api';
+    // Use relative path (same as client.ts)
+    const baseURL = import.meta.env.VITE_API_URL || '/api';
     const { token } = getAuthToken();
 
     const response = await fetch(`${baseURL}/chat/stream`, {

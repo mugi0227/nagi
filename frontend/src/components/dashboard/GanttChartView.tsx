@@ -593,12 +593,13 @@ export function GanttChartView({
                 )}
                 <div className="gantt-offday-overlay">
                   {dayMeta.map((day, index) => (
-                    day.isOffDay ? (
+                    // Render offday background OR today highlight
+                    (day.isOffDay || day.isToday) ? (
                       <span
                         key={`${rowKey}-${day.date}-overlay`}
                         className={[
                           'gantt-day-overlay',
-                          'offday',
+                          day.isOffDay ? 'offday' : '',
                           day.isToday ? 'today' : '',
                         ].join(' ')}
                         style={{ gridColumn: `${index + 1} / ${index + 2}` }}

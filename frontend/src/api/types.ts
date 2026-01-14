@@ -353,6 +353,13 @@ export interface PhaseBreakdownResponse {
   created_milestone_ids: string[];
 }
 
+export interface PhaseBreakdownProposal {
+  project_id: string;
+  instruction?: string;
+  create_milestones?: boolean;
+  phases: PhaseSuggestion[];
+}
+
 export interface PhaseTaskSuggestion {
   title: string;
   description?: string;
@@ -692,7 +699,7 @@ export interface CaptureCreate {
 }
 
 // Proposal models (AI提案承諾機能)
-export type ProposalType = 'create_task' | 'create_project' | 'create_skill' | 'assign_task';
+export type ProposalType = 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown';
 export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'expired';
 
 export interface Proposal {
@@ -701,7 +708,7 @@ export interface Proposal {
   session_id: string;
   proposal_type: ProposalType;
   status: ProposalStatus;
-  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal; // The data for proposals
+  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal; // The data for proposals
   description: string; // AI-generated explanation
   created_at: string;
   expires_at: string;
@@ -711,5 +718,120 @@ export interface ProposalResponse {
   proposal_id: string;
   proposal_type: ProposalType;
   description: string;
-  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal;
+  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal;
+}
+
+// ===========================================
+// Schedule Snapshot / Baseline Types
+// ===========================================
+
+export type BufferStatus = 'healthy' | 'warning' | 'critical';
+
+export interface SnapshotTaskScheduleInfo {
+  task_id: string;
+  title: string;
+  project_id?: string;
+  phase_id?: string;
+  parent_id?: string;
+  planned_start?: string;
+  planned_end?: string;
+  total_minutes: number;
+  dependency_ids: string[];
+}
+
+export interface SnapshotDayAllocation {
+  date: string;
+  capacity_minutes: number;
+  allocated_minutes: number;
+  task_allocations: { task_id: string; minutes: number }[];
+}
+
+export interface PhaseBufferInfo {
+  phase_id: string;
+  phase_name: string;
+  total_buffer_minutes: number;
+  consumed_buffer_minutes: number;
+  buffer_percentage: number;
+  critical_chain_length_minutes: number;
+  status: BufferStatus;
+}
+
+export interface ScheduleSnapshotCreate {
+  name?: string;
+  capacity_hours?: number;
+  capacity_by_weekday?: number[];
+  max_days?: number;
+  buffer_ratio?: number;
+}
+
+export interface ScheduleSnapshot {
+  id: string;
+  user_id: string;
+  project_id: string;
+  name: string;
+  is_active: boolean;
+  start_date: string;
+  tasks: SnapshotTaskScheduleInfo[];
+  days: SnapshotDayAllocation[];
+  phase_buffers: PhaseBufferInfo[];
+  total_buffer_minutes: number;
+  consumed_buffer_minutes: number;
+  capacity_hours: number;
+  capacity_by_weekday?: number[];
+  max_days: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleSnapshotSummary {
+  id: string;
+  project_id: string;
+  name: string;
+  is_active: boolean;
+  start_date: string;
+  task_count: number;
+  total_buffer_minutes: number;
+  consumed_buffer_minutes: number;
+  buffer_percentage: number;
+  created_at: string;
+}
+
+// Diff Types
+export type TaskDiffStatus = 'on_track' | 'delayed' | 'ahead' | 'new' | 'removed' | 'completed';
+
+export interface TaskScheduleDiff {
+  task_id: string;
+  title: string;
+  status: TaskDiffStatus;
+  baseline_start?: string;
+  baseline_end?: string;
+  current_start?: string;
+  current_end?: string;
+  delay_days: number;
+}
+
+export interface PhaseScheduleDiff {
+  phase_id: string;
+  phase_name: string;
+  baseline_end?: string;
+  current_end?: string;
+  delay_days: number;
+  buffer_status: BufferStatus;
+  buffer_percentage: number;
+}
+
+export interface ScheduleDiff {
+  snapshot_id: string;
+  snapshot_name: string;
+  compared_at: string;
+  task_diffs: TaskScheduleDiff[];
+  phase_diffs: PhaseScheduleDiff[];
+  summary: {
+    on_track_count: number;
+    delayed_count: number;
+    ahead_count: number;
+    new_count: number;
+    removed_count: number;
+    completed_count: number;
+  };
 }

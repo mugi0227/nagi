@@ -29,6 +29,14 @@
   transform: rotate(-5deg);
 }
 
+.logo-icon-img {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+  object-fit: cover;
+}
+
 .logo-text {
   font-size: 1.3rem;
   font-weight: 800;

@@ -1,7 +1,13 @@
 import { useState } from 'react';
 import { FaCheckCircle, FaTimesCircle, FaSpinner } from 'react-icons/fa';
 import { proposalsApi } from '../../api/proposals';
-import type { TaskCreate, ProjectCreate, MemoryCreate, TaskAssignmentProposal } from '../../api/types';
+import type {
+  TaskCreate,
+  ProjectCreate,
+  MemoryCreate,
+  TaskAssignmentProposal,
+  PhaseBreakdownProposal,
+} from '../../api/types';
 import './ProposalCard.css';
 
 const formatTime = (date: Date) =>
@@ -12,9 +18,9 @@ const formatDate = (date: Date) =>
 
 interface ProposalCardProps {
   proposalId: string;
-  proposalType: 'create_task' | 'create_project' | 'create_skill' | 'assign_task';
+  proposalType: 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown';
   description: string;
-  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal;
+  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal;
   onApprove?: () => void;
   onReject?: () => void;
 }
@@ -66,16 +72,20 @@ export function ProposalCard({
   const isProject = proposalType === 'create_project';
   const isSkill = proposalType === 'create_skill';
   const isAssignment = proposalType === 'assign_task';
+  const isPhaseBreakdown = proposalType === 'phase_breakdown';
   const taskPayload = isTask ? (payload as TaskCreate) : null;
   const projectPayload = isProject ? (payload as ProjectCreate) : null;
   const skillPayload = isSkill ? (payload as MemoryCreate) : null;
   const assignmentPayload = isAssignment ? (payload as TaskAssignmentProposal) : null;
+  const phasePayload = isPhaseBreakdown ? (payload as PhaseBreakdownProposal) : null;
   const badgeLabel = isTask
     ? 'Task proposal'
     : isSkill
       ? 'Skill proposal'
       : isAssignment
         ? 'Task assignment proposal'
+        : isPhaseBreakdown
+          ? 'Phase breakdown proposal'
         : 'Project proposal';
   const meetingPreview = (() => {
     if (!isTask || !taskPayload?.is_fixed_time || !taskPayload.start_time || !taskPayload.end_time) {
@@ -252,6 +262,62 @@ export function ProposalCard({
                 <span className="detail-value">
                   {assignmentPayload.assignee_ids.join(', ')}
                 </span>
+              </div>
+            </>
+          )}
+
+          {isPhaseBreakdown && phasePayload && (
+            <>
+              <div className="proposal-detail-row">
+                <span className="detail-label">Project ID:</span>
+                <span className="detail-value">{phasePayload.project_id}</span>
+              </div>
+              {phasePayload.instruction && (
+                <div className="proposal-detail-row">
+                  <span className="detail-label">Instruction:</span>
+                  <span className="detail-value">{phasePayload.instruction}</span>
+                </div>
+              )}
+              {typeof phasePayload.create_milestones === 'boolean' && (
+                <div className="proposal-detail-row">
+                  <span className="detail-label">Milestones:</span>
+                  <span className="detail-value">
+                    {phasePayload.create_milestones ? 'Create on approve' : 'Skip on approve'}
+                  </span>
+                </div>
+              )}
+              <div className="proposal-detail-row">
+                <span className="detail-label">Phases:</span>
+                <div className="detail-value">
+                  <div className="phase-breakdown-list">
+                    {phasePayload.phases.map((phase, idx) => (
+                      <div key={`${phase.name}-${idx}`} className="phase-breakdown-item">
+                        <div className="phase-breakdown-title">
+                          {idx + 1}. {phase.name}
+                        </div>
+                        {phase.description && (
+                          <div className="phase-breakdown-desc">{phase.description}</div>
+                        )}
+                        {phase.milestones && phase.milestones.length > 0 && (
+                          <ul className="phase-breakdown-milestones">
+                            {phase.milestones.map((milestone, mIdx) => (
+                              <li key={`${milestone.title}-${mIdx}`}>
+                                <span className="phase-breakdown-milestone-title">
+                                  {milestone.title}
+                                </span>
+                                {milestone.due_date && (
+                                  <span className="phase-breakdown-milestone-date">
+                                    {milestone.due_date}
+                                  </span>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </>
           )}

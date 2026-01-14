@@ -14,6 +14,7 @@ class ProposalType(str, Enum):
     CREATE_PROJECT = "create_project"
     CREATE_SKILL = "create_skill"
     ASSIGN_TASK = "assign_task"
+    PHASE_BREAKDOWN = "phase_breakdown"
 
 
 class ProposalStatus(str, Enum):
@@ -66,6 +67,8 @@ class ApprovalResult(BaseModel):
     project_id: Optional[str] = None
     memory_id: Optional[str] = None
     assignment_ids: Optional[list[str]] = None
+    phase_ids: Optional[list[str]] = None
+    milestone_ids: Optional[list[str]] = None
 
 
 class RejectionResult(BaseModel):

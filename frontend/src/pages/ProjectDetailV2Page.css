@@ -855,3 +855,74 @@
     justify-content: flex-start;
   }
 }
+
+/* ===========================================
+   Baseline & Buffer Card
+   =========================================== */
+
+.project-v2-baseline-card {
+  background: linear-gradient(135deg, var(--bg-card), rgba(14, 165, 233, 0.04));
+}
+
+.project-v2-baseline-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.project-v2-baseline-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.project-v2-baseline-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 4px 0;
+}
+
+.project-v2-buffer-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.project-v2-buffer-pill.healthy {
+  background: rgba(16, 185, 129, 0.15);
+  color: #10b981;
+}
+
+.project-v2-buffer-pill.warn {
+  background: rgba(245, 158, 11, 0.15);
+  color: #f59e0b;
+}
+
+.project-v2-buffer-pill.critical {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+}
+
+.project-v2-baseline-summary {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 10px 12px;
+  background: var(--bg-main);
+  border-radius: var(--radius-sm);
+  margin-bottom: 12px;
+  display: grid;
+  gap: 4px;
+}
+
+.project-v2-baseline-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}

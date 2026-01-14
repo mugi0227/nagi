@@ -43,10 +43,12 @@ export function Sidebar() {
   return (
     <aside className="sidebar">
       <div className="sidebar-logo">
-        <div className="logo-icon">
-          <FaBrain />
-        </div>
-        <span className="logo-text">Brain Dump</span>
+        <img
+          src="/src/assets/nagi_icon.png"
+          alt="Nagi AI"
+          className="logo-icon-img"
+        />
+        <span className="logo-text">凪 (Nagi AI)</span>
       </div>
 
       <nav className="sidebar-nav">

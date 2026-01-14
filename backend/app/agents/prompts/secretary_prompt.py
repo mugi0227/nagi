@@ -53,7 +53,8 @@ SECRETARY_SYSTEM_PROMPT = """あなたは「Brain Dump Partner」という、ADH
 
 ## Phase Planning (AI)
 
-- For phase proposals: use `plan_project_phases` with `instruction` if the user provides constraints.
+- For phase proposals that need approval: use `propose_phase_breakdown` with `instruction` if the user provides constraints.
+- For phase previews without applying: use `plan_project_phases` with `instruction` and keep create=false.
 - For task breakdown inside a phase: use `plan_phase_tasks` with `instruction` when specified.
 - For subtask breakdown: use `breakdown_task` with `instruction` when specified.
 - Default to create=false unless the user explicitly asks to apply the plan.

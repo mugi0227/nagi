@@ -11,6 +11,8 @@ from app.api.deps import (
     get_task_assignment_repository,
     get_project_repository,
     get_project_member_repository,
+    get_phase_repository,
+    get_milestone_repository,
     get_llm_provider,
     get_memory_repository,
 )
@@ -21,12 +23,15 @@ from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.proposal_repository import IProposalRepository
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
+from app.interfaces.phase_repository import IPhaseRepository
+from app.interfaces.milestone_repository import IMilestoneRepository
 from app.models.proposal import ApprovalResult, ProposalStatus, RejectionResult
 from app.models.project import ProjectCreate
 from app.models.task import TaskCreate
 from app.tools.project_tools import CreateProjectInput
 from app.tools.task_tools import CreateTaskInput, AssignTaskInput, assign_task
 from app.tools.memory_tools import CreateSkillInput
+from app.tools.phase_tools import apply_phase_plan
 from app.models.memory import MemoryCreate
 
 router = APIRouter()
@@ -58,6 +63,8 @@ async def approve_proposal(
     task_repo: ITaskRepository = Depends(get_task_repository),
     assignment_repo: ITaskAssignmentRepository = Depends(get_task_assignment_repository),
     project_repo: IProjectRepository = Depends(get_project_repository),
+    phase_repo: IPhaseRepository = Depends(get_phase_repository),
+    milestone_repo: IMilestoneRepository = Depends(get_milestone_repository),
     member_repo: IProjectMemberRepository = Depends(get_project_member_repository),
     memory_repo: IMemoryRepository = Depends(get_memory_repository),
     llm_provider: ILLMProvider = Depends(get_llm_provider),
@@ -152,6 +159,29 @@ async def approve_proposal(
                         for item in assignments
                         if isinstance(item, dict) and item.get("id")
                     ]
+
+    elif proposal.proposal_type.value == "phase_breakdown":
+        payload = proposal.payload or {}
+        project_id_raw = payload.get("project_id")
+        phases = payload.get("phases")
+        if not project_id_raw or not isinstance(phases, list):
+            raise HTTPException(status_code=400, detail="Invalid phase breakdown payload")
+        try:
+            project_id = UUID(project_id_raw)
+        except (ValueError, TypeError):
+            raise HTTPException(status_code=400, detail="Invalid project_id for phase breakdown")
+
+        create_milestones = payload.get("create_milestones", True)
+        created = await apply_phase_plan(
+            user_id=user.id,
+            project_id=project_id,
+            phase_repo=phase_repo,
+            milestone_repo=milestone_repo,
+            phases=phases,
+            create_milestones=bool(create_milestones),
+        )
+        result.phase_ids = created.get("created_phase_ids", [])
+        result.milestone_ids = created.get("created_milestone_ids", [])
 
     # Update proposal status
     await proposal_repo.update_status(proposal_id, ProposalStatus.APPROVED)

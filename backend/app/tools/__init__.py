@@ -39,6 +39,7 @@ from app.tools.scheduler_tools import (
 from app.tools.phase_tools import (
     plan_project_phases_tool,
     plan_phase_tasks_tool,
+    propose_phase_breakdown_tool,
 )
 
 __all__ = [
@@ -70,5 +71,6 @@ __all__ = [
     "schedule_agent_task_tool",
     "plan_project_phases_tool",
     "plan_phase_tasks_tool",
+    "propose_phase_breakdown_tool",
 ]
 

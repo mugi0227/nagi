@@ -4,7 +4,8 @@ import { getAuthToken } from './auth';
  * API Client - Fetch wrapper with error handling
  */
 
-const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:8000/api';
+// Use relative path in development (proxied by Vite), absolute in production
+const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
 export class ApiError extends Error {
   constructor(
