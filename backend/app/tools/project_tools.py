@@ -773,3 +773,100 @@ def load_project_context_tool(repo: IProjectRepository, user_id: str) -> Functio
 
     _tool.__name__ = "load_project_context"
     return FunctionTool(func=_tool)
+
+
+class InviteProjectMemberInput(BaseModel):
+    """Input for invite_project_member tool."""
+
+    project_id: str = Field(..., description="プロジェクトID")
+    email: str = Field(..., description="招待するメンバーのメールアドレス")
+    role: str = Field("MEMBER", description="ロール (OWNER/ADMIN/MEMBER)")
+
+
+async def invite_project_member(
+    user_id: str,
+    invitation_repo: IProjectInvitationRepository,
+    input_data: InviteProjectMemberInput,
+) -> dict:
+    """Invite a member to a project."""
+    from uuid import UUID
+    from app.models.collaboration import ProjectInvitationCreate
+    from app.models.enums import ProjectRole
+
+    try:
+        project_id = UUID(input_data.project_id)
+    except ValueError:
+        return {"error": f"Invalid project ID format: {input_data.project_id}"}
+
+    # Validate role
+    try:
+        role = ProjectRole[input_data.role.upper()]
+    except KeyError:
+        return {"error": f"Invalid role: {input_data.role}. Must be OWNER, ADMIN, or MEMBER"}
+
+    # Check if invitation already exists
+    existing = await invitation_repo.get_pending_by_email(user_id, project_id, input_data.email)
+    if existing:
+        return {"error": f"Invitation already exists for {input_data.email}"}
+
+    # Create invitation
+    invitation_data = ProjectInvitationCreate(
+        email=input_data.email,
+        role=role,
+    )
+
+    invitation = await invitation_repo.create(user_id, project_id, user_id, invitation_data)
+    return invitation.model_dump(mode="json")
+
+
+def invite_project_member_tool(
+    invitation_repo: IProjectInvitationRepository,
+    user_id: str,
+) -> FunctionTool:
+    """Create ADK tool for inviting project members."""
+
+    async def _tool(input_data: dict) -> dict:
+        """invite_project_member: プロジェクトにメンバーを招待します。
+
+        指定されたメールアドレスにプロジェクト招待を送信します。
+        招待されたユーザーは、招待を承諾するとプロジェクトメンバーになれます。
+        同じメールアドレスへの重複招待はチェックされます。
+
+        Parameters:
+            project_id (str): 招待先のプロジェクトID（UUID形式、必須）
+            email (str): 招待するメンバーのメールアドレス（必須）
+            role (str, optional): メンバーのロール。以下のいずれか:
+                - "OWNER": オーナー（プロジェクトの完全な管理権限）
+                - "ADMIN": 管理者（メンバー管理を含む管理権限）
+                - "MEMBER": メンバー（通常の参加権限、デフォルト）
+
+        Returns:
+            dict: {
+                "id": "招待ID",
+                "project_id": "プロジェクトID",
+                "email": "招待メールアドレス",
+                "role": "ロール",
+                "status": "PENDING",
+                "invited_by": "招待者ID",
+                "token": "招待トークン（オプション）",
+                "expires_at": "有効期限（ISO形式）",
+                "created_at": "作成日時",
+                "updated_at": "更新日時"
+            }
+
+            エラー時: {"error": "エラーメッセージ"}
+                - 無効なプロジェクトID形式
+                - 無効なロール値
+                - 既に招待が存在する
+
+        Example:
+            # メンバーとして招待
+            {"project_id": "123e4567-e89b-12d3-a456-426614174000", "email": "user@example.com"}
+
+            # 管理者として招待
+            {"project_id": "123e4567-...", "email": "admin@example.com", "role": "ADMIN"}
+        """
+        return await invite_project_member(user_id, invitation_repo, InviteProjectMemberInput(**input_data))
+
+    _tool.__name__ = "invite_project_member"
+    return FunctionTool(func=_tool)

@@ -140,6 +140,33 @@ export function TasksPage() {
     updateMutation.mutate({ id: taskId, data: { status: newStatus } });
   };
 
+  const handleTaskCheck = async (taskId: string) => {
+    const task = tasks.find(t => t.id === taskId) || subtasks.find(t => t.id === taskId);
+    if (!task) return;
+
+    const newStatus = task.status === 'DONE' ? 'TODO' : 'DONE';
+
+    // If marking as done, check dependencies
+    if (newStatus === 'DONE' && task.dependency_ids && task.dependency_ids.length > 0) {
+      const allDeps = await Promise.all(
+        task.dependency_ids.map(depId =>
+          tasks.find(t => t.id === depId) ||
+          subtasks.find(t => t.id === depId) ||
+          tasksApi.getById(depId).catch(() => null)
+        )
+      );
+
+      const hasPendingDependencies = allDeps.some(depTask => depTask && depTask.status !== 'DONE');
+
+      if (hasPendingDependencies) {
+        alert('このタスクを完了するには、先に依存しているタスクを完了してください。');
+        return;
+      }
+    }
+
+    updateMutation.mutate({ id: taskId, data: { status: newStatus } });
+  };
+
   const handleTaskClick = (task: Task) => {
     setSelectedTask(task);
   };
@@ -248,6 +275,7 @@ export function TasksPage() {
               setIsFormOpen(true);
               setSelectedTask(null);
             }}
+            onTaskCheck={handleTaskCheck}
             onProgressChange={(taskId, progress) => {
               updateMutation.mutate({ id: taskId, data: { progress } });
             }}

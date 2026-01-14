@@ -194,7 +194,13 @@ export function TaskDetailModal({
 
   const handleSubtaskCheck = (subtaskId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (onTaskCheck) onTaskCheck(subtaskId);
+    e.preventDefault();
+    console.log('[TaskDetailModal] Subtask check:', subtaskId);
+    if (onTaskCheck) {
+      onTaskCheck(subtaskId);
+    } else {
+      console.warn('[TaskDetailModal] onTaskCheck is not provided');
+    }
   };
 
   const handleCreateActionItems = async () => {

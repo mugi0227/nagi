@@ -20,6 +20,7 @@ from app.tools.project_tools import (
     list_project_invitations_tool,
     load_project_context_tool,
     update_project_tool,
+    invite_project_member_tool,
 )
 from app.tools.project_memory_tools import (
     create_project_summary_tool,
@@ -56,6 +57,7 @@ __all__ = [
     "list_project_invitations_tool",
     "load_project_context_tool",
     "update_project_tool",
+    "invite_project_member_tool",
     "create_project_summary_tool",
     "update_task_tool",
     "delete_task_tool",
