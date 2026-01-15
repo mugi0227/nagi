@@ -31,9 +31,52 @@
   color: var(--primary);
 }
 
-.weekly-meetings-range {
-  display: inline-block;
+.weekly-meetings-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   margin-top: 0.35rem;
+}
+
+.weekly-meetings-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.weekly-meetings-nav-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-main);
+  border-color: var(--primary);
+}
+
+.weekly-meetings-today-btn {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: var(--primary-light);
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.weekly-meetings-today-btn:hover {
+  background: var(--primary);
+  color: white;
+}
+
+.weekly-meetings-range {
   font-size: 0.8rem;
   color: var(--text-muted);
 }

@@ -182,11 +182,6 @@ async def list_tasks(
                 offset=offset,
             )
         else:
-            # If project not found/accessible, return empty? Or error?
-            # Existing code defaulted to user.id if project not found?
-            # "if project: query_user_id = project.user_id"
-            # If project_id provided but not found, repo.list runs with user.id + project_id filter.
-            # Which returns nothing. So existing behavior is fine.
             tasks = await repo.list(
                 user.id,
                 project_id=project_id,
@@ -195,42 +190,57 @@ async def list_tasks(
                 limit=limit,
                 offset=offset,
             )
+        # Apply meeting filters for project-scoped queries
+        if only_meetings:
+            tasks = [t for t in tasks if t.is_fixed_time]
+        elif exclude_meetings:
+            tasks = [t for t in tasks if not t.is_fixed_time]
     else:
-        # My Tasks mode (No project_id) - Show Assigned + Personal
-        # 1. Assigned
-        assignments = await assignment_repo.list_for_assignee(user.id)
-        assigned_ids = [a.task_id for a in assignments]
-        assigned_tasks = await repo.get_many(assigned_ids)
+        # Special case: only_meetings - fetch all user's meetings across all projects
+        if only_meetings:
+            all_tasks = await repo.list(
+                user.id,
+                project_id=None,
+                status=status,
+                include_done=include_done,
+                limit=limit,
+                offset=offset,
+            )
+            tasks = [t for t in all_tasks if t.is_fixed_time]
+        else:
+            # My Tasks mode (No project_id) - Show Assigned + Personal
+            # 1. Assigned
+            assignments = await assignment_repo.list_for_assignee(user.id)
+            assigned_ids = [a.task_id for a in assignments]
+            assigned_tasks = await repo.get_many(assigned_ids)
 
-        # 2. Personal (Inbox)
-        # Fetching more than limit to ensure we have enough after merge/filter
-        personal_tasks = await repo.list_personal_tasks(
-            user.id, status=status, limit=limit + 100, offset=0
-        )
-        
-        # Merge
-        all_tasks_map = {t.id: t for t in personal_tasks}
-        for t in assigned_tasks:
-            # Apply filters to assigned tasks manually if needed?
-            if status and t.status.value != status:
-                continue
-            if not include_done and t.status.value == "done": # assuming "done" value
-                continue
-            all_tasks_map[t.id] = t
-        
-        tasks = list(all_tasks_map.values())
-        
-        # Sort by created_at desc (default) or whatever
-        tasks.sort(key=lambda t: t.created_at, reverse=True)
-        
-        # Manual pagination
-        tasks = tasks[offset : offset + limit]
+            # 2. Personal (Inbox)
+            # Fetching more than limit to ensure we have enough after merge/filter
+            personal_tasks = await repo.list_personal_tasks(
+                user.id, status=status, limit=limit + 100, offset=0
+            )
 
-    # Apply meeting filters in-memory
-    if only_meetings:
-        tasks = [t for t in tasks if t.is_fixed_time]
-    elif exclude_meetings:
-        tasks = [t for t in tasks if not t.is_fixed_time]
+            # Merge
+            all_tasks_map = {t.id: t for t in personal_tasks}
+            for t in assigned_tasks:
+                # Apply filters to assigned tasks manually if needed?
+                if status and t.status.value != status:
+                    continue
+                if not include_done and t.status.value == "done": # assuming "done" value
+                    continue
+                all_tasks_map[t.id] = t
+
+            tasks = list(all_tasks_map.values())
+
+            # Sort by created_at desc (default) or whatever
+            tasks.sort(key=lambda t: t.created_at, reverse=True)
+
+            # Manual pagination
+            tasks = tasks[offset : offset + limit]
+
+            # Apply exclude_meetings filter
+            if exclude_meetings:
+                tasks = [t for t in tasks if not t.is_fixed_time]
 
     return tasks
 

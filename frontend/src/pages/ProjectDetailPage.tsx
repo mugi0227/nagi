@@ -6,9 +6,10 @@ import { useNavigate, useParams } from 'react-router-dom';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { memoriesApi } from '../api/memories';
+import { phasesApi } from '../api/phases';
 import { getProject, projectsApi } from '../api/projects';
 import { tasksApi } from '../api/tasks';
-import type { Blocker, Checkin, CheckinSummary, Memory, ProjectInvitation, ProjectKpiMetric, ProjectMember, ProjectWithTaskCount, Task, TaskAssignment, TaskStatus, TaskUpdate } from '../api/types';
+import type { Blocker, Checkin, CheckinSummary, Memory, PhaseWithTaskCount, ProjectInvitation, ProjectKpiMetric, ProjectMember, ProjectWithTaskCount, Task, TaskAssignment, TaskStatus, TaskUpdate } from '../api/types';
 import type { UserSearchResult } from '../api/users';
 import { UserSearchInput } from '../components/common/UserSearchInput';
 import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
@@ -69,6 +70,7 @@ export function ProjectDetailPage() {
   const [memberActionId, setMemberActionId] = useState<string | null>(null);
   const [invitationActionId, setInvitationActionId] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
+  const [phases, setPhases] = useState<PhaseWithTaskCount[]>([]);
 
   // Fetch tasks for this project
   const { tasks, isLoading: tasksLoading, refetch: refetchTasks, updateTask, deleteTask } = useTasks(projectId);
@@ -89,12 +91,16 @@ export function ProjectDetailPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const data = await getProject(projectId);
+        const [data, phasesData] = await Promise.all([
+          getProject(projectId),
+          phasesApi.listByProject(projectId),
+        ]);
         if (!isActive) return;
         if (!data) {
           throw new Error('Empty project response');
         }
         setProject(data);
+        setPhases(phasesData);
       } catch (err) {
         if (!isActive) return;
         console.error('Failed to fetch project:', err);
@@ -1155,10 +1161,10 @@ export function ProjectDetailPage() {
           <div className="detail-section meeting-list-section">
             <div className="section-header">
               <FaCalendarAlt className="section-icon" />
-              <h3 className="section-title">定例会議一覧</h3>
+              <h3 className="section-title">会議一覧</h3>
             </div>
             {meetingTasks.length === 0 ? (
-              <p className="no-data-text">定例会議タスクはまだありません。</p>
+              <p className="no-data-text">会議タスクはまだありません。</p>
             ) : (
               <div className="meeting-list">
                 {meetingTasks.slice(0, 6).map((meeting) => {
@@ -1455,6 +1461,8 @@ export function ProjectDetailPage() {
           subtasks={tasks.filter(t => t.parent_id === (openedParentTask?.id || selectedTask.id))}
           allTasks={tasks}
           initialSubtask={openedParentTask ? selectedTask : null}
+          projectName={project.name}
+          phaseName={phases.find(p => p.id === (openedParentTask || selectedTask).phase_id)?.name}
           onClose={() => {
             setSelectedTask(null);
             setOpenedParentTask(null);

@@ -13,6 +13,9 @@ const TEXT = {
   empty: 'No meetings this week',
   loading: 'Loading...',
   error: 'Failed to load meetings',
+  today: '今週',
+  prev: '←',
+  next: '→',
 };
 
 const DEFAULT_START_HOUR = 8;
@@ -69,11 +72,27 @@ export function WeeklyMeetingsCard() {
   const queryClient = useQueryClient();
   const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
   const [editingMeeting, setEditingMeeting] = useState<Task | null>(null);
+  const [weekOffset, setWeekOffset] = useState(0);
+
   const today = new Date();
-  const weekStart = startOfWeek(today);
+  const currentWeekStart = startOfWeek(today);
+  const currentWeekStartKey = toLocalDateKey(currentWeekStart);
+  const weekStart = useMemo(() => {
+    const start = new Date(currentWeekStart);
+    start.setDate(start.getDate() + weekOffset * 7);
+    return start;
+  }, [currentWeekStartKey, weekOffset]);
   const weekStartKey = toLocalDateKey(weekStart);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekStart.getDate() + 7);
+  const weekEndKey = useMemo(() => {
+    const end = new Date(weekStart);
+    end.setDate(weekStart.getDate() + 7);
+    return toLocalDateKey(end);
+  }, [weekStartKey]);
+
+  const isCurrentWeek = weekOffset === 0;
+  const goToPrevWeek = () => setWeekOffset(prev => prev - 1);
+  const goToNextWeek = () => setWeekOffset(prev => prev + 1);
+  const goToCurrentWeek = () => setWeekOffset(0);
 
   const days = useMemo(() => (
     Array.from({ length: 7 }, (_, index) => {
@@ -118,13 +137,18 @@ export function WeeklyMeetingsCard() {
   ), [meetingTasks, selectedMeetingId]);
 
   const meetings = useMemo(() => {
+    const [startYear, startMonth, startDay] = weekStartKey.split('-').map(Number);
+    const [endYear, endMonth, endDay] = weekEndKey.split('-').map(Number);
+    const weekStartDate = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
+    const weekEndDate = new Date(endYear, endMonth - 1, endDay, 0, 0, 0, 0);
+
     return meetingTasks
       .filter(task => task.is_fixed_time && task.start_time && task.end_time)
       .map(task => {
         const start = new Date(task.start_time as string);
         const end = new Date(task.end_time as string);
         if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
-        if (start < weekStart || start >= weekEnd) return null;
+        if (start < weekStartDate || start >= weekEndDate) return null;
         const startMinutes = start.getHours() * 60 + start.getMinutes();
         const endMinutesRaw = end.getHours() * 60 + end.getMinutes();
         const endMinutes = Math.max(startMinutes + 15, endMinutesRaw);
@@ -143,7 +167,7 @@ export function WeeklyMeetingsCard() {
         } satisfies MeetingBlock;
       })
       .filter(Boolean) as MeetingBlock[];
-  }, [meetingTasks, weekStartKey]);
+  }, [meetingTasks, weekStartKey, weekEndKey]);
 
   const timeBounds = useMemo(() => {
     if (!meetings.length) {
@@ -195,7 +219,11 @@ export function WeeklyMeetingsCard() {
     Array.from({ length: hourCount }, (_, index) => timeBounds.startHour + index)
   ), [hourCount, timeBounds.startHour]);
 
-  const rangeLabel = formatRangeLabel(weekStart, new Date(weekEnd.getTime() - 24 * 60 * 60 * 1000));
+  const rangeLabel = useMemo(() => {
+    const weekEndDate = new Date(weekEndKey + 'T00:00:00');
+    weekEndDate.setDate(weekEndDate.getDate() - 1);
+    return formatRangeLabel(weekStart, weekEndDate);
+  }, [weekStart, weekEndKey]);
   const gridHeight = hourCount * HOUR_HEIGHT;
 
   return (
@@ -206,7 +234,34 @@ export function WeeklyMeetingsCard() {
             <h3>{TEXT.title}</h3>
             <span className="tag info">{TEXT.tag}</span>
           </div>
-          <span className="weekly-meetings-range">{rangeLabel}</span>
+          <div className="weekly-meetings-nav">
+            <button
+              type="button"
+              className="weekly-meetings-nav-btn"
+              onClick={goToPrevWeek}
+              aria-label="Previous week"
+            >
+              {TEXT.prev}
+            </button>
+            <span className="weekly-meetings-range">{rangeLabel}</span>
+            <button
+              type="button"
+              className="weekly-meetings-nav-btn"
+              onClick={goToNextWeek}
+              aria-label="Next week"
+            >
+              {TEXT.next}
+            </button>
+            {!isCurrentWeek && (
+              <button
+                type="button"
+                className="weekly-meetings-today-btn"
+                onClick={goToCurrentWeek}
+              >
+                {TEXT.today}
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
