@@ -36,7 +36,7 @@ from app.models.phase_breakdown import (
     PhaseTaskSuggestion,
 )
 from app.models.project import Project
-from app.models.task import TaskCreate
+from app.models.task import TaskCreate, TaskUpdate
 
 
 class PhasePlannerService:
@@ -163,6 +163,7 @@ class PhasePlannerService:
 
         created_task_ids: list[UUID] = []
         if request.create_tasks:
+            # First pass: create all tasks without dependencies
             for task in tasks:
                 created = await self._task_repo.create(
                     user_id,
@@ -180,6 +181,21 @@ class PhasePlannerService:
                     ),
                 )
                 created_task_ids.append(created.id)
+
+            # Second pass: update tasks with dependency_ids
+            for index, task in enumerate(tasks):
+                if task.depends_on_indices:
+                    dependency_ids = [
+                        created_task_ids[dep_idx]
+                        for dep_idx in task.depends_on_indices
+                        if 0 <= dep_idx < len(created_task_ids)
+                    ]
+                    if dependency_ids:
+                        await self._task_repo.update(
+                            user_id,
+                            created_task_ids[index],
+                            TaskUpdate(dependency_ids=dependency_ids),
+                        )
 
         return PhaseTaskBreakdownResponse(
             tasks=tasks,
@@ -249,6 +265,8 @@ class PhasePlannerService:
         prompt_parts = [
             "Break the following phase into 4-8 tasks.",
             "Tasks should be actionable and scoped to 15-180 minutes when possible.",
+            "Consider task dependencies: some tasks may need to be completed before others can start.",
+            "Use depends_on_indices to specify which tasks (by 0-based index) must be completed first.",
             "Return JSON only (no markdown, no commentary).",
             "",
             "Phase:",
@@ -271,7 +289,7 @@ class PhasePlannerService:
                 prompt_parts.append("- Key points:")
                 for point in project.key_points:
                     prompt_parts.append(f"  - {point}")
-        if project.context:
+        if project and project.context:
             prompt_parts.append("- Context:")
             prompt_parts.append(project.context)
         if instruction:
@@ -293,7 +311,8 @@ class PhasePlannerService:
             '      "energy_level": "LOW or HIGH",',
             '      "importance": "LOW/MEDIUM/HIGH",',
             '      "urgency": "LOW/MEDIUM/HIGH",',
-            '      "due_date": "YYYY-MM-DD or null"',
+            '      "due_date": "YYYY-MM-DD or null",',
+            '      "depends_on_indices": [0, 1]  // 0-based indices of prerequisite tasks, or empty []',
             "    }",
             "  ]",
             "}",

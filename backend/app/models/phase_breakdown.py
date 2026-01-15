@@ -55,6 +55,10 @@ class PhaseTaskSuggestion(BaseModel):
     importance: Optional[Priority] = Priority.MEDIUM
     urgency: Optional[Priority] = Priority.MEDIUM
     due_date: Optional[str] = Field(None, description="ISO date string if known")
+    depends_on_indices: list[int] = Field(
+        default_factory=list,
+        description="Indices of tasks that this task depends on (0-based)",
+    )
 
 
 class PhaseTaskBreakdownRequest(BaseModel):
