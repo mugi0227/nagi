@@ -109,9 +109,13 @@ export function KanbanCard({
   }, [task.start_not_before, task.parent_id, taskLookup]);
 
   const handleBreakdown = () => {
-    if (!onBreakdown) return;
     const instruction = breakdownInstruction.trim();
-    onBreakdown(task.id, instruction || undefined);
+    const prompt = `タスク「${task.title}」(ID: ${task.id}) をサブタスクに分解して。
+
+追加の指示があれば以下に記入:
+${instruction}`;
+    const event = new CustomEvent('secretary:chat-open', { detail: { message: prompt } });
+    window.dispatchEvent(event);
     setBreakdownInstruction('');
   };
 
@@ -244,37 +248,32 @@ export function KanbanCard({
         </span>
       </div>
 
-      {onBreakdown && (
-        <div
-          className="breakdown-control"
-          onClick={(e) => e.stopPropagation()}
-          onMouseDown={(e) => e.stopPropagation()}
+      <div
+        className="breakdown-control"
+        onClick={(e) => e.stopPropagation()}
+        onMouseDown={(e) => e.stopPropagation()}
+      >
+        <input
+          type="text"
+          className="breakdown-input"
+          value={breakdownInstruction}
+          onChange={(e) => setBreakdownInstruction(e.target.value)}
+          placeholder="タスク分解の指示（任意）"
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              handleBreakdown();
+            }
+          }}
+        />
+        <button
+          type="button"
+          className="breakdown-btn"
+          onClick={(e) => handleActionClick(e, handleBreakdown)}
         >
-          <input
-            type="text"
-            className="breakdown-input"
-            value={breakdownInstruction}
-            onChange={(e) => setBreakdownInstruction(e.target.value)}
-            placeholder="タスク分解の指示（任意）"
-            disabled={isBreakdownPending}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !isBreakdownPending) {
-                handleBreakdown();
-              }
-            }}
-          />
-          <button
-            type="button"
-            className="breakdown-btn"
-            onClick={(e) => handleActionClick(e, handleBreakdown)}
-            disabled={isBreakdownPending}
-            aria-busy={isBreakdownPending}
-          >
-            <FaListCheck />
-            <span>AIで分解</span>
-          </button>
-        </div>
-      )}
+          <FaListCheck />
+          <span>AIで分解</span>
+        </button>
+      </div>
 
       {memberOptions && memberOptions.length > 0 && onAssignMultiple && (
         <div className="card-assignee-row">

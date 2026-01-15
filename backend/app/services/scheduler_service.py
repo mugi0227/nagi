@@ -421,15 +421,22 @@ class SchedulerService:
             and not task.is_fixed_time
         ]
 
-        # Filter by assignee if requested (Legacy logic support)
+        # Filter by assignee if requested
         if filter_by_assignee and current_user_id and assignments is not None:
+            # Build set of assignees per task (supports multiple assignees)
+            assignees_by_task: dict[UUID, set[str]] = {}
+            for a in assignments:
+                if a.task_id not in assignees_by_task:
+                    assignees_by_task[a.task_id] = set()
+                assignees_by_task[a.task_id].add(a.assignee_id)
+
             def is_my_task(task: Task) -> bool:
                 if not task.project_id:
-                    return True
-                assignee = assignment_map.get(task.id)
-                if not assignee:
-                    return True
-                return assignee == current_user_id
+                    return True  # Personal tasks (Inbox/Memo) always included
+                assignees = assignees_by_task.get(task.id)
+                if not assignees:
+                    return False  # Unassigned project tasks excluded
+                return current_user_id in assignees  # Include if I'm one of the assignees
 
             candidate_tasks = [t for t in candidate_tasks if is_my_task(t)]
 

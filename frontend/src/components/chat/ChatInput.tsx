@@ -9,11 +9,13 @@ interface ChatInputProps {
   isStreaming?: boolean;
   externalImage?: string | null;
   onImageClear?: () => void;
+  initialValue?: string | null;
+  onInitialValueConsumed?: () => void;
 }
 
 const MAX_HISTORY = 50;
 
-export function ChatInput({ onSend, onCancel, disabled, isStreaming, externalImage, onImageClear }: ChatInputProps) {
+export function ChatInput({ onSend, onCancel, disabled, isStreaming, externalImage, onImageClear, initialValue, onInitialValueConsumed }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [inputHistory, setInputHistory] = useState<string[]>([]);
@@ -23,6 +25,16 @@ export function ChatInput({ onSend, onCancel, disabled, isStreaming, externalIma
   const fileInputRef = useRef<HTMLInputElement>(null);
   const effectiveImage = externalImage ?? selectedImage;
   const hasExternalImage = Boolean(externalImage);
+
+  // Set initial value when provided (without auto-submit)
+  useEffect(() => {
+    if (initialValue) {
+      setInput(initialValue);
+      onInitialValueConsumed?.();
+      // Focus the textarea after setting initial value
+      setTimeout(() => textareaRef.current?.focus(), 100);
+    }
+  }, [initialValue, onInitialValueConsumed]);
 
   // Auto-resize textarea based on content
   useEffect(() => {

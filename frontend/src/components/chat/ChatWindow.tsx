@@ -56,14 +56,7 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     }
   }, [isHistoryOpen, fetchSessions]);
 
-  useEffect(() => {
-    if (initialMessage && isOpen) {
-      sendMessageStream(initialMessage);
-      if (onInitialMessageConsumed) {
-        onInitialMessageConsumed();
-      }
-    }
-  }, [initialMessage, isOpen, sendMessageStream, onInitialMessageConsumed]);
+  // Note: initialMessage is now passed to ChatInput instead of auto-sending
 
   const processImageFile = (file: File) => {
     // Check file size (max 5MB)
@@ -243,6 +236,8 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
         isStreaming={isStreaming}
         externalImage={draggedImage}
         onImageClear={() => setDraggedImage(null)}
+        initialValue={initialMessage}
+        onInitialValueConsumed={onInitialMessageConsumed}
       />
     </div>
   );

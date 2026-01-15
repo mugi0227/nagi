@@ -2,19 +2,26 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { FaMagic, FaPlay } from 'react-icons/fa';
 import { meetingAgendaApi } from '../../api/meetingAgenda';
-import { RecurringMeeting } from '../../api/types';
+import { RecurringMeeting, Task } from '../../api/types';
 
 interface MeetingMainContentProps {
     projectId: string;
     selectedDate: Date | null;
     selectedMeeting: RecurringMeeting | null;
+    selectedTask?: Task | null;
 }
 
 export function MeetingMainContent({
     projectId,
     selectedDate,
-    selectedMeeting
+    selectedMeeting,
+    selectedTask
 }: MeetingMainContentProps) {
+    // Either recurring meeting or standalone task (meeting)
+    const hasMeeting = !!(selectedMeeting || selectedTask);
+    const meetingTitle = selectedMeeting?.title || selectedTask?.title || '';
+    const meetingStartTime = selectedMeeting?.start_time || (selectedTask?.start_time ? new Date(selectedTask.start_time).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : '');
+
     const getDateStr = (date: Date) => {
         const year = date.getFullYear();
         const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -33,7 +40,7 @@ export function MeetingMainContent({
     const [mode, setMode] = useState<'PREPARATION' | 'MEETING' | 'ARCHIVE'>('PREPARATION');
 
     useEffect(() => {
-        if (!selectedMeeting || !selectedDate) {
+        if (!hasMeeting || !selectedDate) {
             return;
         }
 
@@ -48,32 +55,42 @@ export function MeetingMainContent({
         } else {
             setMode('PREPARATION');
         }
-    }, [selectedMeeting, selectedDate]);
+    }, [hasMeeting, selectedDate]);
 
     const handleGenerateDraft = async () => {
-        if (!selectedMeeting || !selectedDate) return;
+        if (!hasMeeting || !selectedDate) return;
 
-        const dateStr = getDateStr(selectedDate);
-        const prompt = `
-定例ミーティング「${selectedMeeting.title}」(${dateStr}) のアジェンダドラフトを作成してください。
+        const formattedDate = selectedDate.toLocaleDateString('ja-JP', {
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            weekday: 'long'
+        });
+
+        let prompt: string;
+        if (selectedMeeting) {
+            prompt = `ミーティング「${selectedMeeting.title}」(ID: ${selectedMeeting.id}) のアジェンダを作成して。
 プロジェクトID: ${projectId}
-ミーティングID: ${selectedMeeting.id}
+開催日: ${formattedDate}
 
-以下の手順で実行してください：
-1. \`fetch_meeting_context\` ツールを使って、プロジェクトとミーティングのコンテキストを取得してください。
-   **必ず meeting_id も指定してください。** これにより、ミーティングの所要時間や説明も取得できます。
-   パラメータ例: project_id="${projectId}", meeting_id="${selectedMeeting.id}", start_date="(1週間前)", end_date="${dateStr}"
-2. 取得したプロジェクト目標、キーポイント、チェックイン状況、タスク進捗を基に、議論すべきアジェンダ項目を特定してください。
-3. まずはチャットでアジェンダ案を提示し、ユーザーに確認を求めてください。
-   **注意: まだ \`add_agenda_item\` ツールは実行しないでください。ユーザーの承認を得てから実行してください。**
-4. ユーザーが承認('Yes'など)したら、\`add_agenda_item\` ツールを使ってデータベースに追加してください。
-        `.trim();
+追加の指示があれば以下に記入:
+`;
+        } else if (selectedTask) {
+            prompt = `ミーティング「${selectedTask.title}」(ID: ${selectedTask.id}) のアジェンダを作成して。
+プロジェクトID: ${projectId}
+開催日: ${formattedDate}
+
+追加の指示があれば以下に記入:
+`;
+        } else {
+            return;
+        }
 
         const event = new CustomEvent('secretary:chat-open', { detail: { message: prompt } });
         window.dispatchEvent(event);
     };
 
-    if (!selectedDate || !selectedMeeting) {
+    if (!selectedDate || !hasMeeting) {
         return (
             <div className="meetings-main justify-center items-center">
                 <div className="empty-state">
@@ -89,8 +106,8 @@ export function MeetingMainContent({
                 <div className="meeting-header-info">
                     <h2>{selectedDate.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</h2>
                     <div className="meeting-header-meta">
-                        <span>{selectedMeeting.title}</span>
-                        <span>{selectedMeeting.start_time}~</span>
+                        <span>{meetingTitle}</span>
+                        {meetingStartTime && <span>{meetingStartTime}~</span>}
                     </div>
                 </div>
                 <div className={`meeting-status-badge ${mode === 'MEETING' ? 'status-meeting' : 'status-preparation'}`}>

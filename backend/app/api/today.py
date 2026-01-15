@@ -122,9 +122,12 @@ async def get_top3_tasks(
         Top3Response: Top 3 tasks with capacity information
     """
     # 1. Get assigned tasks
-    assignments = await assignment_repo.list_for_assignee(user.id)
-    assigned_ids = [a.task_id for a in assignments]
+    my_assignments = await assignment_repo.list_for_assignee(user.id)
+    assigned_ids = [a.task_id for a in my_assignments]
     assigned_tasks = await task_repo.get_many(assigned_ids)
+
+    # Get all assignments for filtering (includes other users' assignments)
+    all_assignments = await assignment_repo.list_all_for_user(user.id)
 
     # 2. Get personal tasks (Inbox/Memo)
     personal_tasks = await task_repo.list_personal_tasks(user.id, include_done=True, limit=1000)
@@ -151,6 +154,9 @@ async def get_top3_tasks(
         capacity_hours=effective_capacity,
         capacity_by_weekday=effective_weekly,
         max_days=30,
+        current_user_id=user.id,
+        assignments=all_assignments,
+        filter_by_assignee=True,
     )
     today_result = scheduler_service.get_today_tasks(
         schedule,

@@ -982,7 +982,22 @@ export function ProjectDetailV2Page() {
     }
   };
 
-  const handleGeneratePhases = async () => {
+  const handleGeneratePhases = () => {
+    if (!projectId || !project) return;
+
+    const instruction = phasePlanInstruction.trim();
+    const prompt = `プロジェクト「${project.name}」(ID: ${projectId}) のフェーズを作成して。
+
+追加の指示があれば以下に記入:
+${instruction}`;
+
+    const event = new CustomEvent('secretary:chat-open', { detail: { message: prompt } });
+    window.dispatchEvent(event);
+    setPhasePlanInstruction('');
+  };
+
+  // Legacy: kept for reference but no longer used
+  const _handleGeneratePhasesLegacy = async () => {
     if (!projectId) return;
     setIsPlanningPhases(true);
     try {
@@ -2011,9 +2026,9 @@ export function ProjectDetailV2Page() {
                 <button
                   className="project-v2-button"
                   onClick={handleGeneratePhases}
-                  disabled={isPlanningPhases}
+                  disabled={!project}
                 >
-                  {isPlanningPhases ? '生成中...' : 'AIでフェーズ生成'}
+                  AIでフェーズ生成
                 </button>
               </div>
               <div className="project-v2-form">

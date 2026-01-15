@@ -271,7 +271,18 @@ export function TaskDetailModal({
     }
   };
 
-  const handleCreateActionItems = async () => {
+  const handleCreateActionItems = () => {
+    if (!task.meeting_notes) return;
+    const prompt = `タスク「${task.title}」(ID: ${task.id}) の会議ノートからアクションアイテムを作成して。
+
+追加の指示があれば以下に記入:
+`;
+    const event = new CustomEvent('secretary:chat-open', { detail: { message: prompt } });
+    window.dispatchEvent(event);
+  };
+
+  // Legacy: kept for reference
+  const _handleCreateActionItemsLegacy = async () => {
     if (!task.meeting_notes || isActionItemSaving) return;
     setIsActionItemSaving(true);
     setActionItemMessage(null);
@@ -403,11 +414,10 @@ export function TaskDetailModal({
                           type="button"
                           className="premium-action-btn"
                           onClick={handleCreateActionItems}
-                          disabled={isActionItemSaving || !task.meeting_notes}
+                          disabled={!task.meeting_notes}
                         >
-                          {isActionItemSaving ? '作成中...' : 'アクションアイテムを生成'}
+                          アクションアイテムを生成
                         </button>
-                        {actionItemMessage && <p className="action-status-msg">{actionItemMessage}</p>}
                       </div>
                     </div>
                   </div>

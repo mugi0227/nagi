@@ -238,11 +238,19 @@ export function PhaseList({
         <div className="phase-header-actions">
           <button
             className="add-phase-btn"
-            onClick={() => onGeneratePhases?.(phasePlanInstruction.trim() || undefined)}
-            disabled={!onGeneratePhases || isPlanningPhases}
+            onClick={() => {
+              const instruction = phasePlanInstruction.trim();
+              const prompt = `プロジェクト (ID: ${projectId}) のフェーズを作成して。
+
+追加の指示があれば以下に記入:
+${instruction}`;
+              const event = new CustomEvent('secretary:chat-open', { detail: { message: prompt } });
+              window.dispatchEvent(event);
+              setPhasePlanInstruction('');
+            }}
             title="AIでフェーズとマイルストーンを生成"
           >
-            <FaRobot /> {isPlanningPhases ? '生成中...' : 'AIでフェーズ生成'}
+            <FaRobot /> AIでフェーズ生成
           </button>
           <button className="add-phase-btn" onClick={() => setIsAdding(true)}>
             <FaPlus /> フェーズ追加
@@ -401,20 +409,22 @@ export function PhaseList({
                         value={phaseTaskInstructions[phase.id] || ''}
                         onChange={(e) => handlePhaseTaskInstructionChange(phase.id, e.target.value)}
                         placeholder="タスク分解の指示を入力（任意）"
-                        disabled={!onGeneratePhaseTasks}
                       />
                       <div className="milestones-actions">
                         <button
                           className="btn-secondary"
-                          onClick={() =>
-                            onGeneratePhaseTasks?.(
-                              phase.id,
-                              (phaseTaskInstructions[phase.id] || '').trim() || undefined
-                            )
-                          }
-                          disabled={!onGeneratePhaseTasks || planningPhaseId === phase.id}
+                          onClick={() => {
+                            const instruction = (phaseTaskInstructions[phase.id] || '').trim();
+                            const prompt = `フェーズ「${phase.name}」(ID: ${phase.id}) からタスクを作成して。
+
+追加の指示があれば以下に記入:
+${instruction}`;
+                            const event = new CustomEvent('secretary:chat-open', { detail: { message: prompt } });
+                            window.dispatchEvent(event);
+                            setPhaseTaskInstructions((prev) => ({ ...prev, [phase.id]: '' }));
+                          }}
                         >
-                          <FaRobot /> {planningPhaseId === phase.id ? '生成中...' : 'AIでタスク分解'}
+                          <FaRobot /> AIでタスク分解
                         </button>
                         <button
                           className="btn-secondary"
