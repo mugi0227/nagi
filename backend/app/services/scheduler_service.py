@@ -643,16 +643,41 @@ class SchedulerService:
                     if next_id in ready: ready.remove(next_id)
                     if next_id not in in_progress: in_progress.append(next_id)
 
+            # Force-schedule tasks that would exceed their due date if pushed to tomorrow
+            # These tasks get scheduled even if over capacity
+            forced_overflow_minutes = 0
+            for tid in list(in_progress) + list(ready):
+                due_dt = effective_due_date_by_task.get(tid)
+                if due_dt is None:
+                    continue
+                # If due date is today or earlier, and task is not yet fully scheduled
+                if due_dt <= day_cursor and tid in remaining_task_ids and remaining_minutes.get(tid, 0) > 0:
+                    # Force allocate this task today regardless of capacity
+                    if tid not in task_start:
+                        task_start[tid] = day_cursor
+
+                    force_mins = remaining_minutes[tid]
+                    allocations.append(TaskAllocation(task_id=tid, minutes=force_mins))
+                    forced_overflow_minutes += force_mins
+
+                    task_end[tid] = day_cursor
+                    remaining_minutes[tid] = 0
+                    remaining_task_ids.discard(tid)
+                    if tid in in_progress:
+                        in_progress.remove(tid)
+                    if tid in ready:
+                        ready.remove(tid)
+                    self._release_dependents(tid, indegree, dependents, ready)
+
             # End of Day Processing
-            # Calculate overflow? Strictly speaking overflow is task that WANTED to be done today but couldn't.
-            # For this simplified model, global overflow minutes is tricky. Just use 0 or calc based on remaining high prio?
-            overflow_minutes = 0 # Simplify for now
+            # Calculate overflow including forced allocations
+            overflow_minutes = forced_overflow_minutes
 
             days.append(
                 ScheduleDay(
                     date=day_cursor,
                     capacity_minutes=capacity_minutes_today,
-                    allocated_minutes=allocated_minutes_total + meeting_minutes, # Include meetings?
+                    allocated_minutes=allocated_minutes_total + meeting_minutes + forced_overflow_minutes,
                     overflow_minutes=overflow_minutes,
                     task_allocations=allocations,
                     meeting_minutes=meeting_minutes,

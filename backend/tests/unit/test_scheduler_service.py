@@ -503,3 +503,121 @@ def test_many_overlapping_meetings_with_task_allocation():
     task_alloc = next((a for a in today.task_allocations if a.task_id == task.id), None)
     assert task_alloc is not None
     assert task_alloc.minutes == 180
+
+
+def test_task_force_scheduled_before_due_date():
+    """
+    Tasks with due dates should be force-scheduled before the due date,
+    even if it exceeds daily capacity.
+
+    Scenario:
+    - 1 hour capacity per day
+    - Task A: 120 minutes, due in 1 day (tomorrow)
+    - Task A should be fully scheduled by its due date (today + tomorrow)
+    """
+    service = SchedulerService()
+    start_date = date.today()
+    due_date = start_date + timedelta(days=1)
+
+    task = make_task(
+        "Urgent task",
+        estimated_minutes=120,
+        due_date=datetime.combine(due_date, datetime.min.time()),
+    )
+
+    schedule = service.build_schedule([task], capacity_hours=1, start_date=start_date, max_days=5)
+
+    # Find the task info
+    task_info = next((t for t in schedule.tasks if t.task_id == task.id), None)
+    assert task_info is not None
+    # Task should be completed by due date
+    assert task_info.planned_end is not None
+    assert task_info.planned_end <= due_date
+
+
+def test_task_force_scheduled_on_due_date_with_overflow():
+    """
+    A task that cannot fit within capacity before due date should still
+    be force-scheduled on the due date, creating overflow.
+
+    Scenario:
+    - 30 min capacity per day
+    - Task A: 120 minutes, due today
+    - Task A should be fully scheduled today even though capacity is only 30 min
+    """
+    service = SchedulerService()
+    start_date = date.today()
+    due_date = start_date  # Due today
+
+    task = make_task(
+        "Urgent task due today",
+        estimated_minutes=120,
+        due_date=datetime.combine(due_date, datetime.min.time()),
+    )
+
+    schedule = service.build_schedule([task], capacity_hours=0.5, start_date=start_date, max_days=5)
+
+    # Task should be scheduled on day 0 (today) despite capacity being only 30 min
+    assert len(schedule.days) >= 1
+    today_schedule = schedule.days[0]
+
+    # Find task allocation for today
+    task_alloc = [a for a in today_schedule.task_allocations if a.task_id == task.id]
+    assert len(task_alloc) > 0
+
+    total_allocated = sum(a.minutes for a in task_alloc)
+    assert total_allocated == 120  # Full task should be allocated
+
+    # There should be overflow (120 - 30 = 90 minutes)
+    assert today_schedule.overflow_minutes > 0
+
+    # Task should end today
+    task_info = next((t for t in schedule.tasks if t.task_id == task.id), None)
+    assert task_info is not None
+    assert task_info.planned_end == start_date
+
+
+def test_multiple_tasks_force_scheduled_before_due_dates():
+    """
+    Multiple tasks with different due dates should all be force-scheduled
+    before their respective due dates.
+    """
+    service = SchedulerService()
+    start_date = date.today()
+
+    # Task A: due tomorrow, 60 min
+    task_a = make_task(
+        "Task A",
+        estimated_minutes=60,
+        due_date=datetime.combine(start_date + timedelta(days=1), datetime.min.time()),
+    )
+    # Task B: due in 2 days, 60 min
+    task_b = make_task(
+        "Task B",
+        estimated_minutes=60,
+        due_date=datetime.combine(start_date + timedelta(days=2), datetime.min.time()),
+    )
+    # Task C: no due date, 60 min
+    task_c = make_task(
+        "Task C",
+        estimated_minutes=60,
+    )
+
+    schedule = service.build_schedule(
+        [task_a, task_b, task_c],
+        capacity_hours=0.5,  # 30 min per day
+        start_date=start_date,
+        max_days=10,
+    )
+
+    # Task A should end by day 1
+    task_a_info = next((t for t in schedule.tasks if t.task_id == task_a.id), None)
+    assert task_a_info is not None
+    assert task_a_info.planned_end is not None
+    assert task_a_info.planned_end <= start_date + timedelta(days=1)
+
+    # Task B should end by day 2
+    task_b_info = next((t for t in schedule.tasks if t.task_id == task_b.id), None)
+    assert task_b_info is not None
+    assert task_b_info.planned_end is not None
+    assert task_b_info.planned_end <= start_date + timedelta(days=2)
