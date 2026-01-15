@@ -26,8 +26,10 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
+import { phasesApi } from '../../api/phases';
+import { getProject } from '../../api/projects';
 import { tasksApi } from '../../api/tasks';
-import type { Task } from '../../api/types';
+import type { Phase, Project, Task } from '../../api/types';
 import { AgendaList } from '../agenda';
 import { StepNumber } from '../common/StepNumber';
 import './TaskDetailModal.css';
@@ -96,6 +98,43 @@ export function TaskDetailModal({
   const [isActionItemSaving, setIsActionItemSaving] = useState(false);
   const [actionItemMessage, setActionItemMessage] = useState<string | null>(null);
   const [localSubtasks, setLocalSubtasks] = useState<Task[]>(subtasks);
+  const [fetchedProject, setFetchedProject] = useState<Project | null>(null);
+  const [fetchedPhase, setFetchedPhase] = useState<Phase | null>(null);
+
+  // Fetch project and phase info if not provided via props
+  useEffect(() => {
+    let isActive = true;
+    const fetchProjectAndPhase = async () => {
+      // Fetch project if we have project_id but no projectName prop
+      if (task.project_id && !projectName) {
+        try {
+          const proj = await getProject(task.project_id);
+          if (isActive && proj) {
+            setFetchedProject(proj);
+          }
+        } catch (err) {
+          console.error('Failed to fetch project:', err);
+        }
+      }
+      // Fetch phase if we have phase_id but no phaseName prop
+      if (task.phase_id && !phaseName) {
+        try {
+          const phase = await phasesApi.getById(task.phase_id);
+          if (isActive && phase) {
+            setFetchedPhase(phase);
+          }
+        } catch (err) {
+          console.error('Failed to fetch phase:', err);
+        }
+      }
+    };
+    fetchProjectAndPhase();
+    return () => { isActive = false; };
+  }, [task.project_id, task.phase_id, projectName, phaseName]);
+
+  // Determine effective project/phase names (props take precedence)
+  const effectiveProjectName = projectName || fetchedProject?.name;
+  const effectivePhaseName = phaseName || fetchedPhase?.name;
 
   useEffect(() => {
     setActionItemMessage(null);
@@ -531,13 +570,13 @@ export function TaskDetailModal({
                     {task.project_id && (
                       <div className="sidebar-meta-item">
                         <span className="label">プロジェクト</span>
-                        <span className="value"><FaProjectDiagram /> {projectName || '紐付け中'}</span>
+                        <span className="value"><FaProjectDiagram /> {effectiveProjectName || '読み込み中...'}</span>
                       </div>
                     )}
                     {task.phase_id && (
                       <div className="sidebar-meta-item">
                         <span className="label">フェーズ</span>
-                        <span className="value"><FaLayerGroup /> {phaseName || task.phase_id}</span>
+                        <span className="value"><FaLayerGroup /> {effectivePhaseName || '読み込み中...'}</span>
                       </div>
                     )}
                   </div>
