@@ -38,9 +38,9 @@ class IProjectInvitationRepository(ABC):
 
     @abstractmethod
     async def get_pending_by_email(
-        self, user_id: str, project_id: UUID, email: str
+        self, project_id: UUID, email: str
     ) -> Optional[ProjectInvitation]:
-        """Get a pending invitation by email."""
+        """Get a pending invitation by email for a project."""
         pass
 
     @abstractmethod

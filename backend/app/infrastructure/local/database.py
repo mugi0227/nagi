@@ -177,7 +177,7 @@ class ProjectInvitationORM(Base):
 
     __tablename__ = "project_invitations"
     __table_args__ = (
-        UniqueConstraint("project_id", "email", "user_id", name="uq_project_invitation"),
+        UniqueConstraint("project_id", "email", name="uq_project_invitation"),
     )
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
@@ -292,7 +292,8 @@ class MeetingAgendaItemORM(Base):
     __tablename__ = "meeting_agenda_items"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
-    meeting_id = Column(String(36), nullable=False, index=True)
+    meeting_id = Column(String(36), nullable=True, index=True)  # For RecurringMeeting
+    task_id = Column(String(36), nullable=True, index=True)  # For standalone meeting tasks
     user_id = Column(String(255), nullable=False, index=True)
     title = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)

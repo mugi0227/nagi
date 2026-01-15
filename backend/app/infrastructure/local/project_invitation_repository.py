@@ -97,13 +97,12 @@ class SqliteProjectInvitationRepository(IProjectInvitationRepository):
             return [self._orm_to_model(orm) for orm in result.scalars().all()]
 
     async def get_pending_by_email(
-        self, user_id: str, project_id: UUID, email: str
+        self, project_id: UUID, email: str
     ) -> Optional[ProjectInvitation]:
         async with self._session_factory() as session:
             result = await session.execute(
                 select(ProjectInvitationORM).where(
                     and_(
-                        ProjectInvitationORM.user_id == user_id,
                         ProjectInvitationORM.project_id == str(project_id),
                         ProjectInvitationORM.email == email,
                         ProjectInvitationORM.status == InvitationStatus.PENDING.value,

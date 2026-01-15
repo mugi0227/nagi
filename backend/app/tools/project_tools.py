@@ -786,6 +786,7 @@ class InviteProjectMemberInput(BaseModel):
 async def invite_project_member(
     user_id: str,
     invitation_repo: IProjectInvitationRepository,
+    member_repo: IProjectMemberRepository,
     input_data: InviteProjectMemberInput,
 ) -> dict:
     """Invite a member to a project."""
@@ -798,6 +799,14 @@ async def invite_project_member(
     except ValueError:
         return {"error": f"Invalid project ID format: {input_data.project_id}"}
 
+    # Check if user has permission to invite (must be OWNER or ADMIN)
+    members = await member_repo.list(user_id, project_id)
+    user_member = next((m for m in members if m.member_user_id == user_id), None)
+    if not user_member:
+        return {"error": "You are not a member of this project"}
+    if user_member.role not in (ProjectRole.OWNER, ProjectRole.ADMIN):
+        return {"error": "You must be an OWNER or ADMIN to invite members"}
+
     # Validate role
     try:
         role = ProjectRole[input_data.role.upper()]
@@ -805,7 +814,7 @@ async def invite_project_member(
         return {"error": f"Invalid role: {input_data.role}. Must be OWNER, ADMIN, or MEMBER"}
 
     # Check if invitation already exists
-    existing = await invitation_repo.get_pending_by_email(user_id, project_id, input_data.email)
+    existing = await invitation_repo.get_pending_by_email(project_id, input_data.email)
     if existing:
         return {"error": f"Invitation already exists for {input_data.email}"}
 
@@ -821,6 +830,7 @@ async def invite_project_member(
 
 def invite_project_member_tool(
     invitation_repo: IProjectInvitationRepository,
+    member_repo: IProjectMemberRepository,
     user_id: str,
 ) -> FunctionTool:
     """Create ADK tool for inviting project members."""
@@ -830,7 +840,7 @@ def invite_project_member_tool(
 
         指定されたメールアドレスにプロジェクト招待を送信します。
         招待されたユーザーは、招待を承諾するとプロジェクトメンバーになれます。
-        同じメールアドレスへの重複招待はチェックされます。
+        招待にはプロジェクトのOWNERまたはADMIN権限が必要です。
 
         Parameters:
             project_id (str): 招待先のプロジェクトID（UUID形式、必須）
@@ -858,6 +868,8 @@ def invite_project_member_tool(
                 - 無効なプロジェクトID形式
                 - 無効なロール値
                 - 既に招待が存在する
+                - 権限不足（OWNERまたはADMINでない）
+                - 既にメンバーである
 
         Example:
             # メンバーとして招待
@@ -866,7 +878,7 @@ def invite_project_member_tool(
             # 管理者として招待
             {"project_id": "123e4567-...", "email": "admin@example.com", "role": "ADMIN"}
         """
-        return await invite_project_member(user_id, invitation_repo, InviteProjectMemberInput(**input_data))
+        return await invite_project_member(user_id, invitation_repo, member_repo, InviteProjectMemberInput(**input_data))
 
     _tool.__name__ = "invite_project_member"
     return FunctionTool(func=_tool)
