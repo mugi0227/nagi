@@ -9,6 +9,7 @@ import type {
   PhaseUpdate,
   PhaseWithTaskCount,
 } from '../../api/types';
+import type { DraftCardData } from '../chat/DraftCard';
 import './PhaseList.css';
 
 interface PhaseListProps {
@@ -38,10 +39,10 @@ export function PhaseList({
   onCreateMilestone,
   onUpdateMilestone,
   onDeleteMilestone,
-  onGeneratePhases,
-  onGeneratePhaseTasks,
-  isPlanningPhases = false,
-  planningPhaseId = null,
+  onGeneratePhases: _onGeneratePhases,
+  onGeneratePhaseTasks: _onGeneratePhaseTasks,
+  isPlanningPhases: _isPlanningPhases = false,
+  planningPhaseId: _planningPhaseId = null,
   projectId,
 }: PhaseListProps) {
   const [isAdding, setIsAdding] = useState(false);
@@ -239,14 +240,20 @@ export function PhaseList({
           <button
             className="add-phase-btn"
             onClick={() => {
-              const instruction = phasePlanInstruction.trim();
-              const prompt = `プロジェクト (ID: ${projectId}) のフェーズを作成して。
+              const draftCard: DraftCardData = {
+                type: 'phase',
+                title: 'フェーズ生成',
+                info: [
+                  { label: 'プロジェクトID', value: projectId },
+                ],
+                placeholder: '例: MVP優先、フェーズは3〜5件に絞る',
+                promptTemplate: `プロジェクト (ID: ${projectId}) のフェーズを作成して。
 
 追加の指示があれば以下に記入:
-${instruction}`;
-              const event = new CustomEvent('secretary:chat-open', { detail: { message: prompt } });
+{instruction}`,
+              };
+              const event = new CustomEvent('secretary:chat-open', { detail: { draftCard } });
               window.dispatchEvent(event);
-              setPhasePlanInstruction('');
             }}
             title="AIでフェーズとマイルストーンを生成"
           >
@@ -414,14 +421,21 @@ ${instruction}`;
                         <button
                           className="btn-secondary"
                           onClick={() => {
-                            const instruction = (phaseTaskInstructions[phase.id] || '').trim();
-                            const prompt = `フェーズ「${phase.name}」(ID: ${phase.id}) からタスクを作成して。
+                            const draftCard: DraftCardData = {
+                              type: 'task',
+                              title: 'フェーズからタスク作成',
+                              info: [
+                                { label: 'フェーズ', value: phase.name },
+                                { label: 'フェーズID', value: phase.id },
+                              ],
+                              placeholder: '例: MVP優先で、3〜5個のタスクに分解して',
+                              promptTemplate: `フェーズ「${phase.name}」(ID: ${phase.id}) からタスクを作成して。
 
 追加の指示があれば以下に記入:
-${instruction}`;
-                            const event = new CustomEvent('secretary:chat-open', { detail: { message: prompt } });
+{instruction}`,
+                            };
+                            const event = new CustomEvent('secretary:chat-open', { detail: { draftCard } });
                             window.dispatchEvent(event);
-                            setPhaseTaskInstructions((prev) => ({ ...prev, [phase.id]: '' }));
                           }}
                         >
                           <FaRobot /> AIでタスク分解

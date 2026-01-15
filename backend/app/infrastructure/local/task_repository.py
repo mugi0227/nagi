@@ -61,6 +61,7 @@ class SqliteTaskRepository(ITaskRepository):
             location=orm.location,
             attendees=orm.attendees or [],
             meeting_notes=orm.meeting_notes,
+            recurring_meeting_id=UUID(orm.recurring_meeting_id) if orm.recurring_meeting_id else None,
         )
 
     async def create(self, user_id: str, task: TaskCreate) -> Task:
@@ -344,3 +345,29 @@ class SqliteTaskRepository(ITaskRepository):
 
             result = await session.execute(query)
             return result.scalar() or 0
+
+    async def list_by_recurring_meeting(
+        self,
+        user_id: str,
+        recurring_meeting_id: UUID,
+        start_after: Optional[datetime] = None,
+        end_before: Optional[datetime] = None,
+    ) -> list["Task"]:
+        """List tasks generated from a recurring meeting."""
+        async with self._session_factory() as session:
+            query = select(TaskORM).where(
+                and_(
+                    TaskORM.user_id == user_id,
+                    TaskORM.recurring_meeting_id == str(recurring_meeting_id),
+                )
+            )
+
+            if start_after:
+                query = query.where(TaskORM.start_time >= start_after)
+            if end_before:
+                query = query.where(TaskORM.start_time < end_before)
+
+            query = query.order_by(TaskORM.start_time.asc())
+
+            result = await session.execute(query)
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]

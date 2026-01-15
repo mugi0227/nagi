@@ -149,6 +149,12 @@ class BreakdownTaskInput(BaseModel):
     )
 
 
+class GetTaskInput(BaseModel):
+    """Input for get_task tool."""
+
+    task_id: str = Field(..., description="タスクID（UUID文字列）")
+
+
 class ListTasksInput(BaseModel):
     """Input for list_tasks tool."""
 
@@ -578,6 +584,36 @@ async def delete_task(
         "success": deleted,
         "task_id": input_data.task_id,
         "message": "Task deleted successfully" if deleted else "Task not found",
+    }
+
+
+async def get_task(
+    user_id: str,
+    repo: ITaskRepository,
+    input_data: GetTaskInput,
+) -> dict:
+    """
+    Get a single task by ID.
+
+    Args:
+        user_id: User ID
+        repo: Task repository
+        input_data: Task ID
+
+    Returns:
+        Task details including meeting_notes
+    """
+    task_id = UUID(input_data.task_id)
+    task = await repo.get(user_id, task_id)
+
+    if not task:
+        return {
+            "error": "Task not found",
+            "task_id": input_data.task_id,
+        }
+
+    return {
+        "task": task.model_dump(mode="json"),
     }
 
 
@@ -1071,6 +1107,21 @@ def list_tasks_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
     return FunctionTool(func=_tool)
 
 
+def get_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
+    """Create ADK tool for getting a single task."""
+    async def _tool(input_data: dict) -> dict:
+        """get_task: タスクの詳細を取得します（meeting_notesを含む）。
+
+        Parameters:
+            task_id (str): タスクID（UUID文字列）
+
+        Returns:
+            dict: タスクの詳細情報（id, title, description, status, meeting_notes等を含む）
+        """
+        return await get_task(user_id, repo, GetTaskInput(**input_data))
+
+    _tool.__name__ = "get_task"
+    return FunctionTool(func=_tool)
 
 
 def list_task_assignments_tool(

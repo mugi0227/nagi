@@ -86,3 +86,29 @@ async def reorder_agenda_items(
 ):
     """Reorder agenda items."""
     return await repo.reorder(user.id, meeting_id, ordered_ids)
+
+
+# Task-based endpoints (for standalone meetings without RecurringMeeting)
+
+
+@router.post("/tasks/{task_id}/items", response_model=MeetingAgendaItem)
+async def create_task_agenda_item(
+    task_id: UUID,
+    data: MeetingAgendaItemCreate,
+    user: CurrentUser,
+    repo: MeetingAgendaRepo,
+):
+    """Create a new agenda item for a standalone meeting task."""
+    # Set task_id in data
+    data.task_id = task_id
+    return await repo.create(user.id, None, data)
+
+
+@router.get("/tasks/{task_id}/items", response_model=list[MeetingAgendaItem])
+async def list_task_agenda_items(
+    task_id: UUID,
+    user: CurrentUser,
+    repo: MeetingAgendaRepo,
+):
+    """List all agenda items for a standalone meeting task."""
+    return await repo.list_by_task(user.id, task_id)

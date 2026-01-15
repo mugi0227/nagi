@@ -6,6 +6,7 @@ import type { Task } from '../../api/types';
 import { useChat } from '../../hooks/useChat';
 import { ChatInput } from './ChatInput';
 import { ChatMessage } from './ChatMessage';
+import { DraftCard, DraftCardData } from './DraftCard';
 import './ChatWindow.css';
 
 interface ChatWindowProps {
@@ -13,9 +14,11 @@ interface ChatWindowProps {
   onClose: () => void;
   initialMessage?: string | null;
   onInitialMessageConsumed?: () => void;
+  draftCard?: DraftCardData | null;
+  onDraftCardConsumed?: () => void;
 }
 
-export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageConsumed }: ChatWindowProps) {
+export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageConsumed, draftCard, onDraftCardConsumed }: ChatWindowProps) {
   const {
     messages,
     sendMessageStream,
@@ -30,6 +33,7 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     isLoadingSessions,
     isLoadingHistory,
   } = useChat();
+  const [activeDraftCard, setActiveDraftCard] = useState<DraftCardData | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldAutoScroll = useRef(true);
   const [isDragging, setIsDragging] = useState(false);
@@ -57,6 +61,14 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
   }, [isHistoryOpen, fetchSessions]);
 
   // Note: initialMessage is now passed to ChatInput instead of auto-sending
+
+  // Handle draft card from external sources
+  useEffect(() => {
+    if (draftCard) {
+      setActiveDraftCard(draftCard);
+      onDraftCardConsumed?.();
+    }
+  }, [draftCard, onDraftCardConsumed]);
 
   const processImageFile = (file: File) => {
     // Check file size (max 5MB)
@@ -226,6 +238,16 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
             imageUrl={message.imageUrl}
           />
         ))}
+        {activeDraftCard && (
+          <DraftCard
+            data={activeDraftCard}
+            onSend={(message) => {
+              sendMessageStream(message);
+              setActiveDraftCard(null);
+            }}
+            onCancel={() => setActiveDraftCard(null)}
+          />
+        )}
         <div ref={messagesEndRef} />
       </div>
 

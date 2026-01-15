@@ -4,6 +4,7 @@ import { Outlet, useLocation } from 'react-router-dom';
 import { userStorage } from '../../utils/userStorage';
 import { ChatWidget } from '../chat/ChatWidget';
 import { ChatWindow } from '../chat/ChatWindow';
+import type { DraftCardData } from '../chat/DraftCard';
 import './AppLayout.css';
 import { Sidebar } from './Sidebar';
 
@@ -24,6 +25,7 @@ export function AppLayout() {
   const [isChatOpen, setIsChatOpen] = useState(() => loadChatState().isOpen);
   const [chatWidth, setChatWidth] = useState(() => loadChatState().width);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
+  const [pendingDraftCard, setPendingDraftCard] = useState<DraftCardData | null>(null);
 
   const isResizing = useRef(false);
 
@@ -77,9 +79,13 @@ export function AppLayout() {
   }, []);
 
   useEffect(() => {
-    const handleOpenChat = (e: CustomEvent<{ message?: string }>) => {
-      if (e.detail?.message) {
+    const handleOpenChat = (e: CustomEvent<{ message?: string; draftCard?: DraftCardData }>) => {
+      if (e.detail?.draftCard) {
+        setPendingDraftCard(e.detail.draftCard);
+        setPendingMessage(null);
+      } else if (e.detail?.message) {
         setPendingMessage(e.detail.message);
+        setPendingDraftCard(null);
       }
       setIsChatOpen(true);
     };
@@ -125,6 +131,8 @@ export function AppLayout() {
               onClose={() => setIsChatOpen(false)}
               initialMessage={pendingMessage}
               onInitialMessageConsumed={() => setPendingMessage(null)}
+              draftCard={pendingDraftCard}
+              onDraftCardConsumed={() => setPendingDraftCard(null)}
             />
           </aside>
         </>

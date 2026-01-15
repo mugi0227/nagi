@@ -11,6 +11,7 @@ from app.tools.task_tools import (
     list_task_assignments_tool,
     list_project_assignments_tool,
     breakdown_task_tool,
+    get_task_tool,
 )
 from app.tools.project_tools import (
     propose_project_tool,
@@ -44,6 +45,11 @@ from app.tools.phase_tools import (
     list_phases_tool,
     get_phase_tool,
     update_phase_tool,
+    create_phase_tool,
+    delete_phase_tool,
+    create_milestone_tool,
+    update_milestone_tool,
+    delete_milestone_tool,
 )
 from app.tools.meeting_agenda_tools import (
     add_agenda_item_tool,
@@ -54,6 +60,7 @@ from app.tools.meeting_agenda_tools import (
 )
 from app.tools.meeting_context_tools import (
     fetch_meeting_context_tool,
+    list_recurring_meetings_tool,
 )
 
 __all__ = [
@@ -76,6 +83,7 @@ __all__ = [
     "list_task_assignments_tool",
     "list_project_assignments_tool",
     "breakdown_task_tool",
+    "get_task_tool",
     "search_work_memory_tool",
     "search_memories_tool",
     "search_skills_tool",
@@ -90,11 +98,17 @@ __all__ = [
     "list_phases_tool",
     "get_phase_tool",
     "update_phase_tool",
+    "create_phase_tool",
+    "delete_phase_tool",
+    "create_milestone_tool",
+    "update_milestone_tool",
+    "delete_milestone_tool",
     "add_agenda_item_tool",
     "update_agenda_item_tool",
     "delete_agenda_item_tool",
     "list_agenda_items_tool",
     "reorder_agenda_items_tool",
     "fetch_meeting_context_tool",
+    "list_recurring_meetings_tool",
 ]
 

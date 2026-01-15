@@ -40,4 +40,21 @@ export const meetingAgendaApi = {
         );
         return response;
     },
+
+    // Task-based endpoints (for standalone meetings without RecurringMeeting)
+
+    listByTask: async (taskId: string): Promise<MeetingAgendaItem[]> => {
+        const response = await client.get<MeetingAgendaItem[]>(
+            `/meeting-agendas/tasks/${taskId}/items`
+        );
+        return response;
+    },
+
+    createForTask: async (taskId: string, data: MeetingAgendaItemCreate): Promise<MeetingAgendaItem> => {
+        const response = await client.post<MeetingAgendaItem>(
+            `/meeting-agendas/tasks/${taskId}/items`,
+            data
+        );
+        return response;
+    },
 };

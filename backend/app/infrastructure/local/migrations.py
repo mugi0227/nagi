@@ -157,6 +157,12 @@ async def run_migrations():
                     text("CREATE INDEX idx_meeting_agenda_items_event_date ON meeting_agenda_items(event_date)")
                 )
 
+            if "task_id" not in agenda_columns:
+                await conn.execute(text("ALTER TABLE meeting_agenda_items ADD COLUMN task_id VARCHAR(36)"))
+                await conn.execute(
+                    text("CREATE INDEX idx_meeting_agenda_items_task_id ON meeting_agenda_items(task_id)")
+                )
+
         # Ensure chat session primary key is scoped by user_id.
         await _ensure_chat_sessions_composite_pk(conn)
 

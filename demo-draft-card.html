@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI生成ドラフトカード デモ</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1a1a2e;
+      color: #e0e0e0;
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .chat-container {
+      width: 400px;
+      height: 600px;
+      background: #16213e;
+      border-radius: 16px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
+    }
+
+    .chat-header {
+      padding: 16px 20px;
+      background: #0f3460;
+      border-bottom: 1px solid #1a4a7a;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .chat-header .avatar {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #667eea, #764ba2);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+    }
+
+    .chat-header .title {
+      font-weight: 600;
+      font-size: 16px;
+    }
+
+    .chat-messages {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    /* 通常のメッセージ */
+    .message {
+      max-width: 85%;
+      padding: 12px 16px;
+      border-radius: 16px;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+
+    .message.user {
+      align-self: flex-end;
+      background: #0f3460;
+      border-bottom-right-radius: 4px;
+    }
+
+    .message.assistant {
+      align-self: flex-start;
+      background: #1e3a5f;
+      border-bottom-left-radius: 4px;
+    }
+
+    /* ドラフトカード */
+    .draft-card {
+      background: linear-gradient(135deg, #1e3a5f 0%, #16213e 100%);
+      border: 1px solid #3a7bd5;
+      border-radius: 16px;
+      overflow: hidden;
+      animation: slideIn 0.3s ease-out;
+    }
+
+    @keyframes slideIn {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .draft-card-header {
+      background: linear-gradient(135deg, #3a7bd5, #667eea);
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .draft-card-header .icon {
+      width: 20px;
+      height: 20px;
+      flex-shrink: 0;
+    }
+
+    .draft-card-header .icon svg {
+      width: 100%;
+      height: 100%;
+      fill: currentColor;
+    }
+
+    .draft-card-body {
+      padding: 16px;
+    }
+
+    .draft-card-info {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .draft-card-info-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+    }
+
+    .draft-card-info-row .label {
+      color: #8899a6;
+      min-width: 80px;
+    }
+
+    .draft-card-info-row .value {
+      color: #e0e0e0;
+      font-weight: 500;
+    }
+
+    .draft-card-instruction {
+      margin-bottom: 16px;
+    }
+
+    .draft-card-instruction label {
+      display: block;
+      font-size: 12px;
+      color: #8899a6;
+      margin-bottom: 8px;
+    }
+
+    .draft-card-instruction textarea {
+      width: 100%;
+      background: #0d1b2a;
+      border: 1px solid #2a4a6a;
+      border-radius: 8px;
+      padding: 12px;
+      color: #e0e0e0;
+      font-size: 14px;
+      resize: none;
+      font-family: inherit;
+    }
+
+    .draft-card-instruction textarea:focus {
+      outline: none;
+      border-color: #3a7bd5;
+    }
+
+    .draft-card-instruction textarea::placeholder {
+      color: #5a6a7a;
+    }
+
+    .draft-card-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+
+    .draft-card-actions button {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      border: none;
+    }
+
+    .btn-cancel {
+      background: transparent;
+      border: 1px solid #4a5a6a !important;
+      color: #8899a6;
+    }
+
+    .btn-cancel:hover {
+      background: #1e3a5f;
+      color: #e0e0e0;
+    }
+
+    .btn-send {
+      background: linear-gradient(135deg, #3a7bd5, #667eea);
+      color: white;
+    }
+
+    .btn-send:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(58, 123, 213, 0.4);
+    }
+
+    /* 入力エリア */
+    .chat-input {
+      padding: 16px;
+      background: #0f3460;
+      border-top: 1px solid #1a4a7a;
+      display: flex;
+      gap: 12px;
+      align-items: flex-end;
+    }
+
+    .chat-input textarea {
+      flex: 1;
+      background: #16213e;
+      border: 1px solid #2a4a6a;
+      border-radius: 12px;
+      padding: 12px 16px;
+      color: #e0e0e0;
+      font-size: 14px;
+      resize: none;
+      font-family: inherit;
+      max-height: 100px;
+    }
+
+    .chat-input textarea:focus {
+      outline: none;
+      border-color: #3a7bd5;
+    }
+
+    .chat-input .send-btn {
+      width: 44px;
+      height: 44px;
+      background: linear-gradient(135deg, #3a7bd5, #667eea);
+      border: none;
+      border-radius: 12px;
+      color: white;
+      font-size: 18px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.2s;
+    }
+
+    .chat-input .send-btn:hover {
+      transform: scale(1.05);
+    }
+
+    /* カードタイプバリエーション */
+    .draft-card.phase-breakdown .draft-card-header {
+      background: linear-gradient(135deg, #11998e, #38ef7d);
+    }
+
+    .draft-card.task-breakdown .draft-card-header {
+      background: linear-gradient(135deg, #f093fb, #f5576c);
+    }
+
+    .draft-card.agenda .draft-card-header {
+      background: linear-gradient(135deg, #4facfe, #00f2fe);
+    }
+
+    /* デモ用のボタン */
+    .demo-buttons {
+      position: fixed;
+      bottom: 20px;
+      left: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .demo-buttons button {
+      padding: 10px 16px;
+      background: #0f3460;
+      border: 1px solid #3a7bd5;
+      border-radius: 8px;
+      color: #e0e0e0;
+      font-size: 13px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .demo-buttons button:hover {
+      background: #1e3a5f;
+    }
+
+    .demo-buttons button.active {
+      background: #3a7bd5;
+      color: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="chat-container">
+    <div class="chat-header">
+      <div class="avatar">凪</div>
+      <div class="title">Secretary AI</div>
+    </div>
+
+    <div class="chat-messages" id="messages">
+      <div class="message assistant">
+        こんにちは！何かお手伝いできることはありますか？
+      </div>
+
+      <!-- ドラフトカード: フェーズからタスク作成 -->
+      <div class="draft-card" id="draft-card">
+        <div class="draft-card-header">
+          <span class="icon" id="draft-icon"></span>
+          <span id="draft-title">フェーズからタスク作成</span>
+        </div>
+        <div class="draft-card-body">
+          <div class="draft-card-info">
+            <div class="draft-card-info-row">
+              <span class="label">フェーズ</span>
+              <span class="value">設計フェーズ</span>
+            </div>
+            <div class="draft-card-info-row">
+              <span class="label">プロジェクト</span>
+              <span class="value">Secretary Partner AI</span>
+            </div>
+          </div>
+          <div class="draft-card-instruction">
+            <label>追加の指示（任意）</label>
+            <textarea rows="3" placeholder="例: MVP優先で、3〜5個のタスクに分解して"></textarea>
+          </div>
+          <div class="draft-card-actions">
+            <button class="btn-cancel" onclick="hideCard()">キャンセル</button>
+            <button class="btn-send" onclick="sendCard()">送信</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="chat-input">
+      <textarea rows="1" placeholder="メッセージを入力..."></textarea>
+      <button class="send-btn">➤</button>
+    </div>
+  </div>
+
+  <div class="demo-buttons">
+    <strong style="color: #8899a6; font-size: 12px; margin-bottom: 4px;">デモ切り替え:</strong>
+    <button class="active" onclick="showCard('task')">タスク分解</button>
+    <button onclick="showCard('phase')">フェーズ生成</button>
+    <button onclick="showCard('agenda')">アジェンダ作成</button>
+    <button onclick="showCard('subtask')">サブタスク分解</button>
+  </div>
+
+  <script>
+    // SVG Icons
+    const icons = {
+      robot: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2M7.5 13A2.5 2.5 0 0 0 5 15.5 2.5 2.5 0 0 0 7.5 18a2.5 2.5 0 0 0 2.5-2.5A2.5 2.5 0 0 0 7.5 13m9 0a2.5 2.5 0 0 0-2.5 2.5 2.5 2.5 0 0 0 2.5 2.5 2.5 2.5 0 0 0 2.5-2.5 2.5 2.5 0 0 0-2.5-2.5z"/></svg>`,
+      timeline: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M5 3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2H5zm0 2h14v14H5V5zm2 2v2h10V7H7zm0 4v2h7v-2H7zm0 4v2h10v-2H7z"/></svg>`,
+      document: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm4 18H6V4h7v5h5v11zM8 12h8v2H8v-2zm0 4h8v2H8v-2z"/></svg>`,
+      split: `<svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M14 4l2.29 2.29-2.88 2.88 1.42 1.42 2.88-2.88L20 10V4h-6zm-4 0H4v6l2.29-2.29 4.71 4.7V20h2v-8.41l-5.29-5.3L10 4z"/></svg>`
+    };
+
+    const cardConfigs = {
+      task: {
+        title: 'フェーズからタスク作成',
+        icon: icons.robot,
+        class: '',
+        info: [
+          { label: 'フェーズ', value: '設計フェーズ' },
+          { label: 'プロジェクト', value: 'Secretary Partner AI' }
+        ],
+        placeholder: '例: MVP優先で、3〜5個のタスクに分解して'
+      },
+      phase: {
+        title: 'フェーズ生成',
+        icon: icons.timeline,
+        class: 'phase-breakdown',
+        info: [
+          { label: 'プロジェクト', value: 'Secretary Partner AI' },
+          { label: '目標', value: 'ADHD向け秘書AIの開発' }
+        ],
+        placeholder: '例: MVP優先、3フェーズで分割'
+      },
+      agenda: {
+        title: 'アジェンダ作成',
+        icon: icons.document,
+        class: 'agenda',
+        info: [
+          { label: 'ミーティング', value: '週次定例' },
+          { label: '開催日', value: '2025年1月15日（水）' },
+          { label: 'プロジェクト', value: 'Secretary Partner AI' }
+        ],
+        placeholder: '例: 前回の積み残し議題を優先して'
+      },
+      subtask: {
+        title: 'サブタスク分解',
+        icon: icons.split,
+        class: 'task-breakdown',
+        info: [
+          { label: 'タスク', value: 'ユーザー認証機能の実装' },
+          { label: '見積もり', value: '4時間' }
+        ],
+        placeholder: '例: テスト作成も含めて'
+      }
+    };
+
+    function showCard(type) {
+      const config = cardConfigs[type];
+      const card = document.getElementById('draft-card');
+
+      // クラス切り替え
+      card.className = 'draft-card ' + config.class;
+
+      // ヘッダー更新
+      const iconEl = card.querySelector('.draft-card-header .icon');
+      const titleEl = card.querySelector('.draft-card-header').lastElementChild;
+      iconEl.innerHTML = config.icon;
+      titleEl.textContent = config.title;
+
+      // 情報行更新
+      const infoHtml = config.info.map(item => `
+        <div class="draft-card-info-row">
+          <span class="label">${item.label}</span>
+          <span class="value">${item.value}</span>
+        </div>
+      `).join('');
+      card.querySelector('.draft-card-info').innerHTML = infoHtml;
+
+      // プレースホルダー更新
+      card.querySelector('textarea').placeholder = config.placeholder;
+
+      // ボタン状態更新
+      document.querySelectorAll('.demo-buttons button').forEach(btn => {
+        btn.classList.remove('active');
+      });
+      event.target.classList.add('active');
+
+      // アニメーション
+      card.style.animation = 'none';
+      card.offsetHeight; // reflow
+      card.style.animation = 'slideIn 0.3s ease-out';
+    }
+
+    function hideCard() {
+      const card = document.getElementById('draft-card');
+      card.style.display = 'none';
+    }
+
+    function sendCard() {
+      const card = document.getElementById('draft-card');
+      const textarea = card.querySelector('textarea');
+      const instruction = textarea.value;
+
+      // カードを非表示
+      card.style.display = 'none';
+
+      // ユーザーメッセージを追加
+      const messages = document.getElementById('messages');
+      const userMsg = document.createElement('div');
+      userMsg.className = 'message user';
+      userMsg.textContent = `フェーズ「設計フェーズ」からタスクを作成して。${instruction ? '\n\n' + instruction : ''}`;
+      messages.appendChild(userMsg);
+
+      // AIレスポンスを追加（デモ用）
+      setTimeout(() => {
+        const aiMsg = document.createElement('div');
+        aiMsg.className = 'message assistant';
+        aiMsg.innerHTML = `
+          了解しました！設計フェーズからタスクを作成しますね。<br><br>
+          以下のタスクを作成しました：<br>
+          1. ✅ 要件定義書の作成<br>
+          2. ✅ システム設計書の作成<br>
+          3. ✅ DB設計<br>
+          4. ✅ API設計<br><br>
+          担当者はプロジェクトオーナーに自動で割り当てました。
+        `;
+        messages.appendChild(aiMsg);
+        messages.scrollTop = messages.scrollHeight;
+      }, 500);
+
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    // Initialize first card icon on page load
+    document.addEventListener('DOMContentLoaded', () => {
+      const iconEl = document.getElementById('draft-icon');
+      if (iconEl) {
+        iconEl.innerHTML = icons.robot;
+      }
+    });
+  </script>
+</body>
+</html>

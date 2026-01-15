@@ -33,13 +33,18 @@ class SqliteMeetingAgendaRepository(IMeetingAgendaRepository):
     async def create(
         self,
         user_id: str,
-        meeting_id: UUID,
+        meeting_id: Optional[UUID],
         data: MeetingAgendaItemCreate,
     ) -> MeetingAgendaItem:
+        """Create agenda item. Either meeting_id or data.task_id must be provided."""
+        if not meeting_id and not data.task_id:
+            raise ValueError("Either meeting_id or task_id must be provided")
+
         async with self._session_factory() as session:
             orm = MeetingAgendaItemORM(
                 id=str(uuid4()),
-                meeting_id=str(meeting_id),
+                meeting_id=str(meeting_id) if meeting_id else None,
+                task_id=str(data.task_id) if data.task_id else None,
                 user_id=user_id,
                 title=data.title,
                 description=data.description,
@@ -90,6 +95,30 @@ class SqliteMeetingAgendaRepository(IMeetingAgendaRepository):
                 select(MeetingAgendaItemORM)
                 .where(and_(*conditions))
                 .order_by(MeetingAgendaItemORM.event_date.asc(), MeetingAgendaItemORM.order_index.asc())
+                .limit(limit)
+                .offset(offset)
+            )
+            result = await session.execute(query)
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]
+
+    async def list_by_task(
+        self,
+        user_id: str,
+        task_id: UUID,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[MeetingAgendaItem]:
+        """List all agenda items for a standalone meeting task."""
+        async with self._session_factory() as session:
+            query = (
+                select(MeetingAgendaItemORM)
+                .where(
+                    and_(
+                        MeetingAgendaItemORM.task_id == str(task_id),
+                        MeetingAgendaItemORM.user_id == user_id,
+                    )
+                )
+                .order_by(MeetingAgendaItemORM.order_index.asc())
                 .limit(limit)
                 .offset(offset)
             )
@@ -149,21 +178,31 @@ class SqliteMeetingAgendaRepository(IMeetingAgendaRepository):
     async def reorder(
         self,
         user_id: str,
-        meeting_id: UUID,
         ordered_ids: list[UUID],
+        meeting_id: Optional[UUID] = None,
+        task_id: Optional[UUID] = None,
     ) -> list[MeetingAgendaItem]:
+        if not meeting_id and not task_id:
+            raise ValueError("Either meeting_id or task_id must be provided")
+
         async with self._session_factory() as session:
             for index, item_id in enumerate(ordered_ids):
+                conditions = [
+                    MeetingAgendaItemORM.id == str(item_id),
+                    MeetingAgendaItemORM.user_id == user_id,
+                ]
+                if meeting_id:
+                    conditions.append(MeetingAgendaItemORM.meeting_id == str(meeting_id))
+                if task_id:
+                    conditions.append(MeetingAgendaItemORM.task_id == str(task_id))
+
                 await session.execute(
                     update(MeetingAgendaItemORM)
-                    .where(
-                        and_(
-                            MeetingAgendaItemORM.id == str(item_id),
-                            MeetingAgendaItemORM.user_id == user_id,
-                            MeetingAgendaItemORM.meeting_id == str(meeting_id),
-                        )
-                    )
+                    .where(and_(*conditions))
                     .values(order_index=index, updated_at=datetime.utcnow())
                 )
             await session.commit()
-            return await self.list_by_meeting(user_id, meeting_id)
+
+            if meeting_id:
+                return await self.list_by_meeting(user_id, meeting_id)
+            return await self.list_by_task(user_id, task_id)

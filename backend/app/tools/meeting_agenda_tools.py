@@ -20,7 +20,8 @@ from app.models.meeting_agenda import MeetingAgendaItemCreate, MeetingAgendaItem
 class AddAgendaItemInput(BaseModel):
     """Input for add_agenda_item tool."""
 
-    meeting_id: str = Field(..., description="会議ID（RecurringMeetingのUUID）")
+    meeting_id: Optional[str] = Field(None, description="会議ID（RecurringMeetingのUUID、meeting_idかtask_idどちらか必須）")
+    task_id: Optional[str] = Field(None, description="単発会議タスクID（meeting_idかtask_idどちらか必須）")
     title: str = Field(..., description="議題タイトル")
     description: Optional[str] = Field(None, description="議題の詳細説明")
     duration_minutes: Optional[int] = Field(None, description="割り当て時間（分）")
@@ -49,14 +50,16 @@ class DeleteAgendaItemInput(BaseModel):
 class ListAgendaItemsInput(BaseModel):
     """Input for list_agenda_items tool."""
 
-    meeting_id: str = Field(..., description="会議ID（RecurringMeetingのUUID）")
+    meeting_id: Optional[str] = Field(None, description="会議ID（RecurringMeetingのUUID、meeting_idかtask_idどちらか必須）")
+    task_id: Optional[str] = Field(None, description="単発会議タスクID（meeting_idかtask_idどちらか必須）")
     event_date: Optional[date] = Field(None, description="開催日 (YYYY-MM-DD) 指定しない場合は全て")
 
 
 class ReorderAgendaItemsInput(BaseModel):
     """Input for reorder_agenda_items tool."""
 
-    meeting_id: str = Field(..., description="会議ID（RecurringMeetingのUUID）")
+    meeting_id: Optional[str] = Field(None, description="会議ID（RecurringMeetingのUUID、meeting_idかtask_idどちらか必須）")
+    task_id: Optional[str] = Field(None, description="単発会議タスクID（meeting_idかtask_idどちらか必須）")
     ordered_ids: list[str] = Field(..., description="並び替え後のアジェンダ項目ID一覧（順序通り）")
 
 
@@ -65,11 +68,25 @@ async def add_agenda_item(
     repo: IMeetingAgendaRepository,
     input_data: AddAgendaItemInput,
 ) -> dict:
-    """Add a new agenda item to a meeting."""
-    try:
-        meeting_id = UUID(input_data.meeting_id)
-    except ValueError:
-        return {"error": f"Invalid meeting ID format: {input_data.meeting_id}"}
+    """Add a new agenda item to a meeting or standalone meeting task."""
+    # Validate: either meeting_id or task_id must be provided
+    if not input_data.meeting_id and not input_data.task_id:
+        return {"error": "Either meeting_id or task_id must be provided"}
+
+    meeting_id = None
+    task_id = None
+
+    if input_data.meeting_id:
+        try:
+            meeting_id = UUID(input_data.meeting_id)
+        except ValueError:
+            return {"error": f"Invalid meeting ID format: {input_data.meeting_id}"}
+
+    if input_data.task_id:
+        try:
+            task_id = UUID(input_data.task_id)
+        except ValueError:
+            return {"error": f"Invalid task ID format: {input_data.task_id}"}
 
     create_data = MeetingAgendaItemCreate(
         title=input_data.title,
@@ -77,6 +94,7 @@ async def add_agenda_item(
         duration_minutes=input_data.duration_minutes,
         order_index=input_data.order_index,
         event_date=input_data.event_date,
+        task_id=task_id,
     )
 
     agenda_item = await repo.create(user_id, meeting_id, create_data)
@@ -93,7 +111,8 @@ def add_agenda_item_tool(
         """add_agenda_item: 会議にアジェンダ項目を追加します。
 
         Parameters:
-            meeting_id (str): 会議ID（RecurringMeetingのUUID、必須）
+            meeting_id (str, optional): 会議ID（RecurringMeetingのUUID、meeting_idかtask_idどちらか必須）
+            task_id (str, optional): 単発会議タスクID（meeting_idかtask_idどちらか必須）
             title (str): 議題タイトル（必須）
             description (str, optional): 議題の詳細説明
             duration_minutes (int, optional): 割り当て時間（分）
@@ -201,13 +220,26 @@ async def list_agenda_items(
     repo: IMeetingAgendaRepository,
     input_data: ListAgendaItemsInput,
 ) -> dict:
-    """List all agenda items for a meeting."""
-    try:
-        meeting_id = UUID(input_data.meeting_id)
-    except ValueError:
-        return {"error": f"Invalid meeting ID format: {input_data.meeting_id}"}
+    """List all agenda items for a meeting or standalone meeting task."""
+    # Validate: either meeting_id or task_id must be provided
+    if not input_data.meeting_id and not input_data.task_id:
+        return {"error": "Either meeting_id or task_id must be provided"}
 
-    items = await repo.list_by_meeting(user_id, meeting_id, event_date=input_data.event_date)
+    items = []
+
+    if input_data.meeting_id:
+        try:
+            meeting_id = UUID(input_data.meeting_id)
+        except ValueError:
+            return {"error": f"Invalid meeting ID format: {input_data.meeting_id}"}
+        items = await repo.list_by_meeting(user_id, meeting_id, event_date=input_data.event_date)
+    elif input_data.task_id:
+        try:
+            task_id = UUID(input_data.task_id)
+        except ValueError:
+            return {"error": f"Invalid task ID format: {input_data.task_id}"}
+        items = await repo.list_by_task(user_id, task_id)
+
     return {
         "agenda_items": [item.model_dump(mode="json") for item in items],
         "count": len(items),
@@ -224,7 +256,8 @@ def list_agenda_items_tool(
         """list_agenda_items: 会議のアジェンダ項目一覧を取得します。
 
         Parameters:
-            meeting_id (str): 会議ID（RecurringMeetingのUUID、必須）
+            meeting_id (str, optional): 会議ID（RecurringMeetingのUUID、meeting_idかtask_idどちらか必須）
+            task_id (str, optional): 単発会議タスクID（meeting_idかtask_idどちらか必須）
             event_date (str, optional): 開催日 (YYYY-MM-DD)。指定しない場合は全て。
 
         Returns:
@@ -242,13 +275,22 @@ async def reorder_agenda_items(
     input_data: ReorderAgendaItemsInput,
 ) -> dict:
     """Reorder agenda items."""
+    if not input_data.meeting_id and not input_data.task_id:
+        return {"error": "Either meeting_id or task_id must be provided"}
+
+    meeting_id = None
+    task_id = None
+
     try:
-        meeting_id = UUID(input_data.meeting_id)
+        if input_data.meeting_id:
+            meeting_id = UUID(input_data.meeting_id)
+        if input_data.task_id:
+            task_id = UUID(input_data.task_id)
         ordered_ids = [UUID(id_str) for id_str in input_data.ordered_ids]
     except ValueError as e:
         return {"error": f"Invalid ID format: {e}"}
 
-    items = await repo.reorder(user_id, meeting_id, ordered_ids)
+    items = await repo.reorder(user_id, ordered_ids, meeting_id=meeting_id, task_id=task_id)
     return {
         "agenda_items": [item.model_dump(mode="json") for item in items],
         "count": len(items),
@@ -265,7 +307,8 @@ def reorder_agenda_items_tool(
         """reorder_agenda_items: アジェンダ項目の順序を変更します。
 
         Parameters:
-            meeting_id (str): 会議ID（RecurringMeetingのUUID、必須）
+            meeting_id (str, optional): 会議ID（RecurringMeetingのUUID、meeting_idかtask_idどちらか必須）
+            task_id (str, optional): 単発会議タスクID（meeting_idかtask_idどちらか必須）
             ordered_ids (list[str]): 並び替え後のアジェンダ項目ID一覧（順序通り、必須）
 
         Returns:

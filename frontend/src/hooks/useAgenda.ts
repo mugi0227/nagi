@@ -28,6 +28,20 @@ export function useAgendaItems(meetingId: string | undefined, eventDate?: string
 }
 
 /**
+ * Fetch agenda items for a standalone meeting task (by task_id)
+ */
+export function useTaskAgendaItems(taskId: string | undefined) {
+  return useQuery({
+    queryKey: ['task-agendas', taskId],
+    queryFn: async () => {
+      if (!taskId) return [];
+      return api.get<MeetingAgendaItem[]>(`/meeting-agendas/tasks/${taskId}/items`);
+    },
+    enabled: !!taskId,
+  });
+}
+
+/**
  * Create a new agenda item
  */
 export function useCreateAgendaItem(meetingId: string, eventDate?: string) {
@@ -49,9 +63,28 @@ export function useCreateAgendaItem(meetingId: string, eventDate?: string) {
 }
 
 /**
+ * Create a new agenda item for a standalone meeting task
+ */
+export function useCreateTaskAgendaItem(taskId: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (data: MeetingAgendaItemCreate) => {
+      return api.post<MeetingAgendaItem>(
+        `/meeting-agendas/tasks/${taskId}/items`,
+        data
+      );
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['task-agendas', taskId] });
+    },
+  });
+}
+
+/**
  * Update an agenda item
  */
-export function useUpdateAgendaItem(meetingId: string, eventDate?: string) {
+export function useUpdateAgendaItem(meetingId?: string, eventDate?: string, taskId?: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -62,7 +95,13 @@ export function useUpdateAgendaItem(meetingId: string, eventDate?: string) {
       );
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agenda-items', meetingId, eventDate] });
+      // Invalidate both types of queries to ensure cache consistency
+      if (meetingId) {
+        queryClient.invalidateQueries({ queryKey: ['agenda-items', meetingId, eventDate] });
+      }
+      if (taskId) {
+        queryClient.invalidateQueries({ queryKey: ['task-agendas', taskId] });
+      }
     },
   });
 }
@@ -70,7 +109,7 @@ export function useUpdateAgendaItem(meetingId: string, eventDate?: string) {
 /**
  * Delete an agenda item
  */
-export function useDeleteAgendaItem(meetingId: string, eventDate?: string) {
+export function useDeleteAgendaItem(meetingId?: string, eventDate?: string, taskId?: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
@@ -78,7 +117,13 @@ export function useDeleteAgendaItem(meetingId: string, eventDate?: string) {
       await api.delete(`/meeting-agendas/items/${id}`);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agenda-items', meetingId, eventDate] });
+      // Invalidate both types of queries to ensure cache consistency
+      if (meetingId) {
+        queryClient.invalidateQueries({ queryKey: ['agenda-items', meetingId, eventDate] });
+      }
+      if (taskId) {
+        queryClient.invalidateQueries({ queryKey: ['task-agendas', taskId] });
+      }
     },
   });
 }
@@ -86,18 +131,26 @@ export function useDeleteAgendaItem(meetingId: string, eventDate?: string) {
 /**
  * Reorder agenda items
  */
-export function useReorderAgendaItems(meetingId: string, eventDate?: string) {
+export function useReorderAgendaItems(meetingId?: string, eventDate?: string, taskId?: string) {
   const queryClient = useQueryClient();
 
   return useMutation({
     mutationFn: async (orderedIds: string[]) => {
+      // Use the appropriate endpoint based on what ID is provided
+      const id = meetingId || taskId;
       return api.post<MeetingAgendaItem[]>(
-        `/meeting-agendas/${meetingId}/items/reorder`,
+        `/meeting-agendas/${id}/items/reorder`,
         orderedIds
       );
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['agenda-items', meetingId, eventDate] });
+      // Invalidate both types of queries to ensure cache consistency
+      if (meetingId) {
+        queryClient.invalidateQueries({ queryKey: ['agenda-items', meetingId, eventDate] });
+      }
+      if (taskId) {
+        queryClient.invalidateQueries({ queryKey: ['task-agendas', taskId] });
+      }
     },
   });
 }

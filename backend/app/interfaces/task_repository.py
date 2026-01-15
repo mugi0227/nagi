@@ -177,3 +177,25 @@ class ITaskRepository(ABC):
             Count of matching tasks
         """
         pass
+
+    @abstractmethod
+    async def list_by_recurring_meeting(
+        self,
+        user_id: str,
+        recurring_meeting_id: UUID,
+        start_after: Optional[datetime] = None,
+        end_before: Optional[datetime] = None,
+    ) -> list[Task]:
+        """
+        List tasks generated from a recurring meeting.
+
+        Args:
+            user_id: Owner user ID
+            recurring_meeting_id: RecurringMeeting ID
+            start_after: Filter tasks starting after this time
+            end_before: Filter tasks starting before this time
+
+        Returns:
+            List of tasks linked to the recurring meeting
+        """
+        pass

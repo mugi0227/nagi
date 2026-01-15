@@ -28,8 +28,8 @@ import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { phasesApi } from '../../api/phases';
 import { getProject } from '../../api/projects';
-import { tasksApi } from '../../api/tasks';
 import type { Phase, Project, Task } from '../../api/types';
+import type { DraftCardData } from '../chat/DraftCard';
 import { AgendaList } from '../agenda';
 import { StepNumber } from '../common/StepNumber';
 import './TaskDetailModal.css';
@@ -88,15 +88,13 @@ export function TaskDetailModal({
   onDelete,
   onProgressChange,
   onTaskCheck,
-  onActionItemsCreated,
+  onActionItemsCreated: _onActionItemsCreated,
   onStatusChange,
   onCreateSubtask
 }: TaskDetailModalProps) {
   const [selectedSubtask, setSelectedSubtask] = useState<Task | null>(initialSubtask);
   const [localProgress, setLocalProgress] = useState<number>(task.progress ?? 0);
   const [localStatus, setLocalStatus] = useState<string>(task.status);
-  const [isActionItemSaving, setIsActionItemSaving] = useState(false);
-  const [actionItemMessage, setActionItemMessage] = useState<string | null>(null);
   const [localSubtasks, setLocalSubtasks] = useState<Task[]>(subtasks);
   const [fetchedProject, setFetchedProject] = useState<Project | null>(null);
   const [fetchedPhase, setFetchedPhase] = useState<Phase | null>(null);
@@ -137,8 +135,6 @@ export function TaskDetailModal({
   const effectivePhaseName = phaseName || fetchedPhase?.name;
 
   useEffect(() => {
-    setActionItemMessage(null);
-    setIsActionItemSaving(false);
     setLocalProgress(task.progress ?? 0);
     setLocalStatus(task.status);
   }, [task.id, task.progress, task.status]);
@@ -273,33 +269,21 @@ export function TaskDetailModal({
 
   const handleCreateActionItems = () => {
     if (!task.meeting_notes) return;
-    const prompt = `タスク「${task.title}」(ID: ${task.id}) の会議ノートからアクションアイテムを作成して。
+    const draftCard: DraftCardData = {
+      type: 'actionItem',
+      title: 'アクションアイテム生成',
+      info: [
+        { label: 'タスク', value: task.title },
+        { label: 'タスクID', value: task.id },
+      ],
+      placeholder: '例: 優先度順に並べて',
+      promptTemplate: `タスク「${task.title}」(ID: ${task.id}) の会議ノートからアクションアイテムを作成して。
 
 追加の指示があれば以下に記入:
-`;
-    const event = new CustomEvent('secretary:chat-open', { detail: { message: prompt } });
+{instruction}`,
+    };
+    const event = new CustomEvent('secretary:chat-open', { detail: { draftCard } });
     window.dispatchEvent(event);
-  };
-
-  // Legacy: kept for reference
-  const _handleCreateActionItemsLegacy = async () => {
-    if (!task.meeting_notes || isActionItemSaving) return;
-    setIsActionItemSaving(true);
-    setActionItemMessage(null);
-    try {
-      const created = await tasksApi.createActionItems(task.id);
-      if (!created.length) {
-        setActionItemMessage('No action items found. Use "- [ ]" in meeting notes.');
-      } else {
-        setActionItemMessage(`${created.length} action items created.`);
-        onActionItemsCreated?.();
-      }
-    } catch (error) {
-      console.error('Failed to create action items:', error);
-      setActionItemMessage('Failed to create action items.');
-    } finally {
-      setIsActionItemSaving(false);
-    }
   };
 
   return (
@@ -425,7 +409,8 @@ export function TaskDetailModal({
                   {/* Agenda Section */}
                   <div className="detail-section agenda-section">
                     <AgendaList
-                      meetingId={task.recurring_meeting_id || task.id}
+                      meetingId={task.recurring_meeting_id || undefined}
+                      taskId={task.recurring_meeting_id ? undefined : task.id}
                       eventDate={task.start_time ? task.start_time.split('T')[0] : undefined}
                     />
                   </div>

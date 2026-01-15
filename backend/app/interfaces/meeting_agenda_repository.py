@@ -22,10 +22,15 @@ class IMeetingAgendaRepository(ABC):
     async def create(
         self,
         user_id: str,
-        meeting_id: UUID,
+        meeting_id: Optional[UUID],
         data: MeetingAgendaItemCreate,
     ) -> MeetingAgendaItem:
-        """Create a new agenda item."""
+        """Create a new agenda item.
+
+        Either meeting_id or data.task_id must be provided.
+        - meeting_id: For recurring meeting agendas
+        - data.task_id: For standalone meeting task agendas
+        """
         pass
 
     @abstractmethod
@@ -45,7 +50,18 @@ class IMeetingAgendaRepository(ABC):
         limit: int = 100,
         offset: int = 0,
     ) -> list[MeetingAgendaItem]:
-        """List all agenda items for a meeting, ordered by order_index."""
+        """List all agenda items for a recurring meeting, ordered by order_index."""
+        pass
+
+    @abstractmethod
+    async def list_by_task(
+        self,
+        user_id: str,
+        task_id: UUID,
+        limit: int = 100,
+        offset: int = 0,
+    ) -> list[MeetingAgendaItem]:
+        """List all agenda items for a standalone meeting task, ordered by order_index."""
         pass
 
     @abstractmethod
@@ -71,8 +87,12 @@ class IMeetingAgendaRepository(ABC):
     async def reorder(
         self,
         user_id: str,
-        meeting_id: UUID,
         ordered_ids: list[UUID],
+        meeting_id: Optional[UUID] = None,
+        task_id: Optional[UUID] = None,
     ) -> list[MeetingAgendaItem]:
-        """Reorder agenda items by providing ordered list of IDs."""
+        """Reorder agenda items by providing ordered list of IDs.
+
+        Either meeting_id or task_id must be provided.
+        """
         pass

@@ -1,88 +1,123 @@
-import { useEffect, useState } from 'react';
-import { RecurringMeeting } from '../../api/types';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { FaCalendarDay, FaRedo } from 'react-icons/fa';
+import { RecurringMeeting, Task } from '../../api/types';
+import { tasksApi } from '../../api/tasks';
 
 interface MeetingSidebarProps {
     projectId: string;
     recurringMeetings: RecurringMeeting[];
-    selectedDate: Date | null;
-    onSelectDate: (date: Date, meeting: RecurringMeeting) => void;
+    selectedTask?: Task | null;
+    onSelectTask: (task: Task, date: Date) => void;
     isLoading: boolean;
 }
 
 export function MeetingSidebar({
-    projectId: _projectId,
+    projectId,
     recurringMeetings,
-    selectedDate,
-    onSelectDate,
+    selectedTask,
+    onSelectTask,
     isLoading
 }: MeetingSidebarProps) {
-    // Mock logic for generating meeting dates based on recurring settings
-    // In a real app, we might want an API to get "instances" or calculate them robustly
-    const [meetingInstances, setMeetingInstances] = useState<{ date: Date; meeting: RecurringMeeting }[]>([]);
+    // Fetch all meeting Tasks (both recurring and standalone)
+    const { data: meetingTasks = [] } = useQuery({
+        queryKey: ['meetings', 'project', projectId],
+        queryFn: () => tasksApi.getAll({
+            includeDone: true,
+            onlyMeetings: true,
+            projectId: projectId
+        }),
+        staleTime: 30_000,
+    });
 
-    useEffect(() => {
-        if (!recurringMeetings.length) return;
+    // Create a lookup map for RecurringMeeting by ID
+    const recurringMeetingMap = useMemo(() => {
+        const map: Record<string, RecurringMeeting> = {};
+        recurringMeetings.forEach(m => {
+            map[m.id] = m;
+        });
+        return map;
+    }, [recurringMeetings]);
 
-        // Generate instances for the next 4 weeks and past 4 weeks
-        const instances: { date: Date; meeting: RecurringMeeting }[] = [];
-        const today = new Date();
-        const start = new Date(today);
-        start.setDate(today.getDate() - 28);
-        const end = new Date(today);
-        end.setDate(today.getDate() + 28);
+    // Group meeting tasks by recurring_meeting_id
+    const { recurringMeetingTasks, standaloneMeetings } = useMemo(() => {
+        const recurring: Record<string, { recurringMeeting: RecurringMeeting; tasks: Task[] }> = {};
+        const standalone: Task[] = [];
 
-        recurringMeetings.forEach(meeting => {
-            // Simple weekly logic for now
-            // Assuming meeting.weekday is 0-6 (Sun-Sat)
-            // If not, we might need adjustment. usually 0=Mon in some systems, 0=Sun in JS.
-            // Let's assume 0=Mon, 6=Sun or standard JS 0=Sun. 
-            // Backend `weekday` field usually follows 0-6. Let's assume JS Day.
-
-            let current = new Date(start);
-            while (current <= end) {
-                // Convert JS Day (0=Sun, 1=Mon) to Python Day (0=Mon, 6=Sun)
-                const jsDay = current.getDay();
-                const pythonDay = (jsDay + 6) % 7;
-
-                if (pythonDay === meeting.weekday) {
-                    instances.push({
-                        date: new Date(current),
-                        meeting: meeting
-                    });
+        meetingTasks
+            .filter(task => task.is_fixed_time && task.start_time)
+            .forEach(task => {
+                if (task.recurring_meeting_id) {
+                    const rmId = task.recurring_meeting_id;
+                    if (!recurring[rmId]) {
+                        const rm = recurringMeetingMap[rmId];
+                        if (rm) {
+                            recurring[rmId] = { recurringMeeting: rm, tasks: [] };
+                        } else {
+                            // RecurringMeeting not found (maybe deleted), treat as standalone
+                            standalone.push(task);
+                            return;
+                        }
+                    }
+                    recurring[rmId].tasks.push(task);
+                } else {
+                    standalone.push(task);
                 }
-                current.setDate(current.getDate() + 1);
-            }
+            });
+
+        // Sort tasks within each recurring meeting group by start_time (newest first)
+        Object.values(recurring).forEach(group => {
+            group.tasks.sort((a, b) => {
+                const aTime = new Date(a.start_time!).getTime();
+                const bTime = new Date(b.start_time!).getTime();
+                return bTime - aTime;
+            });
         });
 
-        instances.sort((a, b) => b.date.getTime() - a.date.getTime());
-        setMeetingInstances(instances);
+        // Sort standalone meetings by start_time (newest first)
+        standalone.sort((a, b) => {
+            const aTime = new Date(a.start_time!).getTime();
+            const bTime = new Date(b.start_time!).getTime();
+            return bTime - aTime;
+        });
 
-        // Select today/closest if none selected?
-        // User logic: "Select a meeting"
-    }, [recurringMeetings]);
+        return { recurringMeetingTasks: recurring, standaloneMeetings: standalone };
+    }, [meetingTasks, recurringMeetingMap]);
 
     const formatDate = (date: Date) => {
         return date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' });
     };
 
+    const formatTime = (date: Date) => {
+        return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+    };
+
+    const hasNoMeetings = Object.keys(recurringMeetingTasks).length === 0 && standaloneMeetings.length === 0;
+
     if (isLoading) {
-        return <div className="p-4 text-gray-500">Loading meetings...</div>;
+        return (
+            <div className="meetings-sidebar">
+                <div className="meetings-sidebar-header">
+                    <h3 className="meetings-sidebar-title">ミーティング一覧</h3>
+                </div>
+                <div className="meetings-sidebar-content">
+                    <div className="p-4 text-gray-500">読み込み中...</div>
+                </div>
+            </div>
+        );
     }
-    // Group meeting instances by their recurring meeting ID
-    const groupedMeetings = meetingInstances.reduce((acc, instance) => {
-        if (!acc[instance.meeting.id]) {
-            acc[instance.meeting.id] = {
-                meeting: instance.meeting,
-                dates: []
-            };
-        }
-        acc[instance.meeting.id].dates.push(instance.date.toISOString());
-        return acc;
-    }, {} as Record<string, { meeting: RecurringMeeting; dates: string[] }>);
 
-
-    if (recurringMeetings.length === 0) {
-        return <div className="p-4 text-gray-500">定例ミーティングが設定されていません。</div>;
+    if (hasNoMeetings) {
+        return (
+            <div className="meetings-sidebar">
+                <div className="meetings-sidebar-header">
+                    <h3 className="meetings-sidebar-title">ミーティング一覧</h3>
+                </div>
+                <div className="meetings-sidebar-content">
+                    <div className="p-4 text-gray-500">ミーティングがありません。</div>
+                </div>
+            </div>
+        );
     }
 
     return (
@@ -91,29 +126,57 @@ export function MeetingSidebar({
                 <h3 className="meetings-sidebar-title">ミーティング一覧</h3>
             </div>
             <div className="meetings-sidebar-content">
-                {isLoading ? (
-                    <div className="p-4 text-gray-500">読み込み中...</div>
-                ) : (
-                    <>
-                        {Object.entries(groupedMeetings).map(([_, { meeting, dates }]) => (
-                            <div key={meeting.id} className="meeting-nav-group">
-                                <div className="meeting-nav-title">{meeting.title}</div>
-                                {dates.map((dateStr) => {
-                                    const date = new Date(dateStr);
-                                    const isSelected = selectedDate?.toDateString() === date.toDateString();
-                                    return (
-                                        <div
-                                            key={dateStr}
-                                            className={`meeting-nav-item ${isSelected ? 'active' : ''}`}
-                                            onClick={() => onSelectDate(date, meeting)}
-                                        >
-                                            {formatDate(date)}
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        ))}
-                    </>
+                {/* Recurring meeting tasks */}
+                {Object.entries(recurringMeetingTasks).map(([rmId, { recurringMeeting, tasks }]) => (
+                    <div key={rmId} className="meeting-nav-group">
+                        <div className="meeting-nav-title">
+                            <FaRedo className="meeting-nav-title-icon" />
+                            {recurringMeeting.title}
+                        </div>
+                        {tasks.map((task) => {
+                            const date = new Date(task.start_time!);
+                            const isSelected = selectedTask?.id === task.id;
+                            return (
+                                <div
+                                    key={task.id}
+                                    className={`meeting-nav-item ${isSelected ? 'active' : ''}`}
+                                    onClick={() => onSelectTask(task, date)}
+                                >
+                                    <div className="meeting-nav-item-content">
+                                        <span>{formatDate(date)}</span>
+                                        <span className="meeting-nav-item-time">{formatTime(date)}</span>
+                                    </div>
+                                </div>
+                            );
+                        })}
+                    </div>
+                ))}
+
+                {/* Standalone meetings */}
+                {standaloneMeetings.length > 0 && (
+                    <div className="meeting-nav-group">
+                        <div className="meeting-nav-title">
+                            <FaCalendarDay className="meeting-nav-title-icon" />
+                            単発ミーティング
+                        </div>
+                        {standaloneMeetings.map((task) => {
+                            const date = new Date(task.start_time!);
+                            const isSelected = selectedTask?.id === task.id;
+                            return (
+                                <div
+                                    key={task.id}
+                                    className={`meeting-nav-item ${isSelected ? 'active' : ''}`}
+                                    onClick={() => onSelectTask(task, date)}
+                                >
+                                    <div className="meeting-nav-item-content">
+                                        <span>{formatDate(date)}</span>
+                                        <span className="meeting-nav-item-time">{formatTime(date)}</span>
+                                    </div>
+                                    <div className="meeting-nav-item-title">{task.title}</div>
+                                </div>
+                            );
+                        })}
+                    </div>
                 )}
             </div>
         </div>

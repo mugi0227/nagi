@@ -34,46 +34,81 @@ class RecurringMeetingService:
         self.lookahead_days = lookahead_days
 
     async def ensure_upcoming_meetings(self, user_id: str) -> dict:
-        """Ensure upcoming meeting tasks exist within the lookahead window."""
+        """Ensure upcoming meeting tasks exist within the lookahead window.
+
+        Generates ALL occurrences within the lookahead period, not just the next one.
+        Skips creation if a task already exists for that occurrence (by start_time match).
+        """
         now = datetime.now()
         upcoming_limit = now + timedelta(days=self.lookahead_days)
         created: list[dict] = []
 
         meetings = await self.recurring_repo.list(user_id, include_inactive=False, limit=200)
         for meeting in meetings:
-            reference = meeting.last_occurrence if meeting.last_occurrence and meeting.last_occurrence > now else now
-            next_start = self._next_occurrence_after(meeting, reference)
-            if not next_start:
-                continue
-            if next_start > upcoming_limit:
-                continue
-
-            description = await self._build_agenda(user_id, meeting, next_start.date())
-            duration = timedelta(minutes=meeting.duration_minutes)
-            end_time = next_start + duration
-
-            created_task = await create_meeting(
-                user_id,
-                self.task_repo,
-                CreateMeetingInput(
-                    title=meeting.title,
-                    start_time=next_start.isoformat(timespec="minutes"),
-                    end_time=end_time.isoformat(timespec="minutes"),
-                    location=meeting.location,
-                    attendees=meeting.attendees,
-                    description=description,
-                    project_id=str(meeting.project_id) if meeting.project_id else None,
-                    recurring_meeting_id=str(meeting.id),
-                ),
-            )
-            created.append(created_task)
-
-            # Update last occurrence to the scheduled time
-            await self.recurring_repo.update(
+            # Get all existing tasks for this recurring meeting within the lookahead window
+            existing_tasks = await self.task_repo.list_by_recurring_meeting(
                 user_id,
                 meeting.id,
-                RecurringMeetingUpdate(last_occurrence=next_start),
+                start_after=now - timedelta(hours=1),  # Small buffer for timezone issues
+                end_before=upcoming_limit + timedelta(days=1),
             )
+            # Build a set of existing start times for quick lookup
+            existing_start_times = {
+                task.start_time.replace(second=0, microsecond=0)
+                for task in existing_tasks
+                if task.start_time
+            }
+
+            # Find all occurrences within the lookahead window
+            reference = now
+            latest_occurrence: Optional[datetime] = None
+
+            while True:
+                next_start = self._next_occurrence_after(meeting, reference)
+                if not next_start:
+                    break
+                if next_start > upcoming_limit:
+                    break
+
+                # Check if task already exists for this occurrence
+                normalized_start = next_start.replace(second=0, microsecond=0)
+                if normalized_start in existing_start_times:
+                    # Task already exists, skip to next occurrence
+                    reference = next_start
+                    latest_occurrence = next_start
+                    continue
+
+                description = await self._build_agenda(user_id, meeting, next_start.date())
+                duration = timedelta(minutes=meeting.duration_minutes)
+                end_time = next_start + duration
+
+                created_task = await create_meeting(
+                    user_id,
+                    self.task_repo,
+                    CreateMeetingInput(
+                        title=meeting.title,
+                        start_time=next_start.isoformat(timespec="minutes"),
+                        end_time=end_time.isoformat(timespec="minutes"),
+                        location=meeting.location,
+                        attendees=meeting.attendees,
+                        description=description,
+                        project_id=str(meeting.project_id) if meeting.project_id else None,
+                        recurring_meeting_id=str(meeting.id),
+                    ),
+                )
+                created.append(created_task)
+
+                # Move reference to after this occurrence to find the next one
+                reference = next_start
+                latest_occurrence = next_start
+
+            # Update last_occurrence to the latest scheduled time
+            if latest_occurrence:
+                await self.recurring_repo.update(
+                    user_id,
+                    meeting.id,
+                    RecurringMeetingUpdate(last_occurrence=latest_occurrence),
+                )
 
         return {"created_count": len(created), "meetings": created}
 

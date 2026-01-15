@@ -806,7 +806,8 @@ export type TaskDiffStatus = 'on_track' | 'delayed' | 'ahead' | 'new' | 'removed
 // Meeting Agenda Models
 export interface MeetingAgendaItem {
   id: string;
-  meeting_id: string;
+  meeting_id?: string;  // For RecurringMeeting (optional since task_id can be used instead)
+  task_id?: string;     // For standalone meeting tasks
   user_id: string;
   title: string;
   description?: string;
@@ -824,6 +825,7 @@ export interface MeetingAgendaItemCreate {
   duration_minutes?: number;
   order_index?: number;
   event_date?: string;
+  task_id?: string;  // For standalone meeting tasks
 }
 
 export interface MeetingAgendaItemUpdate {
@@ -833,6 +835,7 @@ export interface MeetingAgendaItemUpdate {
   order_index?: number;
   is_completed?: boolean;
   event_date?: string;
+  task_id?: string;
 }
 
 

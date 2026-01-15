@@ -26,6 +26,7 @@ import type {
   TaskStatus,
   TaskUpdate,
 } from '../api/types';
+import type { DraftCardData } from '../components/chat/DraftCard';
 import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
 import { ProjectGanttChart } from '../components/gantt/ProjectGanttChart';
 import { MeetingsTab } from '../components/meetings/MeetingsTab';
@@ -205,7 +206,6 @@ export function ProjectDetailV2Page() {
   const [isPhasesLoading, setIsPhasesLoading] = useState(false);
   const [isMilestonesLoading, setIsMilestonesLoading] = useState(false);
   const [phasePlanInstruction, setPhasePlanInstruction] = useState('');
-  const [isPlanningPhases, setIsPlanningPhases] = useState(false);
   const [capacityDrafts, setCapacityDrafts] = useState<Record<string, string>>({});
   const [capacityActionId, setCapacityActionId] = useState<string | null>(null);
   const [activeBaseline, setActiveBaseline] = useState<ScheduleSnapshot | null>(null);
@@ -985,36 +985,22 @@ export function ProjectDetailV2Page() {
   const handleGeneratePhases = () => {
     if (!projectId || !project) return;
 
-    const instruction = phasePlanInstruction.trim();
-    const prompt = `プロジェクト「${project.name}」(ID: ${projectId}) のフェーズを作成して。
+    const draftCard: DraftCardData = {
+      type: 'phase',
+      title: 'フェーズ生成',
+      info: [
+        { label: 'プロジェクト', value: project.name },
+        { label: 'プロジェクトID', value: projectId },
+      ],
+      placeholder: '例: MVP優先、フェーズは3〜5件に絞る',
+      promptTemplate: `プロジェクト「${project.name}」(ID: ${projectId}) のフェーズを作成して。
 
 追加の指示があれば以下に記入:
-${instruction}`;
+{instruction}`,
+    };
 
-    const event = new CustomEvent('secretary:chat-open', { detail: { message: prompt } });
+    const event = new CustomEvent('secretary:chat-open', { detail: { draftCard } });
     window.dispatchEvent(event);
-    setPhasePlanInstruction('');
-  };
-
-  // Legacy: kept for reference but no longer used
-  const _handleGeneratePhasesLegacy = async () => {
-    if (!projectId) return;
-    setIsPlanningPhases(true);
-    try {
-      await projectsApi.breakdownPhases(projectId, {
-        create_phases: true,
-        create_milestones: true,
-        instruction: phasePlanInstruction.trim() || undefined,
-      });
-      await refreshPhases();
-      await refreshMilestones();
-      setPhasePlanInstruction('');
-    } catch (err) {
-      console.error('Failed to generate phases:', err);
-      alert('フェーズの生成に失敗しました。');
-    } finally {
-      setIsPlanningPhases(false);
-    }
   };
 
   const handleCapacityDraftChange = (memberId: string, value: string) => {

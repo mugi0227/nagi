@@ -26,7 +26,9 @@ import { AgendaItem } from './AgendaItem';
 import { AgendaModal } from './AgendaModal';
 import {
   useAgendaItems,
+  useTaskAgendaItems,
   useCreateAgendaItem,
+  useCreateTaskAgendaItem,
   useUpdateAgendaItem,
   useDeleteAgendaItem,
   useReorderAgendaItems,
@@ -34,8 +36,9 @@ import {
 import type { MeetingAgendaItem, MeetingAgendaItemCreate } from '../../types/agenda';
 
 interface AgendaListProps {
-  meetingId: string;
-  eventDate?: string; // YYYY-MM-DD format
+  meetingId?: string;  // RecurringMeeting ID (for recurring meetings)
+  taskId?: string;     // Task ID (for standalone meetings)
+  eventDate?: string;  // YYYY-MM-DD format
 }
 
 // Sortable wrapper for AgendaItem
@@ -72,15 +75,29 @@ function SortableAgendaItem({
   );
 }
 
-export const AgendaList: React.FC<AgendaListProps> = ({ meetingId, eventDate }) => {
+export const AgendaList: React.FC<AgendaListProps> = ({ meetingId, taskId, eventDate }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MeetingAgendaItem | null>(null);
 
-  const { data: items = [], isLoading, error } = useAgendaItems(meetingId, eventDate);
-  const createMutation = useCreateAgendaItem(meetingId, eventDate);
-  const updateMutation = useUpdateAgendaItem(meetingId, eventDate);
-  const deleteMutation = useDeleteAgendaItem(meetingId, eventDate);
-  const reorderMutation = useReorderAgendaItems(meetingId, eventDate);
+  // Determine if this is a standalone meeting (taskId only, no meetingId)
+  const isStandalone = taskId && !meetingId;
+
+  // Use meeting-based hooks for recurring meetings, task-based for standalone
+  const meetingQuery = useAgendaItems(meetingId, eventDate);
+  const taskQuery = useTaskAgendaItems(isStandalone ? taskId : undefined);
+
+  // Select the appropriate query result
+  const { data: items = [], isLoading, error } = isStandalone ? taskQuery : meetingQuery;
+
+  // Create mutations - use task-based for standalone, meeting-based otherwise
+  const meetingCreateMutation = useCreateAgendaItem(meetingId || '', eventDate);
+  const taskCreateMutation = useCreateTaskAgendaItem(taskId || '');
+  const createMutation = isStandalone ? taskCreateMutation : meetingCreateMutation;
+
+  // Update, delete, and reorder mutations - pass both IDs for proper cache invalidation
+  const updateMutation = useUpdateAgendaItem(meetingId, eventDate, taskId);
+  const deleteMutation = useDeleteAgendaItem(meetingId, eventDate, taskId);
+  const reorderMutation = useReorderAgendaItems(meetingId, eventDate, taskId);
 
   const sensors = useSensors(
     useSensor(PointerSensor),

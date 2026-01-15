@@ -7,7 +7,7 @@ to propose a meeting agenda.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
@@ -19,6 +19,12 @@ from app.interfaces.meeting_agenda_repository import IMeetingAgendaRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
 from app.interfaces.task_repository import ITaskRepository
+
+
+class ListRecurringMeetingsInput(BaseModel):
+    """Input for list_recurring_meetings tool."""
+
+    project_id: Optional[str] = Field(None, description="プロジェクトID（指定しない場合は全ミーティング）")
 
 
 class FetchMeetingContextInput(BaseModel):
@@ -151,4 +157,111 @@ def fetch_meeting_context_tool(
         )
 
     _tool.__name__ = "fetch_meeting_context"
+    return FunctionTool(func=_tool)
+
+
+def _calculate_next_occurrence(meeting, from_date: date) -> Optional[date]:
+    """Calculate the next occurrence of a recurring meeting from a given date."""
+    weekday = meeting.weekday  # 0=Monday, 6=Sunday
+    current = from_date
+
+    # Find the next occurrence
+    for _ in range(14):  # Check up to 2 weeks
+        if current.weekday() == weekday:
+            if meeting.frequency.value == "biweekly":
+                # For biweekly, check if this week is a meeting week
+                if meeting.anchor_date:
+                    weeks_diff = (current - meeting.anchor_date).days // 7
+                    if weeks_diff % 2 == 0:
+                        return current
+            else:
+                return current
+        current += timedelta(days=1)
+    return None
+
+
+async def list_recurring_meetings(
+    user_id: str,
+    recurring_meeting_repo: IRecurringMeetingRepository,
+    project_repo: IProjectRepository,
+    input_data: ListRecurringMeetingsInput,
+) -> dict:
+    """List recurring meetings, optionally filtered by project."""
+    project_id = None
+    if input_data.project_id:
+        try:
+            project_id = UUID(input_data.project_id)
+        except ValueError:
+            return {"error": f"Invalid project ID: {input_data.project_id}"}
+
+    meetings = await recurring_meeting_repo.list(user_id, project_id=project_id)
+
+    today = date.today()
+    result = []
+    for meeting in meetings:
+        # Get project name if project_id exists
+        project_name = None
+        if meeting.project_id:
+            project = await project_repo.get(user_id, meeting.project_id)
+            if project:
+                project_name = project.name
+
+        # Calculate next occurrence
+        next_date = _calculate_next_occurrence(meeting, today)
+
+        result.append({
+            "id": str(meeting.id),
+            "title": meeting.title,
+            "project_id": str(meeting.project_id) if meeting.project_id else None,
+            "project_name": project_name,
+            "frequency": meeting.frequency.value if meeting.frequency else None,
+            "weekday": meeting.weekday,
+            "weekday_name": ["月", "火", "水", "木", "金", "土", "日"][meeting.weekday],
+            "start_time": meeting.start_time.isoformat() if meeting.start_time else None,
+            "duration_minutes": meeting.duration_minutes,
+            "location": meeting.location,
+            "attendees": meeting.attendees,
+            "is_active": meeting.is_active,
+            "next_occurrence": next_date.isoformat() if next_date else None,
+        })
+
+    return {
+        "meetings": result,
+        "count": len(result),
+    }
+
+
+def list_recurring_meetings_tool(
+    recurring_meeting_repo: IRecurringMeetingRepository,
+    project_repo: IProjectRepository,
+    user_id: str,
+) -> FunctionTool:
+    """Create ADK tool for listing recurring meetings."""
+
+    async def _tool(input_data: dict) -> dict:
+        """list_recurring_meetings: 定例ミーティング一覧を取得します。
+
+        Parameters:
+            project_id (str, optional): プロジェクトID。指定しない場合は全ミーティング。
+
+        Returns:
+            dict: meetings (list), count (int)
+            各ミーティングには以下の情報が含まれます：
+            - id: ミーティングID
+            - title: タイトル
+            - project_id/project_name: プロジェクト情報
+            - frequency: 頻度 (weekly/biweekly)
+            - weekday/weekday_name: 曜日
+            - start_time: 開始時刻
+            - duration_minutes: 所要時間
+            - next_occurrence: 次回開催日
+        """
+        return await list_recurring_meetings(
+            user_id,
+            recurring_meeting_repo,
+            project_repo,
+            ListRecurringMeetingsInput(**input_data)
+        )
+
+    _tool.__name__ = "list_recurring_meetings"
     return FunctionTool(func=_tool)

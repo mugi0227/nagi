@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { FaCalendarAlt, FaCheckCircle, FaCircle } from 'react-icons/fa';
 import { FaBatteryFull, FaBatteryQuarter, FaClock, FaFire, FaHourglass, FaLeaf, FaListCheck, FaLock, FaLockOpen, FaPen, FaTrash, FaUser } from 'react-icons/fa6';
 import type { Task, TaskStatus } from '../../api/types';
+import type { DraftCardData } from '../chat/DraftCard';
 import { AssigneeSelect } from '../common/AssigneeSelect';
 import { StepNumber } from '../common/StepNumber';
 import './KanbanCard.css';
@@ -34,8 +35,8 @@ export function KanbanCard({
   onEdit,
   onDelete,
   onClick,
-  onBreakdown,
-  isBreakdownPending = false,
+  onBreakdown: _onBreakdown,
+  isBreakdownPending: _isBreakdownPending = false,
   onUpdateTask,
 }: KanbanCardProps) {
   const getPriorityIcon = (level: string) => {
@@ -109,14 +110,22 @@ export function KanbanCard({
   }, [task.start_not_before, task.parent_id, taskLookup]);
 
   const handleBreakdown = () => {
-    const instruction = breakdownInstruction.trim();
-    const prompt = `タスク「${task.title}」(ID: ${task.id}) をサブタスクに分解して。
+    const draftCard: DraftCardData = {
+      type: 'subtask',
+      title: 'サブタスク分解',
+      info: [
+        { label: 'タスク', value: task.title },
+        { label: 'タスクID', value: task.id },
+        ...(task.estimated_minutes ? [{ label: '見積もり', value: `${Math.round(task.estimated_minutes / 60)}時間` }] : []),
+      ],
+      placeholder: '例: テスト作成も含めて',
+      promptTemplate: `タスク「${task.title}」(ID: ${task.id}) をサブタスクに分解して。
 
 追加の指示があれば以下に記入:
-${instruction}`;
-    const event = new CustomEvent('secretary:chat-open', { detail: { message: prompt } });
+{instruction}`,
+    };
+    const event = new CustomEvent('secretary:chat-open', { detail: { draftCard } });
     window.dispatchEvent(event);
-    setBreakdownInstruction('');
   };
 
   // Check if task is blocked by dependencies
