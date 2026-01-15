@@ -244,193 +244,65 @@ class SchedulerService:
 
         return meetings, total_minutes
 
-
-    def check_schedule_feasibility(
+    def _calculate_meeting_minutes_per_user(
         self,
-        tasks: list[Task],
-        capacity_hours: Optional[float] = None,
-    ) -> dict:
+        meetings: list[Task],
+    ) -> dict[str, int]:
         """
-        Check if tasks fit within daily capacity.
+        Calculate meeting minutes per user, handling overlapping meetings.
+
+        Groups meetings by user_id and merges overlapping intervals for each user
+        to avoid double-counting when the same user has multiple overlapping meetings.
 
         Args:
-            tasks: List of tasks to schedule
-            capacity_hours: Daily capacity in hours (None = use default)
+            meetings: List of meeting tasks for a specific day
 
         Returns:
-            Dictionary with:
-                - feasible: bool
-                - total_minutes: int
-                - capacity_minutes: int
-                - overflow_minutes: int
-                - tasks_that_fit: list[Task]
-                - overflow_tasks: list[Task]
+            Dictionary mapping user_id to total meeting minutes (with overlaps merged)
         """
-        capacity = capacity_hours or self.default_capacity_hours
-        capacity_minutes = int(capacity * 60)
+        from collections import defaultdict
 
-        # Calculate total estimated time
-        total_minutes = 0
-        tasks_with_time = []
-        tasks_without_time = []
+        # Group meetings by user_id
+        user_intervals: dict[str, list[tuple[int, int]]] = defaultdict(list)
 
-        for task in tasks:
-            # Use effective estimated minutes (considers subtasks)
-            effective_minutes = get_effective_estimated_minutes(task, tasks)
-            if effective_minutes > 0:
-                total_minutes += effective_minutes
-                tasks_with_time.append(task)
-            else:
-                tasks_without_time.append(task)
+        for meeting in meetings:
+            if not meeting.end_time or not meeting.start_time:
+                continue
 
-        # Assume 15 minutes for tasks without estimates
-        total_minutes += len(tasks_without_time) * self.default_task_minutes
+            user_id = meeting.user_id
+            if not user_id:
+                continue
 
-        # Check feasibility
-        feasible = total_minutes <= capacity_minutes
-        overflow_minutes = max(0, total_minutes - capacity_minutes)
+            # Convert to minutes from midnight
+            start_mins = meeting.start_time.hour * 60 + meeting.start_time.minute
+            end_mins = meeting.end_time.hour * 60 + meeting.end_time.minute
 
-        # Determine which tasks fit
-        tasks_that_fit = []
-        overflow_tasks = []
-        accumulated_minutes = 0
+            # Handle meetings that span midnight
+            if end_mins < start_mins:
+                end_mins = 24 * 60
 
-        # Prioritize tasks with estimates first (already scored by caller)
-        for task in tasks_with_time:
-            # Use effective estimated minutes (considers subtasks)
-            task_minutes = get_effective_estimated_minutes(task, tasks)
-            if accumulated_minutes + task_minutes <= capacity_minutes:
-                tasks_that_fit.append(task)
-                accumulated_minutes += task_minutes
-            else:
-                overflow_tasks.append(task)
+            user_intervals[user_id].append((start_mins, end_mins))
 
-        # Add tasks without estimates if space remains
-        for task in tasks_without_time:
-            if accumulated_minutes + self.default_task_minutes <= capacity_minutes:
-                tasks_that_fit.append(task)
-                accumulated_minutes += self.default_task_minutes
-            else:
-                overflow_tasks.append(task)
+        # Calculate merged duration for each user
+        result: dict[str, int] = {}
 
-        result = {
-            "feasible": feasible,
-            "total_minutes": total_minutes,
-            "capacity_minutes": capacity_minutes,
-            "overflow_minutes": overflow_minutes,
-            "tasks_that_fit": tasks_that_fit,
-            "overflow_tasks": overflow_tasks,
-            "capacity_usage_percent": (
-                min(100, int((total_minutes / capacity_minutes) * 100))
-                if capacity_minutes > 0
-                else 0
-            ),
-        }
+        for user_id, intervals in user_intervals.items():
+            if not intervals:
+                result[user_id] = 0
+                continue
 
-        logger.info(
-            f"Capacity check: {len(tasks_that_fit)}/{len(tasks)} tasks fit "
-            f"({total_minutes}/{capacity_minutes} min, "
-            f"{result['capacity_usage_percent']}% capacity)"
-        )
+            # Sort and merge overlapping intervals
+            intervals.sort()
+            merged = []
+            for start, end in intervals:
+                if merged and start <= merged[-1][1]:
+                    merged[-1] = (merged[-1][0], max(merged[-1][1], end))
+                else:
+                    merged.append((start, end))
+
+            result[user_id] = sum(end - start for start, end in merged)
 
         return result
-
-    def suggest_overflow_actions(self, overflow_tasks: list[Task]) -> str:
-        """
-        Generate human-friendly suggestion for overflow tasks.
-
-        Args:
-            overflow_tasks: Tasks that don't fit in today's capacity
-
-        Returns:
-            Suggestion message
-        """
-        if not overflow_tasks:
-            return ""
-
-        task_count = len(overflow_tasks)
-        task_titles = [task.title for task in overflow_tasks[:3]]
-
-        if task_count == 1:
-            message = (
-                f"タスク「{task_titles[0]}」は今日の時間内に収まりません。"
-                f"明日に回しますか？"
-            )
-        elif task_count <= 3:
-            titles = "、".join(task_titles)
-            message = (
-                f"{task_count}件のタスク（{titles}）が今日の時間内に収まりません。"
-                f"明日に回しますか？"
-            )
-        else:
-            titles = "、".join(task_titles)
-            remaining = task_count - 3
-            message = (
-                f"{task_count}件のタスク（{titles}、他{remaining}件）が"
-                f"今日の時間内に収まりません。明日に回しますか？"
-            )
-
-        return message
-
-    def _get_meetings_for_day(
-        self,
-        tasks: list[Task],
-        target_date: date,
-    ) -> tuple[list[Task], int]:
-        """
-        Get meetings scheduled for a specific day and calculate total duration.
-
-        Handles overlapping meetings by merging time intervals to avoid
-        double-counting overlapping periods.
-
-        Args:
-            tasks: All tasks
-            target_date: Date to check
-
-        Returns:
-            (list of meeting tasks, total meeting minutes accounting for overlaps)
-        """
-        meetings = [
-            task for task in tasks
-            if task.is_fixed_time
-            and task.start_time
-            and task.start_time.date() == target_date
-        ]
-
-        if not meetings:
-            return meetings, 0
-
-        # Create list of time intervals (start_minutes, end_minutes from midnight)
-        intervals = []
-        for meeting in meetings:
-            if meeting.end_time and meeting.start_time:
-                # Convert to minutes from midnight for easier calculation
-                start_mins = meeting.start_time.hour * 60 + meeting.start_time.minute
-                end_mins = meeting.end_time.hour * 60 + meeting.end_time.minute
-
-                # Handle meetings that span midnight (rare but possible)
-                if end_mins < start_mins:
-                    end_mins = 24 * 60  # Cap at end of day
-
-                intervals.append((start_mins, end_mins))
-
-        # Sort intervals by start time
-        intervals.sort()
-
-        # Merge overlapping intervals
-        merged = []
-        for start, end in intervals:
-            if merged and start <= merged[-1][1]:
-                # Overlaps with previous interval, merge them
-                merged[-1] = (merged[-1][0], max(merged[-1][1], end))
-            else:
-                # No overlap, add as new interval
-                merged.append((start, end))
-
-        # Calculate total minutes from merged intervals
-        total_minutes = sum(end - start for start, end in merged)
-
-        return meetings, total_minutes
 
     def build_schedule(
         self,
@@ -673,25 +545,23 @@ class SchedulerService:
 
             # Reduce capacity by fixed meetings
             day_meetings, meeting_minutes = self._get_meetings_for_day(tasks, day_cursor)
-            
-            # Note: meeting_minutes is a total sum, but we should subtract from specific attendees.
-            # But Task model doesn't strictly have "attendees" list in a way we can parse purely from Task list easily here
-            # without additional context. `is_fixed_time` tasks usually have `user_id` (owner).
-            # We will subtract from the task owner's capacity.
-            
-            # Map meeting ID to allocations just for reporting
+
+            # Calculate meeting minutes per user with overlap handling
+            # This prevents double-counting when the same user has multiple overlapping meetings
+            meeting_minutes_per_user = self._calculate_meeting_minutes_per_user(day_meetings)
+
+            # Subtract meeting time from each user's capacity (with overlaps already merged)
+            for user_id, minutes in meeting_minutes_per_user.items():
+                if user_id in user_capacities:
+                    user_capacities[user_id] = max(0, user_capacities[user_id] - minutes)
+
+            # Map meeting ID to allocations for reporting
             allocations: list[TaskAllocation] = []
-            
+
             for meeting in day_meetings:
                 duration = int((meeting.end_time - meeting.start_time).total_seconds() / 60)
                 allocations.append(TaskAllocation(task_id=meeting.id, minutes=duration))
-                
-                # Assume meeting owner is the attendee for capacity reduction
-                # Ideally we'd have a list of attendees, but for now owner-based
-                owner_id = meeting.user_id # Task model has user_id
-                if owner_id in user_capacities:
-                    user_capacities[owner_id] = max(0, user_capacities[owner_id] - duration)
-                
+
                 task_start[meeting.id] = day_cursor
                 task_end[meeting.id] = day_cursor
                 if meeting.id in remaining_task_ids:

@@ -24,11 +24,15 @@ def make_task(
     parent_id: UUID | None = None,
     dependency_ids: list | None = None,
     progress: int = 0,
+    user_id: str = "test_user",
+    is_fixed_time: bool = False,
+    start_time: datetime | None = None,
+    end_time: datetime | None = None,
 ) -> Task:
     now = datetime.now()
     return Task(
         id=uuid4(),
-        user_id="test_user",
+        user_id=user_id,
         title=title,
         status=status,
         importance=importance,
@@ -43,6 +47,9 @@ def make_task(
         created_by=CreatedBy.USER,
         created_at=now,
         updated_at=now,
+        is_fixed_time=is_fixed_time,
+        start_time=start_time,
+        end_time=end_time,
     )
 
 
@@ -317,3 +324,182 @@ def test_completed_progress_task_still_allocates_minimum():
 
     # Should still be scheduled (with default minutes since remaining is 0)
     assert len(today_response.today_tasks) >= 0  # May or may not be included based on implementation
+
+
+def test_overlapping_meetings_do_not_double_count_capacity():
+    """
+    Overlapping meetings should not double-count capacity.
+
+    If a user has two meetings at the same time (10:00-11:00 and 10:00-11:00),
+    only 60 minutes should be subtracted from their capacity, not 120 minutes.
+    """
+    service = SchedulerService()
+    start_date = date.today()
+
+    # Create two overlapping meetings for the same user (10:00-11:00)
+    meeting_start = datetime.combine(start_date, datetime.min.time().replace(hour=10))
+    meeting_end = datetime.combine(start_date, datetime.min.time().replace(hour=11))
+
+    meeting1 = make_task(
+        "Meeting 1",
+        is_fixed_time=True,
+        start_time=meeting_start,
+        end_time=meeting_end,
+        user_id="user_a",
+        estimated_minutes=60,
+    )
+    meeting2 = make_task(
+        "Meeting 2",
+        is_fixed_time=True,
+        start_time=meeting_start,
+        end_time=meeting_end,
+        user_id="user_a",
+        estimated_minutes=60,
+    )
+
+    # Add a regular task (90 minutes)
+    task = make_task("Regular Task", estimated_minutes=90, user_id="user_a")
+
+    tasks = [meeting1, meeting2, task]
+    # 8 hours capacity = 480 minutes
+    # With two overlapping 1-hour meetings, only 60 minutes should be blocked
+    # So 420 minutes should be available for the task
+    schedule = service.build_schedule(tasks, capacity_hours=8, start_date=start_date, max_days=1)
+
+    # Find today's schedule
+    assert len(schedule.days) >= 1
+    today = schedule.days[0]
+
+    # meeting_minutes should be 60 (merged, not 120)
+    assert today.meeting_minutes == 60
+
+    # The 90-minute task should be fully allocated (420 min available > 90 min needed)
+    task_alloc = next((a for a in today.task_allocations if a.task_id == task.id), None)
+    assert task_alloc is not None
+    assert task_alloc.minutes == 90
+
+
+def test_partially_overlapping_meetings_merge_correctly():
+    """
+    Partially overlapping meetings should merge their time intervals.
+
+    Meeting 1: 10:00-11:00 (60 min)
+    Meeting 2: 10:30-11:30 (60 min)
+    Expected: 10:00-11:30 = 90 minutes total (not 120)
+    """
+    service = SchedulerService()
+    start_date = date.today()
+
+    # Create partially overlapping meetings
+    meeting1_start = datetime.combine(start_date, datetime.min.time().replace(hour=10))
+    meeting1_end = datetime.combine(start_date, datetime.min.time().replace(hour=11))
+    meeting2_start = datetime.combine(start_date, datetime.min.time().replace(hour=10, minute=30))
+    meeting2_end = datetime.combine(start_date, datetime.min.time().replace(hour=11, minute=30))
+
+    meeting1 = make_task(
+        "Meeting 1",
+        is_fixed_time=True,
+        start_time=meeting1_start,
+        end_time=meeting1_end,
+        user_id="user_a",
+        estimated_minutes=60,
+    )
+    meeting2 = make_task(
+        "Meeting 2",
+        is_fixed_time=True,
+        start_time=meeting2_start,
+        end_time=meeting2_end,
+        user_id="user_a",
+        estimated_minutes=60,
+    )
+
+    # Add a regular task so the schedule day is generated
+    task = make_task("Regular Task", estimated_minutes=30, user_id="user_a")
+
+    tasks = [meeting1, meeting2, task]
+    schedule = service.build_schedule(tasks, capacity_hours=8, start_date=start_date, max_days=1)
+
+    assert len(schedule.days) >= 1
+    today = schedule.days[0]
+
+    # meeting_minutes should be 90 (merged 10:00-11:30)
+    assert today.meeting_minutes == 90
+
+
+def test_many_overlapping_meetings_with_task_allocation():
+    """
+    Test the reported issue: many meetings at the same time should not block task allocation.
+
+    Scenario:
+    - 8 hours capacity (480 minutes)
+    - Multiple meetings totaling 4h50m (290 min) after removing overlaps
+    - Should leave 3h10m (190 min) for tasks
+    """
+    service = SchedulerService()
+    start_date = date.today()
+
+    # Create multiple overlapping meetings that total to 4h50m when merged
+    # 9:00-10:00 (60 min)
+    # 9:00-10:00 (same time, should merge)
+    # 10:00-12:00 (120 min)
+    # 10:30-11:30 (overlaps with above, should merge)
+    # 13:00-15:30 (150 min)
+    # Total without overlap: 60 + 120 + 150 = 330 min
+    # But we want 290 min, so adjust...
+
+    # Let's use: 9:00-11:50 (170 min) + 13:00-15:00 (120 min) = 290 min
+    # With overlaps: 9:00-10:00, 9:30-11:50, 13:00-14:00, 13:00-15:00
+
+    meetings = [
+        make_task(
+            "Meeting 1",
+            is_fixed_time=True,
+            start_time=datetime.combine(start_date, datetime.min.time().replace(hour=9)),
+            end_time=datetime.combine(start_date, datetime.min.time().replace(hour=10)),
+            user_id="user_a",
+            estimated_minutes=60,
+        ),
+        make_task(
+            "Meeting 2",  # Overlaps with Meeting 1
+            is_fixed_time=True,
+            start_time=datetime.combine(start_date, datetime.min.time().replace(hour=9, minute=30)),
+            end_time=datetime.combine(start_date, datetime.min.time().replace(hour=11, minute=50)),
+            user_id="user_a",
+            estimated_minutes=140,
+        ),
+        make_task(
+            "Meeting 3",
+            is_fixed_time=True,
+            start_time=datetime.combine(start_date, datetime.min.time().replace(hour=13)),
+            end_time=datetime.combine(start_date, datetime.min.time().replace(hour=14)),
+            user_id="user_a",
+            estimated_minutes=60,
+        ),
+        make_task(
+            "Meeting 4",  # Overlaps with Meeting 3
+            is_fixed_time=True,
+            start_time=datetime.combine(start_date, datetime.min.time().replace(hour=13)),
+            end_time=datetime.combine(start_date, datetime.min.time().replace(hour=15)),
+            user_id="user_a",
+            estimated_minutes=120,
+        ),
+    ]
+    # Merged: 9:00-11:50 (170 min) + 13:00-15:00 (120 min) = 290 min
+
+    # Add a task that should fit in the remaining time
+    task = make_task("Important Task", estimated_minutes=180, user_id="user_a")
+
+    tasks = meetings + [task]
+    schedule = service.build_schedule(tasks, capacity_hours=8, start_date=start_date, max_days=1)
+
+    assert len(schedule.days) >= 1
+    today = schedule.days[0]
+
+    # meeting_minutes should be 290 (4h50m)
+    assert today.meeting_minutes == 290
+
+    # Task should be allocated (480 - 290 = 190 min available)
+    # Task needs 180 min, so it should fit
+    task_alloc = next((a for a in today.task_allocations if a.task_id == task.id), None)
+    assert task_alloc is not None
+    assert task_alloc.minutes == 180
