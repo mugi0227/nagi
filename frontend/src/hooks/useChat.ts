@@ -55,6 +55,7 @@ export function useChat() {
   const [isLoadingSessions, setIsLoadingSessions] = useState(false);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const hasLoadedInitialHistory = useRef(false);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   const setSessionId = useCallback((id?: string) => {
     setSessionIdState(id);
@@ -155,8 +156,29 @@ export function useChat() {
     };
   }, []);
 
+  const cancelStream = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsStreaming(false);
+      setMessages((prev) =>
+        prev.map((msg) =>
+          msg.isStreaming
+            ? { ...msg, isStreaming: false, content: msg.content || '（中断されました）' }
+            : msg
+        )
+      );
+    }
+  }, []);
+
   const sendMessageStream = useCallback(
     async (text: string, imageBase64?: string, mode?: ChatMode) => {
+      // Cancel any ongoing stream
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+      }
+      abortControllerRef.current = new AbortController();
+
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: 'user',
@@ -189,7 +211,7 @@ export function useChat() {
           mode,
           session_id: sessionId,
           proposal_mode: proposalMode,
-        })) {
+        }, abortControllerRef.current.signal)) {
           switch (chunk.chunk_type) {
             case 'tool_start':
               setMessages((prev) =>
@@ -309,6 +331,10 @@ export function useChat() {
           }
         }
       } catch (error) {
+        // Ignore abort errors (user cancelled)
+        if (error instanceof Error && error.name === 'AbortError') {
+          return;
+        }
         console.error('Streaming error:', error);
         setMessages((prev) =>
           prev.map((msg) =>
@@ -323,6 +349,7 @@ export function useChat() {
         );
       } finally {
         setIsStreaming(false);
+        abortControllerRef.current = null;
       }
     },
     [queryClient, sessionId, setSessionId]
@@ -358,6 +385,7 @@ export function useChat() {
     messages,
     sendMessage,
     sendMessageStream,
+    cancelStream,
     clearChat,
     sessions,
     fetchSessions,
@@ -366,6 +394,7 @@ export function useChat() {
     isLoadingSessions,
     isLoadingHistory,
     isLoading: mutation.isPending || isStreaming,
+    isStreaming,
     error: mutation.error,
   };
 }

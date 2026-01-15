@@ -1,17 +1,24 @@
 import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent, ClipboardEvent } from 'react';
-import { FaMicrophone, FaPaperPlane, FaImage, FaXmark } from 'react-icons/fa6';
+import { FaMicrophone, FaPaperPlane, FaImage, FaXmark, FaStop } from 'react-icons/fa6';
 import './ChatInput.css';
 
 interface ChatInputProps {
   onSend: (message: string, imageBase64?: string) => void;
+  onCancel?: () => void;
   disabled?: boolean;
+  isStreaming?: boolean;
   externalImage?: string | null;
   onImageClear?: () => void;
 }
 
-export function ChatInput({ onSend, disabled, externalImage, onImageClear }: ChatInputProps) {
+const MAX_HISTORY = 50;
+
+export function ChatInput({ onSend, onCancel, disabled, isStreaming, externalImage, onImageClear }: ChatInputProps) {
   const [input, setInput] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [inputHistory, setInputHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
+  const [tempInput, setTempInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const effectiveImage = externalImage ?? selectedImage;
@@ -26,9 +33,31 @@ export function ChatInput({ onSend, disabled, externalImage, onImageClear }: Cha
     }
   }, [input]);
 
+  // Global Escape key handler for cancelling stream
+  useEffect(() => {
+    const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'Escape' && isStreaming && onCancel) {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, [isStreaming, onCancel]);
+
   const handleSubmit = () => {
     if ((input.trim() || effectiveImage) && !disabled) {
       const trimmed = input.trim();
+      // Add to input history
+      if (trimmed) {
+        setInputHistory((prev) => {
+          const newHistory = [trimmed, ...prev.filter((h) => h !== trimmed)];
+          return newHistory.slice(0, MAX_HISTORY);
+        });
+      }
+      setHistoryIndex(-1);
+      setTempInput('');
       onSend(trimmed, effectiveImage || undefined);
       setInput('');
       setSelectedImage(null);
@@ -109,11 +138,58 @@ export function ChatInput({ onSend, disabled, externalImage, onImageClear }: Cha
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    // Escape = Cancel streaming
+    if (e.key === 'Escape') {
+      if (isStreaming && onCancel) {
+        e.preventDefault();
+        onCancel();
+      }
+      return;
+    }
+
     // Enter without Shift = Submit
     // Shift+Enter = New line (default behavior)
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSubmit();
+      return;
+    }
+
+    // Arrow Up = Previous history (when cursor is at start or input is empty)
+    if (e.key === 'ArrowUp' && inputHistory.length > 0) {
+      const textarea = textareaRef.current;
+      const cursorAtStart = textarea && textarea.selectionStart === 0 && textarea.selectionEnd === 0;
+      const isEmpty = input === '';
+
+      if (cursorAtStart || isEmpty) {
+        e.preventDefault();
+        if (historyIndex === -1) {
+          setTempInput(input);
+        }
+        const newIndex = Math.min(historyIndex + 1, inputHistory.length - 1);
+        setHistoryIndex(newIndex);
+        setInput(inputHistory[newIndex]);
+      }
+      return;
+    }
+
+    // Arrow Down = Next history (when cursor is at end and navigating history)
+    if (e.key === 'ArrowDown' && historyIndex >= 0) {
+      const textarea = textareaRef.current;
+      const cursorAtEnd = textarea &&
+        textarea.selectionStart === textarea.value.length &&
+        textarea.selectionEnd === textarea.value.length;
+
+      if (cursorAtEnd) {
+        e.preventDefault();
+        const newIndex = historyIndex - 1;
+        setHistoryIndex(newIndex);
+        if (newIndex === -1) {
+          setInput(tempInput);
+        } else {
+          setInput(inputHistory[newIndex]);
+        }
+      }
     }
   };
 
@@ -158,14 +234,24 @@ export function ChatInput({ onSend, disabled, externalImage, onImageClear }: Cha
         <button className="mic-btn" title="音声入力" disabled>
           <FaMicrophone />
         </button>
-        <button
-          className="send-btn"
-          onClick={handleSubmit}
-          disabled={(!input.trim() && !effectiveImage) || disabled}
-          title="送信"
-        >
-          <FaPaperPlane />
-        </button>
+        {isStreaming ? (
+          <button
+            className="send-btn stop-btn"
+            onClick={onCancel}
+            title="停止 (Esc)"
+          >
+            <FaStop />
+          </button>
+        ) : (
+          <button
+            className="send-btn"
+            onClick={handleSubmit}
+            disabled={(!input.trim() && !effectiveImage) || disabled}
+            title="送信"
+          >
+            <FaPaperPlane />
+          </button>
+        )}
       </div>
     </div>
   );

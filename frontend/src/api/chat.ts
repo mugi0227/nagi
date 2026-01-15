@@ -28,8 +28,10 @@ export const chatApi = {
 
   /**
    * Stream chat response using Server-Sent Events
+   * @param request Chat request parameters
+   * @param signal Optional AbortSignal to cancel the request
    */
-  async *streamMessage(request: ChatRequest): AsyncGenerator<StreamChunk, void, unknown> {
+  async *streamMessage(request: ChatRequest, signal?: AbortSignal): AsyncGenerator<StreamChunk, void, unknown> {
     // Use relative path (same as client.ts)
     const baseURL = import.meta.env.VITE_API_URL || '/api';
     const { token } = getAuthToken();
@@ -41,6 +43,7 @@ export const chatApi = {
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(request),
+      signal,
     });
 
     if (!response.ok) {

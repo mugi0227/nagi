@@ -19,8 +19,10 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
   const {
     messages,
     sendMessageStream,
+    cancelStream,
     clearChat,
     isLoading,
+    isStreaming,
     sessions,
     fetchSessions,
     loadHistory,
@@ -236,7 +238,9 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
 
       <ChatInput
         onSend={sendMessageStream}
+        onCancel={cancelStream}
         disabled={isLoading}
+        isStreaming={isStreaming}
         externalImage={draggedImage}
         onImageClear={() => setDraggedImage(null)}
       />

@@ -201,3 +201,21 @@
   cursor: not-allowed;
   transform: scale(1);
 }
+
+.send-btn.stop-btn {
+  background: var(--error, #ef4444);
+  animation: pulse-stop 1.5s ease-in-out infinite;
+}
+
+.send-btn.stop-btn:hover {
+  background: #dc2626;
+}
+
+@keyframes pulse-stop {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4);
+  }
+  50% {
+    box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+  }
+}

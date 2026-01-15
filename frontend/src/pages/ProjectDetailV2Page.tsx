@@ -98,6 +98,19 @@ const formatShortDate = (value?: string) => {
   return date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
 };
 
+const formatMeetingDateTime = (value?: string) => {
+  if (!value) return '';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('ja-JP', {
+    month: 'numeric',
+    day: 'numeric',
+    weekday: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+};
+
 const formatHours = (minutes: number) => {
   const hours = Math.round((minutes / 60) * 10) / 10;
   return `${hours}h`;
@@ -639,6 +652,12 @@ export function ProjectDetailV2Page() {
       if (importanceGap !== 0) return importanceGap;
       return a.title.localeCompare(b.title);
     }).slice(0, 5);
+  }, [tasks]);
+
+  const meetingTasks = useMemo(() => {
+    return tasks
+      .filter(task => task.is_fixed_time && task.start_time)
+      .sort((a, b) => new Date(a.start_time as string).getTime() - new Date(b.start_time as string).getTime());
   }, [tasks]);
 
   const activityFeed = useMemo(() => {
@@ -1656,6 +1675,51 @@ export function ProjectDetailV2Page() {
                 </div>
 
                 <div className="project-v2-card">
+                  <div className="project-v2-card-header">
+                    <h3>会議一覧</h3>
+                    <span className="project-v2-badge">{meetingTasks.length}</span>
+                  </div>
+                  {meetingTasks.length === 0 ? (
+                    <p className="project-v2-muted">会議タスクはまだありません。</p>
+                  ) : (
+                    <div className="project-v2-meeting-list">
+                      {meetingTasks.slice(0, 6).map((meeting) => {
+                        const hasNotes = Boolean(meeting.meeting_notes && meeting.meeting_notes.trim());
+                        return (
+                          <div
+                            key={meeting.id}
+                            className="project-v2-meeting-item"
+                            onClick={() => handleTaskClick(meeting)}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleTaskClick(meeting);
+                              }
+                            }}
+                          >
+                            <div className="project-v2-meeting-title">{meeting.title}</div>
+                            <div className="project-v2-meeting-meta">
+                              <span>{formatMeetingDateTime(meeting.start_time)}</span>
+                              {meeting.location && <span>・{meeting.location}</span>}
+                            </div>
+                            <span className={`project-v2-meeting-note-tag ${hasNotes ? 'has-notes' : ''}`}>
+                              {hasNotes ? '議事録あり' : '議事録未入力'}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {meetingTasks.length > 6 && (
+                    <p className="project-v2-muted" style={{ marginTop: '0.5rem', fontSize: '0.75rem' }}>
+                      表示は直近6件までです。
+                    </p>
+                  )}
+                </div>
+
+                <div className="project-v2-card">
                   <h3>スケジュール</h3>
                   <ScheduleOverviewCard
                     projectId={projectId}
@@ -2022,7 +2086,7 @@ export function ProjectDetailV2Page() {
               ) : (
                 <ProjectTasksView
                   projectId={projectId!}
-                  tasks={tasks}
+                  tasks={tasks.filter(t => !t.is_fixed_time)}
                   onUpdateTask={(id: string, status: TaskStatus) => {
                     updateTask(id, { status });
                     refetchTasks();

@@ -598,6 +598,55 @@
   font-weight: 600;
 }
 
+/* Meeting List */
+.project-v2-meeting-list {
+  display: grid;
+  gap: 10px;
+}
+
+.project-v2-meeting-item {
+  display: grid;
+  gap: 4px;
+  padding: 10px;
+  background: var(--bg-main);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.project-v2-meeting-item:hover {
+  background: var(--bg-hover);
+  border-color: var(--primary-light);
+}
+
+.project-v2-meeting-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.project-v2-meeting-meta {
+  display: flex;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.project-v2-meeting-note-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  background: var(--bg-input);
+  color: var(--text-muted);
+  width: fit-content;
+}
+
+.project-v2-meeting-note-tag.has-notes {
+  background: var(--success-light, #dcfce7);
+  color: var(--success, #16a34a);
+}
+
 .project-v2-team-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

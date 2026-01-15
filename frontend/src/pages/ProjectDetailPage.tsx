@@ -1426,7 +1426,7 @@ export function ProjectDetailPage() {
         ) : (
           <ProjectTasksView
             projectId={projectId!}
-            tasks={tasks}
+            tasks={tasks.filter(t => !t.is_fixed_time)}
             onUpdateTask={(id: string, status: TaskStatus) => {
               updateTask(id, { status });
               refetchTasks();
