@@ -139,6 +139,7 @@ class UserORM(Base):
     __tablename__ = "users"
     __table_args__ = (
         UniqueConstraint("provider_issuer", "provider_sub", name="uq_user_provider"),
+        UniqueConstraint("username", name="uq_user_username"),
     )
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))

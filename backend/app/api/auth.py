@@ -58,6 +58,26 @@ def _ensure_local_auth(settings: Settings) -> None:
         )
 
 
+def _get_whitelist_emails(settings: Settings) -> set[str]:
+    """Get the set of whitelisted emails (lowercase, stripped)."""
+    raw = settings.REGISTRATION_WHITELIST_EMAILS.strip()
+    if not raw:
+        return set()
+    return {email.strip().lower() for email in raw.split(",") if email.strip()}
+
+
+def _check_email_whitelist(email: str, settings: Settings) -> None:
+    """Check if email is in the whitelist. Raises HTTPException if not allowed."""
+    whitelist = _get_whitelist_emails(settings)
+    if not whitelist:
+        return  # No whitelist configured, allow all
+    if email.lower() not in whitelist:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This email address is not allowed to register",
+        )
+
+
 @router.post("/register", response_model=AuthResponse)
 async def register(
     data: RegisterRequest,
@@ -78,6 +98,10 @@ async def register(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Email is required",
         )
+
+    # Check whitelist before any other validation
+    _check_email_whitelist(email, settings)
+
     existing_username = await user_repo.get_by_username(username)
     if existing_username:
         raise HTTPException(

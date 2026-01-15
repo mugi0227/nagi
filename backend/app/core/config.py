@@ -93,6 +93,14 @@ class Settings(BaseSettings):
     LOCAL_JWT_EXPIRE_MINUTES: int = 60 * 24 * 7
 
     # ===========================================
+    # Registration Whitelist
+    # ===========================================
+    # Comma-separated list of allowed email addresses for registration.
+    # If empty, all emails are allowed (no restriction).
+    # Example: "user1@example.com,user2@example.com"
+    REGISTRATION_WHITELIST_EMAILS: str = ""
+
+    # ===========================================
     # Firebase Auth (legacy placeholder)
     # ===========================================
     FIREBASE_PROJECT_ID: str = ""

@@ -166,6 +166,9 @@ async def run_migrations():
         # Ensure task_assignments supports multiple assignees per task.
         await _ensure_task_assignment_unique(conn)
 
+        # Ensure username has UNIQUE constraint
+        await _ensure_username_unique(conn)
+
 
 async def _ensure_chat_sessions_composite_pk(conn):
     """
@@ -362,3 +365,94 @@ async def _migrate_step_numbers_to_order(conn):
                 text("UPDATE tasks SET order_in_parent = :order, title = :title WHERE id = :id"),
                 {"order": step_number, "title": clean_title, "id": task_id}
             )
+
+
+async def _ensure_username_unique(conn):
+    """
+    Ensure users.username has a UNIQUE constraint.
+
+    Older schemas only had an INDEX, not a UNIQUE constraint.
+    SQLite requires table recreation to add constraints.
+    """
+    result = await conn.execute(
+        text("SELECT name FROM sqlite_master WHERE type='table' AND name='users'")
+    )
+    if not result.scalar():
+        return
+
+    # Check if uq_user_username constraint already exists
+    index_list = await conn.execute(text("PRAGMA index_list('users')"))
+    for row in index_list.fetchall():
+        index_name = row[1]
+        is_unique = row[2]
+        if index_name == "uq_user_username" and is_unique:
+            return  # Already has the constraint
+
+    # Check for any unique index on username alone
+    for row in (await conn.execute(text("PRAGMA index_list('users')"))).fetchall():
+        index_name = row[1]
+        is_unique = row[2]
+        if not is_unique:
+            continue
+        index_info = await conn.execute(text(f"PRAGMA index_info('{index_name}')"))
+        columns = [info_row[2] for info_row in index_info.fetchall()]
+        if columns == ["username"]:
+            return  # Already has unique constraint on username
+
+    # Recreate table with UNIQUE constraint
+    await conn.execute(text("PRAGMA foreign_keys=OFF"))
+
+    await conn.execute(text("ALTER TABLE users RENAME TO users_old"))
+
+    await conn.execute(
+        text(
+            """
+            CREATE TABLE users (
+                id VARCHAR(36) PRIMARY KEY,
+                provider_issuer VARCHAR(500) NOT NULL,
+                provider_sub VARCHAR(255) NOT NULL,
+                email VARCHAR(255),
+                display_name VARCHAR(255),
+                username VARCHAR(255),
+                password_hash VARCHAR(255),
+                created_at DATETIME,
+                updated_at DATETIME,
+                CONSTRAINT uq_user_provider UNIQUE (provider_issuer, provider_sub),
+                CONSTRAINT uq_user_username UNIQUE (username)
+            )
+            """
+        )
+    )
+
+    await conn.execute(
+        text(
+            """
+            INSERT INTO users (
+                id, provider_issuer, provider_sub, email, display_name,
+                username, password_hash, created_at, updated_at
+            )
+            SELECT
+                id, provider_issuer, provider_sub, email, display_name,
+                username, password_hash, created_at, updated_at
+            FROM users_old
+            """
+        )
+    )
+
+    await conn.execute(text("DROP TABLE users_old"))
+
+    # Recreate indexes
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_users_provider_issuer ON users(provider_issuer)")
+    )
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_users_provider_sub ON users(provider_sub)")
+    )
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+    )
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)")
+    )
+
+    await conn.execute(text("PRAGMA foreign_keys=ON"))
