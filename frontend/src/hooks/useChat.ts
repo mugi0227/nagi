@@ -20,7 +20,8 @@ export interface ToolCall {
   name: string;
   args?: Record<string, unknown>;
   result?: string;
-  status: 'running' | 'completed';
+  error?: string;
+  status: 'running' | 'completed' | 'failed';
 }
 
 export interface ProposalInfo {
@@ -246,6 +247,27 @@ export function useChat() {
                             ...tc,
                             result: chunk.tool_result,
                             status: 'completed' as const,
+                          }
+                          : tc
+                      ),
+                    }
+                    : msg
+                )
+              );
+              break;
+
+            case 'tool_error':
+              setMessages((prev) =>
+                prev.map((msg) =>
+                  msg.id === assistantMessageId
+                    ? {
+                      ...msg,
+                      toolCalls: msg.toolCalls?.map((tc) =>
+                        tc.name === chunk.tool_name && tc.status === 'running'
+                          ? {
+                            ...tc,
+                            error: chunk.error_message,
+                            status: 'failed' as const,
                           }
                           : tc
                       ),

@@ -3,10 +3,11 @@ import { getAuthToken } from './auth';
 import type { ChatRequest, ChatResponse, ChatSession, ChatHistoryMessage } from './types';
 
 export interface StreamChunk {
-  chunk_type: 'tool_start' | 'tool_end' | 'text' | 'done' | 'error' | 'proposal';
+  chunk_type: 'tool_start' | 'tool_end' | 'tool_error' | 'text' | 'done' | 'error' | 'proposal';
   tool_name?: string;
   tool_args?: Record<string, unknown>;
   tool_result?: string;
+  error_message?: string;
   content?: string;
   assistant_message?: string;
   session_id?: string;

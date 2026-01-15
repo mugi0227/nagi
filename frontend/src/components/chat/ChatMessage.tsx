@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { FaSpinner, FaCheck, FaWrench } from 'react-icons/fa6';
+import { FaSpinner, FaCheck, FaWrench, FaTriangleExclamation } from 'react-icons/fa6';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useQueryClient } from '@tanstack/react-query';
@@ -287,6 +287,8 @@ export function ChatMessage({
                 <div className="tool-icon">
                   {tool.status === 'running' ? (
                     <FaSpinner className="spinner" />
+                  ) : tool.status === 'failed' ? (
+                    <FaTriangleExclamation />
                   ) : (
                     <FaCheck />
                   )}
@@ -298,6 +300,9 @@ export function ChatMessage({
                   </div>
                   {tool.status === 'running' && (
                     <div className="tool-status">実行中...</div>
+                  )}
+                  {tool.status === 'failed' && tool.error && (
+                    <div className="tool-error">{tool.error}</div>
                   )}
                 </div>
               </div>

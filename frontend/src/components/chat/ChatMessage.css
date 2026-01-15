@@ -96,6 +96,11 @@
   background: rgba(74, 222, 128, 0.1);
 }
 
+.tool-call.failed {
+  border-left-color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
 .tool-icon {
   display: flex;
   align-items: center;
@@ -106,6 +111,10 @@
 
 .tool-call.completed .tool-icon {
   color: #4ade80;
+}
+
+.tool-call.failed .tool-icon {
+  color: #ef4444;
 }
 
 .tool-icon .spinner {
@@ -145,6 +154,12 @@
   font-size: 0.75rem;
   color: var(--text-muted);
   font-style: italic;
+}
+
+.tool-error {
+  font-size: 0.75rem;
+  color: #ef4444;
+  margin-top: 2px;
 }
 
 /* Streaming Cursor */

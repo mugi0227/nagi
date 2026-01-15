@@ -815,11 +815,28 @@ class AgentService:
                                     except TypeError:
                                         tool_result_str = str(raw_response)
 
-                            yield {
-                                "chunk_type": "tool_end",
-                                "tool_name": tool_name,
-                                "tool_result": tool_result_str,
-                            }
+                            # Check if the tool returned an error
+                            is_tool_error = False
+                            error_message = None
+                            if isinstance(result, dict) and result.get("error"):
+                                is_tool_error = True
+                                error_message = result["error"]
+                            elif isinstance(raw_response, dict) and raw_response.get("error"):
+                                is_tool_error = True
+                                error_message = raw_response["error"]
+
+                            if is_tool_error:
+                                yield {
+                                    "chunk_type": "tool_error",
+                                    "tool_name": tool_name,
+                                    "error_message": error_message,
+                                }
+                            else:
+                                yield {
+                                    "chunk_type": "tool_end",
+                                    "tool_name": tool_name,
+                                    "tool_result": tool_result_str,
+                                }
 
                             # Send proposal chunk whenever a tool returns a proposal payload
                             if isinstance(result, dict) and "proposal_id" in result:
