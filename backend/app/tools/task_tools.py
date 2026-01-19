@@ -48,7 +48,7 @@ class CreateTaskInput(BaseModel):
     energy_level: EnergyLevel = Field(
         EnergyLevel.MEDIUM, description="必要エネルギー (HIGH=重い, MEDIUM=中程度, LOW=軽い)"
     )
-    estimated_minutes: Optional[int] = Field(None, ge=1, le=480, description="見積もり時間（分）")
+    estimated_minutes: Optional[int] = Field(None, ge=1, description="見積もり時間（分）")
     due_date: Optional[str] = Field(None, description="期限（ISO形式: YYYY-MM-DDTHH:MM:SS）")
     start_not_before: Optional[str] = Field(
         None,
@@ -81,7 +81,7 @@ class UpdateTaskInput(BaseModel):
     importance: Optional[Priority] = Field(None, description="重要度")
     urgency: Optional[Priority] = Field(None, description="緊急度")
     energy_level: Optional[EnergyLevel] = Field(None, description="必要エネルギー (HIGH/MEDIUM/LOW)")
-    estimated_minutes: Optional[int] = Field(None, ge=1, le=480, description="見積もり時間（分）")
+    estimated_minutes: Optional[int] = Field(None, ge=1, description="見積もり時間（分）")
     due_date: Optional[str] = Field(None, description="期限（ISO形式: YYYY-MM-DDTHH:MM:SS）")
     start_not_before: Optional[str] = Field(
         None,

@@ -26,7 +26,7 @@ class TaskBase(BaseModel):
         EnergyLevel.LOW, description="必要エネルギー (HIGH=重い, LOW=軽い)"
     )
     estimated_minutes: Optional[int] = Field(
-        None, ge=1, le=480, description="見積もり時間（分）"
+        None, ge=1, description="見積もり時間（分）"
     )
     due_date: Optional[datetime] = Field(None, description="期限")
     start_not_before: Optional[datetime] = Field(
@@ -88,7 +88,7 @@ class TaskUpdate(BaseModel):
     importance: Optional[Priority] = None
     urgency: Optional[Priority] = None
     energy_level: Optional[EnergyLevel] = None
-    estimated_minutes: Optional[int] = Field(None, ge=1, le=480)
+    estimated_minutes: Optional[int] = Field(None, ge=1)
     due_date: Optional[datetime] = None
     start_not_before: Optional[datetime] = None
     parent_id: Optional[UUID] = None
