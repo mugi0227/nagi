@@ -52,13 +52,23 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
     const initialSummary = useMemo(() => parseSavedSummary(session.summary), [session.summary]);
     const [summary, setSummary] = useState<MeetingSummary | null>(initialSummary);
 
-    // Initialize selected actions from saved summary
+    // Initialize selected actions from saved summary (excluding already converted ones)
+    const initialConvertedActions = useMemo(() => {
+        return new Set<number>(initialSummary?.converted_action_indices || []);
+    }, [initialSummary]);
+    const [convertedActions, setConvertedActions] = useState<Set<number>>(initialConvertedActions);
+
     const initialSelectedActions = useMemo(() => {
         if (initialSummary?.next_actions) {
-            return new Set(initialSummary.next_actions.map((_, i) => i));
+            // Only select actions that haven't been converted yet
+            return new Set(
+                initialSummary.next_actions
+                    .map((_, i) => i)
+                    .filter((i) => !initialConvertedActions.has(i))
+            );
         }
         return new Set<number>();
-    }, [initialSummary]);
+    }, [initialSummary, initialConvertedActions]);
     const [selectedActions, setSelectedActions] = useState<Set<number>>(initialSelectedActions);
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -99,14 +109,32 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
 
     // Create tasks mutation
     const createTasksMutation = useMutation({
-        mutationFn: async (actions: NextAction[]) => {
+        mutationFn: async (actionIndices: number[]) => {
+            if (!summary) throw new Error('No summary available');
+            const actions = actionIndices.map((i) => summary.next_actions[i]);
             return meetingSessionApi.createTasksFromActions(session.id, {
                 project_id: projectId,
                 actions,
-            });
+            }).then((result) => ({ ...result, actionIndices }));
         },
         onSuccess: (data) => {
             setSuccessMessage(`${data.created_count}件のタスクを作成しました。`);
+
+            // Update converted actions
+            const newConvertedActions = new Set(convertedActions);
+            data.actionIndices.forEach((i) => newConvertedActions.add(i));
+            setConvertedActions(newConvertedActions);
+
+            // Save the updated summary with converted indices
+            if (summary) {
+                const updatedSummary = {
+                    ...summary,
+                    converted_action_indices: Array.from(newConvertedActions),
+                };
+                setSummary(updatedSummary);
+                saveSummaryMutation.mutate(updatedSummary);
+            }
+
             setSelectedActions(new Set());
             onTasksCreated?.();
         },
@@ -166,8 +194,8 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
     const handleCreateTasks = useCallback(() => {
         if (!summary || selectedActions.size === 0) return;
 
-        const actionsToCreate = summary.next_actions.filter((_, i) => selectedActions.has(i));
-        createTasksMutation.mutate(actionsToCreate);
+        const indicesToCreate = Array.from(selectedActions);
+        createTasksMutation.mutate(indicesToCreate);
     }, [summary, selectedActions, createTasksMutation]);
 
     const getPriorityClass = (priority: string) => {
@@ -347,6 +375,11 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
                                 <h4>
                                     <FaTasks />
                                     ネクストアクション ({summary.next_actions.length}件)
+                                    {convertedActions.size > 0 && (
+                                        <span className="converted-count">
+                                            {convertedActions.size}件タスク化済み
+                                        </span>
+                                    )}
                                 </h4>
                                 <button
                                     className="create-tasks-btn"
@@ -362,35 +395,49 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
                                 </button>
                             </div>
                             <div className="actions-list">
-                                {summary.next_actions.map((action, index) => (
-                                    <div key={index} className="action-item">
-                                        <input
-                                            type="checkbox"
-                                            className="action-checkbox"
-                                            checked={selectedActions.has(index)}
-                                            onChange={() => handleToggleAction(index)}
-                                        />
-                                        <div className="action-content">
-                                            <h5>{action.title}</h5>
-                                            {action.description && <p>{action.description}</p>}
-                                            <div className="action-meta">
-                                                {action.assignee && (
-                                                    <span>
-                                                        <FaUser /> {action.assignee}
+                                {summary.next_actions.map((action, index) => {
+                                    const isConverted = convertedActions.has(index);
+                                    return (
+                                        <div
+                                            key={index}
+                                            className={`action-item ${isConverted ? 'converted' : ''}`}
+                                        >
+                                            <input
+                                                type="checkbox"
+                                                className="action-checkbox"
+                                                checked={selectedActions.has(index)}
+                                                onChange={() => handleToggleAction(index)}
+                                                disabled={isConverted}
+                                            />
+                                            <div className="action-content">
+                                                <div className="action-title-row">
+                                                    <h5>{action.title}</h5>
+                                                    {isConverted && (
+                                                        <span className="converted-badge">
+                                                            <FaCheckCircle /> タスク化済み
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {action.description && <p>{action.description}</p>}
+                                                <div className="action-meta">
+                                                    {action.assignee && (
+                                                        <span>
+                                                            <FaUser /> {action.assignee}
+                                                        </span>
+                                                    )}
+                                                    {action.due_date && (
+                                                        <span>
+                                                            <FaCalendar /> {action.due_date}
+                                                        </span>
+                                                    )}
+                                                    <span className={getPriorityClass(action.priority)}>
+                                                        <FaFlag /> 優先度: {getPriorityLabel(action.priority)}
                                                     </span>
-                                                )}
-                                                {action.due_date && (
-                                                    <span>
-                                                        <FaCalendar /> {action.due_date}
-                                                    </span>
-                                                )}
-                                                <span className={getPriorityClass(action.priority)}>
-                                                    <FaFlag /> 優先度: {getPriorityLabel(action.priority)}
-                                                </span>
+                                                </div>
                                             </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         </div>
                     )}

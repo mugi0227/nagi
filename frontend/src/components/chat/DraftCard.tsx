@@ -9,12 +9,20 @@ export interface DraftCardInfo {
   value: string;
 }
 
+export interface CheckinOptions {
+  enabled: boolean;
+  startDate?: string;  // YYYY-MM-DD
+  endDate?: string;    // YYYY-MM-DD
+}
+
 export interface DraftCardData {
   type: DraftCardType;
   title: string;
   info: DraftCardInfo[];
   placeholder: string;
   promptTemplate: string;
+  // Agenda-specific options
+  checkinOptions?: CheckinOptions;
 }
 
 interface DraftCardProps {
@@ -34,8 +42,31 @@ const iconMap: Record<DraftCardType, React.ReactNode> = {
 export function DraftCard({ data, onSend, onCancel }: DraftCardProps) {
   const [instruction, setInstruction] = useState('');
 
+  // Check-in options state (for agenda type)
+  const defaultStartDate = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 7);
+    return d.toISOString().split('T')[0];
+  };
+  const defaultEndDate = () => new Date().toISOString().split('T')[0];
+
+  const [checkinEnabled, setCheckinEnabled] = useState(data.checkinOptions?.enabled ?? true);
+  const [checkinStartDate, setCheckinStartDate] = useState(data.checkinOptions?.startDate ?? defaultStartDate());
+  const [checkinEndDate, setCheckinEndDate] = useState(data.checkinOptions?.endDate ?? defaultEndDate());
+
   const handleSend = () => {
-    const message = data.promptTemplate.replace('{instruction}', instruction.trim());
+    let message = data.promptTemplate.replace('{instruction}', instruction.trim());
+
+    // Add check-in context for agenda type
+    if (data.type === 'agenda') {
+      if (checkinEnabled) {
+        message = message.replace('{checkin_context}',
+          `Check-in情報を参照: ${checkinStartDate} 〜 ${checkinEndDate}`);
+      } else {
+        message = message.replace('{checkin_context}', 'Check-in情報: 参照しない');
+      }
+    }
+
     onSend(message);
   };
 
@@ -54,6 +85,42 @@ export function DraftCard({ data, onSend, onCancel }: DraftCardProps) {
             </div>
           ))}
         </div>
+
+        {/* Check-in options for agenda type */}
+        {data.type === 'agenda' && (
+          <div className="draft-card-checkin-options">
+            <label className="draft-card-checkin-toggle">
+              <input
+                type="checkbox"
+                checked={checkinEnabled}
+                onChange={(e) => setCheckinEnabled(e.target.checked)}
+              />
+              <span>Check-in情報を参照する</span>
+            </label>
+            {checkinEnabled && (
+              <div className="draft-card-checkin-dates">
+                <div className="draft-card-date-field">
+                  <label>開始日</label>
+                  <input
+                    type="date"
+                    value={checkinStartDate}
+                    onChange={(e) => setCheckinStartDate(e.target.value)}
+                  />
+                </div>
+                <span className="draft-card-date-separator">〜</span>
+                <div className="draft-card-date-field">
+                  <label>終了日</label>
+                  <input
+                    type="date"
+                    value={checkinEndDate}
+                    onChange={(e) => setCheckinEndDate(e.target.value)}
+                  />
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="draft-card-instruction">
           <label>追加の指示（任意）</label>
           <textarea

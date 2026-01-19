@@ -184,9 +184,17 @@ export function MeetingMainContent({
             promptTemplate: `ミーティング「${title}」(${idRef}) のアジェンダを作成して。
 プロジェクトID: ${projectId}
 開催日: ${formattedDate}
+{checkin_context}
 
-追加の指示があれば以下に記入:
+【出力形式】
+1. まず「📋 Check-in要約」として、メンバーからのCheck-in内容（ブロッカー、相談事項、依頼など）を簡潔に箇条書きで要約してください。
+2. 次に「📝 アジェンダ案」として、Check-in内容を踏まえたミーティングアジェンダを提案してください。
+
+追加の指示:
 {instruction}`,
+            checkinOptions: {
+                enabled: true,
+            },
         };
 
         const event = new CustomEvent('secretary:chat-open', { detail: { draftCard } });

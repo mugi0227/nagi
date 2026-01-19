@@ -61,6 +61,7 @@ export interface MeetingSummary {
   decisions: Decision[];
   next_actions: NextAction[];
   action_items_count: number;
+  converted_action_indices?: number[]; // Indices of actions that have been converted to tasks
 }
 
 export interface AnalyzeTranscriptRequest {

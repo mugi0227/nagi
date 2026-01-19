@@ -161,3 +161,70 @@
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(58, 123, 213, 0.4);
 }
+
+/* Check-in options (for agenda type) */
+.draft-card-checkin-options {
+  background: var(--surface-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 16px;
+}
+
+.draft-card-checkin-toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.draft-card-checkin-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+.draft-card-checkin-dates {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px dashed var(--border-color);
+}
+
+.draft-card-date-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.draft-card-date-field label {
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
+.draft-card-date-field input[type="date"] {
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--surface-secondary);
+  color: var(--text-primary);
+  width: 100%;
+}
+
+.draft-card-date-field input[type="date"]:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.draft-card-date-separator {
+  color: var(--text-secondary);
+  font-size: 14px;
+  padding-bottom: 6px;
+}
