@@ -21,6 +21,9 @@ export const phasesApi = {
   update: (id: string, data: PhaseUpdate) =>
     api.patch<Phase>(`/phases/${id}`, data),
 
+  setCurrent: (id: string) =>
+    api.post<Phase[]>(`/phases/${id}/set-current`, {}),
+
   delete: (id: string) =>
     api.delete(`/phases/${id}`),
 

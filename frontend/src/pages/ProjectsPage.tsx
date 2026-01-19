@@ -67,7 +67,7 @@ export function ProjectsPage() {
             <div
               key={project.id}
               className="project-card"
-              onClick={() => navigate(`/projects/${project.id}`)}
+              onClick={() => navigate(`/projects/${project.id}/v2`)}
             >
               <div className="project-header">
                 <h3 className="project-name">{project.name}</h3>

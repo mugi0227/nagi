@@ -56,6 +56,7 @@ class ProjectStatus(str, Enum):
 class PhaseStatus(str, Enum):
     """Phase status."""
 
+    PLANNED = "PLANNED"
     ACTIVE = "ACTIVE"
     COMPLETED = "COMPLETED"
     ARCHIVED = "ARCHIVED"

@@ -19,6 +19,7 @@ from app.api.deps import (
 )
 from app.models.phase import Phase, PhaseCreate, PhaseUpdate, PhaseWithTaskCount
 from app.models.phase_breakdown import PhaseTaskBreakdownRequest, PhaseTaskBreakdownResponse
+from app.models.enums import PhaseStatus
 from app.core.exceptions import NotFoundError
 from app.services.phase_planner_service import PhasePlannerService
 
@@ -81,6 +82,68 @@ async def update_phase(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
         )
+
+
+@router.post("/{phase_id}/set-current", response_model=list[Phase])
+async def set_current_phase(
+    phase_id: UUID,
+    user: CurrentUser,
+    repo: PhaseRepo,
+    project_repo: ProjectRepo,
+) -> list[Phase]:
+    """
+    Set the specified phase as the current phase.
+
+    This will update the status of all phases in the project:
+    - The specified phase: ACTIVE
+    - Earlier phases (lower order_in_project): COMPLETED
+    - Later phases (higher order_in_project): PLANNED
+    """
+    # Get the target phase
+    phase = await repo.get_by_id(user.id, phase_id)
+    if not phase:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Phase {phase_id} not found",
+        )
+
+    # Verify project access
+    project_id = phase.project_id
+    await _get_project_or_404(user, project_repo, project_id)
+
+    # Get all phases in the project
+    all_phases = await repo.list_by_project(user.id, project_id)
+
+    # Update each phase's status based on its order
+    updated_phases = []
+    for p in all_phases:
+        if p.id == phase_id:
+            # Set target phase to ACTIVE
+            updated = await repo.update(
+                user.id,
+                p.id,
+                PhaseUpdate(status=PhaseStatus.ACTIVE),
+                project_id=project_id
+            )
+        elif p.order_in_project < phase.order_in_project:
+            # Earlier phases -> COMPLETED
+            updated = await repo.update(
+                user.id,
+                p.id,
+                PhaseUpdate(status=PhaseStatus.COMPLETED),
+                project_id=project_id
+            )
+        else:
+            # Later phases -> PLANNED
+            updated = await repo.update(
+                user.id,
+                p.id,
+                PhaseUpdate(status=PhaseStatus.PLANNED),
+                project_id=project_id
+            )
+        updated_phases.append(updated)
+
+    return updated_phases
 
 
 @router.delete("/{phase_id}", status_code=status.HTTP_204_NO_CONTENT)

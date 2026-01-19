@@ -110,7 +110,7 @@ export function InvitationAcceptPage() {
           <button
             type="button"
             className="invite-link-btn"
-            onClick={() => navigate(`/projects/${projectId}`)}
+            onClick={() => navigate(`/projects/${projectId}/v2`)}
           >
             プロジェクトを開く
           </button>

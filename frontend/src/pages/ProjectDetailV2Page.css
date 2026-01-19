@@ -846,9 +846,29 @@
 .project-v2-timeline-title {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 8px;
   font-weight: 600;
   font-size: 14px;
+}
+
+.project-v2-phase-set-current-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.project-v2-phase-set-current-btn:hover {
+  background: var(--bg-hover);
+  color: var(--primary);
 }
 
 .project-v2-phase-badge {

@@ -1,6 +1,6 @@
 ﻿import type { ReactElement } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { FaChartBar, FaColumns, FaStream, FaThLarge, FaUsers } from 'react-icons/fa';
+import { FaChartBar, FaCheckCircle, FaColumns, FaStream, FaThLarge, FaUsers } from 'react-icons/fa';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { memoriesApi } from '../api/memories';
 import { milestonesApi } from '../api/milestones';
@@ -829,6 +829,17 @@ export function ProjectDetailV2Page() {
     }
   };
 
+  const handleSetCurrentPhase = async (phaseId: string) => {
+    if (!projectId) return;
+    try {
+      await phasesApi.setCurrent(phaseId);
+      await refreshPhases();
+    } catch (err) {
+      console.error('Failed to set current phase:', err);
+      alert('現在フェーズの設定に失敗しました');
+    }
+  };
+
   const handleTaskCheck = async (taskId: string) => {
     const localTask = tasks.find(item => item.id === taskId);
     if (localTask?.status === 'DONE') {
@@ -1341,6 +1352,7 @@ export function ProjectDetailV2Page() {
 
             <div className="project-v2-dashboard-grid">
               <div className="project-v2-dashboard-main">
+                {/* TODO: 将来実装 - AI提案機能
                 <div className="project-v2-card">
                   <div className="project-v2-card-header">
                     <h3>AI提案</h3>
@@ -1372,6 +1384,7 @@ export function ProjectDetailV2Page() {
                     </div>
                   </div>
                 </div>
+                */}
 
                 <div className="project-v2-card">
                   <div className="project-v2-card-header">
@@ -1407,183 +1420,6 @@ export function ProjectDetailV2Page() {
                       })}
                     </div>
                   )}
-                </div>
-
-                <div className="project-v2-card">
-                  <div className="project-v2-card-header">
-                    <h3>チェックイン</h3>
-                    <div className="project-v2-actions">
-                      <button className="project-v2-button" onClick={handleStartWeeklyCheckin}>
-                        週次チェックイン
-                      </button>
-                      <button className="project-v2-button" onClick={handleStartIssueCheckin}>
-                        課題チェックイン
-                      </button>
-                    </div>
-                  </div>
-
-                  {members.length === 0 && (
-                    <p className="project-v2-muted">メンバーを追加すると投稿できます。</p>
-                  )}
-
-                  {checkinMode && (
-                    <div className="project-v2-form">
-                      <label className="project-v2-label" htmlFor="checkin-member">
-                        メンバー
-                      </label>
-                      <select
-                        id="checkin-member"
-                        className="project-v2-select"
-                        value={selectedCheckinMemberId}
-                        onChange={(e) => setSelectedCheckinMemberId(e.target.value)}
-                      >
-                        {members.map((member) => (
-                          <option key={member.id} value={member.member_user_id}>
-                            {member.member_display_name || member.member_user_id}
-                          </option>
-                        ))}
-                      </select>
-
-                      <label className="project-v2-label" htmlFor="checkin-text">
-                        内容
-                      </label>
-                      <textarea
-                        id="checkin-text"
-                        className="project-v2-textarea"
-                        rows={6}
-                        value={checkinText}
-                        onChange={(e) => setCheckinText(e.target.value)}
-                        placeholder={checkinMode === 'weekly'
-                          ? '今週の進捗や課題をまとめてください。'
-                          : '現在の課題やブロッカーを書いてください。'}
-                      />
-                      {checkinError && <p className="project-v2-error">{checkinError}</p>}
-                      <div className="project-v2-actions">
-                        <button
-                          className="project-v2-button ghost"
-                          onClick={() => {
-                            setCheckinMode(null);
-                            setCheckinText('');
-                          }}
-                          disabled={isCheckinSaving}
-                        >
-                          キャンセル
-                        </button>
-                        <button
-                          className="project-v2-button primary"
-                          onClick={handleSubmitCheckin}
-                          disabled={isCheckinSaving}
-                        >
-                          {isCheckinSaving ? '保存中...' : '保存'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="project-v2-subsection">
-                    <h4>最近のチェックイン</h4>
-                    {checkins.length === 0 ? (
-                      <p className="project-v2-muted">まだチェックインはありません。</p>
-                    ) : (
-                      <div className="project-v2-list">
-                        {checkins.slice(0, 5).map((checkin) => (
-                          <div key={checkin.id} className="project-v2-list-item">
-                            <div className="project-v2-list-title">
-                              {formatCheckinDate(checkin.checkin_date)} ・ {memberLabelById[checkin.member_user_id] || checkin.member_user_id}
-                            </div>
-                            <div className="project-v2-muted">{checkin.raw_text}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="project-v2-subsection">
-                    <h4>チェックイン要約</h4>
-                    <div className="project-v2-form-row">
-                      <label className="project-v2-label">
-                        From
-                        <input
-                          type="date"
-                          className="project-v2-input"
-                          value={checkinSummaryStart}
-                          onChange={(e) => setCheckinSummaryStart(e.target.value)}
-                        />
-                      </label>
-                      <label className="project-v2-label">
-                        To
-                        <input
-                          type="date"
-                          className="project-v2-input"
-                          value={checkinSummaryEnd}
-                          onChange={(e) => setCheckinSummaryEnd(e.target.value)}
-                        />
-                      </label>
-                      <button
-                        className="project-v2-button primary"
-                        onClick={handleSummarizeCheckins}
-                        disabled={isCheckinSummaryLoading}
-                      >
-                        {isCheckinSummaryLoading ? '要約中...' : '要約する'}
-                      </button>
-                    </div>
-                    {checkinSummaryError && <p className="project-v2-error">{checkinSummaryError}</p>}
-                    {checkinSummary && (
-                      <div className="project-v2-summary">
-                        <div className="project-v2-muted">{checkinSummary.checkin_count} posts</div>
-                        <div className="project-v2-summary-text">
-                          {checkinSummary.summary_text || 'No check-ins in range.'}
-                        </div>
-                        <div className="project-v2-actions">
-                          <button
-                            className="project-v2-button ghost"
-                            onClick={handleSaveCheckinSummary}
-                            disabled={isCheckinSummarySaving || !checkinSummary.summary_text}
-                          >
-                            {isCheckinSummarySaving ? '保存中...' : '保存する'}
-                          </button>
-                          {checkinSummarySaveStatus && (
-                            <span className="project-v2-muted">{checkinSummarySaveStatus}</span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="project-v2-subsection">
-                    <h4>保存済みサマリー</h4>
-                    {isSavedCheckinSummariesLoading && (
-                      <p className="project-v2-muted">読み込み中...</p>
-                    )}
-                    {savedCheckinSummariesError && (
-                      <p className="project-v2-error">{savedCheckinSummariesError}</p>
-                    )}
-                    {!isSavedCheckinSummariesLoading
-                      && !savedCheckinSummariesError
-                      && savedCheckinSummaries.length === 0 && (
-                        <p className="project-v2-muted">保存したサマリーはありません。</p>
-                      )}
-                    {!isSavedCheckinSummariesLoading && savedCheckinSummaries.length > 0 && (
-                      <div className="project-v2-list">
-                        {savedCheckinSummaries.map((memory) => {
-                          const rangeLabel = getTagValue(memory.tags, 'range:') || '期間不明';
-                          const countLabel = getTagValue(memory.tags, 'count:');
-                          return (
-                            <details key={memory.id} className="project-v2-details">
-                              <summary className="project-v2-details-summary">
-                                <span>{rangeLabel}</span>
-                                <span className="project-v2-muted">
-                                  {countLabel ? `${countLabel}件` : ''}
-                                  {memory.created_at ? `・${formatMemoryDate(memory.created_at)}` : ''}
-                                </span>
-                              </summary>
-                              <pre className="project-v2-pre">{memory.content}</pre>
-                            </details>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
                 </div>
               </div>
 
@@ -1694,62 +1530,6 @@ export function ProjectDetailV2Page() {
                       ))}
                     </div>
                   )}
-                </div>
-
-                <div className="project-v2-card">
-                  <div className="project-v2-card-header">
-                    <h3>会議一覧</h3>
-                    <span className="project-v2-badge">{meetingTasks.length}</span>
-                  </div>
-                  {meetingTasks.length === 0 ? (
-                    <p className="project-v2-muted">会議タスクはまだありません。</p>
-                  ) : (
-                    <div className="project-v2-meeting-list">
-                      {meetingTasks.slice(0, 6).map((meeting) => {
-                        const hasNotes = Boolean(meeting.meeting_notes && meeting.meeting_notes.trim());
-                        return (
-                          <div
-                            key={meeting.id}
-                            className="project-v2-meeting-item"
-                            onClick={() => handleTaskClick(meeting)}
-                            role="button"
-                            tabIndex={0}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault();
-                                handleTaskClick(meeting);
-                              }
-                            }}
-                          >
-                            <div className="project-v2-meeting-title">{meeting.title}</div>
-                            <div className="project-v2-meeting-meta">
-                              <span>{formatMeetingDateTime(meeting.start_time)}</span>
-                              {meeting.location && <span>・{meeting.location}</span>}
-                            </div>
-                            <span className={`project-v2-meeting-note-tag ${hasNotes ? 'has-notes' : ''}`}>
-                              {hasNotes ? '議事録あり' : '議事録未入力'}
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {meetingTasks.length > 6 && (
-                    <p className="project-v2-muted" style={{ marginTop: '0.5rem', fontSize: '0.75rem' }}>
-                      表示は直近6件までです。
-                    </p>
-                  )}
-                </div>
-
-                <div className="project-v2-card">
-                  <h3>スケジュール</h3>
-                  <ScheduleOverviewCard
-                    projectId={projectId}
-                    projectTasks={tasks}
-                    title="プロジェクトスケジュール"
-                    tag="プロジェクト"
-                    onTaskClick={handleScheduleTaskClick}
-                  />
                 </div>
               </div>
             </div>
@@ -2067,8 +1847,22 @@ export function ProjectDetailV2Page() {
                       >
                         <div className="project-v2-timeline-card">
                           <div className="project-v2-timeline-title">
-                            {phase.name}
-                            {isCurrent && <span className="project-v2-phase-badge">進行中</span>}
+                            <span>
+                              {phase.name}
+                              {isCurrent && <span className="project-v2-phase-badge">進行中</span>}
+                            </span>
+                            {!isCurrent && (
+                              <button
+                                className="project-v2-phase-set-current-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSetCurrentPhase(phase.id);
+                                }}
+                                title="このフェーズを現在フェーズに設定"
+                              >
+                                <FaCheckCircle />
+                              </button>
+                            )}
                           </div>
                           <div className="project-v2-muted">{getPhaseRangeLabel(phase)}</div>
                           <div className="project-v2-muted">
