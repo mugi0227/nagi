@@ -235,19 +235,42 @@ export function TaskDetailModal({
   const isMeeting = task.is_fixed_time && task.start_time && task.end_time;
   const meetingTimeLabel = formatMeetingTime(task.start_time, task.end_time);
 
+  // Helper to check if a subtask is locked (dependencies not complete)
+  const isSubtaskLocked = (subtask: Task): boolean => {
+    if (!subtask.dependency_ids || subtask.dependency_ids.length === 0) return false;
+    return subtask.dependency_ids.some(depId => {
+      // First check localSubtasks (for optimistic updates), then allTasks
+      const localTask = localSubtasks.find(t => t.id === depId);
+      if (localTask) return localTask.status !== 'DONE';
+      const task = allTasks.find(t => t.id === depId);
+      return task ? task.status !== 'DONE' : false;
+    });
+  };
+
   const handleSubtaskCheck = (subtaskId: string, e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
+
+    // Find the subtask and check if it's locked
+    const subtask = localSubtasks.find(s => s.id === subtaskId);
+    if (!subtask) return;
+
+    // Don't allow checking locked subtasks (unless unchecking)
+    if (subtask.status !== 'DONE' && isSubtaskLocked(subtask)) {
+      console.log('[TaskDetailModal] Subtask is locked, cannot check:', subtaskId);
+      return;
+    }
+
     console.log('[TaskDetailModal] Subtask check:', subtaskId);
 
     // Optimistic update: toggle subtask status in local state
     setLocalSubtasks(prev =>
-      prev.map(subtask => {
-        if (subtask.id === subtaskId) {
-          const newStatus = subtask.status === 'DONE' ? 'TODO' : 'DONE';
-          return { ...subtask, status: newStatus };
+      prev.map(s => {
+        if (s.id === subtaskId) {
+          const newStatus = s.status === 'DONE' ? 'TODO' : 'DONE';
+          return { ...s, status: newStatus };
         }
-        return subtask;
+        return s;
       })
     );
 
@@ -438,10 +461,7 @@ export function TaskDetailModal({
                       const { guide } = extractGuide(subtask.description);
                       const hasGuide = guide.length > 0;
                       const stepNumber = stepNumberBySubtaskId.get(subtask.id);
-                      const hasDependencies = subtask.dependency_ids && subtask.dependency_ids.length > 0;
-                      const isLocked = hasDependencies && subtask.dependency_ids.some(depId =>
-                        allTasks.find(t => t.id === depId)?.status !== 'DONE'
-                      );
+                      const isLocked = isSubtaskLocked(subtask);
 
                       return (
                         <li
