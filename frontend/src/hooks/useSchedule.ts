@@ -15,6 +15,7 @@ export function useSchedule(maxDays: number) {
       capacityHours,
       bufferHours,
       capacityByWeekday,
+      filterByAssignee: true,
     }),
     staleTime: 30_000,
   });
