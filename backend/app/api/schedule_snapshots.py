@@ -81,7 +81,10 @@ async def create_snapshot(
 
     # Get phases for buffer calculation
     phases = await phase_repo.list_by_project(current_user.id, project_id)
-    phase_dicts = [{"id": p.id, "name": p.name} for p in phases]
+    phase_dicts = [
+        {"id": p.id, "name": p.name, "fixed_buffer_minutes": p.fixed_buffer_minutes}
+        for p in phases
+    ]
 
     # Get members and assignments for capacity calculation
     members = await member_repo.list(current_user.id, project_id)
@@ -94,6 +97,7 @@ async def create_snapshot(
         start_date=None,  # Use today
         capacity_hours=snapshot_data.capacity_hours,
         capacity_by_weekday=snapshot_data.capacity_by_weekday,
+        capacity_ratio=snapshot_data.plan_utilization_ratio,
         max_days=snapshot_data.max_days,
         members=members,
         assignments=assignments,
@@ -251,6 +255,7 @@ async def get_snapshot_diff(
         start_date=None,
         capacity_hours=snapshot.capacity_hours,
         capacity_by_weekday=snapshot.capacity_by_weekday,
+        capacity_ratio=snapshot.plan_utilization_ratio,
         max_days=snapshot.max_days,
         members=members,
         assignments=assignments,

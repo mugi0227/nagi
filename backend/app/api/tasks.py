@@ -17,6 +17,7 @@ from app.api.deps import (
     LLMProvider,
     MemoryRepo,
     ProjectRepo,
+    ScheduleSnapshotRepo,
     TaskAssignmentRepo,
     TaskRepo,
 )
@@ -80,6 +81,32 @@ def parse_capacity_by_weekday(
             )
         result.append(value)
     return result
+
+
+async def load_plan_windows(
+    user: CurrentUser,
+    tasks: list[Task],
+    project_repo: ProjectRepo,
+    snapshot_repo: ScheduleSnapshotRepo,
+) -> dict[UUID, tuple[Optional[date], Optional[date]]]:
+    if not tasks:
+        return {}
+    task_ids = {task.id for task in tasks}
+    projects = await project_repo.list(user.id, limit=1000)
+    planned_windows: dict[UUID, tuple[Optional[date], Optional[date]]] = {}
+    for project in projects:
+        snapshot = await snapshot_repo.get_active(user.id, project.id)
+        if not snapshot:
+            continue
+        for snapshot_task in snapshot.tasks:
+            if snapshot_task.task_id not in task_ids:
+                continue
+            if snapshot_task.planned_start or snapshot_task.planned_end:
+                planned_windows[snapshot_task.task_id] = (
+                    snapshot_task.planned_start,
+                    snapshot_task.planned_end,
+                )
+    return planned_windows
 
 
 def apply_capacity_buffer(
@@ -251,6 +278,7 @@ async def get_task_schedule(
     repo: TaskRepo,
     project_repo: ProjectRepo,
     assignment_repo: TaskAssignmentRepo,
+    snapshot_repo: ScheduleSnapshotRepo,
     scheduler_service: SchedulerService = Depends(get_scheduler_service),
     start_date: Optional[date] = Query(None, description="Schedule start date"),
     capacity_hours: Optional[float] = Query(None, description="Daily capacity in hours (default: 8)"),
@@ -261,6 +289,7 @@ async def get_task_schedule(
     ),
     max_days: int = Query(60, ge=1, le=365, description="Maximum days to schedule"),
     filter_by_assignee: bool = Query(False, description="Only show tasks assigned to me"),
+    apply_plan_constraints: bool = Query(True, description="Apply project plan windows"),
 ):
     """Build a multi-day schedule for tasks."""
     tasks = await repo.list(user.id, include_done=True, limit=1000)
@@ -278,6 +307,10 @@ async def get_task_schedule(
     if filter_by_assignee:
         assignments = await assignment_repo.list_all_for_user(user.id)
 
+    planned_window_by_task = None
+    if apply_plan_constraints:
+        planned_window_by_task = await load_plan_windows(user, tasks, project_repo, snapshot_repo)
+
     return scheduler_service.build_schedule(
         tasks,
         project_priorities=project_priorities,
@@ -288,6 +321,7 @@ async def get_task_schedule(
         current_user_id=user.id,
         assignments=assignments,
         filter_by_assignee=filter_by_assignee,
+        planned_window_by_task=planned_window_by_task,
     )
 
 
@@ -297,6 +331,7 @@ async def get_today_tasks(
     repo: TaskRepo,
     project_repo: ProjectRepo,
     assignment_repo: TaskAssignmentRepo,
+    snapshot_repo: ScheduleSnapshotRepo,
     scheduler_service: SchedulerService = Depends(get_scheduler_service),
     target_date: Optional[date] = Query(None, description="Target date (default: today)"),
     capacity_hours: Optional[float] = Query(None, description="Daily capacity in hours (default: 8)"),
@@ -307,6 +342,7 @@ async def get_today_tasks(
     ),
     max_days: int = Query(30, ge=1, le=365, description="Maximum days to schedule"),
     filter_by_assignee: bool = Query(False, description="Only show tasks assigned to me"),
+    apply_plan_constraints: bool = Query(True, description="Apply project plan windows"),
 ):
     """Get today's tasks derived from the schedule."""
     tasks = await repo.list(user.id, include_done=True, limit=1000)
@@ -324,6 +360,10 @@ async def get_today_tasks(
     if filter_by_assignee:
         assignments = await assignment_repo.list_all_for_user(user.id)
 
+    planned_window_by_task = None
+    if apply_plan_constraints:
+        planned_window_by_task = await load_plan_windows(user, tasks, project_repo, snapshot_repo)
+
     schedule = scheduler_service.build_schedule(
         tasks,
         project_priorities=project_priorities,
@@ -334,6 +374,7 @@ async def get_today_tasks(
         current_user_id=user.id,
         assignments=assignments,
         filter_by_assignee=filter_by_assignee,
+        planned_window_by_task=planned_window_by_task,
     )
     return scheduler_service.get_today_tasks(
         schedule,

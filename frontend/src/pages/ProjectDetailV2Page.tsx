@@ -1,8 +1,16 @@
 ﻿import type { ReactElement } from 'react';
 import { useEffect, useMemo, useState } from 'react';
-import { FaChartBar, FaCheckCircle, FaColumns, FaStream, FaThLarge, FaUsers } from 'react-icons/fa';
+import {
+  FaCalendarAlt,
+  FaChartBar,
+  FaCheckCircle,
+  FaColumns,
+  FaStream,
+  FaTasks,
+  FaThLarge,
+  FaUsers,
+} from 'react-icons/fa';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { memoriesApi } from '../api/memories';
 import { milestonesApi } from '../api/milestones';
 import { phasesApi } from '../api/phases';
 import { getProject, projectsApi } from '../api/projects';
@@ -11,8 +19,6 @@ import { tasksApi } from '../api/tasks';
 import type {
   Blocker,
   Checkin,
-  CheckinSummary,
-  Memory,
   Milestone,
   PhaseWithTaskCount,
   ProjectInvitation,
@@ -27,7 +33,6 @@ import type {
   TaskUpdate,
 } from '../api/types';
 import type { DraftCardData } from '../components/chat/DraftCard';
-import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
 import { ProjectGanttChart } from '../components/gantt/ProjectGanttChart';
 import { MeetingsTab } from '../components/meetings/MeetingsTab';
 import { ProjectTasksView } from '../components/projects/ProjectTasksView';
@@ -35,9 +40,8 @@ import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { TaskFormModal } from '../components/tasks/TaskFormModal';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { useTasks } from '../hooks/useTasks';
+import { userStorage } from '../utils/userStorage';
 import './ProjectDetailV2Page.css';
-
-import { FaCalendarAlt } from 'react-icons/fa';
 
 type TabId = 'dashboard' | 'team' | 'timeline' | 'board' | 'gantt' | 'meetings';
 type InviteMode = 'email' | 'user_id';
@@ -73,24 +77,10 @@ const PRIORITY_RANK: Record<string, number> = {
   LOW: 2,
 };
 
-const formatDateInput = (value: Date) => {
-  const year = value.getFullYear();
-  const month = `${value.getMonth() + 1}`.padStart(2, '0');
-  const day = `${value.getDate()}`.padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+const DEFAULT_PLAN_UTILIZATION_RATIO = 0.7;
 
-const formatCheckinDate = (value: string) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
-};
-
-const formatMemoryDate = (value: string) => {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' });
-};
+const getPlanUtilizationKey = (projectId?: string) =>
+  projectId ? `planUtilizationRatio:${projectId}` : 'planUtilizationRatio';
 
 const formatShortDate = (value?: string) => {
   if (!value) return '';
@@ -99,32 +89,10 @@ const formatShortDate = (value?: string) => {
   return date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
 };
 
-const formatMeetingDateTime = (value?: string) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString('ja-JP', {
-    month: 'numeric',
-    day: 'numeric',
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-};
-
 const formatHours = (minutes: number) => {
   const hours = Math.round((minutes / 60) * 10) / 10;
   return `${hours}h`;
 };
-
-const getTagValue = (tags: string[] | undefined, prefix: string) => {
-  if (!tags) return null;
-  const tag = tags.find((item) => item.startsWith(prefix));
-  return tag ? tag.slice(prefix.length) : null;
-};
-
-const formatTaskList = (items: Task[]) =>
-  items.slice(0, 5).map(task => `- ${task.title}`).join('\n');
 
 const computeKpiProgress = (metric: ProjectKpiMetric) => {
   const current = metric.current ?? 0;
@@ -191,25 +159,6 @@ export function ProjectDetailV2Page() {
   const [isInviting, setIsInviting] = useState(false);
   const [memberActionId, setMemberActionId] = useState<string | null>(null);
   const [invitationActionId, setInvitationActionId] = useState<string | null>(null);
-  const [checkinMode, setCheckinMode] = useState<'weekly' | 'issue' | null>(null);
-  const [checkinText, setCheckinText] = useState('');
-  const [selectedCheckinMemberId, setSelectedCheckinMemberId] = useState('');
-  const [isCheckinSaving, setIsCheckinSaving] = useState(false);
-  const [checkinError, setCheckinError] = useState<string | null>(null);
-  const [checkinSummaryStart, setCheckinSummaryStart] = useState(() => {
-    const start = new Date();
-    start.setDate(start.getDate() - 7);
-    return formatDateInput(start);
-  });
-  const [checkinSummaryEnd, setCheckinSummaryEnd] = useState(() => formatDateInput(new Date()));
-  const [checkinSummary, setCheckinSummary] = useState<CheckinSummary | null>(null);
-  const [isCheckinSummaryLoading, setIsCheckinSummaryLoading] = useState(false);
-  const [checkinSummaryError, setCheckinSummaryError] = useState<string | null>(null);
-  const [isCheckinSummarySaving, setIsCheckinSummarySaving] = useState(false);
-  const [checkinSummarySaveStatus, setCheckinSummarySaveStatus] = useState<string | null>(null);
-  const [savedCheckinSummaries, setSavedCheckinSummaries] = useState<Memory[]>([]);
-  const [isSavedCheckinSummariesLoading, setIsSavedCheckinSummariesLoading] = useState(false);
-  const [savedCheckinSummariesError, setSavedCheckinSummariesError] = useState<string | null>(null);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [openedParentTask, setOpenedParentTask] = useState<Task | null>(null);
   const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
@@ -225,6 +174,9 @@ export function ProjectDetailV2Page() {
   const [baselineDiff, setBaselineDiff] = useState<ScheduleDiff | null>(null);
   const [isBaselineLoading, setIsBaselineLoading] = useState(false);
   const [isCreatingBaseline, setIsCreatingBaseline] = useState(false);
+  const [planUtilizationRatio, setPlanUtilizationRatio] = useState(DEFAULT_PLAN_UTILIZATION_RATIO);
+  const [phaseBufferDrafts, setPhaseBufferDrafts] = useState<Record<string, string>>({});
+  const [phaseBufferActionId, setPhaseBufferActionId] = useState<string | null>(null);
 
   const {
     tasks,
@@ -306,30 +258,6 @@ export function ProjectDetailV2Page() {
     fetchCollaboration();
   }, [projectId]);
 
-  useEffect(() => {
-    if (!projectId) return;
-    const fetchSavedSummaries = async () => {
-      setIsSavedCheckinSummariesLoading(true);
-      setSavedCheckinSummariesError(null);
-      try {
-        const data = await memoriesApi.list({
-          scope: 'PROJECT',
-          project_id: projectId,
-          limit: 200,
-        });
-        const summaries = data.filter((memory) => memory.tags?.includes('checkin_summary'));
-        summaries.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
-        setSavedCheckinSummaries(summaries);
-      } catch (err) {
-        console.error('Failed to load saved checkin summaries:', err);
-        setSavedCheckinSummariesError('保存したサマリーの取得に失敗しました。');
-      } finally {
-        setIsSavedCheckinSummariesLoading(false);
-      }
-    };
-    fetchSavedSummaries();
-  }, [projectId]);
-
   const refreshPhases = async () => {
     if (!projectId) return;
     setIsPhasesLoading(true);
@@ -386,22 +314,15 @@ export function ProjectDetailV2Page() {
   }, [projectId]);
 
   useEffect(() => {
-    if (!members.length) return;
-    if (selectedCheckinMemberId) return;
-
-    // Default to current user if they are a member
-    if (currentUser) {
-      const me = members.find(m => m.member_user_id === currentUser.id);
-      if (me) {
-        setSelectedCheckinMemberId(me.member_user_id);
-        return;
-      }
+    if (!projectId) return;
+    const raw = userStorage.get(getPlanUtilizationKey(projectId));
+    const parsed = raw ? Number(raw) : NaN;
+    if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 1) {
+      setPlanUtilizationRatio(parsed);
+    } else {
+      setPlanUtilizationRatio(DEFAULT_PLAN_UTILIZATION_RATIO);
     }
-
-    // Fallback to owner or first member
-    const owner = members.find(member => member.role === 'OWNER');
-    setSelectedCheckinMemberId(owner?.member_user_id || members[0].member_user_id);
-  }, [members, selectedCheckinMemberId, currentUser]);
+  }, [projectId]);
 
   useEffect(() => {
     if (members.length === 0) {
@@ -415,9 +336,24 @@ export function ProjectDetailV2Page() {
     setCapacityDrafts(next);
   }, [members]);
 
+  useEffect(() => {
+    if (phases.length === 0) {
+      setPhaseBufferDrafts({});
+      return;
+    }
+    const next: Record<string, string> = {};
+    phases.forEach((phase) => {
+      const minutes = phase.fixed_buffer_minutes ?? 0;
+      const hours = minutes > 0 ? Math.round((minutes / 60) * 10) / 10 : 0;
+      next[phase.id] = minutes > 0 ? String(hours) : '';
+    });
+    setPhaseBufferDrafts(next);
+  }, [phases]);
+
   const completionRate = project && project.total_tasks > 0
     ? Math.round((project.completed_tasks / project.total_tasks) * 100)
     : 0;
+  const planUtilizationPercent = Math.round(planUtilizationRatio * 100);
 
   const inProgressCount = useMemo(
     () => tasks.filter(task => task.status === 'IN_PROGRESS').length,
@@ -675,12 +611,6 @@ export function ProjectDetailV2Page() {
     }).slice(0, 5);
   }, [tasks]);
 
-  const meetingTasks = useMemo(() => {
-    return tasks
-      .filter(task => task.is_fixed_time && task.start_time)
-      .sort((a, b) => new Date(a.start_time as string).getTime() - new Date(b.start_time as string).getTime());
-  }, [tasks]);
-
   const activityFeed = useMemo(() => {
     const items: { id: string; type: string; title: string; detail?: string; timestamp: string }[] = [];
     tasks.forEach((task) => {
@@ -716,103 +646,6 @@ export function ProjectDetailV2Page() {
       .slice(0, 10);
   }, [blockers, checkins, memberLabelById, taskTitleById, tasks]);
 
-  const getWeeklyMetrics = () => {
-    const total = tasks.length;
-    const done = tasks.filter(task => task.status === 'DONE').length;
-    const inProgress = tasks.filter(task => task.status === 'IN_PROGRESS').length;
-    const waiting = tasks.filter(task => task.status === 'WAITING').length;
-    const todo = tasks.filter(task => task.status === 'TODO').length;
-
-    const today = new Date();
-    const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const weekAhead = new Date(todayDate);
-    weekAhead.setDate(todayDate.getDate() + 7);
-
-    const dueTasks = tasks.filter(task => task.due_date);
-    const overdueTasks = dueTasks.filter(task => {
-      if (task.status === 'DONE') return false;
-      const due = new Date(task.due_date as string);
-      return due < todayDate;
-    });
-    const dueSoonTasks = dueTasks.filter(task => {
-      if (task.status === 'DONE') return false;
-      const due = new Date(task.due_date as string);
-      return due >= todayDate && due <= weekAhead;
-    });
-
-    return {
-      total,
-      done,
-      inProgress,
-      waiting,
-      todo,
-      todayDate,
-      overdueTasks,
-      dueSoonTasks,
-    };
-  };
-
-  const buildWeeklySummary = () => {
-    const metrics = getWeeklyMetrics();
-    const lines = [
-      `週次サマリー (${metrics.todayDate.toLocaleDateString('ja-JP')})`,
-      '',
-      `- タスク総数: ${metrics.total}`,
-      `- 完了 ${metrics.done} / 進行中 ${metrics.inProgress} / 待機 ${metrics.waiting} / 未着手 ${metrics.todo}`,
-      `- 期限超過: ${metrics.overdueTasks.length}`,
-      `- 7日以内期限: ${metrics.dueSoonTasks.length}`,
-      `- 依存ブロック: ${blockedDependencyCount}`,
-      `- オープンブロッカー: ${openBlockerCount}`,
-    ];
-
-    if (metrics.overdueTasks.length > 0) {
-      lines.push('', '期限超過タスク（最大5件）:', formatTaskList(metrics.overdueTasks));
-    }
-    if (metrics.dueSoonTasks.length > 0) {
-      lines.push('', '7日以内期限タスク（最大5件）:', formatTaskList(metrics.dueSoonTasks));
-    }
-
-    lines.push(
-      '',
-      '今週の重要事項:',
-      '- ',
-      '',
-      '課題・リスク:',
-      '- ',
-      '',
-      '支援してほしいこと:',
-      '- ',
-    );
-
-    return lines.join('\n');
-  };
-
-  const buildWeeklyContext = () => {
-    const metrics = getWeeklyMetrics();
-    if (metrics.total === 0) {
-      return '';
-    }
-
-    const lines = [
-      `週次ステータス (${metrics.todayDate.toLocaleDateString('ja-JP')})`,
-      `- タスク総数: ${metrics.total}`,
-      `- 完了 ${metrics.done} / 進行中 ${metrics.inProgress} / 待機 ${metrics.waiting} / 未着手 ${metrics.todo}`,
-      `- 期限超過: ${metrics.overdueTasks.length}`,
-      `- 7日以内期限: ${metrics.dueSoonTasks.length}`,
-      `- 依存ブロック: ${blockedDependencyCount}`,
-      `- オープンブロッカー: ${openBlockerCount}`,
-    ];
-
-    if (metrics.overdueTasks.length > 0) {
-      lines.push('', '期限超過タスク（最大5件）:', formatTaskList(metrics.overdueTasks));
-    }
-    if (metrics.dueSoonTasks.length > 0) {
-      lines.push('', '7日以内期限タスク（最大5件）:', formatTaskList(metrics.dueSoonTasks));
-    }
-
-    return lines.join('\n').trim();
-  };
-
   const handleTaskClick = (task: Task) => {
     if (task.parent_id) {
       const parent = tasks.find(item => item.id === task.parent_id);
@@ -837,6 +670,28 @@ export function ProjectDetailV2Page() {
     } catch (err) {
       console.error('Failed to set current phase:', err);
       alert('現在フェーズの設定に失敗しました');
+    }
+  };
+
+  const handleGenerateTasksFromPhase = async (phaseId: string) => {
+    const instruction = prompt('タスク生成の指示を入力してください（任意）');
+    if (instruction === null) return; // キャンセルされた
+
+    try {
+      const response = await phasesApi.breakdownTasks(phaseId, {
+        create_tasks: true,
+        instruction: instruction || undefined,
+      });
+
+      if (response.created_task_ids.length > 0) {
+        alert(`${response.created_task_ids.length}個のタスクを生成しました`);
+        refetchTasks();
+      } else {
+        alert('タスクの生成に失敗しました');
+      }
+    } catch (err) {
+      console.error('Failed to generate tasks from phase:', err);
+      alert('タスクの生成中にエラーが発生しました');
     }
   };
 
@@ -875,18 +730,6 @@ export function ProjectDetailV2Page() {
     refetchTasks();
   };
 
-  const handleScheduleTaskClick = async (taskId: string) => {
-    const task = tasks.find(item => item.id === taskId);
-    if (task) {
-      handleTaskClick(task);
-      return;
-    }
-    const fetched = await tasksApi.getById(taskId).catch(() => null);
-    if (fetched) {
-      handleTaskClick(fetched);
-    }
-  };
-
   const getPhaseRangeLabel = (phase: {
     start_date?: string;
     end_date?: string;
@@ -916,102 +759,6 @@ export function ProjectDetailV2Page() {
     if (remainingDays == null) return null;
     const weeks = remainingDays / 7;
     return Math.max(0, Math.round(capacityHours * 60 * weeks));
-  };
-
-  const handleStartWeeklyCheckin = () => {
-    setCheckinError(null);
-    setCheckinMode('weekly');
-    setCheckinText(buildWeeklySummary());
-  };
-
-  const handleStartIssueCheckin = () => {
-    setCheckinError(null);
-    setCheckinMode('issue');
-    setCheckinText('');
-  };
-
-  const handleSubmitCheckin = async () => {
-    if (!projectId) return;
-    if (!selectedCheckinMemberId) {
-      setCheckinError('メンバーを選択してください。');
-      return;
-    }
-    if (!checkinText.trim()) {
-      setCheckinError('内容を入力してください。');
-      return;
-    }
-    setIsCheckinSaving(true);
-    setCheckinError(null);
-    try {
-      const checkinType = checkinMode === 'issue'
-        ? 'issue'
-        : checkinMode === 'weekly'
-          ? 'weekly'
-          : 'general';
-      await projectsApi.createCheckin(projectId, {
-        member_user_id: selectedCheckinMemberId,
-        checkin_date: new Date().toISOString().slice(0, 10),
-        checkin_type: checkinType,
-        raw_text: checkinText.trim(),
-      });
-      const checkinsData = await projectsApi.listCheckins(projectId);
-      setCheckins(checkinsData);
-      setCheckinMode(null);
-      setCheckinText('');
-    } catch (err) {
-      console.error('Failed to create checkin:', err);
-      setCheckinError('チェックインの保存に失敗しました。');
-    } finally {
-      setIsCheckinSaving(false);
-    }
-  };
-
-  const handleSummarizeCheckins = async () => {
-    if (!projectId) return;
-    if (checkinSummaryStart && checkinSummaryEnd && checkinSummaryStart > checkinSummaryEnd) {
-      setCheckinSummaryError('Start date must be before end date.');
-      return;
-    }
-    setIsCheckinSummaryLoading(true);
-    setCheckinSummaryError(null);
-    try {
-      const summary = await projectsApi.summarizeCheckins(projectId, {
-        startDate: checkinSummaryStart || undefined,
-        endDate: checkinSummaryEnd || undefined,
-        weeklyContext: buildWeeklyContext() || undefined,
-      });
-      setCheckinSummary(summary);
-      setCheckinSummarySaveStatus(null);
-    } catch (err) {
-      console.error('Failed to summarize checkins:', err);
-      setCheckinSummaryError('チェックインの要約に失敗しました。');
-    } finally {
-      setIsCheckinSummaryLoading(false);
-    }
-  };
-
-  const handleSaveCheckinSummary = async () => {
-    if (!projectId || !checkinSummary?.summary_text) return;
-    setIsCheckinSummarySaving(true);
-    setCheckinSummarySaveStatus(null);
-    try {
-      const saved = await projectsApi.saveCheckinSummary(projectId, {
-        summary_text: checkinSummary.summary_text,
-        start_date: checkinSummary.start_date || checkinSummaryStart || undefined,
-        end_date: checkinSummary.end_date || checkinSummaryEnd || undefined,
-        checkin_count: checkinSummary.checkin_count || 0,
-      });
-      setSavedCheckinSummaries((prev) => {
-        const next = [saved, ...prev.filter((item) => item.id !== saved.id)];
-        return next;
-      });
-      setCheckinSummarySaveStatus('保存しました');
-    } catch (err) {
-      console.error('Failed to save checkin summary:', err);
-      setCheckinSummarySaveStatus('保存に失敗しました');
-    } finally {
-      setIsCheckinSummarySaving(false);
-    }
   };
 
   const handleGeneratePhases = () => {
@@ -1066,6 +813,45 @@ export function ProjectDetailV2Page() {
       alert('基本工数の更新に失敗しました。');
     } finally {
       setCapacityActionId(null);
+    }
+  };
+
+  const handlePlanUtilizationChange = (value: string) => {
+    if (!projectId) return;
+    const trimmed = value.trim();
+    if (trimmed === '') return;
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed)) return;
+    const ratio = parsed <= 1 ? parsed : parsed / 100;
+    const clamped = Math.min(1, Math.max(0.01, ratio));
+    setPlanUtilizationRatio(clamped);
+    userStorage.set(getPlanUtilizationKey(projectId), String(clamped));
+  };
+
+  const handlePhaseBufferDraftChange = (phaseId: string, value: string) => {
+    setPhaseBufferDrafts((prev) => ({ ...prev, [phaseId]: value }));
+  };
+
+  const handlePhaseBufferSave = async (phase: PhaseWithTaskCount) => {
+    if (!projectId) return;
+    const raw = phaseBufferDrafts[phase.id];
+    const trimmed = raw?.trim() ?? '';
+    if (trimmed !== '' && !Number.isFinite(Number(trimmed))) {
+      alert('数値を入力してください。');
+      return;
+    }
+    const minutes = trimmed === '' ? 0 : Math.max(0, Math.round(Number(trimmed) * 60));
+    if ((phase.fixed_buffer_minutes ?? 0) === minutes) return;
+
+    setPhaseBufferActionId(phase.id);
+    try {
+      await phasesApi.update(phase.id, { fixed_buffer_minutes: minutes });
+      await refreshPhases();
+    } catch (err) {
+      console.error('Failed to update fixed buffer:', err);
+      alert('固定バッファの更新に失敗しました。');
+    } finally {
+      setPhaseBufferActionId(null);
     }
   };
 
@@ -1124,7 +910,9 @@ export function ProjectDetailV2Page() {
     if (!projectId) return;
     setIsCreatingBaseline(true);
     try {
-      const newBaseline = await scheduleSnapshotsApi.create(projectId, {});
+      const newBaseline = await scheduleSnapshotsApi.create(projectId, {
+        plan_utilization_ratio: planUtilizationRatio,
+      });
       setActiveBaseline(newBaseline);
       // Fetch diff for the new baseline
       const diff = await scheduleSnapshotsApi.getDiff(projectId);
@@ -1432,6 +1220,24 @@ export function ProjectDetailV2Page() {
                       <button className="project-v2-button ghost">差分を見る</button>
                     )}
                   </div>
+                  <div className="project-v2-baseline-setting">
+                    <div>
+                      <div className="project-v2-baseline-meta">計画稼働率</div>
+                      <div className="project-v2-muted">推奨 60-75%（週工数に掛ける係数）</div>
+                    </div>
+                    <div className="project-v2-baseline-setting-control">
+                      <input
+                        className="project-v2-input"
+                        type="number"
+                        min="1"
+                        max="100"
+                        step="1"
+                        value={planUtilizationPercent}
+                        onChange={(e) => handlePlanUtilizationChange(e.target.value)}
+                      />
+                      <span className="project-v2-baseline-setting-suffix">%</span>
+                    </div>
+                  </div>
                   {isBaselineLoading ? (
                     <p className="project-v2-muted">読み込み中...</p>
                   ) : activeBaseline ? (
@@ -1442,6 +1248,9 @@ export function ProjectDetailV2Page() {
                           <div className="project-v2-baseline-name">{activeBaseline.name}</div>
                           <div className="project-v2-baseline-meta">
                             {new Date(activeBaseline.created_at).toLocaleDateString('ja-JP')} 作成
+                          </div>
+                          <div className="project-v2-baseline-meta">
+                            計画稼働率 {Math.round((activeBaseline.plan_utilization_ratio ?? 1) * 100)}%
                           </div>
                         </div>
                         {(() => {
@@ -1810,26 +1619,29 @@ export function ProjectDetailV2Page() {
             <div className="project-v2-card">
               <div className="project-v2-card-header">
                 <h3>フェーズ & マイルストーン</h3>
+              </div>
+              <div className="project-v2-phase-generation-group">
+                <div className="project-v2-form" style={{ flex: 1, marginBottom: 0 }}>
+                  <label className="project-v2-label" htmlFor="phase-instruction">
+                    AI指示（フェーズ生成用）
+                  </label>
+                  <input
+                    id="phase-instruction"
+                    className="project-v2-input"
+                    type="text"
+                    placeholder="例: MVP優先、3フェーズで分割"
+                    value={phasePlanInstruction}
+                    onChange={(e) => setPhasePlanInstruction(e.target.value)}
+                  />
+                </div>
                 <button
                   className="project-v2-button"
                   onClick={handleGeneratePhases}
                   disabled={!project}
+                  style={{ alignSelf: 'flex-end', marginBottom: '8px' }}
                 >
                   AIでフェーズ生成
                 </button>
-              </div>
-              <div className="project-v2-form">
-                <label className="project-v2-label" htmlFor="phase-instruction">
-                  AI指示
-                </label>
-                <input
-                  id="phase-instruction"
-                  className="project-v2-input"
-                  type="text"
-                  placeholder="例: MVP優先、3フェーズで分割"
-                  value={phasePlanInstruction}
-                  onChange={(e) => setPhasePlanInstruction(e.target.value)}
-                />
               </div>
               {isPhasesLoading ? (
                 <p className="project-v2-muted">読み込み中...</p>
@@ -1868,6 +1680,28 @@ export function ProjectDetailV2Page() {
                           <div className="project-v2-muted">
                             完了 {phase.completed_tasks} / 全体 {phase.total_tasks}
                           </div>
+                          <div className="project-v2-inline-field project-v2-phase-buffer">
+                            <label className="project-v2-inline-label" htmlFor={`phase-buffer-${phase.id}`}>
+                              固定バッファ (h)
+                            </label>
+                            <input
+                              id={`phase-buffer-${phase.id}`}
+                              className="project-v2-input"
+                              type="number"
+                              min="0"
+                              step="0.5"
+                              value={phaseBufferDrafts[phase.id] ?? ''}
+                              onChange={(e) => handlePhaseBufferDraftChange(phase.id, e.target.value)}
+                              disabled={phaseBufferActionId === phase.id}
+                            />
+                            <button
+                              className="project-v2-button"
+                              onClick={() => handlePhaseBufferSave(phase)}
+                              disabled={phaseBufferActionId === phase.id}
+                            >
+                              {phaseBufferActionId === phase.id ? '保存中...' : '保存'}
+                            </button>
+                          </div>
                           <div className="project-v2-milestone-list">
                             {isMilestonesLoading ? (
                               <p className="project-v2-muted">マイルストーン読み込み中...</p>
@@ -1884,6 +1718,12 @@ export function ProjectDetailV2Page() {
                               ))
                             )}
                           </div>
+                          <button
+                            className="project-v2-phase-generate-tasks-btn"
+                            onClick={() => handleGenerateTasksFromPhase(phase.id)}
+                          >
+                            <FaTasks /> タスクを生成
+                          </button>
                         </div>
                       </div>
                     );

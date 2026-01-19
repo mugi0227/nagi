@@ -278,6 +278,7 @@ export interface Phase {
   order_in_project: number;
   start_date?: string;
   end_date?: string;
+  fixed_buffer_minutes?: number;
   created_at: string;
   updated_at: string;
 }
@@ -295,6 +296,7 @@ export interface PhaseCreate {
   order_in_project?: number;
   start_date?: string;
   end_date?: string;
+  fixed_buffer_minutes?: number;
 }
 
 export interface PhaseUpdate {
@@ -304,6 +306,7 @@ export interface PhaseUpdate {
   order_in_project?: number;
   start_date?: string;
   end_date?: string;
+  fixed_buffer_minutes?: number;
 }
 
 // Milestone models
@@ -845,10 +848,13 @@ export interface PhaseBufferInfo {
   phase_id: string;
   phase_name: string;
   total_buffer_minutes: number;
+  ccpm_buffer_minutes: number;
+  fixed_buffer_minutes: number;
   consumed_buffer_minutes: number;
   buffer_percentage: number;
   critical_chain_length_minutes: number;
   status: BufferStatus;
+  unestimated_task_count: number;
 }
 
 export interface ScheduleSnapshotCreate {
@@ -857,6 +863,7 @@ export interface ScheduleSnapshotCreate {
   capacity_by_weekday?: number[];
   max_days?: number;
   buffer_ratio?: number;
+  plan_utilization_ratio?: number;
 }
 
 export interface ScheduleSnapshot {
@@ -874,6 +881,7 @@ export interface ScheduleSnapshot {
   capacity_hours: number;
   capacity_by_weekday?: number[];
   max_days: number;
+  plan_utilization_ratio: number;
   created_at: string;
   updated_at: string;
 }
@@ -952,6 +960,10 @@ export interface PhaseScheduleDiff {
   delay_days: number;
   buffer_status: BufferStatus;
   buffer_percentage: number;
+  total_buffer_minutes: number;
+  ccpm_buffer_minutes: number;
+  fixed_buffer_minutes: number;
+  unestimated_task_count: number;
 }
 
 export interface ScheduleDiff {

@@ -179,13 +179,21 @@ class CCPMService:
             List of PhaseBufferInfo for each phase
         """
         ratio = buffer_ratio if buffer_ratio is not None else self.default_buffer_ratio
-        estimated_tasks, _ = self.filter_for_ccpm(tasks)
+        estimated_tasks, unestimated_tasks = self.filter_for_ccpm(tasks)
+        unestimated_counts: dict[str, int] = {}
+        for task in unestimated_tasks:
+            if task.phase_id:
+                phase_key = str(task.phase_id)
+                unestimated_counts[phase_key] = unestimated_counts.get(phase_key, 0) + 1
 
         result = []
 
         for phase in phases:
             phase_id = phase["id"]
             phase_name = phase["name"]
+
+            fixed_buffer_minutes = int(phase.get("fixed_buffer_minutes") or 0)
+            unestimated_task_count = unestimated_counts.get(str(phase_id), 0)
 
             # Filter tasks for this phase
             phase_tasks = [t for t in estimated_tasks if str(t.phase_id) == str(phase_id)]
@@ -195,11 +203,14 @@ class CCPMService:
                 result.append(PhaseBufferInfo(
                     phase_id=phase_id if isinstance(phase_id, UUID) else UUID(phase_id),
                     phase_name=phase_name,
-                    total_buffer_minutes=0,
+                    total_buffer_minutes=fixed_buffer_minutes,
+                    ccpm_buffer_minutes=0,
+                    fixed_buffer_minutes=fixed_buffer_minutes,
                     consumed_buffer_minutes=0,
                     buffer_percentage=100.0,
                     critical_chain_length_minutes=0,
                     status="healthy",
+                    unestimated_task_count=unestimated_task_count,
                 ))
                 continue
 
@@ -207,16 +218,20 @@ class CCPMService:
             cc_length, _ = self._find_critical_chain(phase_tasks)
 
             # Calculate buffer
-            total_buffer = int(cc_length * ratio)
+            ccpm_buffer = int(cc_length * ratio)
+            total_buffer = ccpm_buffer + fixed_buffer_minutes
 
             result.append(PhaseBufferInfo(
                 phase_id=phase_id if isinstance(phase_id, UUID) else UUID(phase_id),
                 phase_name=phase_name,
                 total_buffer_minutes=total_buffer,
+                ccpm_buffer_minutes=ccpm_buffer,
+                fixed_buffer_minutes=fixed_buffer_minutes,
                 consumed_buffer_minutes=0,
                 buffer_percentage=100.0,
                 critical_chain_length_minutes=cc_length,
                 status="healthy",
+                unestimated_task_count=unestimated_task_count,
             ))
 
         return result

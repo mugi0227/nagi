@@ -24,7 +24,7 @@ import {
     FaRedo,
 } from 'react-icons/fa';
 import { meetingSessionApi } from '../../api/meetingSession';
-import type { MeetingSession, MeetingSummary, NextAction } from '../../types/session';
+import type { MeetingSession, MeetingSummary } from '../../types/session';
 import './MeetingCompleted.css';
 
 // Parse saved summary from session (stored as JSON string)

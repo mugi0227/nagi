@@ -48,12 +48,15 @@ class PhaseBufferInfo(BaseModel):
     phase_id: UUID
     phase_name: str
     total_buffer_minutes: int = Field(..., description="総バッファ")
+    ccpm_buffer_minutes: int = Field(0, ge=0, description="CCPM buffer minutes")
+    fixed_buffer_minutes: int = Field(0, ge=0, description="Fixed buffer minutes")
     consumed_buffer_minutes: int = Field(0, description="消費済みバッファ")
     buffer_percentage: float = Field(..., ge=0, le=100, description="残りバッファ（%）")
     critical_chain_length_minutes: int = Field(..., description="クリティカルチェーン長")
     status: Literal["healthy", "warning", "critical"] = Field(
         ..., description="healthy: <33%, warning: <67%, critical: >=67%"
     )
+    unestimated_task_count: int = Field(0, ge=0, description="Unestimated task count")
 
 
 # ===========================================
@@ -71,6 +74,12 @@ class ScheduleSnapshotCreate(BaseModel):
     )
     max_days: int = Field(60, description="スケジュール対象日数")
     buffer_ratio: float = Field(0.5, ge=0, le=1, description="バッファ比率（デフォルト50%）")
+    plan_utilization_ratio: float = Field(
+        1.0,
+        ge=0,
+        le=1,
+        description="Planning utilization ratio",
+    )
 
 
 class ScheduleSnapshot(BaseModel):
@@ -90,6 +99,7 @@ class ScheduleSnapshot(BaseModel):
     capacity_hours: float = 8.0
     capacity_by_weekday: Optional[list[float]] = None
     max_days: int = 60
+    plan_utilization_ratio: float = 1.0
     created_at: datetime
     updated_at: datetime
 
@@ -137,6 +147,10 @@ class PhaseScheduleDiff(BaseModel):
     delay_days: int = 0
     buffer_status: Literal["healthy", "warning", "critical"]
     buffer_percentage: float
+    total_buffer_minutes: int = 0
+    ccpm_buffer_minutes: int = 0
+    fixed_buffer_minutes: int = 0
+    unestimated_task_count: int = 0
 
 
 class ScheduleDiff(BaseModel):

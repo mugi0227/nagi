@@ -2,13 +2,11 @@
 Unit tests for SchedulerService.
 """
 
-from datetime import datetime, timedelta, date
+from datetime import date, datetime, timedelta
 from uuid import UUID, uuid4
 
-import pytest
-
+from app.models.enums import CreatedBy, EnergyLevel, Priority, TaskStatus
 from app.models.task import Task
-from app.models.enums import TaskStatus, Priority, EnergyLevel, CreatedBy
 from app.services.scheduler_service import SchedulerService
 
 
@@ -128,6 +126,27 @@ def test_start_not_before_delays_scheduling():
 
     assert allocated_days
     assert min(allocated_days) >= not_before
+
+
+def test_planned_window_overrides_task_constraints():
+    service = SchedulerService()
+    start_date = date.today()
+    task = make_task(
+        "Planned task",
+        estimated_minutes=60,
+        start_not_before=datetime.combine(start_date, datetime.min.time()),
+        due_date=datetime.combine(start_date + timedelta(days=10), datetime.min.time()),
+    )
+    planned_start = start_date + timedelta(days=3)
+    planned_end = start_date + timedelta(days=5)
+
+    effective_start, effective_due = service._get_effective_constraints(
+        [task],
+        planned_window_by_task={task.id: (planned_start, planned_end)},
+    )
+
+    assert effective_start[task.id] == planned_start
+    assert effective_due[task.id].date() == planned_end
 
 
 def test_parent_start_not_before_applies_to_subtask():

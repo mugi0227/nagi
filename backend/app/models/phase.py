@@ -23,6 +23,11 @@ class PhaseBase(BaseModel):
     order_in_project: int = Field(default=1, ge=1, description="プロジェクト内での順序（1から始まる連番）")
     start_date: Optional[datetime] = Field(None, description="フェーズ開始予定日")
     end_date: Optional[datetime] = Field(None, description="フェーズ終了予定日")
+    fixed_buffer_minutes: Optional[int] = Field(
+        None,
+        ge=0,
+        description="Fixed buffer in minutes for this phase",
+    )
 
 
 class PhaseCreate(PhaseBase):
@@ -40,6 +45,7 @@ class PhaseUpdate(BaseModel):
     order_in_project: Optional[int] = Field(None, ge=1)
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
+    fixed_buffer_minutes: Optional[int] = Field(None, ge=0)
 
 
 class Phase(PhaseBase):

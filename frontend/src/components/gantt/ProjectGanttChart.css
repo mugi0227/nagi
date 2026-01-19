@@ -513,6 +513,25 @@
   opacity: 0.8;
 }
 
+.pgantt-bar.buffer.fixed {
+  border-style: solid;
+  background: rgba(15, 23, 42, 0.03);
+}
+
+.pgantt-bar.buffer.ccpm {
+  border-style: dashed;
+}
+
+.pgantt-bar.baseline {
+  height: 20px;
+  top: 6px;
+  background: transparent;
+  border: 2px dashed rgba(100, 116, 139, 0.6);
+  box-shadow: none;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
 .pgantt-bar.buffer:hover {
   transform: none;
   box-shadow: none;

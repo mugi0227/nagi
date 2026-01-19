@@ -311,11 +311,13 @@ class SchedulerService:
         start_date: Optional[date] = None,
         capacity_hours: Optional[float] = None,
         capacity_by_weekday: Optional[list[float]] = None,
+        capacity_ratio: Optional[float] = None,
         max_days: int = 60,
         current_user_id: Optional[str] = None,
         assignments: Optional[list[TaskAssignment]] = None,
         members: Optional[list[ProjectMember]] = None,
         filter_by_assignee: bool = False,
+        planned_window_by_task: Optional[dict[UUID, tuple[Optional[date], Optional[date]]]] = None,
     ) -> ScheduleResponse:
         """
         Build a capacity-aware schedule across multiple days.
@@ -337,6 +339,7 @@ class SchedulerService:
         start = start_date or date.today()
         project_priorities = project_priorities or {}
         capacity_by_weekday = capacity_by_weekday if capacity_by_weekday and len(capacity_by_weekday) == 7 else None
+        capacity_ratio = 1.0 if capacity_ratio is None else capacity_ratio
 
         # --- 1. Setup Member Capacities ---
         # Map user_id -> capacity_hours (default)
@@ -360,15 +363,15 @@ class SchedulerService:
                     base = user_capacity_map[user_id]
                     # Maybe scale by weekday factor?
                     # detailed implementation omitted for brevity, using base for now
-                    return max(0, int(base * 60))
+                    return max(0, int(base * capacity_ratio * 60))
                 
                 weekday_index = (day.weekday() + 1) % 7
                 hours = capacity_by_weekday[weekday_index]
-                return max(0, int(hours * 60))
+                return max(0, int(hours * capacity_ratio * 60))
             
             if user_id and user_id in user_capacity_map:
-                return max(0, int(user_capacity_map[user_id] * 60))
-            return max(0, int(default_cap * 60))
+                return max(0, int(user_capacity_map[user_id] * capacity_ratio * 60))
+            return max(0, int(default_cap * capacity_ratio * 60))
 
         # Build Assignment Map
         assignment_map: dict[UUID, str] = {}
@@ -381,7 +384,10 @@ class SchedulerService:
         default_assignee = current_user_id or "unassigned"
 
         all_task_map = {task.id: task for task in tasks}
-        effective_start_by_task, effective_due_by_task = self._get_effective_constraints(tasks)
+        effective_start_by_task, effective_due_by_task = self._get_effective_constraints(
+            tasks,
+            planned_window_by_task=planned_window_by_task,
+        )
         effective_due_date_by_task: dict[UUID, date] = {
             task_id: due.date() for task_id, due in effective_due_by_task.items()
         }
@@ -927,8 +933,10 @@ class SchedulerService:
     @staticmethod
     def _get_effective_constraints(
         tasks: list[Task],
+        planned_window_by_task: Optional[dict[UUID, tuple[Optional[date], Optional[date]]]] = None,
     ) -> tuple[dict[UUID, date], dict[UUID, datetime]]:
         task_map = {task.id: task for task in tasks}
+        planned_window_by_task = planned_window_by_task or {}
         effective_start_by_task: dict[UUID, date] = {}
         effective_due_by_task: dict[UUID, datetime] = {}
 
@@ -957,11 +965,22 @@ class SchedulerService:
             if parent_start and (start_dt is None or start_dt < parent_start):
                 start_dt = parent_start
 
+            planned_start, planned_end = planned_window_by_task.get(task.id, (None, None))
+            if planned_start:
+                planned_start_dt = datetime.combine(planned_start, datetime.min.time())
+                if start_dt is None or start_dt < planned_start_dt:
+                    start_dt = planned_start_dt
+
             due_dt = task.due_date
             if due_dt is None:
                 due_dt = parent_due
             elif parent_due and due_dt > parent_due:
                 due_dt = parent_due
+
+            if planned_end:
+                planned_end_dt = datetime.combine(planned_end, datetime.max.time())
+                if due_dt is None or due_dt > planned_end_dt:
+                    due_dt = planned_end_dt
 
             if start_dt and due_dt and due_dt < start_dt:
                 if parent_due and parent_due >= start_dt:

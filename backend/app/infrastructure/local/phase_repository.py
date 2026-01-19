@@ -46,6 +46,7 @@ class SqlitePhaseRepository(IPhaseRepository):
                 order_in_project=phase.order_in_project,
                 start_date=phase.start_date,
                 end_date=phase.end_date,
+                fixed_buffer_minutes=phase.fixed_buffer_minutes,
             )
             session.add(orm)
             await session.flush()

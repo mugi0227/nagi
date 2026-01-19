@@ -199,8 +199,16 @@ class ScheduleDiffService:
             buffer_info = buffer_map.get(phase_id)
             buffer_status: Literal["healthy", "warning", "critical"] = "healthy"
             buffer_pct = 100.0
+            total_buffer_minutes = 0
+            ccpm_buffer_minutes = 0
+            fixed_buffer_minutes = 0
+            unestimated_task_count = 0
 
             if buffer_info:
+                total_buffer_minutes = buffer_info.total_buffer_minutes
+                ccpm_buffer_minutes = buffer_info.ccpm_buffer_minutes
+                fixed_buffer_minutes = buffer_info.fixed_buffer_minutes
+                unestimated_task_count = buffer_info.unestimated_task_count
                 # Calculate consumed buffer from delay
                 # Positive delay_days means we're behind schedule
                 consumed_minutes = max(0, delay_days * 8 * 60)  # Convert days to minutes (8h/day)
@@ -231,6 +239,10 @@ class ScheduleDiffService:
                 delay_days=delay_days,
                 buffer_status=buffer_status,
                 buffer_percentage=buffer_pct,
+                total_buffer_minutes=total_buffer_minutes,
+                ccpm_buffer_minutes=ccpm_buffer_minutes,
+                fixed_buffer_minutes=fixed_buffer_minutes,
+                unestimated_task_count=unestimated_task_count,
             ))
 
         return phase_diffs

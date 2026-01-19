@@ -82,6 +82,20 @@ async def run_migrations():
         if "free_comment" not in checkin_columns:
             await conn.execute(text("ALTER TABLE checkins ADD COLUMN free_comment TEXT"))
 
+        # Check phases table for fixed_buffer_minutes
+        phase_result = await conn.execute(text("PRAGMA table_info(phases)"))
+        phase_columns = {row[1] for row in phase_result}
+        if "fixed_buffer_minutes" not in phase_columns:
+            await conn.execute(text("ALTER TABLE phases ADD COLUMN fixed_buffer_minutes INTEGER"))
+
+        # Check schedule_snapshots table for plan_utilization_ratio
+        snapshot_result = await conn.execute(text("PRAGMA table_info(schedule_snapshots)"))
+        snapshot_columns = {row[1] for row in snapshot_result}
+        if "plan_utilization_ratio" not in snapshot_columns:
+            await conn.execute(
+                text("ALTER TABLE schedule_snapshots ADD COLUMN plan_utilization_ratio FLOAT DEFAULT 1.0")
+            )
+
         # Create checkin_items table if missing
         checkin_items_result = await conn.execute(
             text("SELECT name FROM sqlite_master WHERE type='table' AND name='checkin_items'")

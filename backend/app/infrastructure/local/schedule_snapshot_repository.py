@@ -53,6 +53,7 @@ class SqliteScheduleSnapshotRepository(IScheduleSnapshotRepository):
             capacity_hours=orm.capacity_hours or 8.0,
             capacity_by_weekday=orm.capacity_by_weekday,
             max_days=orm.max_days or 60,
+            plan_utilization_ratio=orm.plan_utilization_ratio or 1.0,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
         )
@@ -113,6 +114,7 @@ class SqliteScheduleSnapshotRepository(IScheduleSnapshotRepository):
                 capacity_hours=snapshot.capacity_hours,
                 capacity_by_weekday=snapshot.capacity_by_weekday,
                 max_days=snapshot.max_days,
+                plan_utilization_ratio=snapshot.plan_utilization_ratio,
             )
 
             # Deactivate any existing active snapshot

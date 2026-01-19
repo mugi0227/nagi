@@ -2,16 +2,11 @@
 Unit tests for schedule diff service.
 """
 
-import pytest
 from datetime import date, datetime
 from uuid import uuid4
 
-from app.models.schedule import ScheduleResponse, ScheduleDay, TaskScheduleInfo
-from app.models.schedule_snapshot import (
-    ScheduleSnapshot,
-    SnapshotTaskScheduleInfo,
-    SnapshotDayAllocation,
-)
+from app.models.schedule import ScheduleResponse, TaskScheduleInfo
+from app.models.schedule_snapshot import PhaseBufferInfo, ScheduleSnapshot, SnapshotTaskScheduleInfo
 from app.services.schedule_diff_service import ScheduleDiffService
 
 
@@ -227,3 +222,51 @@ class TestScheduleDiffService:
 
         assert diff.task_diffs[0].status == "new"
         assert diff.summary["new_count"] == 1
+
+    def test_phase_buffer_fields_propagate(self):
+        service = ScheduleDiffService()
+        phase_id = uuid4()
+
+        snapshot = ScheduleSnapshot(
+            id=uuid4(),
+            user_id="test",
+            project_id=uuid4(),
+            name="Test",
+            start_date=date.today(),
+            tasks=[],
+            days=[],
+            phase_buffers=[
+                PhaseBufferInfo(
+                    phase_id=phase_id,
+                    phase_name="Phase",
+                    total_buffer_minutes=480,
+                    ccpm_buffer_minutes=300,
+                    fixed_buffer_minutes=180,
+                    consumed_buffer_minutes=0,
+                    buffer_percentage=100.0,
+                    critical_chain_length_minutes=0,
+                    status="healthy",
+                    unestimated_task_count=2,
+                )
+            ],
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+
+        current_schedule = ScheduleResponse(
+            start_date=date.today(),
+            days=[],
+            tasks=[],
+        )
+
+        diff = service.calculate_diff(
+            snapshot=snapshot,
+            current_schedule=current_schedule,
+            completed_task_ids=set(),
+            phases=[{"id": phase_id, "name": "Phase"}],
+        )
+
+        assert diff.phase_diffs[0].total_buffer_minutes == 480
+        assert diff.phase_diffs[0].ccpm_buffer_minutes == 300
+        assert diff.phase_diffs[0].fixed_buffer_minutes == 180
+        assert diff.phase_diffs[0].unestimated_task_count == 2

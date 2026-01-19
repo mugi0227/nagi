@@ -112,6 +112,7 @@ class PhaseORM(Base):
     order_in_project = Column(Integer, default=1, nullable=False)
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
+    fixed_buffer_minutes = Column(Integer, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
@@ -429,6 +430,7 @@ class ScheduleSnapshotORM(Base):
     capacity_hours = Column(Float, default=8.0)
     capacity_by_weekday = Column(JSON, nullable=True)  # List of 7 floats
     max_days = Column(Integer, default=60)
+    plan_utilization_ratio = Column(Float, default=1.0)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
