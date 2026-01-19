@@ -31,7 +31,7 @@ class ChatMessageBase(BaseModel):
 
     session_id: str = Field(..., max_length=100, description="Chat session ID")
     role: str = Field(..., max_length=20, description="Message role")
-    content: str = Field("", max_length=20000, description="Message content")
+    content: str = Field("", max_length=100000, description="Message content")
 
 
 class ChatMessageCreate(ChatMessageBase):
