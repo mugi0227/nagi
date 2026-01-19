@@ -453,6 +453,14 @@ def create_project_tool(
         Returns:
             dict: 作成されたプロジェクト情報
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"create_project called with input_data type: {type(input_data)}, value: {input_data}")
+
+        if not isinstance(input_data, dict):
+            logger.error(f"Expected dict but got {type(input_data)}: {input_data}")
+            return {"error": f"input_data must be dict, got {type(input_data)}: {input_data}"}
+
         return await create_project(
             user_id,
             repo,
@@ -547,6 +555,14 @@ def update_project_tool(repo: IProjectRepository, user_id: str) -> FunctionTool:
         Returns:
             dict: 更新されたプロジェクト情報
         """
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"update_project called with input_data type: {type(input_data)}, value: {input_data}")
+
+        if not isinstance(input_data, dict):
+            logger.error(f"Expected dict but got {type(input_data)}: {input_data}")
+            return {"error": f"input_data must be dict, got {type(input_data)}: {input_data}"}
+
         return await update_project(user_id, repo, UpdateProjectInput(**input_data))
 
     _tool.__name__ = "update_project"
@@ -648,6 +664,13 @@ def list_project_members_tool(
     """Create ADK tool for listing project members."""
     async def _tool(input_data: dict) -> dict:
         """list_project_members: List project members by project ID."""
+        import logging
+        logger = logging.getLogger(__name__)
+
+        if not isinstance(input_data, dict):
+            logger.error(f"list_project_members: Expected dict but got {type(input_data)}: {input_data}")
+            return {"error": f"input_data must be dict, got {type(input_data)}: {input_data}"}
+
         return await list_project_members(
             user_id,
             member_repo,
@@ -702,6 +725,13 @@ def list_project_invitations_tool(
     # Create ADK tool for listing project invitations.
     async def _tool(input_data: dict) -> dict:
         # list_project_invitations: List project invitations by project ID.
+        import logging
+        logger = logging.getLogger(__name__)
+
+        if not isinstance(input_data, dict):
+            logger.error(f"list_project_invitations: Expected dict but got {type(input_data)}: {input_data}")
+            return {"error": f"input_data must be dict, got {type(input_data)}: {input_data}"}
+
         return await list_project_invitations(
             user_id,
             invitation_repo,
@@ -769,6 +799,13 @@ def load_project_context_tool(repo: IProjectRepository, user_id: str) -> Functio
         Returns:
             dict: プロジェクトの詳細情報
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        if not isinstance(input_data, dict):
+            logger.error(f"load_project_context: Expected dict but got {type(input_data)}: {input_data}")
+            return {"error": f"input_data must be dict, got {type(input_data)}: {input_data}"}
+
         return await load_project_context(user_id, repo, LoadProjectContextInput(**input_data))
 
     _tool.__name__ = "load_project_context"
@@ -878,6 +915,13 @@ def invite_project_member_tool(
             # 管理者として招待
             {"project_id": "123e4567-...", "email": "admin@example.com", "role": "ADMIN"}
         """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        if not isinstance(input_data, dict):
+            logger.error(f"invite_project_member: Expected dict but got {type(input_data)}: {input_data}")
+            return {"error": f"input_data must be dict, got {type(input_data)}: {input_data}"}
+
         return await invite_project_member(user_id, invitation_repo, member_repo, InviteProjectMemberInput(**input_data))
 
     _tool.__name__ = "invite_project_member"
