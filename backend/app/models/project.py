@@ -87,3 +87,4 @@ class ProjectWithTaskCount(Project):
     total_tasks: int = 0
     completed_tasks: int = 0
     in_progress_tasks: int = 0
+    unassigned_tasks: int = 0

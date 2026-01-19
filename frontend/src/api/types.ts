@@ -14,6 +14,11 @@ export type MilestoneStatus = 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
 export type ProjectRole = 'OWNER' | 'ADMIN' | 'MEMBER';
 export type BlockerStatus = 'OPEN' | 'RESOLVED';
 export type CheckinType = 'weekly' | 'issue' | 'general';
+
+// V2 Check-in types (Structured, ADHD-friendly)
+export type CheckinItemCategory = 'blocker' | 'discussion' | 'update' | 'request';
+export type CheckinItemUrgency = 'high' | 'medium' | 'low';
+export type CheckinMood = 'good' | 'okay' | 'struggling';
 export type InvitationStatus = 'PENDING' | 'ACCEPTED' | 'REVOKED' | 'EXPIRED';
 export type KpiDirection = 'up' | 'down' | 'neutral';
 export type KpiStrategy = 'template' | 'ai' | 'custom';
@@ -256,6 +261,7 @@ export interface ProjectWithTaskCount extends Project {
   total_tasks: number;
   completed_tasks: number;
   in_progress_tasks: number;
+  unassigned_tasks: number;
 }
 
 // Phase models
@@ -498,6 +504,91 @@ export interface CheckinCreate {
   checkin_date: string;
   checkin_type: CheckinType;
   raw_text: string;
+}
+
+// =============================================================================
+// V2 Check-in Models (Structured, ADHD-friendly)
+// =============================================================================
+
+export interface CheckinItem {
+  category: CheckinItemCategory;
+  content: string;
+  related_task_id?: string;
+  urgency?: CheckinItemUrgency;
+}
+
+export interface CheckinItemResponse extends CheckinItem {
+  id: string;
+  related_task_title?: string;
+}
+
+export interface CheckinCreateV2 {
+  member_user_id: string;
+  checkin_date: string;
+  items?: CheckinItem[];
+  mood?: CheckinMood;
+  must_discuss_in_next_meeting?: string;
+  free_comment?: string;
+  // Legacy fields (for backward compatibility)
+  checkin_type?: CheckinType;
+  raw_text?: string;
+}
+
+export interface CheckinV2 {
+  id: string;
+  user_id: string;
+  project_id: string;
+  member_user_id: string;
+  checkin_date: string;
+  items: CheckinItemResponse[];
+  mood?: CheckinMood;
+  must_discuss_in_next_meeting?: string;
+  free_comment?: string;
+  // Legacy fields
+  checkin_type?: CheckinType;
+  summary_text?: string;
+  raw_text?: string;
+  created_at: string;
+}
+
+export interface CheckinAgendaItems {
+  project_id: string;
+  start_date?: string;
+  end_date?: string;
+  blockers: Array<{
+    member: string;
+    content: string;
+    urgency: CheckinItemUrgency;
+    related_task_id?: string;
+    date: string;
+  }>;
+  discussions: Array<{
+    member: string;
+    content: string;
+    urgency: CheckinItemUrgency;
+    related_task_id?: string;
+    date: string;
+  }>;
+  requests: Array<{
+    member: string;
+    content: string;
+    urgency: CheckinItemUrgency;
+    related_task_id?: string;
+    date: string;
+  }>;
+  updates: Array<{
+    member: string;
+    content: string;
+    urgency: CheckinItemUrgency;
+    related_task_id?: string;
+    date: string;
+  }>;
+  member_moods: Record<string, CheckinMood>;
+  must_discuss_items: Array<{
+    member: string;
+    content: string;
+    date: string;
+  }>;
 }
 
 export type RecurrenceFrequency = 'weekly' | 'biweekly';

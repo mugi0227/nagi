@@ -1,10 +1,11 @@
-﻿import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear, FaMoon, FaSun, FaRightFromBracket, FaRightToBracket, FaBookOpen, FaLightbulb } from 'react-icons/fa6';
 import { useTheme } from '../../context/ThemeContext';
 import { clearAuthToken, getAuthToken } from '../../api/auth';
 import { SettingsModal } from '../settings/SettingsModal';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
+import { projectsApi } from '../../api/projects';
 import nagiIcon from '../../assets/nagi_icon.png';
 import './Sidebar.css';
 
@@ -15,12 +16,23 @@ export function Sidebar() {
   const { token, source } = getAuthToken();
   const { data: currentUser } = useCurrentUser();
   const [showSettings, setShowSettings] = useState(false);
+  const [totalUnassigned, setTotalUnassigned] = useState(0);
   const isAuthLocked = source === 'env' || source === 'mock';
   const displayName = currentUser?.username
     || currentUser?.display_name
     || currentUser?.email
     || (token ? 'User' : 'Guest');
   const avatarLabel = displayName ? displayName[0]?.toUpperCase() : '?';
+
+  useEffect(() => {
+    if (!token) return;
+    projectsApi.getAll().then((projects) => {
+      const total = projects.reduce((sum, p) => sum + (p.unassigned_tasks || 0), 0);
+      setTotalUnassigned(total);
+    }).catch(() => {
+      // Ignore errors
+    });
+  }, [token, location.pathname]);
 
   const navItems = [
     { path: '/', label: 'Dashboard', icon: FaChartPie },
@@ -61,6 +73,11 @@ export function Sidebar() {
           >
             <item.icon className="nav-icon" />
             <span className="nav-label">{item.label}</span>
+            {item.path === '/projects' && totalUnassigned > 0 && (
+              <span className="nav-badge unassigned-badge" title="未割り当てタスク">
+                {totalUnassigned}
+              </span>
+            )}
           </Link>
         ))}
       </nav>

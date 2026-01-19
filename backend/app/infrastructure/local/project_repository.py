@@ -15,7 +15,7 @@ from app.core.exceptions import NotFoundError
 from app.interfaces.project_repository import IProjectRepository
 from app.models.project import Project, ProjectCreate, ProjectUpdate, ProjectWithTaskCount
 from app.models.enums import ProjectStatus, TaskStatus
-from app.infrastructure.local.database import ProjectORM, ProjectMemberORM, TaskORM, get_session_factory
+from app.infrastructure.local.database import ProjectORM, ProjectMemberORM, TaskORM, TaskAssignmentORM, get_session_factory
 
 
 class SqliteProjectRepository(IProjectRepository):
@@ -160,11 +160,29 @@ class SqliteProjectRepository(IProjectRepository):
                     )
                 )
 
+                # Unassigned tasks (non-DONE tasks without any assignment)
+                unassigned_subquery = (
+                    select(TaskAssignmentORM.task_id)
+                    .where(TaskAssignmentORM.task_id == TaskORM.id)
+                    .correlate(TaskORM)
+                    .exists()
+                )
+                unassigned = await session.execute(
+                    select(func.count(TaskORM.id)).where(
+                        and_(
+                            TaskORM.project_id == str(project.id),
+                            TaskORM.status != TaskStatus.DONE.value,
+                            ~unassigned_subquery,
+                        )
+                    )
+                )
+
                 result.append(ProjectWithTaskCount(
                     **project.model_dump(),
                     total_tasks=total.scalar() or 0,
                     completed_tasks=completed.scalar() or 0,
                     in_progress_tasks=in_progress.scalar() or 0,
+                    unassigned_tasks=unassigned.scalar() or 0,
                 ))
 
         return result

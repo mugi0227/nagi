@@ -106,6 +106,14 @@ export function ProjectsPage() {
                     {project.completed_tasks}
                   </span>
                 </div>
+                {project.unassigned_tasks > 0 && (
+                  <div className="stat-item stat-unassigned">
+                    <span className="stat-label">未割当</span>
+                    <span className="stat-value stat-warning">
+                      {project.unassigned_tasks}
+                    </span>
+                  </div>
+                )}
               </div>
 
               {project.total_tasks > 0 && (

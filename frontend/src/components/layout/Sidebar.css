@@ -83,6 +83,21 @@
   font-size: 0.95rem;
 }
 
+.nav-badge {
+  margin-left: auto;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-full);
+  min-width: 1.5rem;
+  text-align: center;
+}
+
+.nav-badge.unassigned-badge {
+  background: var(--warning);
+  color: white;
+}
+
 .sidebar-footer {
   border-top: 2px solid var(--bg-main);
   padding-top: 1.5rem;
