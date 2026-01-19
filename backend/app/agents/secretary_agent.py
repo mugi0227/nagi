@@ -108,7 +108,8 @@ def create_secretary_agent(
 
     # Always use propose_* tools (with auto_approve flag)
     task_creation_tool = propose_task_tool(
-        proposal_repo, task_repo, user_id, session_id, auto_approve
+        proposal_repo, task_repo, user_id, session_id, auto_approve,
+        task_assignment_repo
     )
     task_assignment_tool = propose_task_assignment_tool(
         proposal_repo, task_assignment_repo, user_id, session_id, auto_approve

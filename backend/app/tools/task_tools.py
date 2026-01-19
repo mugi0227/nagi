@@ -65,6 +65,8 @@ class CreateTaskInput(BaseModel):
     location: Optional[str] = Field(None, description="場所（会議用）")
     attendees: list[str] = Field(default_factory=list, description="参加者リスト（会議用）")
     meeting_notes: Optional[str] = Field(None, description="議事録・メモ（会議用）")
+    # Assignee field for task creation
+    assignee_ids: list[str] = Field(default_factory=list, description="担当者IDリスト（UUID文字列）")
 
     model_config = {"populate_by_name": True}
 
@@ -286,6 +288,7 @@ async def propose_task(
     input_data: CreateTaskInput,
     description: str = "",
     auto_approve: bool = False,
+    assignment_repo: Optional[ITaskAssignmentRepository] = None,
 ) -> dict:
     """
     Propose a task for user approval, or auto-approve if configured.
@@ -298,6 +301,7 @@ async def propose_task(
         input_data: Task creation data
         description: AI-generated description of why this task is being proposed
         auto_approve: If True, automatically approve and create the task
+        assignment_repo: Task assignment repository (optional, for assigning task on creation)
 
     Returns:
         If auto_approve=False: Proposal response with proposal_id
@@ -313,10 +317,12 @@ async def propose_task(
             user_id=user_id,
             repo=task_repo,
             input_data=input_data,
+            assignment_repo=assignment_repo,
         )
         return {
             "auto_approved": True,
             "task_id": created_task.get("id"),
+            "assignments": created_task.get("assignments"),
             "description": description,
         }
 
@@ -354,6 +360,7 @@ async def create_task(
     user_id: str,
     repo: ITaskRepository,
     input_data: CreateTaskInput,
+    assignment_repo: Optional[ITaskAssignmentRepository] = None,
 ) -> dict:
     """
     Create a new task.
@@ -362,6 +369,7 @@ async def create_task(
         user_id: User ID
         repo: Task repository
         input_data: Task creation data
+        assignment_repo: Task assignment repository (optional, for assigning task on creation)
 
     Returns:
         Created task as dict
@@ -438,7 +446,23 @@ async def create_task(
     )
 
     task = await repo.create(user_id, task_data)
-    return task.model_dump(mode="json")  # Serialize UUIDs to strings
+    result = task.model_dump(mode="json")  # Serialize UUIDs to strings
+
+    # Assign task to members if assignee_ids provided
+    if input_data.assignee_ids and assignment_repo:
+        assigned = []
+        for assignee_id in input_data.assignee_ids:
+            if assignee_id and assignee_id.strip():
+                assignment = await assignment_repo.assign(
+                    user_id,
+                    task.id,
+                    TaskAssignmentCreate(assignee_id=assignee_id),
+                )
+                assigned.append(assignment.model_dump(mode="json"))
+        if assigned:
+            result["assignments"] = assigned
+
+    return result
 
 
 async def update_task(
@@ -910,6 +934,7 @@ def propose_task_tool(
     user_id: str,
     session_id: str,
     auto_approve: bool = False,
+    assignment_repo: Optional[ITaskAssignmentRepository] = None,
 ) -> FunctionTool:
     """Create ADK tool for proposing/creating tasks (with auto-approve option)."""
     async def _tool(input_data: dict) -> dict:
@@ -932,6 +957,7 @@ def propose_task_tool(
             location (str, optional): Location
             attendees (list[str], optional): Attendees
             meeting_notes (str, optional): Meeting notes
+            assignee_ids (list[str], optional): Assignee IDs (auto-assign on creation)
             proposal_description (str, optional): Proposal description
 
         Returns:
@@ -941,7 +967,8 @@ def propose_task_tool(
         proposal_desc = input_data.pop("proposal_description", "")
         return await propose_task(
             user_id, session_id, proposal_repo, task_repo,
-            CreateTaskInput(**input_data), proposal_desc, auto_approve
+            CreateTaskInput(**input_data), proposal_desc, auto_approve,
+            assignment_repo
         )
 
     _tool.__name__ = "propose_task"
@@ -975,7 +1002,11 @@ def propose_task_assignment_tool(
     return FunctionTool(func=_tool)
 
 
-def create_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
+def create_task_tool(
+    repo: ITaskRepository,
+    user_id: str,
+    assignment_repo: Optional[ITaskAssignmentRepository] = None,
+) -> FunctionTool:
     """Create ADK tool for creating tasks."""
     async def _tool(input_data: dict) -> dict:
         """create_task: 新しいタスクを作成します。作成前にsearch_similar_tasksで重複チェック推奨。
@@ -996,7 +1027,7 @@ def create_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
             energy_level (str, optional): 必要エネルギー (HIGH/LOW)、デフォルト: LOW
             estimated_minutes (int, optional): 見積もり時間（分）
             due_date (str, optional): 期限（ISO形式）
-            start_not_before (str, optional): ???????ISO???
+            start_not_before (str, optional): 着手可能日時（ISO形式）
             dependency_ids (list[str], optional): このタスクが依存する他のタスクのIDリスト（UUID文字列）
             is_fixed_time (bool, optional): 会議・固定時間イベントの場合true
             start_time (str, optional): 開始時刻（ISO形式、is_fixed_time=trueの場合必須）
@@ -1004,11 +1035,12 @@ def create_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
             location (str, optional): 場所（会議用）
             attendees (list[str], optional): 参加者リスト（会議用）
             meeting_notes (str, optional): 議事録・メモ（会議用）
+            assignee_ids (list[str], optional): 担当者IDリスト（UUID文字列）
 
         Returns:
-            dict: 作成されたタスク情報
+            dict: 作成されたタスク情報（assignmentsフィールドに担当者割り当て情報を含む）
         """
-        return await create_task(user_id, repo, CreateTaskInput(**input_data))
+        return await create_task(user_id, repo, CreateTaskInput(**input_data), assignment_repo)
 
     _tool.__name__ = "create_task"
     return FunctionTool(func=_tool)
