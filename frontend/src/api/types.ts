@@ -80,6 +80,7 @@ export interface Task {
   start_time?: string;
   end_time?: string;
   is_fixed_time: boolean;
+  is_all_day: boolean;
   location?: string;
   attendees: string[];
   meeting_notes?: string;
@@ -105,6 +106,7 @@ export interface TaskCreate {
   start_time?: string;
   end_time?: string;
   is_fixed_time?: boolean;
+  is_all_day?: boolean;
   location?: string;
   attendees?: string[];
   meeting_notes?: string;
@@ -130,6 +132,7 @@ export interface TaskUpdate {
   start_time?: string;
   end_time?: string;
   is_fixed_time?: boolean;
+  is_all_day?: boolean;
   location?: string;
   attendees?: string[];
   meeting_notes?: string;

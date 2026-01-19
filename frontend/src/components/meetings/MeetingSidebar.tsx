@@ -92,6 +92,13 @@ export function MeetingSidebar({
         return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
     };
 
+    const formatTimeDisplay = (task: Task) => {
+        if (task.is_all_day) {
+            return '終日';
+        }
+        return formatTime(new Date(task.start_time!));
+    };
+
     const hasNoMeetings = Object.keys(recurringMeetingTasks).length === 0 && standaloneMeetings.length === 0;
 
     if (isLoading) {
@@ -144,7 +151,7 @@ export function MeetingSidebar({
                                 >
                                     <div className="meeting-nav-item-content">
                                         <span>{formatDate(date)}</span>
-                                        <span className="meeting-nav-item-time">{formatTime(date)}</span>
+                                        <span className="meeting-nav-item-time">{formatTimeDisplay(task)}</span>
                                     </div>
                                 </div>
                             );
@@ -170,7 +177,7 @@ export function MeetingSidebar({
                                 >
                                     <div className="meeting-nav-item-content">
                                         <span>{formatDate(date)}</span>
-                                        <span className="meeting-nav-item-time">{formatTime(date)}</span>
+                                        <span className="meeting-nav-item-time">{formatTimeDisplay(task)}</span>
                                     </div>
                                     <div className="meeting-nav-item-title">{task.title}</div>
                                 </div>

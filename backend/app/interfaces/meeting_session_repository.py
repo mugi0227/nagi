@@ -1,0 +1,84 @@
+"""
+Meeting session repository interface.
+"""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from typing import Optional
+from uuid import UUID
+
+from app.models.meeting_session import (
+    MeetingSession,
+    MeetingSessionCreate,
+    MeetingSessionUpdate,
+)
+
+
+class IMeetingSessionRepository(ABC):
+    """Interface for meeting session repository."""
+
+    @abstractmethod
+    async def create(
+        self,
+        user_id: str,
+        data: MeetingSessionCreate,
+    ) -> MeetingSession:
+        """Create a new meeting session."""
+        pass
+
+    @abstractmethod
+    async def get(
+        self,
+        user_id: str,
+        session_id: UUID,
+    ) -> Optional[MeetingSession]:
+        """Get a session by ID."""
+        pass
+
+    @abstractmethod
+    async def get_by_task(
+        self,
+        user_id: str,
+        task_id: UUID,
+    ) -> Optional[MeetingSession]:
+        """Get the active session for a task (not COMPLETED)."""
+        pass
+
+    @abstractmethod
+    async def get_latest_by_task(
+        self,
+        user_id: str,
+        task_id: UUID,
+    ) -> Optional[MeetingSession]:
+        """Get the most recent session for a task (any status)."""
+        pass
+
+    @abstractmethod
+    async def update(
+        self,
+        user_id: str,
+        session_id: UUID,
+        data: MeetingSessionUpdate,
+    ) -> Optional[MeetingSession]:
+        """Update a session."""
+        pass
+
+    @abstractmethod
+    async def delete(
+        self,
+        user_id: str,
+        session_id: UUID,
+    ) -> bool:
+        """Delete a session."""
+        pass
+
+    @abstractmethod
+    async def list_by_user(
+        self,
+        user_id: str,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> list[MeetingSession]:
+        """List sessions for a user, ordered by created_at desc."""
+        pass

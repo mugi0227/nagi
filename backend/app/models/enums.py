@@ -92,6 +92,31 @@ class CheckinType(str, Enum):
     GENERAL = "general"
 
 
+class CheckinItemCategory(str, Enum):
+    """Category of structured check-in item."""
+
+    BLOCKER = "blocker"  # 進捗が止まっていること
+    DISCUSSION = "discussion"  # 相談したいこと
+    UPDATE = "update"  # 進捗報告
+    REQUEST = "request"  # 助けてほしいこと
+
+
+class CheckinItemUrgency(str, Enum):
+    """Urgency level of check-in item."""
+
+    HIGH = "high"
+    MEDIUM = "medium"
+    LOW = "low"
+
+
+class CheckinMood(str, Enum):
+    """Mood/condition of member."""
+
+    GOOD = "good"  # 順調
+    OKAY = "okay"  # まあまあ
+    STRUGGLING = "struggling"  # 厳しい
+
+
 class InvitationStatus(str, Enum):
     """Status for project invitations."""
 
@@ -155,3 +180,11 @@ class ChatMode(str, Enum):
     DUMP = "dump"  # 脳内ダンプモード（タスク化促進）
     CONSULT = "consult"  # 相談モード
     BREAKDOWN = "breakdown"  # タスク分解依頼
+
+
+class MeetingSessionStatus(str, Enum):
+    """Meeting session status."""
+
+    PREPARATION = "PREPARATION"  # 準備中（デフォルト）
+    IN_PROGRESS = "IN_PROGRESS"  # 会議中
+    COMPLETED = "COMPLETED"  # 完了

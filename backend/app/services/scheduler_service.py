@@ -553,13 +553,25 @@ class SchedulerService:
             # Reduce capacity by fixed meetings
             day_meetings, meeting_minutes = self._get_meetings_for_day(tasks, day_cursor)
 
+            # Check for all-day tasks and zero out capacity for affected users
+            all_day_user_ids: set[str] = set()
+            for meeting in day_meetings:
+                if meeting.is_all_day:
+                    meeting_user_id = assignment_map.get(meeting.id, meeting.user_id)
+                    all_day_user_ids.add(meeting_user_id)
+
+            for user_id in all_day_user_ids:
+                if user_id in user_capacities:
+                    user_capacities[user_id] = 0
+
             # Calculate meeting minutes per user with overlap handling
             # This prevents double-counting when the same user has multiple overlapping meetings
             meeting_minutes_per_user = self._calculate_meeting_minutes_per_user(day_meetings)
 
             # Subtract meeting time from each user's capacity (with overlaps already merged)
+            # Skip users who already have capacity=0 due to all-day tasks
             for user_id, minutes in meeting_minutes_per_user.items():
-                if user_id in user_capacities:
+                if user_id in user_capacities and user_id not in all_day_user_ids:
                     user_capacities[user_id] = max(0, user_capacities[user_id] - minutes)
 
             # Map meeting ID to allocations for reporting

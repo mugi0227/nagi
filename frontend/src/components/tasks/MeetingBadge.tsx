@@ -26,14 +26,21 @@ export function MeetingBadge({ task, showDetails = false }: MeetingBadgeProps) {
     return `${formatTime(start)} - ${formatTime(end)}`;
   };
 
+  const getTimeDisplay = () => {
+    if (task.is_all_day) {
+      return '終日';
+    }
+    return formatDateRange(task.start_time, task.end_time);
+  };
+
   if (!showDetails) {
     // Compact badge for inline display
     return (
       <span className="meeting-badge compact">
         <FaCalendarAlt className="meeting-icon" />
-        {task.start_time && task.end_time && (
+        {(task.is_all_day || (task.start_time && task.end_time)) && (
           <span className="meeting-time">
-            {formatDateRange(task.start_time, task.end_time)}
+            {getTimeDisplay()}
           </span>
         )}
         {task.location && (
@@ -51,10 +58,10 @@ export function MeetingBadge({ task, showDetails = false }: MeetingBadgeProps) {
         <span className="meeting-label">会議</span>
       </div>
 
-      {task.start_time && task.end_time && (
+      {(task.is_all_day || (task.start_time && task.end_time)) && (
         <div className="meeting-detail">
           <span className="meeting-time-range">
-            {formatDateRange(task.start_time, task.end_time)}
+            {getTimeDisplay()}
           </span>
         </div>
       )}

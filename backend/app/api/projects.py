@@ -30,10 +30,13 @@ from app.core.exceptions import NotFoundError
 from app.models.collaboration import (
     Blocker,
     Checkin,
+    CheckinAgendaItems,
     CheckinCreate,
+    CheckinCreateV2,
     CheckinSummaryRequest,
     CheckinSummarySave,
     CheckinSummary,
+    CheckinV2,
     ProjectMember,
     ProjectMemberCreate,
     ProjectMemberUpdate,
@@ -781,6 +784,68 @@ async def create_project_checkin(
     """Create a new check-in for a project."""
     await _get_project_or_404(user, repo, project_id)
     return await checkin_repo.create(user.id, project_id, checkin)
+
+
+# =============================================================================
+# V2 Check-in Endpoints (Structured, ADHD-friendly)
+# =============================================================================
+
+
+@router.post(
+    "/{project_id}/checkins/v2",
+    response_model=CheckinV2,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_project_checkin_v2(
+    project_id: UUID,
+    checkin: CheckinCreateV2,
+    user: CurrentUser,
+    repo: ProjectRepo,
+    checkin_repo: CheckinRepo,
+):
+    """Create a structured check-in (V2)."""
+    await _get_project_or_404(user, repo, project_id)
+    return await checkin_repo.create_v2(user.id, project_id, checkin)
+
+
+@router.get("/{project_id}/checkins/v2", response_model=list[CheckinV2])
+async def list_project_checkins_v2(
+    project_id: UUID,
+    user: CurrentUser,
+    repo: ProjectRepo,
+    checkin_repo: CheckinRepo,
+    member_user_id: Optional[str] = Query(None),
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+):
+    """List structured check-ins (V2)."""
+    await _get_project_or_404(user, repo, project_id)
+    return await checkin_repo.list_v2(
+        user.id,
+        project_id,
+        member_user_id=member_user_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+@router.get("/{project_id}/checkins/agenda-items", response_model=CheckinAgendaItems)
+async def get_project_checkin_agenda_items(
+    project_id: UUID,
+    user: CurrentUser,
+    repo: ProjectRepo,
+    checkin_repo: CheckinRepo,
+    start_date: Optional[date] = Query(None),
+    end_date: Optional[date] = Query(None),
+):
+    """Get check-in items grouped by category for meeting agenda generation."""
+    await _get_project_or_404(user, repo, project_id)
+    return await checkin_repo.get_agenda_items(
+        user.id,
+        project_id,
+        start_date=start_date,
+        end_date=end_date,
+    )
 
 
 @router.post("/{project_id}/phase-breakdown", response_model=PhaseBreakdownResponse)

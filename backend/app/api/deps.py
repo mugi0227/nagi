@@ -27,6 +27,7 @@ from app.interfaces.checkin_repository import ICheckinRepository
 from app.interfaces.blocker_repository import IBlockerRepository
 from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
 from app.interfaces.meeting_agenda_repository import IMeetingAgendaRepository
+from app.interfaces.meeting_session_repository import IMeetingSessionRepository
 from app.interfaces.user_repository import IUserRepository
 from app.interfaces.project_invitation_repository import IProjectInvitationRepository
 from app.interfaces.schedule_snapshot_repository import IScheduleSnapshotRepository
@@ -239,6 +240,17 @@ def get_meeting_agenda_repository() -> IMeetingAgendaRepository:
         return SqliteMeetingAgendaRepository()
 
 
+@lru_cache()
+def get_meeting_session_repository() -> IMeetingSessionRepository:
+    """Get meeting session repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Meeting session repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.meeting_session_repository import SqliteMeetingSessionRepository
+        return SqliteMeetingSessionRepository()
+
+
 # ===========================================
 # Provider Dependencies
 # ===========================================
@@ -382,6 +394,7 @@ CheckinRepo = Annotated[ICheckinRepository, Depends(get_checkin_repository)]
 BlockerRepo = Annotated[IBlockerRepository, Depends(get_blocker_repository)]
 RecurringMeetingRepo = Annotated[IRecurringMeetingRepository, Depends(get_recurring_meeting_repository)]
 MeetingAgendaRepo = Annotated[IMeetingAgendaRepository, Depends(get_meeting_agenda_repository)]
+MeetingSessionRepo = Annotated[IMeetingSessionRepository, Depends(get_meeting_session_repository)]
 UserRepo = Annotated[IUserRepository, Depends(get_user_repository)]
 ProjectInvitationRepo = Annotated[
     IProjectInvitationRepository, Depends(get_project_invitation_repository)

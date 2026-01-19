@@ -36,6 +36,10 @@ async def run_migrations():
             # Create index for efficient filtering
             await conn.execute(text("CREATE INDEX idx_tasks_is_fixed_time ON tasks(is_fixed_time)"))
 
+        if "is_all_day" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN is_all_day BOOLEAN DEFAULT 0"))
+            await conn.execute(text("CREATE INDEX idx_tasks_is_all_day ON tasks(is_all_day)"))
+
         if "location" not in columns:
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN location VARCHAR(500)"))
 
@@ -60,12 +64,57 @@ async def run_migrations():
                 text("CREATE INDEX IF NOT EXISTS idx_tasks_recurring_meeting_id ON tasks(recurring_meeting_id)")
             )
 
-        # Check checkins table for checkin_type
+        # Check checkins table for checkin_type and V2 fields
         checkin_result = await conn.execute(text("PRAGMA table_info(checkins)"))
         checkin_columns = {row[1] for row in checkin_result}
         if "checkin_type" not in checkin_columns:
             await conn.execute(
                 text("ALTER TABLE checkins ADD COLUMN checkin_type VARCHAR(20) DEFAULT 'weekly'")
+            )
+
+        # V2 check-in fields
+        if "mood" not in checkin_columns:
+            await conn.execute(text("ALTER TABLE checkins ADD COLUMN mood VARCHAR(20)"))
+
+        if "must_discuss_in_next_meeting" not in checkin_columns:
+            await conn.execute(text("ALTER TABLE checkins ADD COLUMN must_discuss_in_next_meeting TEXT"))
+
+        if "free_comment" not in checkin_columns:
+            await conn.execute(text("ALTER TABLE checkins ADD COLUMN free_comment TEXT"))
+
+        # Create checkin_items table if missing
+        checkin_items_result = await conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='checkin_items'")
+        )
+        if not checkin_items_result.scalar():
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE checkin_items (
+                        id VARCHAR(36) PRIMARY KEY,
+                        checkin_id VARCHAR(36) NOT NULL,
+                        user_id VARCHAR(255) NOT NULL,
+                        category VARCHAR(20) NOT NULL,
+                        content TEXT NOT NULL,
+                        related_task_id VARCHAR(36),
+                        urgency VARCHAR(10) DEFAULT 'medium',
+                        order_index INTEGER DEFAULT 0,
+                        created_at DATETIME
+                    )
+                    """
+                )
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_checkin_items_checkin_id ON checkin_items(checkin_id)")
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_checkin_items_user_id ON checkin_items(user_id)")
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_checkin_items_category ON checkin_items(category)")
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_checkin_items_related_task_id ON checkin_items(related_task_id)")
             )
 
         # Check users table for local auth fields
@@ -174,6 +223,40 @@ async def run_migrations():
 
         # Ensure username has UNIQUE constraint
         await _ensure_username_unique(conn)
+
+        # Create meeting_sessions table if missing
+        session_result = await conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_sessions'")
+        )
+        if not session_result.scalar():
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE meeting_sessions (
+                        id VARCHAR(36) PRIMARY KEY,
+                        user_id VARCHAR(255) NOT NULL,
+                        task_id VARCHAR(36) NOT NULL,
+                        status VARCHAR(20) DEFAULT 'PREPARATION',
+                        current_agenda_index INTEGER,
+                        transcript TEXT,
+                        summary TEXT,
+                        started_at DATETIME,
+                        ended_at DATETIME,
+                        created_at DATETIME,
+                        updated_at DATETIME
+                    )
+                    """
+                )
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_meeting_sessions_user_id ON meeting_sessions(user_id)")
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_meeting_sessions_task_id ON meeting_sessions(task_id)")
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_meeting_sessions_status ON meeting_sessions(status)")
+            )
 
 
 async def _ensure_chat_sessions_composite_pk(conn):

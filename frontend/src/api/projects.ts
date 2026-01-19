@@ -17,6 +17,9 @@ import type {
   CheckinSummary,
   CheckinType,
   CheckinSummarySave,
+  CheckinV2,
+  CheckinCreateV2,
+  CheckinAgendaItems,
   ProjectKpiTemplate,
   PhaseBreakdownRequest,
   PhaseBreakdownResponse,
@@ -105,6 +108,44 @@ export const projectsApi = {
 
   saveCheckinSummary: (projectId: string, data: CheckinSummarySave) =>
     api.post<Memory>(`/projects/${projectId}/checkins/summary/save`, data),
+
+  // V2 Check-in API (Structured, ADHD-friendly)
+  listCheckinsV2: (projectId: string, query?: {
+    memberUserId?: string;
+    startDate?: string;
+    endDate?: string;
+  }) => {
+    const params = new URLSearchParams();
+    if (query?.memberUserId) {
+      params.set('member_user_id', query.memberUserId);
+    }
+    if (query?.startDate) {
+      params.set('start_date', query.startDate);
+    }
+    if (query?.endDate) {
+      params.set('end_date', query.endDate);
+    }
+    const suffix = params.toString();
+    return api.get<CheckinV2[]>(`/projects/${projectId}/checkins/v2${suffix ? `?${suffix}` : ''}`);
+  },
+
+  createCheckinV2: (projectId: string, data: CheckinCreateV2) =>
+    api.post<CheckinV2>(`/projects/${projectId}/checkins/v2`, data),
+
+  getCheckinAgendaItems: (projectId: string, query?: {
+    startDate?: string;
+    endDate?: string;
+  }) => {
+    const params = new URLSearchParams();
+    if (query?.startDate) {
+      params.set('start_date', query.startDate);
+    }
+    if (query?.endDate) {
+      params.set('end_date', query.endDate);
+    }
+    const suffix = params.toString();
+    return api.get<CheckinAgendaItems>(`/projects/${projectId}/checkins/agenda-items${suffix ? `?${suffix}` : ''}`);
+  },
 
   breakdownPhases: (projectId: string, data: PhaseBreakdownRequest) =>
     api.post<PhaseBreakdownResponse>(`/projects/${projectId}/phase-breakdown`, data),

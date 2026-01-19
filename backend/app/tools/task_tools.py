@@ -60,8 +60,9 @@ class CreateTaskInput(BaseModel):
     )
     # Meeting fields (optional, only for fixed-time events)
     is_fixed_time: bool = Field(False, description="会議・固定時間イベントの場合true")
-    start_time: Optional[str] = Field(None, description="開始時刻（ISO形式、is_fixed_time=trueの場合必須）")
-    end_time: Optional[str] = Field(None, description="終了時刻（ISO形式、is_fixed_time=trueの場合必須）")
+    is_all_day: bool = Field(False, description="終日タスク（休暇・出張など、その日のキャパシティを0にする）")
+    start_time: Optional[str] = Field(None, description="開始時刻（ISO形式、is_fixed_time=trueの場合必須、is_all_day=trueの場合不要）")
+    end_time: Optional[str] = Field(None, description="終了時刻（ISO形式、is_fixed_time=trueの場合必須、is_all_day=trueの場合不要）")
     location: Optional[str] = Field(None, description="場所（会議用）")
     attendees: list[str] = Field(default_factory=list, description="参加者リスト（会議用）")
     meeting_notes: Optional[str] = Field(None, description="議事録・メモ（会議用）")
@@ -96,6 +97,7 @@ class UpdateTaskInput(BaseModel):
     source_capture_id: Optional[str] = Field(None, description="元Capture ID（UUID文字列）")
     # Meeting fields
     is_fixed_time: Optional[bool] = Field(None, description="会議・固定時間イベントの場合true")
+    is_all_day: Optional[bool] = Field(None, description="終日タスク（休暇・出張など、その日のキャパシティを0にする）")
     start_time: Optional[str] = Field(None, description="開始時刻（ISO形式）")
     end_time: Optional[str] = Field(None, description="終了時刻（ISO形式）")
     location: Optional[str] = Field(None, description="場所（会議用）")
@@ -438,6 +440,7 @@ async def create_task(
         created_by=CreatedBy.AGENT,
         # Meeting fields
         is_fixed_time=input_data.is_fixed_time,
+        is_all_day=input_data.is_all_day,
         start_time=start_time,
         end_time=end_time,
         location=input_data.location,
@@ -574,6 +577,7 @@ async def update_task(
         source_capture_id=source_capture_id,
         # Meeting fields
         is_fixed_time=input_data.is_fixed_time,
+        is_all_day=input_data.is_all_day,
         start_time=start_time,
         end_time=end_time,
         location=input_data.location,
@@ -952,8 +956,9 @@ def propose_task_tool(
             start_not_before (str, optional): Earliest start datetime (ISO)
             dependency_ids (list[str], optional): Dependency task IDs
             is_fixed_time (bool, optional): Fixed-time meeting flag
-            start_time (str, optional): Start time (ISO)
-            end_time (str, optional): End time (ISO)
+            is_all_day (bool, optional): All-day task (vacation, business trip etc). Sets capacity to 0 for the day
+            start_time (str, optional): Start time (ISO, not required if is_all_day=true)
+            end_time (str, optional): End time (ISO, not required if is_all_day=true)
             location (str, optional): Location
             attendees (list[str], optional): Attendees
             meeting_notes (str, optional): Meeting notes
@@ -1030,8 +1035,9 @@ def create_task_tool(
             start_not_before (str, optional): 着手可能日時（ISO形式）
             dependency_ids (list[str], optional): このタスクが依存する他のタスクのIDリスト（UUID文字列）
             is_fixed_time (bool, optional): 会議・固定時間イベントの場合true
-            start_time (str, optional): 開始時刻（ISO形式、is_fixed_time=trueの場合必須）
-            end_time (str, optional): 終了時刻（ISO形式、is_fixed_time=trueの場合必須）
+            is_all_day (bool, optional): 終日タスク（休暇・出張など）。trueの場合、その日のキャパシティを0にする
+            start_time (str, optional): 開始時刻（ISO形式、is_fixed_time=trueの場合必須、is_all_day=trueの場合不要）
+            end_time (str, optional): 終了時刻（ISO形式、is_fixed_time=trueの場合必須、is_all_day=trueの場合不要）
             location (str, optional): 場所（会議用）
             attendees (list[str], optional): 参加者リスト（会議用）
             meeting_notes (str, optional): 議事録・メモ（会議用）
@@ -1070,6 +1076,7 @@ def update_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
             progress (int, optional): 進捗率（0-100%）。タスクの完成度を設定
             source_capture_id (str, optional): 元Capture ID（UUID文字列）
             is_fixed_time (bool, optional): 会議・固定時間イベントの場合true
+            is_all_day (bool, optional): 終日タスク（休暇・出張など）。trueの場合、その日のキャパシティを0にする
             start_time (str, optional): 開始時刻（ISO形式）
             end_time (str, optional): 終了時刻（ISO形式）
             location (str, optional): 場所（会議用）

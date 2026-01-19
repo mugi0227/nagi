@@ -80,15 +80,15 @@ async def fetch_meeting_context(
         except ValueError:
             pass  # Invalid meeting_id, skip
 
-    # 3. Fetch Check-ins
+    # 3. Fetch Check-ins (V1 for backward compatibility)
     checkins = await checkin_repo.list(
         user_id=user_id,
         project_id=project_id,
         start_date=input_data.start_date,
         end_date=input_data.end_date,
     )
-    
-    # Format check-ins
+
+    # Format check-ins (legacy format)
     checkin_summaries = []
     for c in checkins:
         checkin_summaries.append({
@@ -97,6 +97,14 @@ async def fetch_meeting_context(
             "summary": c.summary_text or c.raw_text,
             "type": c.checkin_type
         })
+
+    # 3b. Fetch structured check-in data (V2)
+    agenda_items = await checkin_repo.get_agenda_items(
+        user_id=user_id,
+        project_id=project_id,
+        start_date=input_data.start_date,
+        end_date=input_data.end_date,
+    )
 
     # 4. Fetch Tasks (Active ones)
     all_tasks = await task_repo.list(user_id, project_id=project_id)
@@ -115,12 +123,32 @@ async def fetch_meeting_context(
             "progress": t.progress
         })
 
+    # Convert member_moods to serializable format
+    member_moods_serializable = {
+        k: v.value if hasattr(v, 'value') else v
+        for k, v in agenda_items.member_moods.items()
+    }
+
     return {
         "project_info": project_info,
         "meeting_info": meeting_info,
+        # Legacy format (for backward compatibility)
         "checkins": checkin_summaries,
+        # V2 structured data (for agenda generation)
+        "blockers": agenda_items.blockers,
+        "discussions": agenda_items.discussions,
+        "requests": agenda_items.requests,
+        "updates": agenda_items.updates,
+        "member_moods": member_moods_serializable,
+        "must_discuss_items": agenda_items.must_discuss_items,
+        # Tasks
         "active_tasks": task_list,
-        "context_note": "プロジェクト目標とキーポイントを参考にアジェンダを作成してください。チェックインからブロッカーや話題を特定し、タスク状況から遅延を把握してください。"
+        "context_note": (
+            "プロジェクト目標とキーポイントを参考にアジェンダを作成してください。"
+            "blockers（ブロッカー）を優先的に議題に含め、discussions（相談事項）とrequests（依頼）も考慮してください。"
+            "must_discuss_items は次回必ず話すべき項目です。"
+            "member_moods でメンバーのコンディションを把握し、配慮してください。"
+        )
     }
 
 

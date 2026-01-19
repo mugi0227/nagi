@@ -48,6 +48,7 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
     energy_level: task?.energy_level || initialData?.energy_level || 'LOW' as EnergyLevel,
     // Meeting fields
     is_fixed_time: task?.is_fixed_time || false,
+    is_all_day: task?.is_all_day || false,
     start_time: toDatetimeLocal(task?.start_time),
     end_time: toDatetimeLocal(task?.end_time),
     location: task?.location || '',
@@ -115,9 +116,10 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
       dependency_ids: formData.dependency_ids.length > 0 ? formData.dependency_ids : undefined,
       // Meeting fields (only include if is_fixed_time is true)
       ...(formData.is_fixed_time && {
-        start_time: formData.start_time || undefined,
-        end_time: formData.end_time || undefined,
+        start_time: formData.is_all_day ? undefined : (formData.start_time || undefined),
+        end_time: formData.is_all_day ? undefined : (formData.end_time || undefined),
         is_fixed_time: true,
+        is_all_day: formData.is_all_day,
         location: formData.location || undefined,
         attendees: formData.attendees ? formData.attendees.split(',').map(a => a.trim()).filter(Boolean) : undefined,
         meeting_notes: formData.meeting_notes || undefined,
@@ -290,7 +292,7 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
                 <input
                   type="checkbox"
                   checked={formData.is_fixed_time}
-                  onChange={(e) => setFormData({ ...formData, is_fixed_time: e.target.checked })}
+                  onChange={(e) => setFormData({ ...formData, is_fixed_time: e.target.checked, is_all_day: false })}
                 />
                 <span className="checkbox-mark"></span>
                 <span>会議・固定時間イベント</span>
@@ -298,30 +300,47 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
             </div>
 
             {formData.is_fixed_time && (
-              <div className="meeting-fields">
-                <div className="form-row">
-                  <div className="form-group">
-                    <label htmlFor="start_time">開始時刻 *</label>
-                    <input
-                      type="datetime-local"
-                      id="start_time"
-                      value={formData.start_time}
-                      onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
-                      required
-                    />
-                  </div>
+              <div className="form-group toggle-group">
+                <label className="checkbox-label custom-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={formData.is_all_day}
+                    onChange={(e) => setFormData({ ...formData, is_all_day: e.target.checked })}
+                  />
+                  <span className="checkbox-mark"></span>
+                  <span>終日（休暇・出張など）</span>
+                </label>
+                <p className="field-hint">終日タスクがある日はキャパシティが0になります</p>
+              </div>
+            )}
 
-                  <div className="form-group">
-                    <label htmlFor="end_time">終了時刻 *</label>
-                    <input
-                      type="datetime-local"
-                      id="end_time"
-                      value={formData.end_time}
-                      onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
-                      required
-                    />
+            {formData.is_fixed_time && (
+              <div className="meeting-fields">
+                {!formData.is_all_day && (
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label htmlFor="start_time">開始時刻 *</label>
+                      <input
+                        type="datetime-local"
+                        id="start_time"
+                        value={formData.start_time}
+                        onChange={(e) => setFormData({ ...formData, start_time: e.target.value })}
+                        required
+                      />
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor="end_time">終了時刻 *</label>
+                      <input
+                        type="datetime-local"
+                        id="end_time"
+                        value={formData.end_time}
+                        onChange={(e) => setFormData({ ...formData, end_time: e.target.value })}
+                        required
+                      />
+                    </div>
                   </div>
-                </div>
+                )}
 
                 <div className="form-group">
                   <label htmlFor="location">場所</label>
@@ -330,31 +349,33 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
                     id="location"
                     value={formData.location}
                     onChange={(e) => setFormData({ ...formData, location: e.target.value })}
-                    placeholder="例: Zoom, 会議室A"
+                    placeholder={formData.is_all_day ? "例: 本社、出張先" : "例: Zoom, 会議室A"}
                   />
                 </div>
 
-                <div className="form-group">
-                  <label htmlFor="attendees">参加者（カンマ区切り）</label>
-                  <input
-                    type="text"
-                    id="attendees"
-                    value={formData.attendees}
-                    onChange={(e) => setFormData({ ...formData, attendees: e.target.value })}
-                    placeholder="例: 田中さん, 佐藤さん, 鈴木さん"
-                  />
-                </div>
+                {!formData.is_all_day && (
+                  <div className="form-group">
+                    <label htmlFor="attendees">参加者（カンマ区切り）</label>
+                    <input
+                      type="text"
+                      id="attendees"
+                      value={formData.attendees}
+                      onChange={(e) => setFormData({ ...formData, attendees: e.target.value })}
+                      placeholder="例: 田中さん, 佐藤さん, 鈴木さん"
+                    />
+                  </div>
+                )}
 
                 <div className="form-group">
-                  <label htmlFor="meeting_notes">議事録・メモ</label>
+                  <label htmlFor="meeting_notes">{formData.is_all_day ? 'メモ' : '議事録・メモ'}</label>
                   <textarea
                     id="meeting_notes"
                     value={formData.meeting_notes}
                     onChange={(e) => setFormData({ ...formData, meeting_notes: e.target.value })}
-                    placeholder="議題・議事録・アクション項目 (- [ ])"
+                    placeholder={formData.is_all_day ? "備考やメモを入力..." : "議題・議事録・アクション項目 (- [ ])"}
                     rows={3}
                   />
-                  <p className="field-hint">会議後の議事録・メモはここに入力します。</p>
+                  {!formData.is_all_day && <p className="field-hint">会議後の議事録・メモはここに入力します。</p>}
                 </div>
               </div>
             )}

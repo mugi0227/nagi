@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react';
-import { FaCalendarAlt, FaList } from 'react-icons/fa';
+import { FaCalendarAlt, FaList, FaPlus, FaArrowLeft } from 'react-icons/fa';
 import { api as client } from '../../api/client';
-import { RecurringMeeting, Task } from '../../api/types';
+import { projectsApi } from '../../api/projects';
+import type { CheckinCreateV2, CheckinV2, ProjectMember, RecurringMeeting, Task } from '../../api/types';
+import { CheckinForm } from '../projects/CheckinForm';
 import { MeetingCalendarView } from './MeetingCalendarView';
 import { MeetingMainContent } from './MeetingMainContent';
 import { MeetingSidebar } from './MeetingSidebar';
@@ -12,15 +14,28 @@ type ViewMode = 'list' | 'calendar';
 
 interface MeetingsTabProps {
     projectId: string;
+    members: ProjectMember[];
+    tasks: Task[];
+    currentUserId: string;
 }
 
-export function MeetingsTab({ projectId }: MeetingsTabProps) {
+export function MeetingsTab({ projectId, members, tasks, currentUserId }: MeetingsTabProps) {
     const [viewMode, setViewMode] = useState<ViewMode>('list');
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
     const [selectedMeeting, setSelectedMeeting] = useState<RecurringMeeting | null>(null);
     const [selectedTask, setSelectedTask] = useState<Task | null>(null);
     const [recurringMeetings, setRecurringMeetings] = useState<RecurringMeeting[]>([]);
     const [isLoading, setIsLoading] = useState(true);
+    const [isCheckinSaving, setIsCheckinSaving] = useState(false);
+    const [showCheckinForm, setShowCheckinForm] = useState(false);
+    const [checkinsV2, setCheckinsV2] = useState<CheckinV2[]>([]);
+    const [isCheckinsLoading, setIsCheckinsLoading] = useState(true);
+    const [expandedCheckinId, setExpandedCheckinId] = useState<string | null>(null);
+
+    const getMemberName = (memberUserId: string) => {
+        const member = members.find(m => m.member_user_id === memberUserId);
+        return member?.member_display_name || memberUserId;
+    };
 
     useEffect(() => {
         const fetchRecurringMeetings = async () => {
@@ -35,6 +50,22 @@ export function MeetingsTab({ projectId }: MeetingsTabProps) {
             }
         };
         fetchRecurringMeetings();
+    }, [projectId]);
+
+    // Fetch check-ins V2
+    useEffect(() => {
+        const fetchCheckins = async () => {
+            setIsCheckinsLoading(true);
+            try {
+                const response = await projectsApi.listCheckinsV2(projectId);
+                setCheckinsV2(response || []);
+            } catch (e) {
+                console.error("Failed to fetch check-ins", e);
+            } finally {
+                setIsCheckinsLoading(false);
+            }
+        };
+        fetchCheckins();
     }, [projectId]);
 
     const handleSelectTask = (task: Task, date: Date) => {
@@ -59,6 +90,22 @@ export function MeetingsTab({ projectId }: MeetingsTabProps) {
         }
     };
 
+    const handleSubmitCheckinV2 = async (data: CheckinCreateV2) => {
+        setIsCheckinSaving(true);
+        try {
+            await projectsApi.createCheckinV2(projectId, data);
+            // Refresh the list and close the form
+            const response = await projectsApi.listCheckinsV2(projectId);
+            setCheckinsV2(response || []);
+            setShowCheckinForm(false);
+        } catch (err) {
+            console.error('Failed to create V2 checkin:', err);
+            throw err;
+        } finally {
+            setIsCheckinSaving(false);
+        }
+    };
+
     return (
         <div className="meetings-tab-wrapper">
             <div className="meetings-tab-view-toggle">
@@ -79,7 +126,7 @@ export function MeetingsTab({ projectId }: MeetingsTabProps) {
             </div>
 
             {viewMode === 'list' ? (
-                <div className="meetings-tab-container">
+                <div className="meetings-tab-three-column">
                     <MeetingSidebar
                         projectId={projectId}
                         recurringMeetings={recurringMeetings}
@@ -93,23 +140,221 @@ export function MeetingsTab({ projectId }: MeetingsTabProps) {
                         selectedMeeting={selectedMeeting}
                         selectedTask={selectedTask}
                     />
+                    <div className="meetings-checkin-panel">
+                        {showCheckinForm ? (
+                            <>
+                                <div className="checkin-panel-header">
+                                    <button
+                                        className="checkin-back-btn"
+                                        onClick={() => setShowCheckinForm(false)}
+                                    >
+                                        <FaArrowLeft /> 戻る
+                                    </button>
+                                </div>
+                                <CheckinForm
+                                    projectId={projectId}
+                                    members={members}
+                                    tasks={tasks}
+                                    currentUserId={currentUserId}
+                                    onSubmit={handleSubmitCheckinV2}
+                                    onCancel={() => setShowCheckinForm(false)}
+                                    isSubmitting={isCheckinSaving}
+                                    hideCancel
+                                    compact
+                                />
+                            </>
+                        ) : (
+                            <div className="checkin-list-view">
+                                <div className="checkin-panel-header">
+                                    <div className="checkin-header-left">
+                                        <h3>Check-in</h3>
+                                        <span className="checkin-header-desc">困りごとや議論テーマを投稿</span>
+                                    </div>
+                                    <button
+                                        className="checkin-add-btn"
+                                        onClick={() => setShowCheckinForm(true)}
+                                    >
+                                        <FaPlus /> 新規
+                                    </button>
+                                </div>
+                                {isCheckinsLoading ? (
+                                    <div className="checkin-loading">読み込み中...</div>
+                                ) : checkinsV2.length === 0 ? (
+                                    <div className="checkin-empty">
+                                        <p>まだCheck-inがありません</p>
+                                        <button
+                                            className="checkin-add-btn-large"
+                                            onClick={() => setShowCheckinForm(true)}
+                                        >
+                                            <FaPlus /> 最初のCheck-inを作成
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="checkin-list">
+                                        {checkinsV2.map((checkin) => (
+                                            <div
+                                                key={checkin.id}
+                                                className={`checkin-list-item ${expandedCheckinId === checkin.id ? 'expanded' : ''}`}
+                                                onClick={() => setExpandedCheckinId(expandedCheckinId === checkin.id ? null : checkin.id)}
+                                            >
+                                                <div className="checkin-item-header">
+                                                    <div className="checkin-item-meta">
+                                                        <span className="checkin-item-user">{getMemberName(checkin.member_user_id)}</span>
+                                                        <span className="checkin-item-date">
+                                                            {new Date(checkin.checkin_date).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+                                                        </span>
+                                                    </div>
+                                                    {checkin.mood && (
+                                                        <span className="checkin-item-mood">
+                                                            {checkin.mood === 'good' ? '😊' : checkin.mood === 'okay' ? '😐' : '😰'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {checkin.items && checkin.items.length > 0 && (
+                                                    <div className="checkin-item-items">
+                                                        {(expandedCheckinId === checkin.id ? checkin.items : checkin.items.slice(0, 2)).map((item, idx) => (
+                                                            <div key={idx} className={`checkin-item-entry ${expandedCheckinId === checkin.id ? 'expanded' : ''}`}>
+                                                                <span className={`checkin-category-badge ${item.category}`}>
+                                                                    {item.category === 'blocker' ? '🚧' : item.category === 'discussion' ? '💬' : item.category === 'request' ? '🙏' : '📝'}
+                                                                </span>
+                                                                <span className="checkin-item-content">{item.content}</span>
+                                                            </div>
+                                                        ))}
+                                                        {expandedCheckinId !== checkin.id && checkin.items.length > 2 && (
+                                                            <div className="checkin-item-more">+{checkin.items.length - 2}件（クリックで展開）</div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {checkin.free_comment && (
+                                                    <div className={`checkin-item-comment ${expandedCheckinId === checkin.id ? 'expanded' : ''}`}>{checkin.free_comment}</div>
+                                                )}
+                                                {expandedCheckinId === checkin.id && (
+                                                    <div className="checkin-item-collapse-hint">クリックで閉じる</div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             ) : (
-                <div className="meetings-tab-calendar-container">
-                    <MeetingCalendarView
-                        projectId={projectId}
-                        onMeetingSelect={handleCalendarMeetingSelect}
-                    />
-                    {selectedTask && (
-                        <div className="meetings-tab-calendar-detail">
-                            <MeetingMainContent
-                                projectId={projectId}
-                                selectedDate={selectedDate}
-                                selectedMeeting={selectedMeeting}
-                                selectedTask={selectedTask}
-                            />
-                        </div>
-                    )}
+                <div className="meetings-tab-calendar-with-checkin">
+                    <div className="meetings-tab-calendar-main">
+                        <MeetingCalendarView
+                            projectId={projectId}
+                            onMeetingSelect={handleCalendarMeetingSelect}
+                        />
+                        {selectedTask && (
+                            <div className="meetings-tab-calendar-detail">
+                                <MeetingMainContent
+                                    projectId={projectId}
+                                    selectedDate={selectedDate}
+                                    selectedMeeting={selectedMeeting}
+                                    selectedTask={selectedTask}
+                                />
+                            </div>
+                        )}
+                    </div>
+                    <div className="meetings-checkin-panel">
+                        {showCheckinForm ? (
+                            <>
+                                <div className="checkin-panel-header">
+                                    <button
+                                        className="checkin-back-btn"
+                                        onClick={() => setShowCheckinForm(false)}
+                                    >
+                                        <FaArrowLeft /> 戻る
+                                    </button>
+                                </div>
+                                <CheckinForm
+                                    projectId={projectId}
+                                    members={members}
+                                    tasks={tasks}
+                                    currentUserId={currentUserId}
+                                    onSubmit={handleSubmitCheckinV2}
+                                    onCancel={() => setShowCheckinForm(false)}
+                                    isSubmitting={isCheckinSaving}
+                                    hideCancel
+                                    compact
+                                />
+                            </>
+                        ) : (
+                            <div className="checkin-list-view">
+                                <div className="checkin-panel-header">
+                                    <div className="checkin-header-left">
+                                        <h3>Check-in</h3>
+                                        <span className="checkin-header-desc">困りごとや議論テーマを投稿</span>
+                                    </div>
+                                    <button
+                                        className="checkin-add-btn"
+                                        onClick={() => setShowCheckinForm(true)}
+                                    >
+                                        <FaPlus /> 新規
+                                    </button>
+                                </div>
+                                {isCheckinsLoading ? (
+                                    <div className="checkin-loading">読み込み中...</div>
+                                ) : checkinsV2.length === 0 ? (
+                                    <div className="checkin-empty">
+                                        <p>まだCheck-inがありません</p>
+                                        <button
+                                            className="checkin-add-btn-large"
+                                            onClick={() => setShowCheckinForm(true)}
+                                        >
+                                            <FaPlus /> 最初のCheck-inを作成
+                                        </button>
+                                    </div>
+                                ) : (
+                                    <div className="checkin-list">
+                                        {checkinsV2.map((checkin) => (
+                                            <div
+                                                key={checkin.id}
+                                                className={`checkin-list-item ${expandedCheckinId === checkin.id ? 'expanded' : ''}`}
+                                                onClick={() => setExpandedCheckinId(expandedCheckinId === checkin.id ? null : checkin.id)}
+                                            >
+                                                <div className="checkin-item-header">
+                                                    <div className="checkin-item-meta">
+                                                        <span className="checkin-item-user">{getMemberName(checkin.member_user_id)}</span>
+                                                        <span className="checkin-item-date">
+                                                            {new Date(checkin.checkin_date).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+                                                        </span>
+                                                    </div>
+                                                    {checkin.mood && (
+                                                        <span className="checkin-item-mood">
+                                                            {checkin.mood === 'good' ? '😊' : checkin.mood === 'okay' ? '😐' : '😰'}
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                {checkin.items && checkin.items.length > 0 && (
+                                                    <div className="checkin-item-items">
+                                                        {(expandedCheckinId === checkin.id ? checkin.items : checkin.items.slice(0, 2)).map((item, idx) => (
+                                                            <div key={idx} className={`checkin-item-entry ${expandedCheckinId === checkin.id ? 'expanded' : ''}`}>
+                                                                <span className={`checkin-category-badge ${item.category}`}>
+                                                                    {item.category === 'blocker' ? '🚧' : item.category === 'discussion' ? '💬' : item.category === 'request' ? '🙏' : '📝'}
+                                                                </span>
+                                                                <span className="checkin-item-content">{item.content}</span>
+                                                            </div>
+                                                        ))}
+                                                        {expandedCheckinId !== checkin.id && checkin.items.length > 2 && (
+                                                            <div className="checkin-item-more">+{checkin.items.length - 2}件（クリックで展開）</div>
+                                                        )}
+                                                    </div>
+                                                )}
+                                                {checkin.free_comment && (
+                                                    <div className={`checkin-item-comment ${expandedCheckinId === checkin.id ? 'expanded' : ''}`}>{checkin.free_comment}</div>
+                                                )}
+                                                {expandedCheckinId === checkin.id && (
+                                                    <div className="checkin-item-collapse-hint">クリックで閉じる</div>
+                                                )}
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>

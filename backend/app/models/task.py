@@ -48,6 +48,7 @@ class TaskBase(BaseModel):
     start_time: Optional[datetime] = Field(None, description="開始時刻（会議等の固定時間タスク用）")
     end_time: Optional[datetime] = Field(None, description="終了時刻（会議等の固定時間タスク用）")
     is_fixed_time: bool = Field(False, description="固定時間タスク（会議・予定など）")
+    is_all_day: bool = Field(False, description="終日タスク（休暇・出張など、キャパシティを0にする）")
     location: Optional[str] = Field(None, max_length=500, description="場所（会議用）")
     attendees: list[str] = Field(default_factory=list, description="参加者リスト")
     meeting_notes: Optional[str] = Field(None, max_length=5000, description="議事録・メモ")
@@ -56,6 +57,21 @@ class TaskBase(BaseModel):
     @model_validator(mode='after')
     def validate_fixed_time(self):
         """Validate fixed-time task constraints."""
+        # 終日タスクの場合、is_fixed_time を自動設定し、時刻を生成
+        if self.is_all_day:
+            self.is_fixed_time = True
+            # 日付を決定: start_time > due_date > 今日
+            target_date = None
+            if self.start_time:
+                target_date = self.start_time.date()
+            elif self.due_date:
+                target_date = self.due_date.date()
+
+            if target_date:
+                # 00:00:00 〜 23:59:59 を設定
+                self.start_time = datetime.combine(target_date, datetime.min.time())
+                self.end_time = datetime.combine(target_date, datetime.max.time().replace(microsecond=0))
+
         if self.is_fixed_time:
             if not self.start_time or not self.end_time:
                 raise ValueError("固定時間タスクにはstart_timeとend_timeが必須です")
@@ -99,6 +115,7 @@ class TaskUpdate(BaseModel):
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None
     is_fixed_time: Optional[bool] = None
+    is_all_day: Optional[bool] = None
     location: Optional[str] = Field(None, max_length=500)
     attendees: Optional[list[str]] = None
     meeting_notes: Optional[str] = Field(None, max_length=5000)

@@ -71,6 +71,7 @@ class TaskORM(Base):
     start_time = Column(DateTime, nullable=True)
     end_time = Column(DateTime, nullable=True)
     is_fixed_time = Column(Boolean, default=False, index=True)
+    is_all_day = Column(Boolean, default=False, index=True)
     location = Column(String(500), nullable=True)
     attendees = Column(JSON, nullable=True, default=list)
     meeting_notes = Column(Text, nullable=True)
@@ -223,9 +224,30 @@ class CheckinORM(Base):
     project_id = Column(String(36), nullable=False, index=True)
     member_user_id = Column(String(255), nullable=False, index=True)
     checkin_date = Column(Date, nullable=False, index=True)
-    checkin_type = Column(String(20), nullable=False, default="weekly")
+    checkin_type = Column(String(20), nullable=True, default="weekly")
     summary_text = Column(Text, nullable=True)
-    raw_text = Column(Text, nullable=False)
+    raw_text = Column(Text, nullable=True)  # Nullable for V2
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    # V2 fields (structured check-in)
+    mood = Column(String(20), nullable=True)
+    must_discuss_in_next_meeting = Column(Text, nullable=True)
+    free_comment = Column(Text, nullable=True)
+
+
+class CheckinItemORM(Base):
+    """Check-in item ORM model (V2 structured items)."""
+
+    __tablename__ = "checkin_items"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    checkin_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    category = Column(String(20), nullable=False)  # blocker/discussion/update/request
+    content = Column(Text, nullable=False)
+    related_task_id = Column(String(36), nullable=True, index=True)
+    urgency = Column(String(10), default="medium")
+    order_index = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
@@ -301,6 +323,24 @@ class MeetingAgendaItemORM(Base):
     order_index = Column(Integer, nullable=False, default=0)
     is_completed = Column(Boolean, default=False)
     event_date = Column(Date, nullable=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class MeetingSessionORM(Base):
+    """Meeting session ORM model."""
+
+    __tablename__ = "meeting_sessions"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    task_id = Column(String(36), nullable=False, index=True)
+    status = Column(String(20), default="PREPARATION", index=True)
+    current_agenda_index = Column(Integer, nullable=True)
+    transcript = Column(Text, nullable=True)
+    summary = Column(Text, nullable=True)
+    started_at = Column(DateTime, nullable=True)
+    ended_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

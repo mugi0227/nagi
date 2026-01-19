@@ -63,6 +63,7 @@ def create_app() -> FastAPI:
         chat,
         heartbeat,
         meeting_agendas,
+        meeting_sessions,
         memories,
         milestones,
         phases,
@@ -87,6 +88,7 @@ def create_app() -> FastAPI:
     app.include_router(memories.router, prefix="/api/memories", tags=["memories"])
     app.include_router(recurring_meetings.router, prefix="/api/recurring-meetings", tags=["recurring_meetings"])
     app.include_router(meeting_agendas.router, prefix="/api", tags=["meeting_agendas"])
+    app.include_router(meeting_sessions.router, prefix="/api", tags=["meeting_sessions"])
     app.include_router(heartbeat.router, prefix="/api/heartbeat", tags=["heartbeat"])
     app.include_router(today.router, prefix="/api/today", tags=["today"])
     app.include_router(users.router, prefix="/api/users", tags=["users"])

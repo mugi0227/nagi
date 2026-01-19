@@ -1,7 +1,7 @@
 ﻿import type { ReactElement } from 'react';
 import { useEffect, useMemo, useState } from 'react';
 import { FaChartBar, FaColumns, FaStream, FaThLarge, FaUsers } from 'react-icons/fa';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { memoriesApi } from '../api/memories';
 import { milestonesApi } from '../api/milestones';
 import { phasesApi } from '../api/phases';
@@ -161,10 +161,23 @@ const getInitial = (value?: string) => {
   return trimmed ? trimmed.charAt(0) : '?';
 };
 
+const VALID_TABS: TabId[] = ['dashboard', 'team', 'timeline', 'board', 'gantt', 'meetings'];
+
 export function ProjectDetailV2Page() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<TabId>('dashboard');
+  const [searchParams] = useSearchParams();
+
+  // Read initial tab from URL query parameter
+  const getInitialTab = (): TabId => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && VALID_TABS.includes(tabParam as TabId)) {
+      return tabParam as TabId;
+    }
+    return 'dashboard';
+  };
+
+  const [activeTab, setActiveTab] = useState<TabId>(getInitialTab);
   const [project, setProject] = useState<ProjectWithTaskCount | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -221,6 +234,14 @@ export function ProjectDetailV2Page() {
     deleteTask,
   } = useTasks(projectId);
   const { data: currentUser } = useCurrentUser();
+
+  // Update tab when URL query param changes
+  useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && VALID_TABS.includes(tabParam as TabId)) {
+      setActiveTab(tabParam as TabId);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     let isActive = true;
@@ -2139,7 +2160,14 @@ export function ProjectDetailV2Page() {
           </div>
         )}
 
-        {activeTab === 'meetings' && <MeetingsTab projectId={projectId!} />}
+        {activeTab === 'meetings' && (
+          <MeetingsTab
+            projectId={projectId!}
+            members={members}
+            tasks={tasks}
+            currentUserId={currentUser?.id || members[0]?.member_user_id || ''}
+          />
+        )}
       </section>
 
       {selectedTask && (

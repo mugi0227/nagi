@@ -10,7 +10,16 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import BlockerStatus, CheckinType, InvitationStatus, ProjectRole, TaskStatus
+from app.models.enums import (
+    BlockerStatus,
+    CheckinItemCategory,
+    CheckinItemUrgency,
+    CheckinMood,
+    CheckinType,
+    InvitationStatus,
+    ProjectRole,
+    TaskStatus,
+)
 
 
 class ProjectMemberBase(BaseModel):
@@ -159,6 +168,89 @@ class CheckinSummarySave(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     checkin_count: int = Field(..., ge=0)
+
+
+# =============================================================================
+# V2 Check-in Models (Structured, ADHD-friendly)
+# =============================================================================
+
+
+class CheckinItem(BaseModel):
+    """Individual structured check-in item."""
+
+    category: CheckinItemCategory
+    content: str = Field(..., min_length=1, max_length=2000)
+    related_task_id: Optional[str] = None
+    urgency: CheckinItemUrgency = CheckinItemUrgency.MEDIUM
+
+
+class CheckinItemResponse(CheckinItem):
+    """Check-in item with metadata (for API responses)."""
+
+    id: UUID
+    related_task_title: Optional[str] = None
+
+    class Config:
+        from_attributes = True
+
+
+class CheckinCreateV2(BaseModel):
+    """Create a structured check-in (V2)."""
+
+    member_user_id: str = Field(..., min_length=1, max_length=255)
+    checkin_date: date
+
+    # Structured fields
+    items: list[CheckinItem] = Field(default_factory=list)
+    mood: Optional[CheckinMood] = None
+    must_discuss_in_next_meeting: Optional[str] = Field(None, max_length=2000)
+    free_comment: Optional[str] = Field(None, max_length=4000)
+
+    # Legacy fields (for backward compatibility)
+    checkin_type: Optional[CheckinType] = None
+    raw_text: Optional[str] = Field(None, max_length=4000)
+
+
+class CheckinV2(BaseModel):
+    """Structured check-in with metadata (V2)."""
+
+    id: UUID
+    user_id: str
+    project_id: UUID
+    member_user_id: str
+    checkin_date: date
+
+    # Structured fields
+    items: list[CheckinItemResponse] = Field(default_factory=list)
+    mood: Optional[CheckinMood] = None
+    must_discuss_in_next_meeting: Optional[str] = None
+    free_comment: Optional[str] = None
+
+    # Legacy fields (preserved for compatibility)
+    checkin_type: Optional[CheckinType] = None
+    summary_text: Optional[str] = None
+    raw_text: Optional[str] = None
+
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class CheckinAgendaItems(BaseModel):
+    """Structured check-in data for meeting agenda generation."""
+
+    project_id: UUID
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+
+    blockers: list[dict] = Field(default_factory=list)
+    discussions: list[dict] = Field(default_factory=list)
+    requests: list[dict] = Field(default_factory=list)
+    updates: list[dict] = Field(default_factory=list)
+
+    member_moods: dict[str, CheckinMood] = Field(default_factory=dict)
+    must_discuss_items: list[dict] = Field(default_factory=list)
 
 
 class BlockerBase(BaseModel):

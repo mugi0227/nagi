@@ -9,7 +9,8 @@ import { memoriesApi } from '../api/memories';
 import { phasesApi } from '../api/phases';
 import { getProject, projectsApi } from '../api/projects';
 import { tasksApi } from '../api/tasks';
-import type { Blocker, Checkin, CheckinSummary, Memory, PhaseWithTaskCount, ProjectInvitation, ProjectKpiMetric, ProjectMember, ProjectWithTaskCount, Task, TaskAssignment, TaskStatus, TaskUpdate } from '../api/types';
+import type { Blocker, Checkin, CheckinCreateV2, CheckinSummary, CheckinV2, Memory, PhaseWithTaskCount, ProjectInvitation, ProjectKpiMetric, ProjectMember, ProjectWithTaskCount, Task, TaskAssignment, TaskStatus, TaskUpdate } from '../api/types';
+import { CheckinForm } from '../components/projects/CheckinForm';
 import type { UserSearchResult } from '../api/users';
 import { UserSearchInput } from '../components/common/UserSearchInput';
 import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
@@ -42,6 +43,9 @@ export function ProjectDetailPage() {
   const [blockers, setBlockers] = useState<Blocker[]>([]);
   const [invitations, setInvitations] = useState<ProjectInvitation[]>([]);
   const [checkins, setCheckins] = useState<Checkin[]>([]);
+  const [_checkinsV2, setCheckinsV2] = useState<CheckinV2[]>([]);
+  const [showCheckinForm, setShowCheckinForm] = useState(false);
+  const [isCheckinV2Saving, setIsCheckinV2Saving] = useState(false);
   const [checkinMode, setCheckinMode] = useState<'weekly' | 'issue' | null>(null);
   const [checkinText, setCheckinText] = useState('');
   const [selectedCheckinMemberId, setSelectedCheckinMemberId] = useState('');
@@ -703,6 +707,28 @@ export function ProjectDetailPage() {
     }
   };
 
+  // V2 Check-in handler
+  const handleSubmitCheckinV2 = async (data: CheckinCreateV2) => {
+    if (!projectId) return;
+    setIsCheckinV2Saving(true);
+    try {
+      await projectsApi.createCheckinV2(projectId, data);
+      // Refresh both V1 and V2 lists
+      const [checkinsData, checkinsV2Data] = await Promise.all([
+        projectsApi.listCheckins(projectId),
+        projectsApi.listCheckinsV2(projectId),
+      ]);
+      setCheckins(checkinsData);
+      setCheckinsV2(checkinsV2Data);
+      setShowCheckinForm(false);
+    } catch (err) {
+      console.error('Failed to create V2 checkin:', err);
+      throw err;
+    } finally {
+      setIsCheckinV2Saving(false);
+    }
+  };
+
   const getTagValue = (tags: string[] | undefined, prefix: string) => {
     if (!tags) return null;
     const tag = tags.find((item) => item.startsWith(prefix));
@@ -927,9 +953,19 @@ export function ProjectDetailPage() {
             <h3 className="section-title">Check-ins</h3>
           </div>
           <div className="checkin-actions">
+            {/* V2 Check-in Button (Primary) */}
             <button
               type="button"
               className="checkin-btn primary"
+              onClick={() => setShowCheckinForm(true)}
+              disabled={!members.length || showCheckinForm}
+            >
+              Check-in
+            </button>
+            {/* Legacy buttons (secondary) */}
+            <button
+              type="button"
+              className="checkin-btn ghost"
               onClick={handleStartWeeklyCheckin}
               disabled={!members.length}
             >
@@ -949,7 +985,21 @@ export function ProjectDetailPage() {
             <p className="checkin-note">メンバーを追加すると投稿できます。</p>
           )}
 
-          {checkinMode && (
+          {/* V2 Check-in Form */}
+          {showCheckinForm && projectId && (
+            <CheckinForm
+              projectId={projectId}
+              members={members}
+              tasks={tasks}
+              currentUserId={members[0]?.member_user_id || ''}
+              onSubmit={handleSubmitCheckinV2}
+              onCancel={() => setShowCheckinForm(false)}
+              isSubmitting={isCheckinV2Saving}
+            />
+          )}
+
+          {/* Legacy Check-in Editor */}
+          {checkinMode && !showCheckinForm && (
             <div className="checkin-editor">
               <div className="checkin-row">
                 <label className="checkin-label" htmlFor="checkin-member">

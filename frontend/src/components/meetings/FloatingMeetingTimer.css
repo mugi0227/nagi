@@ -1,0 +1,237 @@
+/* Floating Meeting Timer Widget */
+
+.floating-meeting-timer {
+    position: fixed;
+    bottom: 24px;
+    right: 24px;
+    width: 280px;
+    background-color: #ffffff;
+    border-radius: 12px;
+    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15), 0 4px 10px rgba(0, 0, 0, 0.1);
+    z-index: 9999;
+    overflow: hidden;
+    border: 2px solid #22c55e;
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from {
+        transform: translateY(100px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.floating-meeting-timer.warning {
+    border-color: #eab308;
+}
+
+.floating-meeting-timer.overtime {
+    border-color: #ef4444;
+    animation: slideIn 0.3s ease-out, pulse-border 1s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+    0%, 100% {
+        box-shadow: 0 10px 25px rgba(239, 68, 68, 0.3), 0 4px 10px rgba(239, 68, 68, 0.2);
+    }
+    50% {
+        box-shadow: 0 10px 25px rgba(239, 68, 68, 0.5), 0 4px 10px rgba(239, 68, 68, 0.3);
+    }
+}
+
+/* Dragging state */
+.floating-meeting-timer.dragging {
+    opacity: 0.9;
+    cursor: grabbing;
+    user-select: none;
+}
+
+/* Header */
+.floating-timer-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 12px;
+    background-color: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    gap: 8px;
+}
+
+/* Drag handle */
+.floating-drag-handle {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: grab;
+    color: #94a3b8;
+    padding: 4px;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    flex-shrink: 0;
+}
+
+.floating-drag-handle:hover {
+    background-color: #e2e8f0;
+    color: #64748b;
+}
+
+.floating-drag-handle:active {
+    cursor: grabbing;
+}
+
+.floating-timer-title {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #475569;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 170px;
+    flex: 1;
+}
+
+.floating-close-btn {
+    background: none;
+    border: none;
+    padding: 4px;
+    cursor: pointer;
+    color: #94a3b8;
+    border-radius: 4px;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.floating-close-btn:hover {
+    background-color: #e2e8f0;
+    color: #64748b;
+}
+
+/* Content */
+.floating-timer-content {
+    padding: 12px;
+}
+
+.floating-timer-display {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 8px;
+}
+
+.floating-timer-icon {
+    font-size: 1.2rem;
+    color: #22c55e;
+}
+
+.floating-meeting-timer.warning .floating-timer-icon {
+    color: #eab308;
+}
+
+.floating-meeting-timer.overtime .floating-timer-icon {
+    color: #ef4444;
+}
+
+.floating-timer-value {
+    font-size: 1.75rem;
+    font-weight: 700;
+    font-family: 'SF Mono', 'Consolas', monospace;
+    color: #166534;
+}
+
+.floating-meeting-timer.warning .floating-timer-value {
+    color: #a16207;
+}
+
+.floating-meeting-timer.overtime .floating-timer-value {
+    color: #dc2626;
+}
+
+.floating-overtime-label {
+    background-color: #ef4444;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.floating-agenda-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    justify-content: center;
+}
+
+.floating-agenda-number {
+    background-color: #dbeafe;
+    color: #1e40af;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.floating-agenda-title {
+    font-size: 0.8rem;
+    color: #475569;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 150px;
+}
+
+/* Actions */
+.floating-timer-actions {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 12px;
+    background-color: #f8fafc;
+    border-top: 1px solid #e2e8f0;
+}
+
+.floating-action-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background-color: white;
+    color: #475569;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.floating-action-btn:hover {
+    background-color: #f1f5f9;
+    border-color: #cbd5e1;
+}
+
+.floating-action-btn.expand {
+    background-color: #3b82f6;
+    border-color: #3b82f6;
+    color: white;
+}
+
+.floating-action-btn.expand:hover {
+    background-color: #2563eb;
+}
+
+.floating-action-btn.go-to-page {
+    background-color: #10b981;
+    border-color: #10b981;
+    color: white;
+}
+
+.floating-action-btn.go-to-page:hover {
+    background-color: #059669;
+}
