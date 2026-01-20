@@ -151,6 +151,153 @@
   line-height: 1.5;
 }
 
+/* Markdown styles for agenda description */
+.agenda-description p {
+  margin: 0.5em 0;
+}
+
+.agenda-description p:first-child {
+  margin-top: 0;
+}
+
+.agenda-description p:last-child {
+  margin-bottom: 0;
+}
+
+.agenda-description h1,
+.agenda-description h2,
+.agenda-description h3,
+.agenda-description h4 {
+  font-weight: 600;
+  color: var(--text-main, #1e293b);
+  margin: 0.75em 0 0.5em 0;
+}
+
+.agenda-description h1 {
+  font-size: 1.25rem;
+}
+
+.agenda-description h2 {
+  font-size: 1.125rem;
+}
+
+.agenda-description h3 {
+  font-size: 1rem;
+}
+
+.agenda-description h4 {
+  font-size: 0.9375rem;
+}
+
+.agenda-description ul,
+.agenda-description ol {
+  margin: 0.5em 0;
+  padding-left: 1.5rem;
+}
+
+.agenda-description li {
+  margin: 0.25em 0;
+}
+
+.agenda-description code {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  font-family: 'SF Mono', Monaco, Consolas, monospace;
+  font-size: 0.875em;
+}
+
+[data-theme="dark"] .agenda-description code {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.agenda-description pre {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 0.75rem;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.75em 0;
+}
+
+[data-theme="dark"] .agenda-description pre {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.agenda-description pre code {
+  background: transparent;
+  padding: 0;
+  color: var(--text-main, #1e293b);
+}
+
+[data-theme="dark"] .agenda-description pre code {
+  color: #e2e8f0;
+}
+
+.agenda-description blockquote {
+  border-left: 3px solid #667eea;
+  padding-left: 1rem;
+  margin: 0.75em 0;
+  color: var(--text-muted, #64748b);
+}
+
+.agenda-description blockquote p {
+  margin: 0.25em 0;
+}
+
+.agenda-description a {
+  color: #667eea;
+  text-decoration: none;
+}
+
+.agenda-description a:hover {
+  text-decoration: underline;
+}
+
+.agenda-description strong {
+  font-weight: 600;
+}
+
+.agenda-description em {
+  font-style: italic;
+}
+
+.agenda-description hr {
+  margin: 0.75em 0;
+  border: none;
+  border-top: 1px solid #e2e8f0;
+}
+
+[data-theme="dark"] .agenda-description hr {
+  border-top-color: rgba(255, 255, 255, 0.1);
+}
+
+.agenda-description table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+}
+
+.agenda-description th,
+.agenda-description td {
+  border: 1px solid #e2e8f0;
+  padding: 0.375rem 0.625rem;
+  text-align: left;
+}
+
+[data-theme="dark"] .agenda-description th,
+[data-theme="dark"] .agenda-description td {
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.agenda-description th {
+  background: rgba(0, 0, 0, 0.02);
+  font-weight: 600;
+}
+
+[data-theme="dark"] .agenda-description th {
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .agenda-duration {
   display: inline-flex;
   align-items: center;

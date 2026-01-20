@@ -4,6 +4,8 @@
 
 import React from 'react';
 import { Trash2, Edit2, GripVertical, Clock, CheckCircle2 } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { MeetingAgendaItem } from '../../types/agenda';
 
 interface AgendaItemProps {
@@ -45,7 +47,11 @@ export const AgendaItem: React.FC<AgendaItemProps> = ({
         </h4>
 
         {item.description && (
-          <p className="agenda-description">{item.description}</p>
+          <div className="agenda-description">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {item.description}
+            </ReactMarkdown>
+          </div>
         )}
 
         {item.duration_minutes && (
