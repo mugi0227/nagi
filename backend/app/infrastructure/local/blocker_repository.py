@@ -15,6 +15,7 @@ from app.infrastructure.local.database import BlockerORM, TaskORM, get_session_f
 from app.interfaces.blocker_repository import IBlockerRepository
 from app.models.collaboration import Blocker, BlockerCreate, BlockerUpdate
 from app.models.enums import BlockerStatus
+from app.utils.datetime_utils import now_utc
 
 
 class SqliteBlockerRepository(IBlockerRepository):
@@ -46,7 +47,7 @@ class SqliteBlockerRepository(IBlockerRepository):
                 status=BlockerStatus.OPEN.value,
                 reason=blocker.reason,
                 resolved_by=None,
-                created_at=datetime.utcnow(),
+                created_at=now_utc(),
             )
             session.add(orm)
             await session.commit()
@@ -114,7 +115,7 @@ class SqliteBlockerRepository(IBlockerRepository):
                 setattr(orm, field, value)
 
             if update.status == BlockerStatus.RESOLVED:
-                orm.resolved_at = datetime.utcnow()
+                orm.resolved_at = now_utc()
             await session.commit()
             await session.refresh(orm)
             return self._orm_to_model(orm)

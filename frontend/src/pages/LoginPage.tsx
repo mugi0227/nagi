@@ -110,10 +110,14 @@ export function LoginPage() {
     setLocalError(null);
     setLocalLoading(true);
     try {
+      // Auto-detect user's timezone
+      const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
       const response = await authApi.register({
         username: registerUsername.trim(),
         email: registerEmail.trim(),
         password: registerPassword,
+        timezone: userTimezone, // e.g., "Asia/Tokyo"
       });
       setAuthToken(response.access_token);
       navigate(from, { replace: true });

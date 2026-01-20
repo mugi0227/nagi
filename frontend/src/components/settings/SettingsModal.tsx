@@ -77,6 +77,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const isLocalAuth = authMode === 'local';
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
+  const [userTimezone, setUserTimezone] = useState('Asia/Tokyo');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [accountError, setAccountError] = useState<string | null>(null);
@@ -115,6 +116,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     if (!currentUser) return;
     setUserName(currentUser.username || currentUser.display_name || '');
     setUserEmail(currentUser.email || '');
+    setUserTimezone(currentUser.timezone || 'Asia/Tokyo');
   }, [currentUser]);
 
   const handleUserNameChange = (value: string) => {
@@ -213,12 +215,14 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       username?: string;
       email?: string;
       new_password?: string;
+      timezone?: string;
     } = { current_password: currentPassword };
 
     const nextUserName = userName.trim();
     const nextEmail = userEmail.trim();
     const currentUserName = currentUser?.username || currentUser?.display_name || '';
     const currentUserEmail = currentUser?.email || '';
+    const currentUserTimezone = currentUser?.timezone || 'Asia/Tokyo';
 
     if (nextUserName && nextUserName !== currentUserName) {
       payload.username = nextUserName;
@@ -228,6 +232,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     }
     if (newPassword.trim()) {
       payload.new_password = newPassword.trim();
+    }
+    if (userTimezone && userTimezone !== currentUserTimezone) {
+      payload.timezone = userTimezone;
     }
 
     if (Object.keys(payload).length === 1) {
@@ -344,6 +351,34 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                 placeholder="********"
                 disabled={!isLocalAuth || isUpdatingAccount}
               />
+            </div>
+            <div className="setting-item">
+              <label htmlFor="userTimezone" className="setting-label">
+                タイムゾーン
+              </label>
+              <select
+                id="userTimezone"
+                value={userTimezone}
+                onChange={(event) => {
+                  setUserTimezone(event.target.value);
+                  setAccountError(null);
+                  setAccountSuccess(null);
+                }}
+                className="setting-select"
+                disabled={!isLocalAuth || isUpdatingAccount}
+              >
+                <option value="Asia/Tokyo">日本 (Asia/Tokyo)</option>
+                <option value="America/New_York">ニューヨーク (America/New_York)</option>
+                <option value="America/Los_Angeles">ロサンゼルス (America/Los_Angeles)</option>
+                <option value="Europe/London">ロンドン (Europe/London)</option>
+                <option value="Europe/Paris">パリ (Europe/Paris)</option>
+                <option value="Asia/Shanghai">上海 (Asia/Shanghai)</option>
+                <option value="Asia/Seoul">ソウル (Asia/Seoul)</option>
+                <option value="Australia/Sydney">シドニー (Australia/Sydney)</option>
+              </select>
+              <p className="setting-description">
+                日付と時刻の表示に使用するタイムゾーンです。
+              </p>
             </div>
             <div className="setting-item">
               <button

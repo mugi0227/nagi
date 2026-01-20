@@ -28,6 +28,14 @@ function toDatetimeLocal(isoString: string | null | undefined): string {
   return `${year}-${month}-${day}T${hours}:${minutes}`;
 }
 
+// Convert datetime-local format to UTC ISO string for backend
+function toISOStringUTC(datetimeLocal: string | undefined): string | undefined {
+  if (!datetimeLocal) return undefined;
+  // datetime-local is in user's local timezone, convert to UTC ISO
+  const date = new Date(datetimeLocal);
+  return date.toISOString(); // Converts to UTC automatically
+}
+
 export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSubmit, isSubmitting }: TaskFormModalProps) {
   const { projects } = useProjects();
   const isEditMode = !!task;
@@ -109,15 +117,15 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
       urgency: formData.urgency,
       energy_level: formData.energy_level,
       estimated_minutes: formData.estimated_minutes ? parseInt(formData.estimated_minutes) : undefined,
-      due_date: formData.due_date || undefined,
-      start_not_before: formData.is_fixed_time ? undefined : (formData.start_not_before || undefined),
+      due_date: toISOStringUTC(formData.due_date),
+      start_not_before: formData.is_fixed_time ? undefined : toISOStringUTC(formData.start_not_before),
       project_id: formData.project_id || undefined,
       phase_id: formData.phase_id || undefined,
       dependency_ids: formData.dependency_ids.length > 0 ? formData.dependency_ids : undefined,
       // Meeting fields (only include if is_fixed_time is true)
       ...(formData.is_fixed_time && {
-        start_time: formData.is_all_day ? undefined : (formData.start_time || undefined),
-        end_time: formData.is_all_day ? undefined : (formData.end_time || undefined),
+        start_time: formData.is_all_day ? undefined : toISOStringUTC(formData.start_time),
+        end_time: formData.is_all_day ? undefined : toISOStringUTC(formData.end_time),
         is_fixed_time: true,
         is_all_day: formData.is_all_day,
         location: formData.location || undefined,

@@ -8,6 +8,8 @@ from datetime import datetime
 from typing import Optional
 from uuid import uuid4
 
+from app.utils.datetime_utils import now_utc
+
 from sqlalchemy import (
     Boolean,
     Column,
@@ -64,8 +66,8 @@ class TaskORM(Base):
     progress = Column(Integer, default=0, nullable=False)
     source_capture_id = Column(String(36), nullable=True)
     created_by = Column(String(10), default="USER")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
     # Meeting/Fixed-time event fields
     start_time = Column(DateTime, nullable=True)
@@ -94,8 +96,8 @@ class ProjectORM(Base):
     goals = Column(JSON, nullable=True, default=list)  # プロジェクトのゴールリスト
     key_points = Column(JSON, nullable=True, default=list)  # 重要なポイントリスト
     kpi_config = Column(JSON, nullable=True)  # KPI configuration
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class PhaseORM(Base):
@@ -113,8 +115,8 @@ class PhaseORM(Base):
     start_date = Column(DateTime, nullable=True)
     end_date = Column(DateTime, nullable=True)
     fixed_buffer_minutes = Column(Integer, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class MilestoneORM(Base):
@@ -131,8 +133,8 @@ class MilestoneORM(Base):
     status = Column(String(20), default="ACTIVE")
     order_in_phase = Column(Integer, default=1, nullable=False)
     due_date = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class UserORM(Base):
@@ -151,8 +153,9 @@ class UserORM(Base):
     display_name = Column(String(255), nullable=True)
     username = Column(String(255), nullable=True, index=True)
     password_hash = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    timezone = Column(String(50), default="Asia/Tokyo", nullable=False)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class ProjectMemberORM(Base):
@@ -170,8 +173,8 @@ class ProjectMemberORM(Base):
     role = Column(String(20), default="MEMBER")
     capacity_hours = Column(Float, nullable=True)
     timezone = Column(String(100), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class ProjectInvitationORM(Base):
@@ -191,8 +194,8 @@ class ProjectInvitationORM(Base):
     token = Column(String(255), nullable=True, index=True)
     invited_by = Column(String(255), nullable=False)
     accepted_by = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
     expires_at = Column(DateTime, nullable=True)
     accepted_at = Column(DateTime, nullable=True)
 
@@ -211,8 +214,8 @@ class TaskAssignmentORM(Base):
     assignee_id = Column(String(255), nullable=False, index=True)
     status = Column(String(20), nullable=True)
     progress = Column(Integer, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class CheckinORM(Base):
@@ -228,7 +231,7 @@ class CheckinORM(Base):
     checkin_type = Column(String(20), nullable=True, default="weekly")
     summary_text = Column(Text, nullable=True)
     raw_text = Column(Text, nullable=True)  # Nullable for V2
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
 
     # V2 fields (structured check-in)
     mood = Column(String(20), nullable=True)
@@ -249,7 +252,7 @@ class CheckinItemORM(Base):
     related_task_id = Column(String(36), nullable=True, index=True)
     urgency = Column(String(10), default="medium")
     order_index = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
 
 
 class BlockerORM(Base):
@@ -264,7 +267,7 @@ class BlockerORM(Base):
     status = Column(String(20), default="OPEN")
     reason = Column(Text, nullable=False)
     resolved_by = Column(String(255), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
     resolved_at = Column(DateTime, nullable=True)
 
 
@@ -282,8 +285,8 @@ class AgentTaskORM(Base):
     retry_count = Column(Integer, default=0)
     last_error = Column(Text, nullable=True)
     executed_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class RecurringMeetingORM(Base):
@@ -305,8 +308,8 @@ class RecurringMeetingORM(Base):
     anchor_date = Column(Date, nullable=False)
     last_occurrence = Column(DateTime, nullable=True)
     is_active = Column(Boolean, default=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class MeetingAgendaItemORM(Base):
@@ -324,8 +327,8 @@ class MeetingAgendaItemORM(Base):
     order_index = Column(Integer, nullable=False, default=0)
     is_completed = Column(Boolean, default=False)
     event_date = Column(Date, nullable=True, index=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class MeetingSessionORM(Base):
@@ -342,8 +345,8 @@ class MeetingSessionORM(Base):
     summary = Column(Text, nullable=True)
     started_at = Column(DateTime, nullable=True)
     ended_at = Column(DateTime, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class MemoryORM(Base):
@@ -359,8 +362,8 @@ class MemoryORM(Base):
     content = Column(Text, nullable=False)
     tags = Column(Text, nullable=True)  # JSON array string
     source = Column(String(20), default="agent")
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class CaptureORM(Base):
@@ -376,7 +379,7 @@ class CaptureORM(Base):
     transcription = Column(Text, nullable=True)
     image_analysis = Column(Text, nullable=True)
     processed = Column(Boolean, default=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
 
 
 class ChatSessionORM(Base):
@@ -387,8 +390,8 @@ class ChatSessionORM(Base):
     session_id = Column(String(100), primary_key=True)
     user_id = Column(String(255), primary_key=True, index=True)
     title = Column(String(200), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 class ChatMessageORM(Base):
@@ -408,7 +411,7 @@ class ChatMessageORM(Base):
     user_id = Column(String(255), nullable=False, index=True)
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False, default="")
-    created_at = Column(DateTime, default=datetime.utcnow, index=True)
+    created_at = Column(DateTime, default=now_utc, index=True)
 
 
 class ScheduleSnapshotORM(Base):
@@ -431,8 +434,8 @@ class ScheduleSnapshotORM(Base):
     capacity_by_weekday = Column(JSON, nullable=True)  # List of 7 floats
     max_days = Column(Integer, default=60)
     plan_utilization_ratio = Column(Float, default=1.0)
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
 # ===========================================

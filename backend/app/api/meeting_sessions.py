@@ -27,6 +27,7 @@ from app.models.meeting_summary import (
 from app.models.enums import CreatedBy, EnergyLevel, MeetingSessionStatus, Priority
 from app.models.task import TaskCreate
 from app.services.meeting_summary_service import MeetingSummaryService
+from app.utils.datetime_utils import now_utc
 
 router = APIRouter(prefix="/meeting-sessions", tags=["meeting-sessions"])
 
@@ -117,7 +118,7 @@ async def start_session(
 
     update_data = MeetingSessionUpdate(
         status=MeetingSessionStatus.IN_PROGRESS,
-        started_at=datetime.utcnow(),
+        started_at=now_utc(),
         current_agenda_index=0,
     )
     return await repo.update(user.id, session_id, update_data)
@@ -139,7 +140,7 @@ async def end_session(
 
     update_data = MeetingSessionUpdate(
         status=MeetingSessionStatus.COMPLETED,
-        ended_at=datetime.utcnow(),
+        ended_at=now_utc(),
     )
     return await repo.update(user.id, session_id, update_data)
 

@@ -5,6 +5,7 @@ export interface UserProfile {
   email?: string | null;
   display_name?: string | null;
   username?: string | null;
+  timezone?: string;
 }
 
 export interface UserSearchResult {
@@ -19,6 +20,7 @@ export interface UpdateCredentialsRequest {
   username?: string;
   email?: string;
   new_password?: string;
+  timezone?: string;
 }
 
 export const usersApi = {

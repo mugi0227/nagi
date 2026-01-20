@@ -139,6 +139,11 @@ async def run_migrations():
             await conn.execute(text("CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)"))
         if "password_hash" not in user_columns:
             await conn.execute(text("ALTER TABLE users ADD COLUMN password_hash VARCHAR(255)"))
+        if "timezone" not in user_columns:
+            # Add timezone column with default Asia/Tokyo
+            await conn.execute(text("ALTER TABLE users ADD COLUMN timezone VARCHAR(50) DEFAULT 'Asia/Tokyo' NOT NULL"))
+            # Set existing users to Asia/Tokyo (in case DEFAULT doesn't apply to existing rows)
+            await conn.execute(text("UPDATE users SET timezone = 'Asia/Tokyo' WHERE timezone IS NULL"))
 
         # Create recurring_meetings table if missing
         recurring_result = await conn.execute(

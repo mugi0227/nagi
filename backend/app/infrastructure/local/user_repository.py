@@ -13,6 +13,7 @@ from sqlalchemy import select, and_, or_
 from app.infrastructure.local.database import UserORM, get_session_factory
 from app.interfaces.user_repository import IUserRepository
 from app.models.user import UserAccount, UserCreate, UserUpdate
+from app.utils.datetime_utils import now_utc
 
 
 class SqliteUserRepository(IUserRepository):
@@ -30,6 +31,7 @@ class SqliteUserRepository(IUserRepository):
             display_name=orm.display_name,
             username=orm.username,
             password_hash=orm.password_hash,
+            timezone=orm.timezone,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
         )
@@ -78,6 +80,7 @@ class SqliteUserRepository(IUserRepository):
                 display_name=data.display_name,
                 username=data.username,
                 password_hash=data.password_hash,
+                timezone=data.timezone,
             )
             session.add(orm)
             await session.commit()
@@ -94,7 +97,7 @@ class SqliteUserRepository(IUserRepository):
                 raise ValueError(f"User {user_id} not found")
             orm.provider_issuer = issuer
             orm.provider_sub = sub
-            orm.updated_at = datetime.utcnow()
+            orm.updated_at = now_utc()
             await session.commit()
             await session.refresh(orm)
             return self._orm_to_model(orm)
@@ -118,8 +121,10 @@ class SqliteUserRepository(IUserRepository):
                 orm.username = update.username
             if update.password_hash is not None:
                 orm.password_hash = update.password_hash
+            if update.timezone is not None:
+                orm.timezone = update.timezone
 
-            orm.updated_at = datetime.utcnow()
+            orm.updated_at = now_utc()
             await session.commit()
             await session.refresh(orm)
             return self._orm_to_model(orm)

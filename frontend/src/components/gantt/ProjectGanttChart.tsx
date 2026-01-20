@@ -463,7 +463,14 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                     status: task.status,
                   }
                 : undefined,
-              baselineBar: baselineRange ?? undefined,
+              baselineBar: baselineRange
+                ? {
+                    startIndex: baselineRange.startIndex,
+                    endIndex: baselineRange.endIndex,
+                    progress: task.progress ?? (task.status === 'DONE' ? 100 : 0),
+                    status: task.status,
+                  }
+                : undefined,
               dependencyIds: task.dependency_ids,
               childCount: hasSubtasks ? subtasks.length : undefined,
             });

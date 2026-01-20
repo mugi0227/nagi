@@ -20,6 +20,7 @@ class UserCreate(BaseModel):
     display_name: Optional[str] = Field(None, max_length=255)
     username: Optional[str] = Field(None, max_length=255)
     password_hash: Optional[str] = Field(None, max_length=255)
+    timezone: str = Field(default="Asia/Tokyo", max_length=50, description="IANA timezone (e.g., Asia/Tokyo, America/New_York)")
 
 
 class UserAccount(BaseModel):
@@ -32,6 +33,7 @@ class UserAccount(BaseModel):
     display_name: Optional[str] = None
     username: Optional[str] = None
     password_hash: Optional[str] = None
+    timezone: str = "Asia/Tokyo"
     created_at: datetime
     updated_at: datetime
 
@@ -47,3 +49,4 @@ class UserUpdate(BaseModel):
     display_name: Optional[str] = Field(None, max_length=255)
     username: Optional[str] = Field(None, max_length=255)
     password_hash: Optional[str] = Field(None, max_length=255)
+    timezone: Optional[str] = Field(None, max_length=50, description="IANA timezone")

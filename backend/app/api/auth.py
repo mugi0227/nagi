@@ -21,6 +21,7 @@ class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: str = Field(..., min_length=3, max_length=255)
     password: str = Field(..., min_length=8, max_length=128)
+    timezone: str = Field(default="Asia/Tokyo", max_length=50, description="IANA timezone")
 
 
 class LoginRequest(BaseModel):
@@ -125,6 +126,7 @@ async def register(
             display_name=username,
             username=username,
             password_hash=password_hash,
+            timezone=data.timezone,
         )
     )
     token = create_access_token(str(user.id), settings)

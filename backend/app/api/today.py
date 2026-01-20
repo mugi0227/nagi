@@ -10,9 +10,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
 from datetime import date
-from app.api.deps import CurrentUser, ProjectRepo, TaskRepo, TaskAssignmentRepo
+from app.api.deps import CurrentUser, ProjectRepo, TaskRepo, TaskAssignmentRepo, UserRepo
 from app.models.task import Task
 from app.services.scheduler_service import SchedulerService
+from app.utils.datetime_utils import get_user_today
 
 router = APIRouter()
 
@@ -92,6 +93,7 @@ def apply_capacity_buffer(
 @router.get("/top3", response_model=Top3Response, status_code=status.HTTP_200_OK)
 async def get_top3_tasks(
     user: CurrentUser,
+    user_repo: UserRepo,
     task_repo: TaskRepo,
     project_repo: ProjectRepo,
     assignment_repo: TaskAssignmentRepo,
@@ -121,6 +123,12 @@ async def get_top3_tasks(
     Returns:
         Top3Response: Top 3 tasks with capacity information
     """
+    # Get user account to access timezone
+    from uuid import UUID
+    user_account = await user_repo.get(UUID(user.id))
+    user_timezone = user_account.timezone if user_account else "Asia/Tokyo"
+    today = get_user_today(user_timezone)
+
     # 1. Get assigned tasks
     my_assignments = await assignment_repo.list_for_assignee(user.id)
     assigned_ids = [a.task_id for a in my_assignments]
@@ -136,7 +144,7 @@ async def get_top3_tasks(
     all_tasks_map = {t.id: t for t in personal_tasks}
     for t in assigned_tasks:
         all_tasks_map[t.id] = t
-    
+
     tasks = list(all_tasks_map.values())
 
     project_priorities = {project.id: project.priority for project in await project_repo.list(user.id, limit=1000)}
@@ -150,7 +158,7 @@ async def get_top3_tasks(
     schedule = scheduler_service.build_schedule(
         tasks,
         project_priorities=project_priorities,
-        start_date=date.today(),
+        start_date=today,
         capacity_hours=effective_capacity,
         capacity_by_weekday=effective_weekly,
         max_days=30,
@@ -162,7 +170,7 @@ async def get_top3_tasks(
         schedule,
         tasks,
         project_priorities=project_priorities,
-        today=date.today(),
+        today=today,
     )
 
     top3_tasks = [task for task in today_result.today_tasks if task.id in set(today_result.top3_ids)]

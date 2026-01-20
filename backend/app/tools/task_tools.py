@@ -18,6 +18,7 @@ from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.memory_repository import IMemoryRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
+from app.utils.datetime_utils import parse_iso_to_utc, ensure_utc
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.models.collaboration import TaskAssignmentCreate, TaskAssignmentsCreate
@@ -383,7 +384,7 @@ async def create_task(
     due_date = None
     if input_data.due_date:
         try:
-            due_date = datetime.fromisoformat(input_data.due_date.replace("Z", "+00:00"))
+            due_date = parse_iso_to_utc(input_data.due_date)
         except ValueError:
             pass  # Invalid date format, ignore
 
@@ -391,7 +392,7 @@ async def create_task(
     start_not_before = None
     if input_data.start_not_before:
         try:
-            start_not_before = datetime.fromisoformat(input_data.start_not_before.replace("Z", "+00:00"))
+            start_not_before = parse_iso_to_utc(input_data.start_not_before)
         except ValueError:
             pass  # Invalid date format, ignore
 
@@ -409,8 +410,8 @@ async def create_task(
     end_time = None
     if input_data.is_fixed_time and input_data.start_time and input_data.end_time:
         try:
-            start_time = datetime.fromisoformat(input_data.start_time.replace("Z", "+00:00"))
-            end_time = datetime.fromisoformat(input_data.end_time.replace("Z", "+00:00"))
+            start_time = parse_iso_to_utc(input_data.start_time)
+            end_time = parse_iso_to_utc(input_data.end_time)
         except ValueError:
             pass  # Invalid date format, ignore
 
@@ -532,7 +533,7 @@ async def update_task(
     due_date = None
     if input_data.due_date:
         try:
-            due_date = datetime.fromisoformat(input_data.due_date.replace("Z", "+00:00"))
+            due_date = parse_iso_to_utc(input_data.due_date)
         except ValueError:
             pass  # Invalid date format, ignore
 
@@ -540,7 +541,7 @@ async def update_task(
     start_not_before = None
     if input_data.start_not_before:
         try:
-            start_not_before = datetime.fromisoformat(input_data.start_not_before.replace("Z", "+00:00"))
+            start_not_before = parse_iso_to_utc(input_data.start_not_before)
         except ValueError:
             pass  # Invalid date format, ignore
 
@@ -549,12 +550,12 @@ async def update_task(
     end_time = None
     if input_data.start_time:
         try:
-            start_time = datetime.fromisoformat(input_data.start_time.replace("Z", "+00:00"))
+            start_time = parse_iso_to_utc(input_data.start_time)
         except ValueError:
             pass  # Invalid date format, ignore
     if input_data.end_time:
         try:
-            end_time = datetime.fromisoformat(input_data.end_time.replace("Z", "+00:00"))
+            end_time = parse_iso_to_utc(input_data.end_time)
         except ValueError:
             pass  # Invalid date format, ignore
 

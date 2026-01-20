@@ -23,6 +23,7 @@ class UserProfile(BaseModel):
     email: Optional[str] = None
     display_name: Optional[str] = None
     username: Optional[str] = None
+    timezone: Optional[str] = "Asia/Tokyo"
 
 
 class UserSearchResult(BaseModel):
@@ -38,6 +39,7 @@ class UpdateCredentialsRequest(BaseModel):
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     email: Optional[str] = Field(None, min_length=3, max_length=255)
     new_password: Optional[str] = Field(None, min_length=8, max_length=128)
+    timezone: Optional[str] = Field(None, max_length=50, description="IANA timezone")
 
 
 @router.get("/search", response_model=list[UserSearchResult])
@@ -85,6 +87,7 @@ async def get_current_user_profile(
         email=record.email or user.email,
         display_name=record.display_name or user.display_name,
         username=record.username,
+        timezone=record.timezone,
     )
 
 
@@ -151,12 +154,18 @@ async def update_credentials(
     if data.new_password:
         update_fields.password_hash = hash_password(data.new_password)
 
+    if data.timezone:
+        timezone_val = data.timezone.strip()
+        if timezone_val and timezone_val != record.timezone:
+            update_fields.timezone = timezone_val
+
     if not any(
         value is not None
         for value in (
             update_fields.username,
             update_fields.email,
             update_fields.password_hash,
+            update_fields.timezone,
         )
     ):
         raise HTTPException(
@@ -170,4 +179,5 @@ async def update_credentials(
         email=updated.email,
         display_name=updated.display_name,
         username=updated.username,
+        timezone=updated.timezone,
     )
