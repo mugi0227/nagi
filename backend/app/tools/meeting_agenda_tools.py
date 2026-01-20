@@ -110,9 +110,12 @@ def add_agenda_item_tool(
     async def _tool(input_data: dict) -> dict:
         """add_agenda_item: 会議にアジェンダ項目を追加します。
 
+        IMPORTANT: すべての会議（定例・単発）は実際の開催インスタンスとしてTask（is_fixed_time=true）で管理されています。
+        基本的には task_id を使用してください。meeting_id は RecurringMeeting のテンプレート情報が必要な場合のみ使用します。
+
         Parameters:
-            meeting_id (str, optional): 会議ID（RecurringMeetingのUUID、meeting_idかtask_idどちらか必須）
-            task_id (str, optional): 単発会議タスクID（meeting_idかtask_idどちらか必須）
+            task_id (str, optional): 会議タスクID（推奨、ほとんどの場合これを使用）
+            meeting_id (str, optional): RecurringMeetingのUUID（定例会議のテンプレート情報が必要な場合のみ）
             title (str): 議題タイトル（必須）
             description (str, optional): 議題の詳細説明
             duration_minutes (int, optional): 割り当て時間（分）
@@ -121,6 +124,10 @@ def add_agenda_item_tool(
 
         Returns:
             dict: 作成されたアジェンダ項目の情報
+
+        Usage:
+            - 会議タスクが特定されている場合: task_id を指定
+            - 定例会議のテンプレート編集の場合: meeting_id を指定
         """
         return await add_agenda_item(user_id, repo, AddAgendaItemInput(**input_data))
 
@@ -255,9 +262,11 @@ def list_agenda_items_tool(
     async def _tool(input_data: dict) -> dict:
         """list_agenda_items: 会議のアジェンダ項目一覧を取得します。
 
+        IMPORTANT: すべての会議は Task として管理されています。基本的には task_id を使用してください。
+
         Parameters:
-            meeting_id (str, optional): 会議ID（RecurringMeetingのUUID、meeting_idかtask_idどちらか必須）
-            task_id (str, optional): 単発会議タスクID（meeting_idかtask_idどちらか必須）
+            task_id (str, optional): 会議タスクID（推奨、ほとんどの場合これを使用）
+            meeting_id (str, optional): RecurringMeetingのUUID（定例会議のテンプレート情報が必要な場合のみ）
             event_date (str, optional): 開催日 (YYYY-MM-DD)。指定しない場合は全て。
 
         Returns:
@@ -306,9 +315,11 @@ def reorder_agenda_items_tool(
     async def _tool(input_data: dict) -> dict:
         """reorder_agenda_items: アジェンダ項目の順序を変更します。
 
+        IMPORTANT: すべての会議は Task として管理されています。基本的には task_id を使用してください。
+
         Parameters:
-            meeting_id (str, optional): 会議ID（RecurringMeetingのUUID、meeting_idかtask_idどちらか必須）
-            task_id (str, optional): 単発会議タスクID（meeting_idかtask_idどちらか必須）
+            task_id (str, optional): 会議タスクID（推奨、ほとんどの場合これを使用）
+            meeting_id (str, optional): RecurringMeetingのUUID（定例会議のテンプレート情報が必要な場合のみ）
             ordered_ids (list[str]): 並び替え後のアジェンダ項目ID一覧（順序通り、必須）
 
         Returns:
