@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { FaCalendarAlt, FaList, FaPlus, FaArrowLeft } from 'react-icons/fa';
+import { FaCalendarAlt, FaList, FaPlus, FaArrowLeft, FaCog } from 'react-icons/fa';
 import { api as client } from '../../api/client';
 import { projectsApi } from '../../api/projects';
 import type { CheckinCreateV2, CheckinV2, ProjectMember, RecurringMeeting, Task } from '../../api/types';
 import { CheckinForm } from '../projects/CheckinForm';
+import { RecurringMeetingsPanel } from '../projects/RecurringMeetingsPanel';
 import { MeetingCalendarView } from './MeetingCalendarView';
 import { MeetingMainContent } from './MeetingMainContent';
 import { MeetingSidebar } from './MeetingSidebar';
@@ -31,6 +32,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId }: Meetin
     const [checkinsV2, setCheckinsV2] = useState<CheckinV2[]>([]);
     const [isCheckinsLoading, setIsCheckinsLoading] = useState(true);
     const [expandedCheckinId, setExpandedCheckinId] = useState<string | null>(null);
+    const [showRecurringMeetingsModal, setShowRecurringMeetingsModal] = useState(false);
 
     const getMemberName = (memberUserId: string) => {
         const member = members.find(m => m.member_user_id === memberUserId);
@@ -122,6 +124,13 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId }: Meetin
                     title="カレンダー表示"
                 >
                     <FaCalendarAlt /> カレンダー
+                </button>
+                <button
+                    className="view-toggle-btn recurring-meetings-btn"
+                    onClick={() => setShowRecurringMeetingsModal(true)}
+                    title="定例会議を管理"
+                >
+                    <FaCog /> 定例会議管理
                 </button>
             </div>
 
@@ -354,6 +363,24 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId }: Meetin
                                 )}
                             </div>
                         )}
+                    </div>
+                </div>
+            )}
+
+            {/* Recurring Meetings Management Modal */}
+            {showRecurringMeetingsModal && (
+                <div className="recurring-meetings-modal-overlay" onClick={() => setShowRecurringMeetingsModal(false)}>
+                    <div className="recurring-meetings-modal-content" onClick={(e) => e.stopPropagation()}>
+                        <div className="recurring-meetings-modal-header">
+                            <h2>定例会議管理</h2>
+                            <button
+                                className="recurring-meetings-modal-close"
+                                onClick={() => setShowRecurringMeetingsModal(false)}
+                            >
+                                ✕
+                            </button>
+                        </div>
+                        <RecurringMeetingsPanel projectId={projectId} />
                     </div>
                 </div>
             )}

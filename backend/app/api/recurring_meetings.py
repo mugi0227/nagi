@@ -136,3 +136,35 @@ async def delete_recurring_meeting(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"RecurringMeeting {meeting_id} not found",
         )
+
+
+@router.post("/{meeting_id}/generate-tasks")
+async def generate_meeting_tasks(
+    meeting_id: UUID,
+    user: CurrentUser,
+    repo: RecurringMeetingRepo,
+    task_repo: TaskRepo,
+    checkin_repo: CheckinRepo,
+    lookahead_days: int = Query(30, ge=1, le=180, description="Generate tasks for the next N days"),
+):
+    """
+    Generate meeting tasks for a recurring meeting.
+
+    Args:
+        meeting_id: Recurring meeting ID
+        lookahead_days: Number of days to look ahead (default: 30)
+
+    Returns:
+        Dictionary with created task count and task details
+    """
+    await _get_or_404(user, repo, meeting_id)
+
+    service = RecurringMeetingService(
+        recurring_repo=repo,
+        task_repo=task_repo,
+        checkin_repo=checkin_repo,
+        lookahead_days=lookahead_days,
+    )
+
+    result = await service.ensure_upcoming_meetings(user.id)
+    return result

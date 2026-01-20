@@ -23,4 +23,13 @@ export const recurringMeetingsApi = {
     api.patch<RecurringMeeting>(`/recurring-meetings/${id}`, data),
 
   delete: (id: string) => api.delete<void>(`/recurring-meetings/${id}`),
+
+  generateTasks: (id: string, lookaheadDays: number = 30) => {
+    const params = new URLSearchParams();
+    params.set('lookahead_days', lookaheadDays.toString());
+    return api.post<{ created_count: number; meetings: unknown[] }>(
+      `/recurring-meetings/${id}/generate-tasks?${params.toString()}`,
+      {}
+    );
+  },
 };

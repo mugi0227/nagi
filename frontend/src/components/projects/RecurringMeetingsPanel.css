@@ -73,6 +73,14 @@
   font-size: 0.8125rem;
 }
 
+.recurring-meetings-success {
+  color: #10b981;
+  font-size: 0.8125rem;
+  padding: 0.5rem;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: var(--radius-sm);
+}
+
 .recurring-create-btn {
   align-self: flex-start;
   display: inline-flex;
@@ -187,6 +195,22 @@
 .recurring-action-btn.danger {
   color: #ef4444;
   border-color: rgba(239, 68, 68, 0.3);
+}
+
+.recurring-action-btn.primary {
+  background: var(--primary);
+  color: #fff;
+  border-color: var(--primary);
+  font-weight: 600;
+}
+
+.recurring-action-btn.primary:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.recurring-action-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 @media (max-width: 720px) {

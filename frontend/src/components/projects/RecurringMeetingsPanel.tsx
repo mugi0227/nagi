@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { FaCalendarAlt, FaPause, FaPlay, FaPlus, FaTrash, FaPen } from 'react-icons/fa';
+import { FaCalendarAlt, FaPause, FaPlay, FaPlus, FaTrash, FaPen, FaCalendarPlus } from 'react-icons/fa';
 import { recurringMeetingsApi } from '../../api/recurringMeetings';
 import type { RecurringMeeting, RecurringMeetingCreate, RecurrenceFrequency } from '../../api/types';
 import './RecurringMeetingsPanel.css';
@@ -84,6 +84,9 @@ export function RecurringMeetingsPanel({ projectId }: RecurringMeetingsPanelProp
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<RecurringMeeting | null>(null);
   const [formState, setFormState] = useState(defaultFormState);
+  const [generatingMeetingId, setGeneratingMeetingId] = useState<string | null>(null);
+  const [lookaheadDays, setLookaheadDays] = useState(30);
+  const [generateSuccess, setGenerateSuccess] = useState<string | null>(null);
 
   const loadMeetings = async () => {
     setIsLoading(true);
@@ -216,18 +219,48 @@ export function RecurringMeetingsPanel({ projectId }: RecurringMeetingsPanelProp
     }
   };
 
+  const handleGenerateTasks = async (meetingId: string) => {
+    setGeneratingMeetingId(meetingId);
+    setError(null);
+    setGenerateSuccess(null);
+    try {
+      const result = await recurringMeetingsApi.generateTasks(meetingId, lookaheadDays);
+      setGenerateSuccess(`${result.created_count}件の会議を作成しました。`);
+      setTimeout(() => setGenerateSuccess(null), 5000);
+    } catch (err) {
+      console.error('Failed to generate tasks:', err);
+      setError('会議の作成に失敗しました。');
+    } finally {
+      setGeneratingMeetingId(null);
+    }
+  };
+
   return (
     <div className="detail-section recurring-meetings-section">
       <div className="section-header">
         <FaCalendarAlt className="section-icon" />
         <h3 className="section-title">定例会議</h3>
-        <button
-          type="button"
-          className="recurring-toggle-btn"
-          onClick={() => (isFormOpen ? handleCancel() : openCreateForm())}
-        >
-          {isFormOpen ? '閉じる' : '定例会議を追加'}
-        </button>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <label style={{ fontSize: '0.9rem' }}>作成期間:</label>
+          <select
+            value={lookaheadDays}
+            onChange={(e) => setLookaheadDays(parseInt(e.target.value, 10))}
+            style={{ padding: '4px 8px', borderRadius: '4px', border: '1px solid #ccc' }}
+          >
+            <option value={7}>7日先まで</option>
+            <option value={14}>14日先まで</option>
+            <option value={30}>30日先まで</option>
+            <option value={60}>60日先まで</option>
+            <option value={90}>90日先まで</option>
+          </select>
+          <button
+            type="button"
+            className="recurring-toggle-btn"
+            onClick={() => (isFormOpen ? handleCancel() : openCreateForm())}
+          >
+            {isFormOpen ? '閉じる' : '定例会議を追加'}
+          </button>
+        </div>
       </div>
 
       {isFormOpen && (
@@ -350,6 +383,7 @@ export function RecurringMeetingsPanel({ projectId }: RecurringMeetingsPanelProp
       )}
 
       {!isFormOpen && error && <p className="recurring-meetings-error">{error}</p>}
+      {generateSuccess && <p className="recurring-meetings-success">{generateSuccess}</p>}
       <div className="recurring-meetings-list">
         {isLoading ? (
           <p className="recurring-meetings-empty">読み込み中...</p>
@@ -370,6 +404,15 @@ export function RecurringMeetingsPanel({ projectId }: RecurringMeetingsPanelProp
                 <div className="recurring-meeting-next">次回: {meeting.nextLabel}</div>
               </div>
               <div className="recurring-meeting-actions">
+                <button
+                  type="button"
+                  className="recurring-action-btn primary"
+                  onClick={() => handleGenerateTasks(meeting.id)}
+                  disabled={generatingMeetingId === meeting.id}
+                >
+                  <FaCalendarPlus />
+                  {generatingMeetingId === meeting.id ? '作成中...' : '会議作成'}
+                </button>
                 <button
                   type="button"
                   className="recurring-action-btn"
