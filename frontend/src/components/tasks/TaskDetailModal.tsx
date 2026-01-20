@@ -29,6 +29,8 @@ import remarkGfm from 'remark-gfm';
 import { phasesApi } from '../../api/phases';
 import { getProject } from '../../api/projects';
 import type { Phase, Project, Task } from '../../api/types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/dateTime';
 import type { DraftCardData } from '../chat/DraftCard';
 import { AgendaList } from '../agenda';
 import { StepNumber } from '../common/StepNumber';
@@ -92,6 +94,7 @@ export function TaskDetailModal({
   onStatusChange,
   onCreateSubtask
 }: TaskDetailModalProps) {
+  const timezone = useTimezone();
   const [selectedSubtask, setSelectedSubtask] = useState<Task | null>(initialSubtask);
   const [localProgress, setLocalProgress] = useState<number>(task.progress ?? 0);
   const [localStatus, setLocalStatus] = useState<string>(task.status);
@@ -199,33 +202,30 @@ export function TaskDetailModal({
     return labels[status] || status;
   };
 
-  const formatDate = (dateStr?: string) => {
+  const formatDateValue = (dateStr?: string) => {
     if (!dateStr) return null;
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('ja-JP', {
+    return formatDate(dateStr, {
       year: 'numeric',
       month: 'long',
       day: 'numeric',
       hour: '2-digit',
       minute: '2-digit',
-    });
+    }, timezone);
   };
 
   const formatMeetingTime = (start?: string, end?: string) => {
     if (!start || !end) return null;
-    const startDate = new Date(start);
-    const endDate = new Date(end);
-    const startLabel = startDate.toLocaleString('ja-JP', {
+    const startLabel = formatDate(start, {
       month: 'numeric',
       day: 'numeric',
       weekday: 'short',
       hour: '2-digit',
       minute: '2-digit',
-    });
-    const endLabel = endDate.toLocaleTimeString('ja-JP', {
+    }, timezone);
+    const endLabel = formatDate(end, {
       hour: '2-digit',
       minute: '2-digit',
-    });
+    }, timezone);
     return `${startLabel} - ${endLabel}`;
   };
 
@@ -493,8 +493,8 @@ export function TaskDetailModal({
 
               <div className="detail-section footer-meta">
 
-                <p>作成: {task.created_by === 'AGENT' ? 'AI秘書' : '自分'} • {formatDate(task.created_at)}</p>
-                <p>更新: {formatDate(task.updated_at)}</p>
+                <p>作成: {task.created_by === 'AGENT' ? 'AI秘書' : '自分'} • {formatDateValue(task.created_at)}</p>
+                <p>更新: {formatDateValue(task.updated_at)}</p>
               </div>
             </div>
 
@@ -605,13 +605,13 @@ export function TaskDetailModal({
                     {task.due_date && (
                       <div className="sidebar-meta-item">
                         <span className="label">期限</span>
-                        <span className="value"><HiOutlineCalendar /> {formatDate(task.due_date)}</span>
+                        <span className="value"><HiOutlineCalendar /> {formatDateValue(task.due_date)}</span>
                       </div>
                     )}
                     {task.start_not_before && (
                       <div className="sidebar-meta-item">
                         <span className="label">着手可能日</span>
-                        <span className="value"><HiOutlineCalendar /> {formatDate(task.start_not_before)}</span>
+                        <span className="value"><HiOutlineCalendar /> {formatDateValue(task.start_not_before)}</span>
                       </div>
                     )}
                   </div>

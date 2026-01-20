@@ -1,3 +1,4 @@
+import { type DateTime } from 'luxon';
 import { useMemo, useState } from 'react';
 import { FaCalendarAlt, FaCheckCircle, FaCircle } from 'react-icons/fa';
 import { FaBatteryFull, FaBatteryQuarter, FaClock, FaFire, FaHourglass, FaLeaf, FaListCheck, FaLock, FaLockOpen, FaPen, FaTrash, FaUser } from 'react-icons/fa6';
@@ -7,6 +8,8 @@ import { AssigneeSelect } from '../common/AssigneeSelect';
 import { StepNumber } from '../common/StepNumber';
 import './KanbanCard.css';
 import { MeetingBadge } from './MeetingBadge';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, toDateTime } from '../../utils/dateTime';
 
 interface KanbanCardProps {
   task: Task;
@@ -22,6 +25,10 @@ interface KanbanCardProps {
   onBreakdown?: (id: string, instruction?: string) => void;
   isBreakdownPending?: boolean;
   onUpdateTask?: (id: string, status: TaskStatus) => void;
+  // Selection mode
+  selectionMode?: boolean;
+  isSelected?: boolean;
+  onSelect?: (taskId: string) => void;
 }
 
 export function KanbanCard({
@@ -38,7 +45,11 @@ export function KanbanCard({
   onBreakdown: _onBreakdown,
   isBreakdownPending: _isBreakdownPending = false,
   onUpdateTask,
+  selectionMode = false,
+  isSelected = false,
+  onSelect,
 }: KanbanCardProps) {
+  const timezone = useTimezone();
   const getPriorityIcon = (level: string) => {
     switch (level) {
       case 'HIGH':
@@ -56,16 +67,30 @@ export function KanbanCard({
     return level === 'HIGH' ? <FaBatteryFull /> : <FaBatteryQuarter />;
   };
 
-  const formatStartNotBefore = (value?: string | Date | null) => {
+  const formatStartNotBefore = (value?: string | DateTime | null) => {
     if (!value) return null;
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) return null;
-    return date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
+    if (typeof value === 'string') {
+      return formatDate(value, { month: 'numeric', day: 'numeric' }, timezone);
+    }
+    return value.isValid
+      ? value.setLocale('ja-JP').toLocaleString({ month: 'numeric', day: 'numeric' })
+      : null;
   };
 
   const handleCardClick = () => {
+    if (selectionMode && onSelect) {
+      onSelect(task.id);
+      return;
+    }
     if (onClick) {
       onClick(task);
+    }
+  };
+
+  const handleCheckboxClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (onSelect) {
+      onSelect(task.id);
     }
   };
 
@@ -84,11 +109,11 @@ export function KanbanCard({
   }, [allTasks]);
 
   const effectiveStartNotBefore = useMemo(() => {
-    const dates: Date[] = [];
+    const dateMillis: number[] = [];
     if (task.start_not_before) {
-      const parsed = new Date(task.start_not_before);
-      if (!Number.isNaN(parsed.getTime())) {
-        dates.push(parsed);
+      const parsed = toDateTime(task.start_not_before, timezone).startOf('day');
+      if (parsed.isValid) {
+        dateMillis.push(parsed.toMillis());
       }
     }
     let parentId = task.parent_id;
@@ -98,16 +123,16 @@ export function KanbanCard({
       const parent = taskLookup.get(parentId);
       if (!parent) break;
       if (parent.start_not_before) {
-        const parsed = new Date(parent.start_not_before);
-        if (!Number.isNaN(parsed.getTime())) {
-          dates.push(parsed);
+        const parsed = toDateTime(parent.start_not_before, timezone).startOf('day');
+        if (parsed.isValid) {
+          dateMillis.push(parsed.toMillis());
         }
       }
       parentId = parent.parent_id;
     }
-    if (dates.length === 0) return null;
-    return new Date(Math.max(...dates.map(date => date.getTime())));
-  }, [task.start_not_before, task.parent_id, taskLookup]);
+    if (dateMillis.length === 0) return null;
+    return toDateTime(new Date(Math.max(...dateMillis)), timezone);
+  }, [task.start_not_before, task.parent_id, taskLookup, timezone]);
 
   const handleBreakdown = () => {
     const draftCard: DraftCardData = {
@@ -155,16 +180,26 @@ export function KanbanCard({
 
   return (
     <div
-      className={`kanban-card ${dependencyStatus.isBlocked ? 'blocked' : ''}`}
+      className={`kanban-card ${dependencyStatus.isBlocked ? 'blocked' : ''} ${isSelected ? 'selected' : ''} ${selectionMode ? 'selection-mode' : ''}`}
       draggable
       onClick={handleCardClick}
-      style={{ cursor: onClick ? 'pointer' : 'default' }}
+      style={{ cursor: onClick || selectionMode ? 'pointer' : 'default' }}
       title={
         dependencyStatus.isBlocked
           ? `ブロック中: ${dependencyStatus.blockingTasks.map(t => t.title).join(', ')}を先に完了してください`
           : undefined
       }
     >
+      {selectionMode && (
+        <div className="card-selection-checkbox" onClick={handleCheckboxClick}>
+          <input
+            type="checkbox"
+            checked={isSelected}
+            onChange={() => {}}
+            onClick={(e) => e.stopPropagation()}
+          />
+        </div>
+      )}
       <div className="card-header-row">
         {dependencyStatus.isBlocked ? (
           <div className="dependency-indicator locked" title="依存タスクが未完了">
@@ -234,7 +269,7 @@ export function KanbanCard({
         {task.due_date && (
           <span className="meta-badge due-date" title="期限">
             <FaClock />
-            <span>{new Date(task.due_date).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}期限</span>
+            <span>{formatDate(task.due_date, { month: 'numeric', day: 'numeric' }, timezone)}期限</span>
           </span>
         )}
         {!task.is_fixed_time && effectiveStartNotBefore && (

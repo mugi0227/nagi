@@ -1,21 +1,15 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useCallback, useEffect, useState } from 'react';
-import { milestonesApi } from '../../api/milestones';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { FaCheckSquare, FaRegSquare } from 'react-icons/fa';
 import { phasesApi } from '../../api/phases';
-import { projectsApi } from '../../api/projects';
 import { tasksApi } from '../../api/tasks';
 import type {
-  Milestone,
-  MilestoneCreate,
-  MilestoneUpdate,
-  PhaseCreate,
-  PhaseUpdate,
   PhaseWithTaskCount,
   Task,
   TaskStatus,
 } from '../../api/types';
-import { PhaseList } from '../phases/PhaseList';
 import { KanbanBoard } from '../tasks/KanbanBoard';
+import { PhaseExplorerSidebar } from './PhaseExplorerSidebar';
 import './ProjectTasksView.css';
 
 interface ProjectTasksViewProps {
@@ -46,13 +40,16 @@ export function ProjectTasksView({
   const queryClient = useQueryClient();
   const [phases, setPhases] = useState<PhaseWithTaskCount[]>([]);
   const [isPhasesLoading, setIsPhasesLoading] = useState(false);
-  const [showPhaseManager, setShowPhaseManager] = useState(false);
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [isMilestonesLoading, setIsMilestonesLoading] = useState(false);
-  const [isPlanningPhases, setIsPlanningPhases] = useState(false);
-  const [planningPhaseId, setPlanningPhaseId] = useState<string | null>(null);
   const [breakdownTaskId, setBreakdownTaskId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'default' | 'dueDate'>('default');
+
+  // Phase explorer state
+  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null); // null = unassigned
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [isDraggingTasks, setIsDraggingTasks] = useState(false);
+  const [dragOverPhaseId, setDragOverPhaseId] = useState<string | null>(null);
+  const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null); // For single task drag
 
   const fetchPhases = useCallback(async () => {
     setIsPhasesLoading(true);
@@ -66,83 +63,18 @@ export function ProjectTasksView({
     }
   }, [projectId]);
 
-  const fetchMilestones = useCallback(async () => {
-    setIsMilestonesLoading(true);
-    try {
-      const data = await milestonesApi.listByProject(projectId);
-      setMilestones(data);
-    } catch (error) {
-      console.error('Failed to fetch milestones:', error);
-    } finally {
-      setIsMilestonesLoading(false);
-    }
-  }, [projectId]);
-
   useEffect(() => {
     fetchPhases();
-    fetchMilestones();
-  }, [fetchPhases, fetchMilestones]);
+  }, [fetchPhases]);
 
-  const handleCreatePhase = async (phase: PhaseCreate) => {
-    await phasesApi.create(phase);
-    await fetchPhases();
-  };
-
-  const handleUpdatePhase = async (id: string, phase: PhaseUpdate) => {
-    await phasesApi.update(id, phase);
-    await fetchPhases();
-  };
-
-  const handleDeletePhase = async (id: string) => {
-    await phasesApi.delete(id);
-    await fetchPhases();
-  };
-
-  const handleCreateMilestone = async (milestone: MilestoneCreate) => {
-    await milestonesApi.create(milestone);
-    await fetchMilestones();
-  };
-
-  const handleUpdateMilestone = async (id: string, milestone: MilestoneUpdate) => {
-    await milestonesApi.update(id, milestone);
-    await fetchMilestones();
-  };
-
-  const handleDeleteMilestone = async (id: string) => {
-    await milestonesApi.delete(id);
-    await fetchMilestones();
-  };
-
-  const handleGeneratePhases = async (instruction?: string) => {
-    setIsPlanningPhases(true);
-    try {
-      await projectsApi.breakdownPhases(projectId, {
-        create_phases: true,
-        create_milestones: true,
-        instruction,
-      });
-      await fetchPhases();
-      await fetchMilestones();
-    } catch (error) {
-      console.error('Failed to generate phases:', error);
-      alert('フェーズの生成に失敗しました。');
-    } finally {
-      setIsPlanningPhases(false);
+  // Filter tasks by selected phase
+  const filteredTasks = useMemo(() => {
+    if (selectedPhaseId === null) {
+      // Unassigned tasks
+      return tasks.filter(t => !t.phase_id);
     }
-  };
-
-  const handleGeneratePhaseTasks = async (phaseId: string, instruction?: string) => {
-    setPlanningPhaseId(phaseId);
-    try {
-      await phasesApi.breakdownTasks(phaseId, { create_tasks: true, instruction });
-      onRefreshTasks?.();
-    } catch (error) {
-      console.error('Failed to generate phase tasks:', error);
-      alert('このフェーズのタスク分解に失敗しました。');
-    } finally {
-      setPlanningPhaseId(null);
-    }
-  };
+    return tasks.filter(t => t.phase_id === selectedPhaseId);
+  }, [tasks, selectedPhaseId]);
 
   const breakdownMutation = useMutation({
     mutationFn: ({ id, instruction }: { id: string; instruction?: string }) =>
@@ -170,67 +102,167 @@ export function ProjectTasksView({
     breakdownMutation.mutate({ id, instruction });
   };
 
+  // Selection handlers
+  const handleSelectTask = (taskId: string) => {
+    setSelectedTaskIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(taskId)) {
+        newSet.delete(taskId);
+      } else {
+        newSet.add(taskId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleToggleSelectionMode = () => {
+    if (selectionMode) {
+      // Exiting selection mode - clear selections
+      setSelectedTaskIds(new Set());
+    }
+    setSelectionMode(!selectionMode);
+  };
+
+  const handleDragSelectedStart = () => {
+    if (selectedTaskIds.size > 0) {
+      setIsDraggingTasks(true);
+    }
+  };
+
+  const handleMoveTasksToPhase = async (targetPhaseId: string | null) => {
+    if (selectedTaskIds.size === 0) return;
+
+    try {
+      // Move all selected tasks to target phase
+      await Promise.all(
+        Array.from(selectedTaskIds).map(taskId =>
+          tasksApi.update(taskId, { phase_id: targetPhaseId ?? undefined })
+        )
+      );
+
+      // Refresh data
+      onRefreshTasks?.();
+      await fetchPhases();
+
+      // Clear selection
+      setSelectedTaskIds(new Set());
+      setIsDraggingTasks(false);
+    } catch (error) {
+      console.error('Failed to move tasks:', error);
+      alert('タスクの移動に失敗しました。');
+    }
+  };
+
+  // Single task drag to phase
+  const handleMoveSingleTaskToPhase = async (taskId: string, targetPhaseId: string | null) => {
+    try {
+      await tasksApi.update(taskId, { phase_id: targetPhaseId ?? undefined });
+
+      // Refresh data
+      onRefreshTasks?.();
+      await fetchPhases();
+
+      // Clear dragging state
+      setDraggingTaskId(null);
+    } catch (error) {
+      console.error('Failed to move task:', error);
+      alert('タスクの移動に失敗しました。');
+    }
+  };
+
+  const handleSingleDragStart = (taskId: string) => {
+    setDraggingTaskId(taskId);
+  };
+
+  const handleDragOverPhase = (phaseId: string | null) => {
+    setDragOverPhaseId(phaseId);
+  };
+
+  // Clear dragging state when drag ends
+  useEffect(() => {
+    const handleDragEnd = () => {
+      setIsDraggingTasks(false);
+      setDragOverPhaseId(null);
+      setDraggingTaskId(null);
+    };
+
+    window.addEventListener('dragend', handleDragEnd);
+    return () => window.removeEventListener('dragend', handleDragEnd);
+  }, []);
+
   return (
-    <div className="project-tasks-view">
-      {/* View Controls */}
-      <div className="view-controls">
-        <select
-          className="sort-select"
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as 'default' | 'dueDate')}
-          style={{ marginRight: '1rem', padding: '0.5rem', borderRadius: '6px', border: '1px solid #ccc' }}
-        >
-          <option value="default">デフォルト順</option>
-          <option value="dueDate">期限が近い順</option>
-        </select>
-        <button
-          className="phase-manager-btn"
-          onClick={() => setShowPhaseManager(!showPhaseManager)}
-          disabled={isPhasesLoading}
-        >
-          {isPhasesLoading
-            ? '読み込み中...'
-            : (showPhaseManager ? 'フェーズ管理を閉じる' : 'フェーズ管理を開く')}
-        </button>
-      </div>
+    <div className="project-tasks-view-container">
+      {/* Left Sidebar - Phase Explorer */}
+      <PhaseExplorerSidebar
+        phases={phases}
+        tasks={tasks}
+        selectedPhaseId={selectedPhaseId}
+        onSelectPhase={setSelectedPhaseId}
+        selectedTaskIds={selectedTaskIds}
+        onMoveTasksToPhase={handleMoveTasksToPhase}
+        isDraggingTasks={isDraggingTasks}
+        onDragOverPhase={handleDragOverPhase}
+        dragOverPhaseId={dragOverPhaseId}
+        draggingTaskId={draggingTaskId}
+        onMoveSingleTaskToPhase={handleMoveSingleTaskToPhase}
+      />
 
-      {/* Phase Manager */}
-      {showPhaseManager && (
-        <div className="phase-manager-section">
-          <PhaseList
-            phases={phases}
-            milestones={milestones}
-            isMilestonesLoading={isMilestonesLoading}
-            onCreatePhase={handleCreatePhase}
-            onUpdatePhase={handleUpdatePhase}
-            onDeletePhase={handleDeletePhase}
-            onCreateMilestone={handleCreateMilestone}
-            onUpdateMilestone={handleUpdateMilestone}
-            onDeleteMilestone={handleDeleteMilestone}
-            onGeneratePhases={handleGeneratePhases}
-            onGeneratePhaseTasks={handleGeneratePhaseTasks}
-            isPlanningPhases={isPlanningPhases}
-            planningPhaseId={planningPhaseId}
-            projectId={projectId}
-          />
+      {/* Main Content - Kanban Board */}
+      <div className="project-tasks-main">
+        {/* Toolbar */}
+        <div className="project-tasks-toolbar">
+          <div className="toolbar-left">
+            <button
+              className={`selection-mode-btn ${selectionMode ? 'active' : ''}`}
+              onClick={handleToggleSelectionMode}
+              title={selectionMode ? '選択モードを終了' : '選択モードを開始'}
+            >
+              {selectionMode ? <FaCheckSquare /> : <FaRegSquare />}
+              <span>選択モード</span>
+            </button>
+            {selectionMode && selectedTaskIds.size > 0 && (
+              <span className="selection-count-badge">
+                {selectedTaskIds.size}件選択中
+              </span>
+            )}
+          </div>
+          <div className="toolbar-right">
+            <select
+              className="sort-select"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as 'default' | 'dueDate')}
+            >
+              <option value="default">デフォルト順</option>
+              <option value="dueDate">期限が近い順</option>
+            </select>
+          </div>
         </div>
-      )}
 
-      {/* Task View */}
-      <div className="task-view-container">
-        <KanbanBoard
-          tasks={tasks}
-          onUpdateTask={onUpdateTask}
-          onTaskClick={onTaskClick}
-          onDeleteTask={onDeleteTask}
-          assigneeByTaskId={assigneeByTaskId}
-          assignedMemberIdsByTaskId={assignedMemberIdsByTaskId}
-          memberOptions={memberOptions}
-          onAssignMultiple={onAssignMultiple}
-          onBreakdownTask={handleBreakdownTask}
-          breakdownTaskId={breakdownTaskId}
-          sortBy={sortBy}
-        />
+        {/* Loading state */}
+        {isPhasesLoading ? (
+          <div className="loading-message">読み込み中...</div>
+        ) : (
+          <div className="kanban-wrapper">
+            <KanbanBoard
+              tasks={filteredTasks}
+              onUpdateTask={onUpdateTask}
+              onTaskClick={onTaskClick}
+              onDeleteTask={onDeleteTask}
+              assigneeByTaskId={assigneeByTaskId}
+              assignedMemberIdsByTaskId={assignedMemberIdsByTaskId}
+              memberOptions={memberOptions}
+              onAssignMultiple={onAssignMultiple}
+              onBreakdownTask={handleBreakdownTask}
+              breakdownTaskId={breakdownTaskId}
+              sortBy={sortBy}
+              selectionMode={selectionMode}
+              selectedTaskIds={selectedTaskIds}
+              onSelectTask={handleSelectTask}
+              onDragSelectedStart={handleDragSelectedStart}
+              onSingleDragStart={handleSingleDragStart}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { FaTrophy, FaCalendar, FaCheckCircle, FaChartLine } from 'react-icons/fa';
 import { tasksApi } from '../api/tasks';
 import type { Task } from '../api/types';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatDate, nowInTimezone, toDateTime } from '../utils/dateTime';
 import './AchievementPage.css';
 
 type Period = 'H1' | 'H2';
@@ -16,8 +18,10 @@ interface PeriodOption {
 }
 
 export function AchievementPage() {
-  const currentYear = new Date().getFullYear();
-  const currentMonth = new Date().getMonth() + 1;
+  const timezone = useTimezone();
+  const now = nowInTimezone(timezone);
+  const currentYear = now.year;
+  const currentMonth = now.month;
   const defaultPeriod: Period = currentMonth >= 4 && currentMonth <= 9 ? 'H1' : 'H2';
 
   const [selectedYear, setSelectedYear] = useState(currentYear);
@@ -54,10 +58,11 @@ export function AchievementPage() {
 
   const completedTasks = allTasks.filter((task: Task) => {
     if (task.status !== 'DONE' || !task.updated_at) return false;
-    const taskDate = new Date(task.updated_at);
-    const start = new Date(currentOption?.startDate || '');
-    const end = new Date(currentOption?.endDate || '');
-    return taskDate >= start && taskDate <= end;
+    const taskDate = toDateTime(task.updated_at, timezone);
+    const start = toDateTime(currentOption?.startDate || '', timezone);
+    const end = toDateTime(currentOption?.endDate || '', timezone).endOf('day');
+    if (!taskDate.isValid || !start.isValid || !end.isValid) return false;
+    return taskDate.toMillis() >= start.toMillis() && taskDate.toMillis() <= end.toMillis();
   });
 
   // Group by project
@@ -152,7 +157,7 @@ export function AchievementPage() {
                             <div className="achievement-desc">{task.description}</div>
                           )}
                           <div className="achievement-meta">
-                            <span>完了日: {new Date(task.updated_at).toLocaleDateString('ja-JP')}</span>
+                            <span>完了日: {formatDate(task.updated_at, { year: 'numeric', month: 'numeric', day: 'numeric' }, timezone)}</span>
                           </div>
                         </div>
                       </li>

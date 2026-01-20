@@ -13,6 +13,8 @@ import type {
   TaskAssignmentProposal,
   TaskCreate,
 } from '../api/types';
+import { useTimezone } from './useTimezone';
+import { nowInTimezone, toDateTime } from '../utils/dateTime';
 import { userStorage } from '../utils/userStorage';
 
 export interface ToolCall {
@@ -47,6 +49,7 @@ const SESSION_STORAGE_KEY = 'chat_session_id';
 
 export function useChat() {
   const queryClient = useQueryClient();
+  const timezone = useTimezone();
   const [messages, setMessages] = useState<Message[]>([]);
   const [sessionId, setSessionIdState] = useState<string | undefined>(() => {
     return userStorage.get(SESSION_STORAGE_KEY) || undefined;
@@ -76,7 +79,7 @@ export function useChat() {
           id: crypto.randomUUID(),
           role: 'assistant',
           content: response.assistant_message,
-          timestamp: new Date(),
+          timestamp: nowInTimezone(timezone).toJSDate(),
         },
       ]);
 
@@ -106,14 +109,16 @@ export function useChat() {
           id: crypto.randomUUID(),
           role: item.role === 'assistant' ? 'assistant' : 'user',
           content: item.content,
-          timestamp: item.created_at ? new Date(item.created_at) : new Date(),
+          timestamp: item.created_at
+            ? toDateTime(item.created_at, timezone).toJSDate()
+            : nowInTimezone(timezone).toJSDate(),
         }));
       setMessages(mapped);
       setSessionId(targetSessionId);
     } finally {
       setIsLoadingHistory(false);
     }
-  }, [setSessionId]);
+  }, [setSessionId, timezone]);
 
   const initialSessionId = useRef(sessionId);
 
@@ -184,7 +189,7 @@ export function useChat() {
         id: crypto.randomUUID(),
         role: 'user',
         content: text,
-        timestamp: new Date(),
+        timestamp: nowInTimezone(timezone).toJSDate(),
         imageUrl: imageBase64,
       };
       setMessages((prev) => [...prev, userMessage]);
@@ -194,7 +199,7 @@ export function useChat() {
         id: assistantMessageId,
         role: 'assistant',
         content: '',
-        timestamp: new Date(),
+        timestamp: nowInTimezone(timezone).toJSDate(),
         toolCalls: [],
         proposals: [],
         isStreaming: true,
@@ -374,7 +379,7 @@ export function useChat() {
         abortControllerRef.current = null;
       }
     },
-    [queryClient, sessionId, setSessionId]
+    [queryClient, sessionId, setSessionId, timezone]
   );
 
   const sendMessage = useCallback(
@@ -383,7 +388,7 @@ export function useChat() {
         id: crypto.randomUUID(),
         role: 'user',
         content: text,
-        timestamp: new Date(),
+        timestamp: nowInTimezone(timezone).toJSDate(),
         imageUrl,
       };
       setMessages((prev) => [...prev, userMessage]);
@@ -395,7 +400,7 @@ export function useChat() {
         image_url: imageUrl,
       });
     },
-    [mutation, sessionId]
+    [mutation, sessionId, timezone]
   );
 
   const clearChat = useCallback(() => {

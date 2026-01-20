@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { useProjects } from '../../hooks/useProjects';
 import { phasesApi } from '../../api/phases';
 import type { Task, TaskCreate, TaskUpdate, Priority, EnergyLevel, PhaseWithTaskCount } from '../../api/types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { toDateTimeLocalValue, toUtcIsoString } from '../../utils/dateTime';
 import './TaskFormModal.css';
 
 interface TaskFormModalProps {
@@ -15,29 +17,9 @@ interface TaskFormModalProps {
   isSubmitting?: boolean;
 }
 
-// Convert ISO date string to datetime-local format (YYYY-MM-DDTHH:MM) in local timezone
-function toDatetimeLocal(isoString: string | null | undefined): string {
-  if (!isoString) return '';
-  const date = new Date(isoString);
-  // Get local time components
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  const hours = String(date.getHours()).padStart(2, '0');
-  const minutes = String(date.getMinutes()).padStart(2, '0');
-  return `${year}-${month}-${day}T${hours}:${minutes}`;
-}
-
-// Convert datetime-local format to UTC ISO string for backend
-function toISOStringUTC(datetimeLocal: string | undefined): string | undefined {
-  if (!datetimeLocal) return undefined;
-  // datetime-local is in user's local timezone, convert to UTC ISO
-  const date = new Date(datetimeLocal);
-  return date.toISOString(); // Converts to UTC automatically
-}
-
 export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSubmit, isSubmitting }: TaskFormModalProps) {
   const { projects } = useProjects();
+  const timezone = useTimezone();
   const isEditMode = !!task;
   const [phaseOptions, setPhaseOptions] = useState<PhaseWithTaskCount[]>([]);
   const [isPhaseLoading, setIsPhaseLoading] = useState(false);
@@ -48,8 +30,8 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
     importance: task?.importance || initialData?.importance || 'MEDIUM' as Priority,
     urgency: task?.urgency || initialData?.urgency || 'MEDIUM' as Priority,
     estimated_minutes: task?.estimated_minutes?.toString() || initialData?.estimated_minutes?.toString() || '',
-    due_date: toDatetimeLocal(task?.due_date) || toDatetimeLocal(initialData?.due_date),
-    start_not_before: toDatetimeLocal(task?.start_not_before) || toDatetimeLocal(initialData?.start_not_before),
+    due_date: toDateTimeLocalValue(task?.due_date, timezone) || toDateTimeLocalValue(initialData?.due_date, timezone),
+    start_not_before: toDateTimeLocalValue(task?.start_not_before, timezone) || toDateTimeLocalValue(initialData?.start_not_before, timezone),
     project_id: task?.project_id || initialData?.project_id || '',
     phase_id: task?.phase_id || initialData?.phase_id || '',
     dependency_ids: task?.dependency_ids || initialData?.dependency_ids || [] as string[],
@@ -57,8 +39,8 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
     // Meeting fields
     is_fixed_time: task?.is_fixed_time || false,
     is_all_day: task?.is_all_day || false,
-    start_time: toDatetimeLocal(task?.start_time),
-    end_time: toDatetimeLocal(task?.end_time),
+    start_time: toDateTimeLocalValue(task?.start_time, timezone),
+    end_time: toDateTimeLocalValue(task?.end_time, timezone),
     location: task?.location || '',
     attendees: task?.attendees?.join(', ') || '',
     meeting_notes: task?.meeting_notes || '',
@@ -117,15 +99,15 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
       urgency: formData.urgency,
       energy_level: formData.energy_level,
       estimated_minutes: formData.estimated_minutes ? parseInt(formData.estimated_minutes) : undefined,
-      due_date: toISOStringUTC(formData.due_date),
-      start_not_before: formData.is_fixed_time ? undefined : toISOStringUTC(formData.start_not_before),
+      due_date: toUtcIsoString(formData.due_date, timezone),
+      start_not_before: formData.is_fixed_time ? undefined : toUtcIsoString(formData.start_not_before, timezone),
       project_id: formData.project_id || undefined,
       phase_id: formData.phase_id || undefined,
       dependency_ids: formData.dependency_ids.length > 0 ? formData.dependency_ids : undefined,
       // Meeting fields (only include if is_fixed_time is true)
       ...(formData.is_fixed_time && {
-        start_time: formData.is_all_day ? undefined : toISOStringUTC(formData.start_time),
-        end_time: formData.is_all_day ? undefined : toISOStringUTC(formData.end_time),
+        start_time: formData.is_all_day ? undefined : toUtcIsoString(formData.start_time, timezone),
+        end_time: formData.is_all_day ? undefined : toUtcIsoString(formData.end_time, timezone),
         is_fixed_time: true,
         is_all_day: formData.is_all_day,
         location: formData.location || undefined,

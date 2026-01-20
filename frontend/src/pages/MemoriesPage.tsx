@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { memoriesApi } from '../api/memories';
 import { projectsApi } from '../api/projects';
 import type { Memory, MemoryScope, MemoryType, Project, MemorySearchResult } from '../api/types';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatDate as formatDateValue } from '../utils/dateTime';
 import './MemoriesPage.css';
 
 type MemoryListItem = Memory & { relevance_score?: number };
@@ -24,11 +26,13 @@ const typeOptions: Array<{ value: 'all' | MemoryType; label: string }> = [
   { value: 'RULE', label: 'Rule' },
 ];
 
-const formatDate = (value?: string) => {
+const formatDate = (value: string | undefined, timezone: string) => {
   if (!value) return '-';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  return formatDateValue(
+    value,
+    { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' },
+    timezone,
+  );
 };
 
 const formatScope = (value: MemoryScope) => {
@@ -39,6 +43,7 @@ const formatScope = (value: MemoryScope) => {
 };
 
 export function MemoriesPage() {
+  const timezone = useTimezone();
   const [memories, setMemories] = useState<MemoryListItem[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -252,7 +257,7 @@ export function MemoriesPage() {
                   )}
                 </div>
                 <div className="memory-header-actions">
-                  <span className="memory-date">{formatDate(memory.created_at)}</span>
+                  <span className="memory-date">{formatDate(memory.created_at, timezone)}</span>
                   <button
                     className="memory-delete-btn"
                     type="button"

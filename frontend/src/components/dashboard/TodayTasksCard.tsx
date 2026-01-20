@@ -11,6 +11,8 @@ import { tasksApi } from '../../api/tasks';
 import type { Task, TaskCreate, TaskUpdate } from '../../api/types';
 import { sortTasksByStepNumber } from '../../utils/taskSort';
 import { userStorage } from '../../utils/userStorage';
+import { useTimezone } from '../../hooks/useTimezone';
+import { toDateKey, todayInTimezone } from '../../utils/dateTime';
 import './TodayTasksCard.css';
 
 const LOCK_STORAGE_KEY = 'todayTasksLock';
@@ -63,6 +65,7 @@ type TodayTaskSnapshot = {
 };
 
 export function TodayTasksCard() {
+  const timezone = useTimezone();
   const { data, isLoading, error } = useTodayTasks();
   const { tasks: allTasks, updateTask, createTask, isCreating, isUpdating, refetch } = useTasks();
   const { getCapacityForDate } = useCapacitySettings();
@@ -96,7 +99,7 @@ export function TodayTasksCard() {
     enabled: !!(selectedTask || openedParentTask),
   });
 
-  const dateLabel = data?.today || new Date().toISOString().slice(0, 10);
+  const dateLabel = data?.today || toDateKey(todayInTimezone(timezone).toJSDate(), timezone);
   const lockInfo = lockInfoState?.date === dateLabel && Array.isArray(lockInfoState.taskIds)
     ? lockInfoState
     : null;
@@ -205,7 +208,7 @@ export function TodayTasksCard() {
   const allocatedMinutes = data?.total_estimated_minutes ?? 0;
   const displayCapacityMinutes = Math.max(
     0,
-    Math.round(getCapacityForDate(new Date()) * 60)
+    Math.round(getCapacityForDate(todayInTimezone(timezone).toJSDate()) * 60)
   );
 
   const allocationMap = useMemo(() => {

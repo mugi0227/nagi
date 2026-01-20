@@ -7,6 +7,8 @@ import { useTasks } from '../../hooks/useTasks';
 import { useCapacitySettings } from '../../hooks/useCapacitySettings';
 import { tasksApi } from '../../api/tasks';
 import type { Task } from '../../api/types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, toDateKey, toDateTime, todayInTimezone } from '../../utils/dateTime';
 import './DailyBriefingCard.css';
 
 const TEXT = {
@@ -37,22 +39,18 @@ const formatMinutes = (minutes: number) => {
   return `${mins}分`;
 };
 
-const getDateLabel = () => {
-  const today = new Date();
-  return today.toLocaleDateString('ja-JP', {
-    month: 'long',
-    day: 'numeric',
-    weekday: 'short',
-  });
+const getDateLabel = (timezone: string) => {
+  return formatDate(
+    todayInTimezone(timezone).toJSDate(),
+    { month: 'long', day: 'numeric', weekday: 'short' },
+    timezone,
+  );
 };
 
-const getYesterdayRange = () => {
-  const yesterday = new Date();
-  yesterday.setDate(yesterday.getDate() - 1);
-  const start = new Date(yesterday);
-  start.setHours(0, 0, 0, 0);
-  const end = new Date(yesterday);
-  end.setHours(23, 59, 59, 999);
+const getYesterdayRange = (timezone: string) => {
+  const yesterday = todayInTimezone(timezone).minus({ days: 1 });
+  const start = yesterday.startOf('day');
+  const end = yesterday.endOf('day');
   return { start, end };
 };
 
@@ -62,13 +60,17 @@ type DailyBriefingCardProps = {
 };
 
 export function DailyBriefingCard({ onFocusTaskClick, onFinish }: DailyBriefingCardProps) {
+  const timezone = useTimezone();
   const [step, setStep] = useState(0);
   const { data: top3Response, isLoading: top3Loading } = useTop3();
   const { data: todayResponse, isLoading: todayLoading } = useTodayTasks();
   const { tasks, isLoading: tasksLoading } = useTasks();
   const { capacityHours, bufferHours, capacityByWeekday } = useCapacitySettings();
 
-  const todayKey = useMemo(() => new Date().toISOString().slice(0, 10), []);
+  const todayKey = useMemo(
+    () => toDateKey(todayInTimezone(timezone).toJSDate(), timezone),
+    [timezone],
+  );
 
   const { data: scheduleResponse } = useQuery({
     queryKey: ['schedule', 'daily-briefing', todayKey, capacityHours, bufferHours, capacityByWeekday],
@@ -88,16 +90,20 @@ export function DailyBriefingCard({ onFocusTaskClick, onFinish }: DailyBriefingC
     if (!tasks.length) {
       return { count: 0, totalMinutes: 0, highlights: [] as Task[] };
     }
-    const { start, end } = getYesterdayRange();
+    const { start, end } = getYesterdayRange(timezone);
     const doneYesterday = tasks.filter(task => {
       if (task.status !== 'DONE' || !task.updated_at) return false;
-      const updated = new Date(task.updated_at);
-      return updated >= start && updated <= end;
+      const updated = toDateTime(task.updated_at, timezone);
+      return (
+        updated.isValid &&
+        updated.toMillis() >= start.toMillis() &&
+        updated.toMillis() <= end.toMillis()
+      );
     });
     const totalMinutes = doneYesterday.reduce((sum, task) => sum + (task.estimated_minutes || 0), 0);
     const highlights = doneYesterday.slice(0, 3);
     return { count: doneYesterday.length, totalMinutes, highlights };
-  }, [tasks]);
+  }, [tasks, timezone]);
 
   const capacityMinutes = todayResponse?.capacity_minutes ?? 0;
   const allocatedMinutes = todayResponse?.total_estimated_minutes ?? 0;
@@ -141,7 +147,7 @@ export function DailyBriefingCard({ onFocusTaskClick, onFinish }: DailyBriefingC
       <div className="briefing-header">
         <div>
           <div className="briefing-title">{TEXT.title}</div>
-          <div className="briefing-date">{getDateLabel()}</div>
+          <div className="briefing-date">{getDateLabel(timezone)}</div>
         </div>
         <div className="briefing-step">
           {String(step + 1).padStart(2, '0')} / 04
@@ -231,7 +237,13 @@ export function DailyBriefingCard({ onFocusTaskClick, onFinish }: DailyBriefingC
                 </button>
                 <div className="focus-meta">
                   {formatMinutes(focusTask.estimated_minutes || 0)}
-                  {focusTask.due_date ? ` / 期限 ${new Date(focusTask.due_date).toLocaleDateString('ja-JP')}` : ''}
+                  {focusTask.due_date
+                    ? ` / 期限 ${formatDate(
+                        focusTask.due_date,
+                        { year: 'numeric', month: 'numeric', day: 'numeric' },
+                        timezone,
+                      )}`
+                    : ''}
                 </div>
               </>
             ) : (

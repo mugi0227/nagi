@@ -2,6 +2,8 @@ import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
 import { FaCheck } from 'react-icons/fa';
 import { FaBatteryFull, FaBatteryQuarter, FaClock, FaEllipsis, FaFire, FaLeaf, FaLock } from 'react-icons/fa6';
 import type { Task } from '../../api/types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/dateTime';
 import './TaskItem.css';
 
 interface TaskItemProps {
@@ -27,6 +29,7 @@ export function TaskItem({
   isBlocked = false,
   blockedReason,
 }: TaskItemProps) {
+  const timezone = useTimezone();
   const getPriorityIcon = (level: string) => {
     switch (level) {
       case 'HIGH': return <FaFire />;
@@ -134,7 +137,9 @@ export function TaskItem({
           {task.due_date && (
             <span className="meta-tag due-date">
               <FaClock />
-              <span>{new Date(task.due_date).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })}まで</span>
+              <span>
+                {formatDate(task.due_date, { month: 'numeric', day: 'numeric' }, timezone)}まで
+              </span>
             </span>
           )}
 

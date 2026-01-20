@@ -137,3 +137,7 @@ AIが対話的に処理
 - **クラス**: 最大200行を目安
 - **ファイル**: 最大400行を目安
 - 長くなる場合は責任を分割して複数ファイルに
+## Timezone Policy
+- Use Luxon for all date/time parsing and formatting in the frontend.
+- Always apply the user timezone via utils/dateTime helpers (currentUser.timezone or stored fallback).
+

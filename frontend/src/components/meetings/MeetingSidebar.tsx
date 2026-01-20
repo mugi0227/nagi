@@ -3,6 +3,8 @@ import { useQuery } from '@tanstack/react-query';
 import { FaCalendarDay, FaRedo } from 'react-icons/fa';
 import { RecurringMeeting, Task } from '../../api/types';
 import { tasksApi } from '../../api/tasks';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, toDateTime } from '../../utils/dateTime';
 
 interface MeetingSidebarProps {
     projectId: string;
@@ -19,6 +21,7 @@ export function MeetingSidebar({
     onSelectTask,
     isLoading
 }: MeetingSidebarProps) {
+    const timezone = useTimezone();
     // Fetch all meeting Tasks (both recurring and standalone)
     const { data: meetingTasks = [] } = useQuery({
         queryKey: ['meetings', 'project', projectId],
@@ -68,35 +71,33 @@ export function MeetingSidebar({
         // Sort tasks within each recurring meeting group by start_time (newest first)
         Object.values(recurring).forEach(group => {
             group.tasks.sort((a, b) => {
-                const aTime = new Date(a.start_time!).getTime();
-                const bTime = new Date(b.start_time!).getTime();
+                const aTime = a.start_time ? toDateTime(a.start_time, timezone).toMillis() : 0;
+                const bTime = b.start_time ? toDateTime(b.start_time, timezone).toMillis() : 0;
                 return bTime - aTime;
             });
         });
 
         // Sort standalone meetings by start_time (newest first)
         standalone.sort((a, b) => {
-            const aTime = new Date(a.start_time!).getTime();
-            const bTime = new Date(b.start_time!).getTime();
+            const aTime = a.start_time ? toDateTime(a.start_time, timezone).toMillis() : 0;
+            const bTime = b.start_time ? toDateTime(b.start_time, timezone).toMillis() : 0;
             return bTime - aTime;
         });
 
         return { recurringMeetingTasks: recurring, standaloneMeetings: standalone };
     }, [meetingTasks, recurringMeetingMap]);
 
-    const formatDate = (date: Date) => {
-        return date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' });
-    };
+    const formatDateLabel = (value: string | Date) =>
+        formatDate(value, { month: 'numeric', day: 'numeric', weekday: 'short' }, timezone);
 
-    const formatTime = (date: Date) => {
-        return date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-    };
+    const formatTimeLabel = (value: string | Date) =>
+        formatDate(value, { hour: '2-digit', minute: '2-digit' }, timezone);
 
     const formatTimeDisplay = (task: Task) => {
         if (task.is_all_day) {
             return '終日';
         }
-        return formatTime(new Date(task.start_time!));
+        return formatTimeLabel(task.start_time!);
     };
 
     const hasNoMeetings = Object.keys(recurringMeetingTasks).length === 0 && standaloneMeetings.length === 0;
@@ -141,16 +142,16 @@ export function MeetingSidebar({
                             {recurringMeeting.title}
                         </div>
                         {tasks.map((task) => {
-                            const date = new Date(task.start_time!);
+                            const date = toDateTime(task.start_time!, timezone);
                             const isSelected = selectedTask?.id === task.id;
                             return (
                                 <div
                                     key={task.id}
                                     className={`meeting-nav-item ${isSelected ? 'active' : ''}`}
-                                    onClick={() => onSelectTask(task, date)}
+                                    onClick={() => onSelectTask(task, date.toJSDate())}
                                 >
                                     <div className="meeting-nav-item-content">
-                                        <span>{formatDate(date)}</span>
+                                        <span>{formatDateLabel(task.start_time!)}</span>
                                         <span className="meeting-nav-item-time">{formatTimeDisplay(task)}</span>
                                     </div>
                                 </div>
@@ -167,16 +168,16 @@ export function MeetingSidebar({
                             単発ミーティング
                         </div>
                         {standaloneMeetings.map((task) => {
-                            const date = new Date(task.start_time!);
+                            const date = toDateTime(task.start_time!, timezone);
                             const isSelected = selectedTask?.id === task.id;
                             return (
                                 <div
                                     key={task.id}
                                     className={`meeting-nav-item ${isSelected ? 'active' : ''}`}
-                                    onClick={() => onSelectTask(task, date)}
+                                    onClick={() => onSelectTask(task, date.toJSDate())}
                                 >
                                     <div className="meeting-nav-item-content">
-                                        <span>{formatDate(date)}</span>
+                                        <span>{formatDateLabel(task.start_time!)}</span>
                                         <span className="meeting-nav-item-time">{formatTimeDisplay(task)}</span>
                                     </div>
                                     <div className="meeting-nav-item-title">{task.title}</div>

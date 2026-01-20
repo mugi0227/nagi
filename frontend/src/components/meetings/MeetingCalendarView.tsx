@@ -3,6 +3,8 @@ import type { CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { tasksApi } from '../../api/tasks';
 import type { Task } from '../../api/types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, toDateKey, toDateTime, todayInTimezone } from '../../utils/dateTime';
 
 const DEFAULT_START_HOUR = 8;
 const DEFAULT_END_HOUR = 20;
@@ -10,28 +12,19 @@ const MIN_START_HOUR = 6;
 const MAX_END_HOUR = 22;
 const HOUR_HEIGHT = 44;
 
-const toLocalDateKey = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
+const toLocalDateKey = (date: Date, timezone: string) => toDateKey(date, timezone);
+
+const startOfWeek = (date: ReturnType<typeof todayInTimezone>) => {
+  const diff = date.weekday - 1;
+  return date.minus({ days: diff }).startOf('day');
 };
 
-const startOfWeek = (date: Date) => {
-  const day = date.getDay();
-  const diff = day === 0 ? -6 : 1 - day;
-  const start = new Date(date);
-  start.setDate(date.getDate() + diff);
-  start.setHours(0, 0, 0, 0);
-  return start;
-};
-
-const formatDayLabel = (date: Date) => (
-  date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' })
+const formatDayLabel = (date: Date, timezone: string) => (
+  formatDate(date, { month: 'numeric', day: 'numeric', weekday: 'short' }, timezone)
 );
 
-const formatTime = (date: Date) => (
-  date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' })
+const formatTime = (date: Date, timezone: string) => (
+  formatDate(date, { hour: '2-digit', minute: '2-digit' }, timezone)
 );
 
 type MeetingBlock = {
@@ -58,24 +51,20 @@ export function MeetingCalendarView({
   projectId,
   onMeetingSelect
 }: MeetingCalendarViewProps) {
+  const timezone = useTimezone();
   const [weekOffset, setWeekOffset] = useState(0);
 
-  const today = new Date();
+  const today = todayInTimezone(timezone);
   const currentWeekStart = startOfWeek(today);
-  const currentWeekStartKey = toLocalDateKey(currentWeekStart);
+  const currentWeekStartKey = toDateKey(currentWeekStart.toJSDate(), timezone);
 
   const weekStart = useMemo(() => {
-    const start = new Date(currentWeekStart);
-    start.setDate(start.getDate() + weekOffset * 7);
-    return start;
+    return currentWeekStart.plus({ days: weekOffset * 7 });
   }, [currentWeekStartKey, weekOffset]);
 
-  const weekStartKey = toLocalDateKey(weekStart);
-  const weekEndKey = useMemo(() => {
-    const end = new Date(weekStart);
-    end.setDate(weekStart.getDate() + 7);
-    return toLocalDateKey(end);
-  }, [weekStartKey]);
+  const weekEnd = weekStart.plus({ days: 7 });
+  const weekStartKey = toDateKey(weekStart.toJSDate(), timezone);
+  const weekEndKey = toDateKey(weekEnd.toJSDate(), timezone);
 
   const isCurrentWeek = weekOffset === 0;
   const goToPrevWeek = () => setWeekOffset(prev => prev - 1);
@@ -84,9 +73,7 @@ export function MeetingCalendarView({
 
   const days = useMemo(() => (
     Array.from({ length: 7 }, (_, index) => {
-      const date = new Date(weekStart);
-      date.setDate(weekStart.getDate() + index);
-      return date;
+      return weekStart.plus({ days: index });
     })
   ), [weekStartKey]);
 
@@ -101,27 +88,25 @@ export function MeetingCalendarView({
   });
 
   const meetings = useMemo(() => {
-    const [startYear, startMonth, startDay] = weekStartKey.split('-').map(Number);
-    const [endYear, endMonth, endDay] = weekEndKey.split('-').map(Number);
-    const weekStartDate = new Date(startYear, startMonth - 1, startDay, 0, 0, 0, 0);
-    const weekEndDate = new Date(endYear, endMonth - 1, endDay, 0, 0, 0, 0);
+    const weekStartDate = weekStart.startOf('day');
+    const weekEndDate = weekEnd.startOf('day');
 
     return meetingTasks
       .filter(task => task.is_fixed_time && task.start_time && task.end_time)
       .map(task => {
-        const start = new Date(task.start_time as string);
-        const end = new Date(task.end_time as string);
-        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return null;
-        if (start < weekStartDate || start >= weekEndDate) return null;
-        const startMinutes = start.getHours() * 60 + start.getMinutes();
-        const endMinutesRaw = end.getHours() * 60 + end.getMinutes();
+        const start = toDateTime(task.start_time as string, timezone);
+        const end = toDateTime(task.end_time as string, timezone);
+        if (!start.isValid || !end.isValid) return null;
+        if (start.toMillis() < weekStartDate.toMillis() || start.toMillis() >= weekEndDate.toMillis()) return null;
+        const startMinutes = start.hour * 60 + start.minute;
+        const endMinutesRaw = end.hour * 60 + end.minute;
         const endMinutes = Math.max(startMinutes + 15, endMinutesRaw);
         return {
           id: task.id,
           title: task.title,
-          start,
-          end,
-          dayKey: toLocalDateKey(start),
+          start: start.toJSDate(),
+          end: end.toJSDate(),
+          dayKey: toLocalDateKey(start.toJSDate(), timezone),
           startMinutes,
           endMinutes,
           lane: 0,
@@ -132,7 +117,7 @@ export function MeetingCalendarView({
         } satisfies MeetingBlock;
       })
       .filter(Boolean) as MeetingBlock[];
-  }, [meetingTasks, weekStartKey, weekEndKey]);
+  }, [meetingTasks, weekStartKey, weekEndKey, timezone]);
 
   const timeBounds = useMemo(() => {
     if (!meetings.length) {
@@ -196,12 +181,11 @@ export function MeetingCalendarView({
   };
 
   const rangeLabel = useMemo(() => {
-    const weekEndDate = new Date(weekEndKey + 'T00:00:00');
-    weekEndDate.setDate(weekEndDate.getDate() - 1);
-    const startLabel = weekStart.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
-    const endLabel = weekEndDate.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
+    const weekEndDate = weekEnd.minus({ days: 1 });
+    const startLabel = formatDate(weekStart.toJSDate(), { month: 'numeric', day: 'numeric' }, timezone);
+    const endLabel = formatDate(weekEndDate.toJSDate(), { month: 'numeric', day: 'numeric' }, timezone);
     return `${startLabel} - ${endLabel}`;
-  }, [weekStart, weekEndKey]);
+  }, [weekStartKey, weekEndKey, timezone]);
 
   return (
     <div className="meeting-calendar-view">
@@ -247,14 +231,14 @@ export function MeetingCalendarView({
           <div className="meeting-calendar-header-row" style={{ '--days': days.length } as CSSProperties}>
             <div className="meeting-calendar-time-header" />
             {days.map(day => {
-              const dayKey = toLocalDateKey(day);
-              const isToday = dayKey === toLocalDateKey(today);
+              const dayKey = toLocalDateKey(day.toJSDate(), timezone);
+              const isToday = dayKey === toLocalDateKey(today.toJSDate(), timezone);
               return (
                 <div
                   key={dayKey}
                   className={`meeting-calendar-day-header ${isToday ? 'today' : ''}`}
                 >
-                  {formatDayLabel(day)}
+                  {formatDayLabel(day.toJSDate(), timezone)}
                 </div>
               );
             })}
@@ -268,7 +252,7 @@ export function MeetingCalendarView({
               ))}
             </div>
             {days.map(day => {
-              const dayKey = toLocalDateKey(day);
+              const dayKey = toLocalDateKey(day.toJSDate(), timezone);
               const dayMeetings = meetingsByDay.get(dayKey) ?? [];
               return (
                 <div key={dayKey} className="meeting-calendar-day-col" style={{ height: `${gridHeight}px` }}>
@@ -286,7 +270,7 @@ export function MeetingCalendarView({
                     const height = Math.max(18, ((clampedEnd - clampedStart) / 60) * HOUR_HEIGHT);
                     const width = 100 / meeting.laneCount;
                     const left = width * meeting.lane;
-                    const timeLabel = `${formatTime(meeting.start)} - ${formatTime(meeting.end)}`;
+                    const timeLabel = `${formatTime(meeting.start, timezone)} - ${formatTime(meeting.end, timezone)}`;
                     return (
                       <div
                         key={meeting.id}

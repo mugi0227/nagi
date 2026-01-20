@@ -1,5 +1,7 @@
 import { FaCalendarAlt, FaMapMarkerAlt, FaUsers } from 'react-icons/fa';
 import type { Task } from '../../api/types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/dateTime';
 import './MeetingBadge.css';
 
 interface MeetingBadgeProps {
@@ -12,13 +14,14 @@ export function MeetingBadge({ task, showDetails = false }: MeetingBadgeProps) {
     return null;
   }
 
+  const timezone = useTimezone();
+
   const formatTime = (dateString: string) => {
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('ja-JP', {
+    return formatDate(dateString, {
       hour: '2-digit',
       minute: '2-digit',
       hour12: false,
-    });
+    }, timezone);
   };
 
   const formatDateRange = (start?: string, end?: string) => {

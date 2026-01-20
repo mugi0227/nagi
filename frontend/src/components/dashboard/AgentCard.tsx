@@ -1,5 +1,7 @@
 import { FaRobot, FaPlay } from 'react-icons/fa6';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
+import { useTimezone } from '../../hooks/useTimezone';
+import { nowInTimezone } from '../../utils/dateTime';
 import './AgentCard.css';
 
 type AgentCardProps = {
@@ -8,12 +10,13 @@ type AgentCardProps = {
 
 export function AgentCard({ onOpenDailyBriefing }: AgentCardProps) {
   const { data: currentUser } = useCurrentUser();
+  const timezone = useTimezone();
   const displayName = currentUser?.username
     || currentUser?.display_name
     || currentUser?.email
     || 'there';
   const getGreeting = () => {
-    const hour = new Date().getHours();
+    const hour = nowInTimezone(timezone).hour;
     if (hour < 12) return 'Good Morning';
     if (hour < 18) return 'Good Afternoon';
     return 'Good Evening';

@@ -2,23 +2,24 @@
 import { useTheme } from '../../context/ThemeContext';
 import { FaMoon, FaSun, FaBell, FaRightFromBracket, FaRightToBracket } from 'react-icons/fa6';
 import { clearAuthToken, getAuthToken } from '../../api/auth';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, nowInTimezone } from '../../utils/dateTime';
 import './TopBar.css';
 
 export function TopBar() {
   const { theme, toggleTheme } = useTheme();
   const location = useLocation();
   const navigate = useNavigate();
+  const timezone = useTimezone();
   const { token, source } = getAuthToken();
   const isAuthLocked = source === 'env' || source === 'mock';
 
-  const formatDate = () => {
-    const now = new Date();
-    const days = ['日', '月', '火', '水', '木', '金', '土'];
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-    const date = now.getDate();
-    const day = days[now.getDay()];
-    return `${year}年${month}月${date}日 (${day})`;
+  const formatDateLabel = () => {
+    return formatDate(
+      nowInTimezone(timezone).toJSDate(),
+      { year: 'numeric', month: 'numeric', day: 'numeric', weekday: 'short' },
+      timezone,
+    );
   };
 
   const getPageTitle = () => {
@@ -43,7 +44,7 @@ export function TopBar() {
     <header className="top-bar">
       <div className="page-info">
         <h1 id="page-title">{getPageTitle()}</h1>
-        <span className="date-display">{formatDate()}</span>
+        <span className="date-display">{formatDateLabel()}</span>
       </div>
 
       <div className="top-actions">

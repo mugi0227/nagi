@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { FaRobot, FaListCheck, FaFileLines, FaCodeBranch, FaClipboardList } from 'react-icons/fa6';
+import { useTimezone } from '../../hooks/useTimezone';
+import { todayInTimezone } from '../../utils/dateTime';
 import './DraftCard.css';
 
 export type DraftCardType = 'task' | 'phase' | 'agenda' | 'subtask' | 'actionItem';
@@ -40,15 +42,14 @@ const iconMap: Record<DraftCardType, React.ReactNode> = {
 };
 
 export function DraftCard({ data, onSend, onCancel }: DraftCardProps) {
+  const timezone = useTimezone();
   const [instruction, setInstruction] = useState('');
 
   // Check-in options state (for agenda type)
   const defaultStartDate = () => {
-    const d = new Date();
-    d.setDate(d.getDate() - 7);
-    return d.toISOString().split('T')[0];
+    return todayInTimezone(timezone).minus({ days: 7 }).toISODate() ?? '';
   };
-  const defaultEndDate = () => new Date().toISOString().split('T')[0];
+  const defaultEndDate = () => todayInTimezone(timezone).toISODate() ?? '';
 
   const [checkinEnabled, setCheckinEnabled] = useState(data.checkinOptions?.enabled ?? true);
   const [checkinStartDate, setCheckinStartDate] = useState(data.checkinOptions?.startDate ?? defaultStartDate());

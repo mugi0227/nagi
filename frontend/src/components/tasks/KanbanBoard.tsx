@@ -17,6 +17,13 @@ interface KanbanBoardProps {
   onBreakdownTask?: (id: string, instruction?: string) => void;
   breakdownTaskId?: string | null;
   sortBy?: 'default' | 'dueDate';
+  // Selection mode
+  selectionMode?: boolean;
+  selectedTaskIds?: Set<string>;
+  onSelectTask?: (taskId: string) => void;
+  onDragSelectedStart?: () => void;
+  // Single task drag (for phase move)
+  onSingleDragStart?: (taskId: string) => void;
 }
 
 const COLUMNS: { status: TaskStatus; title: string }[] = [
@@ -39,6 +46,11 @@ export function KanbanBoard({
   onBreakdownTask,
   breakdownTaskId,
   sortBy: _sortBy,
+  selectionMode = false,
+  selectedTaskIds,
+  onSelectTask,
+  onDragSelectedStart,
+  onSingleDragStart,
 }: KanbanBoardProps) {
   // Group tasks: parent tasks only (no parent_id)
   const parentTasks = useMemo(() => {
@@ -103,6 +115,11 @@ export function KanbanBoard({
           breakdownTaskId={breakdownTaskId}
           onUpdateTask={onUpdateTask}
           onDrop={handleDrop}
+          selectionMode={selectionMode}
+          selectedTaskIds={selectedTaskIds}
+          onSelectTask={onSelectTask}
+          onDragSelectedStart={onDragSelectedStart}
+          onSingleDragStart={onSingleDragStart}
         />
       ))}
     </div>

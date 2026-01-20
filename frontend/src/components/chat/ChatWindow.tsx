@@ -4,6 +4,8 @@ import { FaClock, FaComments, FaImage, FaPlus, FaRobot, FaXmark } from 'react-ic
 import { tasksApi } from '../../api/tasks';
 import type { Task } from '../../api/types';
 import { useChat } from '../../hooks/useChat';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/dateTime';
 import { ChatInput } from './ChatInput';
 import { ChatMessage } from './ChatMessage';
 import { DraftCard, DraftCardData } from './DraftCard';
@@ -19,6 +21,7 @@ interface ChatWindowProps {
 }
 
 export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageConsumed, draftCard, onDraftCardConsumed }: ChatWindowProps) {
+  const timezone = useTimezone();
   const {
     messages,
     sendMessageStream,
@@ -143,9 +146,11 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
 
   const formatSessionDate = (value?: string) => {
     if (!value) return 'Recent';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return 'Recent';
-    return date.toLocaleString();
+    return formatDate(
+      value,
+      { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' },
+      timezone,
+    );
   };
 
   return (

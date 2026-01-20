@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { tasksApi } from '../api/tasks';
+import { useTimezone } from './useTimezone';
+import { toDateTime, todayInTimezone } from '../utils/dateTime';
 
 interface DayData {
   day: string;
@@ -10,41 +12,38 @@ interface DayData {
 }
 
 export function useWeeklyProgress() {
+  const timezone = useTimezone();
   const { data: allTasks = [] } = useQuery({
     queryKey: ['tasks'],
     queryFn: () => tasksApi.getAll(),
   });
 
   // Get current week (Mon-Sun)
-  const today = new Date();
-  const currentDayOfWeek = today.getDay(); // 0 = Sunday, 1 = Monday, ...
-  const daysFromMonday = currentDayOfWeek === 0 ? 6 : currentDayOfWeek - 1;
-
-  const weekStart = new Date(today);
-  weekStart.setDate(today.getDate() - daysFromMonday);
-  weekStart.setHours(0, 0, 0, 0);
+  const today = todayInTimezone(timezone);
+  const daysFromMonday = today.weekday - 1;
+  const weekStart = today.minus({ days: daysFromMonday }).startOf('day');
 
   const dayLabels = ['月', '火', '水', '木', '金', '土', '日'];
 
   // Count completed tasks per day
   const weekData: DayData[] = dayLabels.map((day, index) => {
-    const date = new Date(weekStart);
-    date.setDate(weekStart.getDate() + index);
-
-    const nextDay = new Date(date);
-    nextDay.setDate(date.getDate() + 1);
-
-    const isToday = date.toDateString() === today.toDateString();
+    const date = weekStart.plus({ days: index });
+    const nextDay = date.plus({ days: 1 });
+    const isToday = date.hasSame(today, 'day');
 
     const completedCount = allTasks.filter(task => {
       if (task.status !== 'DONE' || !task.updated_at) return false;
-      const taskDate = new Date(task.updated_at);
-      return taskDate >= date && taskDate < nextDay;
+      const taskDate = toDateTime(task.updated_at, timezone);
+      return (
+        taskDate.isValid &&
+        taskDate.toMillis() >= date.toMillis() &&
+        taskDate.toMillis() < nextDay.toMillis()
+      );
     }).length;
 
     return {
       day,
-      date,
+      date: date.toJSDate(),
       completedCount,
       height: 0,
       active: isToday,

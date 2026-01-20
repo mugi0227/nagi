@@ -233,6 +233,15 @@
   background: var(--c-bg-hover);
 }
 
+.pgantt-sidebar-row.clickable {
+  cursor: pointer;
+}
+
+.pgantt-sidebar-row.clickable:hover {
+  background: var(--c-bg-hover);
+  color: var(--c-primary);
+}
+
 .pgantt-sidebar-row.milestone {
   color: var(--c-milestone);
 }
@@ -574,6 +583,50 @@
   right: -2px;
   background: linear-gradient(to left, rgba(0,0,0,0.15), transparent);
   border-radius: 0 6px 6px 0;
+}
+
+/* ============================================
+   Drag Preview
+   ============================================ */
+
+.pgantt-bar.dragging {
+  opacity: 0.9;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  z-index: 100;
+  cursor: grabbing;
+}
+
+.pgantt-bar.dragging:hover {
+  transform: none;
+}
+
+.pgantt-drag-preview {
+  position: absolute;
+  top: -24px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+}
+
+.pgantt-drag-date {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--c-bg);
+  background: var(--c-primary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+.pgantt-drag-date.start {
+  transform: translateX(-50%);
+}
+
+.pgantt-drag-date.end {
+  transform: translateX(50%);
 }
 
 /* ============================================

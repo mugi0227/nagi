@@ -19,6 +19,13 @@ interface KanbanColumnProps {
   breakdownTaskId?: string | null;
   onDrop?: (taskId: string, newStatus: TaskStatus) => void;
   onUpdateTask?: (taskId: string, status: TaskStatus) => void;
+  // Selection mode
+  selectionMode?: boolean;
+  selectedTaskIds?: Set<string>;
+  onSelectTask?: (taskId: string) => void;
+  onDragSelectedStart?: () => void;
+  // Single task drag (for phase move)
+  onSingleDragStart?: (taskId: string) => void;
 }
 
 export function KanbanColumn({
@@ -38,6 +45,11 @@ export function KanbanColumn({
   breakdownTaskId,
   onDrop,
   onUpdateTask,
+  selectionMode = false,
+  selectedTaskIds,
+  onSelectTask,
+  onDragSelectedStart,
+  onSingleDragStart,
 }: KanbanColumnProps) {
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -59,6 +71,13 @@ export function KanbanColumn({
 
   const handleDragStart = (e: React.DragEvent, taskId: string) => {
     e.dataTransfer.setData('taskId', taskId);
+    // If in selection mode and this task is selected, notify parent for multi-select drag
+    if (selectionMode && selectedTaskIds?.has(taskId) && onDragSelectedStart) {
+      onDragSelectedStart();
+    } else {
+      // Single task drag (for phase move from sidebar)
+      onSingleDragStart?.(taskId);
+    }
   };
 
   return (
@@ -93,6 +112,9 @@ export function KanbanColumn({
               onBreakdown={onBreakdownTask}
               isBreakdownPending={breakdownTaskId === task.id}
               onUpdateTask={onUpdateTask}
+              selectionMode={selectionMode}
+              isSelected={selectedTaskIds?.has(task.id) ?? false}
+              onSelect={onSelectTask}
             />
           </div>
         ))}

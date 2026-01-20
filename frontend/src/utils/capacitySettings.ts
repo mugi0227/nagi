@@ -1,3 +1,4 @@
+import { todayInTimezone } from './dateTime';
 import { userStorage } from './userStorage';
 
 export const DEFAULT_DAILY_CAPACITY_HOURS = 8;
@@ -40,7 +41,7 @@ export const getCapacitySettings = () => {
     userStorage.get('weeklyCapacityHours'),
     capacityHours
   );
-  const todayIndex = new Date().getDay();
+  const todayIndex = todayInTimezone().weekday % 7;
   const todayCapacityHours = capacityByWeekday[todayIndex] ?? capacityHours;
 
   return { capacityHours: todayCapacityHours, bufferHours, capacityByWeekday };

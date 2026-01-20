@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useCaptures } from '../../hooks/useCaptures';
 import { useTasks } from '../../hooks/useTasks';
+import { useTimezone } from '../../hooks/useTimezone';
 import { TaskFormModal } from '../tasks/TaskFormModal';
 import './InboxWidget.css';
 import type { Capture, TaskCreate, TaskUpdate } from '../../api/types';
+import { formatDate } from '../../utils/dateTime';
 
 export function InboxWidget() {
     const { unprocessedCaptures: allCaptures, isLoading, error, deleteCapture, processCapture, analyzeCapture, isAnalyzing } = useCaptures();
     const { createTask } = useTasks();
+    const timezone = useTimezone();
 
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [analyzedTask, setAnalyzedTask] = useState<TaskCreate | undefined>(undefined);
@@ -104,12 +107,11 @@ export function InboxWidget() {
 
                         <div className="capture-content">
                             <div className="capture-meta">
-                                {new Date(capture.created_at).toLocaleString('ja-JP', {
-                                    month: 'numeric',
-                                    day: 'numeric',
-                                    hour: '2-digit',
-                                    minute: '2-digit'
-                                })}
+                                {formatDate(
+                                    capture.created_at,
+                                    { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' },
+                                    timezone,
+                                )}
                             </div>
                             <div className="capture-text">
                                 {getDisplayText(capture)}

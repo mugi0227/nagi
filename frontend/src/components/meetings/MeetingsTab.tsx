@@ -8,6 +8,8 @@ import { RecurringMeetingsPanel } from '../projects/RecurringMeetingsPanel';
 import { MeetingCalendarView } from './MeetingCalendarView';
 import { MeetingMainContent } from './MeetingMainContent';
 import { MeetingSidebar } from './MeetingSidebar';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate } from '../../utils/dateTime';
 import './MeetingsTab.css';
 import './MeetingCalendarView.css';
 
@@ -21,6 +23,7 @@ interface MeetingsTabProps {
 }
 
 export function MeetingsTab({ projectId, members, tasks, currentUserId }: MeetingsTabProps) {
+    const timezone = useTimezone();
     const [viewMode, setViewMode] = useState<ViewMode>('list');
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
     const [selectedMeeting, setSelectedMeeting] = useState<RecurringMeeting | null>(null);
@@ -210,7 +213,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId }: Meetin
                                                     <div className="checkin-item-meta">
                                                         <span className="checkin-item-user">{getMemberName(checkin.member_user_id)}</span>
                                                         <span className="checkin-item-date">
-                                                            {new Date(checkin.checkin_date).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+                                                            {formatDate(checkin.checkin_date, { month: 'short', day: 'numeric' }, timezone)}
                                                         </span>
                                                     </div>
                                                     {checkin.mood && (
@@ -327,7 +330,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId }: Meetin
                                                     <div className="checkin-item-meta">
                                                         <span className="checkin-item-user">{getMemberName(checkin.member_user_id)}</span>
                                                         <span className="checkin-item-date">
-                                                            {new Date(checkin.checkin_date).toLocaleDateString('ja-JP', { month: 'short', day: 'numeric' })}
+                                                            {formatDate(checkin.checkin_date, { month: 'short', day: 'numeric' }, timezone)}
                                                         </span>
                                                     </div>
                                                     {checkin.mood && (

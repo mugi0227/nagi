@@ -20,17 +20,14 @@ import { RecurringMeetingsPanel } from '../components/projects/RecurringMeetings
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { TaskFormModal } from '../components/tasks/TaskFormModal';
 import { useTasks } from '../hooks/useTasks';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatDate, toDateTime, todayInTimezone } from '../utils/dateTime';
 import './ProjectDetailPage.css';
 
 export function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
-  const formatDateInput = (value: Date) => {
-    const year = value.getFullYear();
-    const month = `${value.getMonth() + 1}`.padStart(2, '0');
-    const day = `${value.getDate()}`.padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  };
+  const timezone = useTimezone();
   const [project, setProject] = useState<ProjectWithTaskCount | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -52,11 +49,12 @@ export function ProjectDetailPage() {
   const [isCheckinSaving, setIsCheckinSaving] = useState(false);
   const [checkinError, setCheckinError] = useState<string | null>(null);
   const [checkinSummaryStart, setCheckinSummaryStart] = useState(() => {
-    const start = new Date();
-    start.setDate(start.getDate() - 7);
-    return formatDateInput(start);
+    const start = todayInTimezone(timezone).minus({ days: 7 });
+    return start.toISODate() ?? '';
   });
-  const [checkinSummaryEnd, setCheckinSummaryEnd] = useState(() => formatDateInput(new Date()));
+  const [checkinSummaryEnd, setCheckinSummaryEnd] = useState(
+    () => todayInTimezone(timezone).toISODate() ?? '',
+  );
   const [checkinSummary, setCheckinSummary] = useState<CheckinSummary | null>(null);
   const [isCheckinSummaryLoading, setIsCheckinSummaryLoading] = useState(false);
   const [checkinSummaryError, setCheckinSummaryError] = useState<string | null>(null);
@@ -421,19 +419,19 @@ export function ProjectDetailPage() {
   const meetingTasks = tasks
     .filter(task => task.is_fixed_time && task.start_time)
     .slice()
-    .sort((a, b) => new Date(a.start_time as string).getTime() - new Date(b.start_time as string).getTime());
+    .sort((a, b) => {
+      const aTime = a.start_time ? toDateTime(a.start_time as string, timezone).toMillis() : 0;
+      const bTime = b.start_time ? toDateTime(b.start_time as string, timezone).toMillis() : 0;
+      return aTime - bTime;
+    });
 
   const formatMeetingDateTime = (value?: string) => {
     if (!value) return '';
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleString('ja-JP', {
-      month: 'numeric',
-      day: 'numeric',
-      weekday: 'short',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatDate(
+      value,
+      { month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' },
+      timezone,
+    );
   };
 
 
@@ -553,9 +551,7 @@ export function ProjectDetailPage() {
   };
 
   const formatCheckinDate = (value: string) => {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
+    return formatDate(value, { month: 'numeric', day: 'numeric' }, timezone);
   };
 
   const getWeeklyMetrics = () => {
@@ -565,21 +561,23 @@ export function ProjectDetailPage() {
     const waiting = tasks.filter(task => task.status === 'WAITING').length;
     const todo = tasks.filter(task => task.status === 'TODO').length;
 
-    const today = new Date();
-    const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-    const weekAhead = new Date(todayDate);
-    weekAhead.setDate(todayDate.getDate() + 7);
+    const todayDate = todayInTimezone(timezone);
+    const weekAhead = todayDate.plus({ days: 7 });
 
     const dueTasks = tasks.filter(task => task.due_date);
     const overdueTasks = dueTasks.filter(task => {
       if (task.status === 'DONE') return false;
-      const due = new Date(task.due_date as string);
-      return due < todayDate;
+      const due = toDateTime(task.due_date as string, timezone);
+      return due.isValid && due.toMillis() < todayDate.toMillis();
     });
     const dueSoonTasks = dueTasks.filter(task => {
       if (task.status === 'DONE') return false;
-      const due = new Date(task.due_date as string);
-      return due >= todayDate && due <= weekAhead;
+      const due = toDateTime(task.due_date as string, timezone);
+      return (
+        due.isValid &&
+        due.toMillis() >= todayDate.toMillis() &&
+        due.toMillis() <= weekAhead.toMillis()
+      );
     });
 
     return {
@@ -601,7 +599,7 @@ export function ProjectDetailPage() {
     const metrics = getWeeklyMetrics();
 
     const lines = [
-      `週次サマリー (${metrics.todayDate.toLocaleDateString('ja-JP')})`,
+      `週次サマリー (${formatDate(metrics.todayDate.toJSDate(), { year: 'numeric', month: 'numeric', day: 'numeric' }, timezone)})`,
       '',
       `- タスク合計: ${metrics.total}`,
       `- 完了: ${metrics.done} / 進行中: ${metrics.inProgress} / 待機: ${metrics.waiting} / 未着手: ${metrics.todo}`,
@@ -640,7 +638,7 @@ export function ProjectDetailPage() {
     }
 
     const lines = [
-      `週次スナップショット (${metrics.todayDate.toLocaleDateString('ja-JP')})`,
+      `週次スナップショット (${formatDate(metrics.todayDate.toJSDate(), { year: 'numeric', month: 'numeric', day: 'numeric' }, timezone)})`,
       `- タスク合計: ${metrics.total}`,
       `- 完了: ${metrics.done} / 進行中: ${metrics.inProgress} / 待機: ${metrics.waiting} / 未着手: ${metrics.todo}`,
       `- 期限超過: ${metrics.overdueTasks.length}`,
@@ -691,7 +689,7 @@ export function ProjectDetailPage() {
           : 'general';
       await projectsApi.createCheckin(projectId, {
         member_user_id: selectedCheckinMemberId,
-        checkin_date: new Date().toISOString().slice(0, 10),
+        checkin_date: todayInTimezone(timezone).toISODate() ?? '',
         checkin_type: checkinType,
         raw_text: checkinText.trim(),
       });
@@ -736,9 +734,11 @@ export function ProjectDetailPage() {
   };
 
   const formatMemoryDate = (value: string) => {
-    const date = new Date(value);
-    if (Number.isNaN(date.getTime())) return value;
-    return date.toLocaleDateString('ja-JP', { year: 'numeric', month: 'numeric', day: 'numeric' });
+    return formatDate(
+      value,
+      { year: 'numeric', month: 'numeric', day: 'numeric' },
+      timezone,
+    );
   };
 
   const handleSummarizeCheckins = async () => {

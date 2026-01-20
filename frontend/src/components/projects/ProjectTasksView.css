@@ -1,3 +1,109 @@
+/* Main container - 2 column layout */
+.project-tasks-view-container {
+  display: flex;
+  height: calc(100vh - 300px);
+  min-height: 500px;
+  background: var(--bg-card);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+/* Main content area */
+.project-tasks-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* Toolbar */
+.project-tasks-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-main);
+}
+
+.toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.selection-mode-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.selection-mode-btn:hover {
+  background: var(--bg-hover);
+}
+
+.selection-mode-btn.active {
+  background: rgba(59, 130, 246, 0.1);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.selection-count-badge {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--primary);
+  background: rgba(59, 130, 246, 0.1);
+  padding: 4px 8px;
+  border-radius: 12px;
+}
+
+.sort-select {
+  padding: 8px 12px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-main);
+  cursor: pointer;
+}
+
+.sort-select:focus {
+  outline: none;
+  border-color: var(--primary);
+}
+
+/* Kanban wrapper */
+.kanban-wrapper {
+  flex: 1;
+  overflow: auto;
+  padding: 16px;
+}
+
+/* Loading message */
+.loading-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+/* Legacy styles - keep for backward compatibility */
 .project-tasks-view {
   display: flex;
   flex-direction: column;
@@ -38,4 +144,3 @@
 .task-view-container {
   margin-top: 20px;
 }
-

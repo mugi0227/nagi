@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../../context/ThemeContext';
 import { DEFAULT_DAILY_BUFFER_HOURS, DEFAULT_DAILY_CAPACITY_HOURS } from '../../utils/capacitySettings';
+import { setStoredTimezone } from '../../utils/dateTime';
 import { userStorage } from '../../utils/userStorage';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { usersApi } from '../../api/users';
@@ -117,6 +118,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     setUserName(currentUser.username || currentUser.display_name || '');
     setUserEmail(currentUser.email || '');
     setUserTimezone(currentUser.timezone || 'Asia/Tokyo');
+    setStoredTimezone(currentUser.timezone || 'Asia/Tokyo');
   }, [currentUser]);
 
   const handleUserNameChange = (value: string) => {
@@ -245,6 +247,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     setIsUpdatingAccount(true);
     try {
       await usersApi.updateCredentials(payload);
+      if (payload.timezone) {
+        setStoredTimezone(payload.timezone);
+      }
       setAccountSuccess('更新しました。');
       setCurrentPassword('');
       setNewPassword('');

@@ -1,0 +1,114 @@
+.phase-explorer-sidebar {
+  width: 220px;
+  min-width: 220px;
+  background: var(--bg-card);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.phase-explorer-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.phase-explorer-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.phase-explorer-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 0;
+}
+
+.phase-explorer-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+  color: var(--text-main);
+  font-size: 13px;
+}
+
+.phase-explorer-item:hover {
+  background: var(--bg-hover);
+}
+
+.phase-explorer-item.active {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.phase-explorer-item.drag-over {
+  background: rgba(59, 130, 246, 0.2);
+  outline: 2px dashed var(--primary);
+  outline-offset: -2px;
+}
+
+.phase-explorer-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  color: inherit;
+  opacity: 0.7;
+}
+
+.phase-explorer-item.active .phase-explorer-icon {
+  opacity: 1;
+}
+
+.phase-explorer-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.phase-explorer-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--bg-hover);
+  padding: 2px 6px;
+  border-radius: 10px;
+  min-width: 20px;
+  text-align: center;
+}
+
+.phase-explorer-item.active .phase-explorer-count {
+  background: rgba(59, 130, 246, 0.2);
+  color: var(--primary);
+}
+
+.phase-explorer-active-indicator {
+  font-size: 10px;
+  color: var(--primary);
+}
+
+/* Selection Summary */
+.phase-explorer-selection {
+  padding: 12px 16px;
+  border-top: 1px solid var(--border-color);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+.selection-count {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+.selection-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}

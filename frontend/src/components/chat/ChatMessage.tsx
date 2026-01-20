@@ -5,6 +5,8 @@ import remarkGfm from 'remark-gfm';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ToolCall, ProposalInfo } from '../../hooks/useChat';
 import type { Task } from '../../api/types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, toDateKey, toDateTime } from '../../utils/dateTime';
 import { ProposalCard } from './ProposalCard';
 import './ChatMessage.css';
 
@@ -30,7 +32,6 @@ type MeetingPreviewBlock = {
 
 type MeetingPreviewDay = {
   key: string;
-  date: Date;
   label: string;
 };
 
@@ -44,30 +45,26 @@ type MeetingPreviewData = {
   blocksByDay: Map<string, MeetingPreviewBlock[]>;
 };
 
-const toLocalDateKey = (date: Date) => {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-};
+const toLocalDateKey = (date: Date, timezone: string) => toDateKey(date, timezone);
 
-const formatDayLabel = (date: Date) =>
-  date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' });
+const formatDayLabel = (dateKey: string, timezone: string) =>
+  formatDate(dateKey, { month: 'numeric', day: 'numeric', weekday: 'short' }, timezone);
 
-const formatRangeLabel = (start: Date, end: Date) => {
-  const startLabel = start.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
-  const endLabel = end.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
+const formatRangeLabel = (startKey: string, endKey: string, timezone: string) => {
+  const startLabel = formatDate(startKey, { month: 'numeric', day: 'numeric' }, timezone);
+  const endLabel = formatDate(endKey, { month: 'numeric', day: 'numeric' }, timezone);
   return `${startLabel} - ${endLabel}`;
 };
 
-const formatTimeLabel = (date: Date) =>
-  date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+const formatTimeLabel = (date: Date, timezone: string) =>
+  formatDate(date, { hour: '2-digit', minute: '2-digit' }, timezone);
 
 const buildCombinedMeetingPreview = (
   proposals?: ProposalInfo[],
-  existingMeetings?: Task[]
+  existingMeetings?: Task[],
+  timezone?: string
 ): MeetingPreviewData | null => {
-  if (!proposals || proposals.length === 0) return null;
+  if (!proposals || proposals.length === 0 || !timezone) return null;
 
   const proposalMeetings: MeetingPreviewBlock[] = [];
   proposals.forEach((proposal) => {
@@ -81,21 +78,21 @@ const buildCombinedMeetingPreview = (
     };
     if (!payload.is_fixed_time || !payload.start_time || !payload.end_time) return;
 
-    const start = new Date(payload.start_time);
-    const end = new Date(payload.end_time);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
-    if (end <= start) return;
+    const start = toDateTime(payload.start_time, timezone);
+    const end = toDateTime(payload.end_time, timezone);
+    if (!start.isValid || !end.isValid) return;
+    if (end.toMillis() <= start.toMillis()) return;
 
-    const startMinutes = start.getHours() * 60 + start.getMinutes();
-    const endMinutesRaw = end.getHours() * 60 + end.getMinutes();
+    const startMinutes = start.hour * 60 + start.minute;
+    const endMinutesRaw = end.hour * 60 + end.minute;
     const endMinutes = Math.max(startMinutes + 15, endMinutesRaw);
 
     proposalMeetings.push({
       id: proposal.id,
       title: payload.title || 'Meeting',
-      start,
-      end,
-      dayKey: toLocalDateKey(start),
+      start: start.toJSDate(),
+      end: end.toJSDate(),
+      dayKey: toLocalDateKey(start.toJSDate(), timezone),
       startMinutes,
       endMinutes,
       lane: 0,
@@ -108,28 +105,26 @@ const buildCombinedMeetingPreview = (
   if (proposalMeetings.length === 0) return null;
 
   proposalMeetings.sort((a, b) => a.start.getTime() - b.start.getTime());
-  const rangeStart = new Date(proposalMeetings[0].start);
-  rangeStart.setHours(0, 0, 0, 0);
-  const rangeEnd = new Date(proposalMeetings[proposalMeetings.length - 1].start);
-  rangeEnd.setHours(23, 59, 59, 999);
+  const rangeStart = toDateTime(proposalMeetings[0].start, timezone).startOf('day');
+  const rangeEnd = toDateTime(proposalMeetings[proposalMeetings.length - 1].start, timezone).endOf('day');
 
   const existingBlocks: MeetingPreviewBlock[] = [];
   if (existingMeetings && existingMeetings.length > 0) {
     existingMeetings.forEach((task) => {
       if (!task.is_fixed_time || !task.start_time || !task.end_time) return;
-      const start = new Date(task.start_time);
-      const end = new Date(task.end_time);
-      if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return;
-      if (start < rangeStart || start > rangeEnd) return;
-      const startMinutes = start.getHours() * 60 + start.getMinutes();
-      const endMinutesRaw = end.getHours() * 60 + end.getMinutes();
+      const start = toDateTime(task.start_time, timezone);
+      const end = toDateTime(task.end_time, timezone);
+      if (!start.isValid || !end.isValid) return;
+      if (start.toMillis() < rangeStart.toMillis() || start.toMillis() > rangeEnd.toMillis()) return;
+      const startMinutes = start.hour * 60 + start.minute;
+      const endMinutesRaw = end.hour * 60 + end.minute;
       const endMinutes = Math.max(startMinutes + 15, endMinutesRaw);
       existingBlocks.push({
         id: task.id,
         title: task.title,
-        start,
-        end,
-        dayKey: toLocalDateKey(start),
+        start: start.toJSDate(),
+        end: end.toJSDate(),
+        dayKey: toLocalDateKey(start.toJSDate(), timezone),
         startMinutes,
         endMinutes,
         lane: 0,
@@ -143,18 +138,19 @@ const buildCombinedMeetingPreview = (
   const meetings = [...proposalMeetings, ...existingBlocks];
   meetings.sort((a, b) => a.start.getTime() - b.start.getTime());
 
-  const dayMap = new Map<string, Date>();
+  const dayMap = new Map<string, number>();
   meetings.forEach((meeting) => {
     if (!dayMap.has(meeting.dayKey)) {
-      const date = new Date(meeting.start);
-      date.setHours(0, 0, 0, 0);
-      dayMap.set(meeting.dayKey, date);
+      const dayStart = toDateTime(meeting.start, timezone).startOf('day');
+      if (dayStart.isValid) {
+        dayMap.set(meeting.dayKey, dayStart.toMillis());
+      }
     }
   });
 
   const days = Array.from(dayMap.entries())
-    .sort((a, b) => a[1].getTime() - b[1].getTime())
-    .map(([key, date]) => ({ key, date, label: formatDayLabel(date) }));
+    .sort((a, b) => a[1] - b[1])
+    .map(([key]) => ({ key, label: formatDayLabel(key, timezone) }));
 
   const minStart = Math.min(...meetings.map((meeting) => meeting.startMinutes));
   const maxEnd = Math.max(...meetings.map((meeting) => meeting.endMinutes));
@@ -195,7 +191,7 @@ const buildCombinedMeetingPreview = (
   });
 
   const rangeLabel = days.length > 0
-    ? formatRangeLabel(days[0].date, days[days.length - 1].date)
+    ? formatRangeLabel(days[0].key, days[days.length - 1].key, timezone)
     : '';
 
   return {
@@ -231,13 +227,11 @@ export function ChatMessage({
   imageUrl,
 }: ChatMessageProps) {
   const queryClient = useQueryClient();
-  const combinedPreview = buildCombinedMeetingPreview(proposals, meetingTasks);
+  const timezone = useTimezone();
+  const combinedPreview = buildCombinedMeetingPreview(proposals, meetingTasks, timezone);
 
   const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('ja-JP', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
+    return formatDate(date, { hour: '2-digit', minute: '2-digit' }, timezone);
   };
 
   const getToolDisplayName = (toolName: string): string => {
@@ -382,7 +376,7 @@ export function ChatMessage({
                               >
                                 <div className="proposal-preview-block-title">{meeting.title}</div>
                                 <div className="proposal-preview-block-time">
-                                  {formatTimeLabel(meeting.start)} - {formatTimeLabel(meeting.end)}
+                                  {formatTimeLabel(meeting.start, timezone)} - {formatTimeLabel(meeting.end, timezone)}
                                 </div>
                                 {meeting.location && (
                                   <div className="proposal-preview-block-location">{meeting.location}</div>

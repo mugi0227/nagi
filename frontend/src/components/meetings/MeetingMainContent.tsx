@@ -14,6 +14,8 @@ import {
 import { useMeetingTimer } from '../../contexts/MeetingTimerContext';
 import type { MeetingSessionStatus } from '../../types/session';
 import { MeetingCompleted } from './MeetingCompleted';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, toDateKey, todayInTimezone } from '../../utils/dateTime';
 import './MeetingInProgress.css';
 
 interface MeetingMainContentProps {
@@ -29,26 +31,22 @@ export function MeetingMainContent({
     selectedMeeting,
     selectedTask
 }: MeetingMainContentProps) {
+    const timezone = useTimezone();
     // Either recurring meeting or standalone task (meeting)
     const hasMeeting = !!(selectedMeeting || selectedTask);
     const meetingTitle = selectedMeeting?.title || selectedTask?.title || '';
     const isAllDay = selectedTask?.is_all_day || false;
     const meetingStartTime = isAllDay
         ? '終日'
-        : (selectedMeeting?.start_time || (selectedTask?.start_time ? new Date(selectedTask.start_time).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : ''));
+        : (selectedMeeting?.start_time || (selectedTask?.start_time ? formatDate(selectedTask.start_time, { hour: '2-digit', minute: '2-digit' }, timezone) : ''));
     const meetingEndTime = isAllDay
         ? null
-        : (selectedTask?.end_time ? new Date(selectedTask.end_time).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' }) : null);
+        : (selectedTask?.end_time ? formatDate(selectedTask.end_time, { hour: '2-digit', minute: '2-digit' }, timezone) : null);
 
     // Collapsible state for meeting info section
     const [isInfoCollapsed, setIsInfoCollapsed] = useState(true);
 
-    const getDateStr = (date: Date) => {
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        return `${year}-${month}-${day}`;
-    };
+    const getDateStr = (date: Date) => toDateKey(date, timezone);
 
     const dateStr = selectedDate ? getDateStr(selectedDate) : '';
 
@@ -101,15 +99,14 @@ export function MeetingMainContent({
         }
 
         // Otherwise, determine by date
-        const today = new Date();
-        const todayStr = getDateStr(today);
+        const todayStr = todayInTimezone(timezone).toISODate() ?? '';
         const selectedDateStr = getDateStr(selectedDate);
 
         if (selectedDateStr < todayStr) {
             return 'ARCHIVE';
         }
         return 'PREPARATION';
-    }, [hasMeeting, selectedDate, session]);
+    }, [hasMeeting, selectedDate, session, timezone]);
 
     // Auto-refetch session when task changes
     useEffect(() => {
@@ -126,12 +123,11 @@ export function MeetingMainContent({
         }
 
         if (session && session.status === 'IN_PROGRESS' && selectedDate && taskId) {
-            const dateStr = selectedDate.toLocaleDateString('ja-JP', {
-                year: 'numeric',
-                month: 'long',
-                day: 'numeric',
-                weekday: 'long'
-            });
+            const dateStr = formatDate(
+                selectedDate,
+                { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' },
+                timezone,
+            );
             // Start or update global timer
             if (!meetingTimer.session || meetingTimer.session.id !== session.id) {
                 meetingTimer.startTimer(session, agendaItems, meetingTitle, dateStr, taskId, projectId);
@@ -149,17 +145,16 @@ export function MeetingMainContent({
             }
         }
         // Note: Don't stop timer when session is null/undefined - the timer context persists across pages
-    }, [session, agendaItems, meetingTitle, selectedDate, taskId, projectId, isSessionFetching]);
+    }, [session, agendaItems, meetingTitle, selectedDate, taskId, projectId, isSessionFetching, timezone]);
 
     const handleGenerateDraft = async () => {
         if (!hasMeeting || !selectedDate) return;
 
-        const formattedDate = selectedDate.toLocaleDateString('ja-JP', {
-            year: 'numeric',
-            month: 'long',
-            day: 'numeric',
-            weekday: 'long'
-        });
+        const formattedDate = formatDate(
+            selectedDate,
+            { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' },
+            timezone,
+        );
 
         const title = selectedTask?.title || selectedMeeting?.title || '';
 
@@ -259,7 +254,13 @@ export function MeetingMainContent({
         <div className="meetings-main">
             <div className="meetings-main-header">
                 <div className="meeting-header-info">
-                    <h2>{selectedDate.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' })}</h2>
+                    <h2>
+                        {formatDate(
+                            selectedDate,
+                            { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' },
+                            timezone,
+                        )}
+                    </h2>
                     <div className="meeting-header-meta">
                         <span>{meetingTitle}</span>
                         {meetingStartTime && (

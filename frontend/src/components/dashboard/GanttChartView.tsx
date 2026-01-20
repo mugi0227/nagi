@@ -3,6 +3,8 @@ import type { CSSProperties } from 'react';
 import { FaChevronDown, FaChevronRight } from 'react-icons/fa';
 import { StepNumber } from '../common/StepNumber';
 import type { ScheduleDay, TaskScheduleInfo, TaskStatus } from '../../api/types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, toDateKey, toDateTime, todayInTimezone } from '../../utils/dateTime';
 import './GanttChartView.css';
 
 interface GanttChartViewProps {
@@ -81,25 +83,22 @@ const TEXT = {
 const DEFAULT_PHASE_ID = 'phase:placeholder';
 const PROJECT_UNASSIGNED_ID = 'project:unassigned';
 
-const formatDayLabel = (dateStr: string) => {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
+const formatDayLabel = (dateStr: string, timezone: string) => {
+  return formatDate(dateStr, { month: 'numeric', day: 'numeric' }, timezone);
 };
 
-const formatWeekday = (dateStr: string) => {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('ja-JP', { weekday: 'short' });
+const formatWeekday = (dateStr: string, timezone: string) => {
+  return formatDate(dateStr, { weekday: 'short' }, timezone);
 };
 
-const isWeekend = (dateStr: string) => {
-  const date = new Date(dateStr);
-  const day = date.getDay();
-  return day === 0 || day === 6;
+const isWeekend = (dateStr: string, timezone: string) => {
+  const date = toDateTime(dateStr, timezone);
+  return date.weekday === 6 || date.weekday === 7;
 };
 
-const isToday = (dateStr: string) => {
-  const today = new Date().toISOString().slice(0, 10);
-  return dateStr === today;
+const isToday = (dateStr: string, timezone: string) => {
+  const todayKey = toDateKey(todayInTimezone(timezone).toJSDate(), timezone);
+  return dateStr === todayKey;
 };
 
 export function GanttChartView({
@@ -111,23 +110,24 @@ export function GanttChartView({
   getCapacityForDate,
   onTaskClick,
 }: GanttChartViewProps) {
+  const timezone = useTimezone();
   const [expandedParents, setExpandedParents] = useState<Set<string>>(() => new Set());
 
   const dayMeta = useMemo(() => (
     days.map(day => {
-      const date = new Date(`${day.date}T00:00:00`);
-      const capacityHours = getCapacityForDate(date);
+      const date = toDateTime(day.date, timezone);
+      const capacityHours = getCapacityForDate(date.toJSDate());
       const isOffDay = capacityHours <= 0;
       return {
         date: day.date,
-        label: formatDayLabel(day.date),
-        weekday: formatWeekday(day.date),
-        isWeekend: isWeekend(day.date),
-        isToday: isToday(day.date),
+        label: formatDayLabel(day.date, timezone),
+        weekday: formatWeekday(day.date, timezone),
+        isWeekend: isWeekend(day.date, timezone),
+        isToday: isToday(day.date, timezone),
         isOffDay,
       };
     })
-  ), [days, getCapacityForDate]);
+  ), [days, getCapacityForDate, timezone]);
 
   const dateIndexMap = useMemo(() => {
     const map = new Map<string, number>();

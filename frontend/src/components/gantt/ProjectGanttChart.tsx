@@ -12,6 +12,7 @@
 
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 import type { CSSProperties } from 'react';
+import { DateTime } from 'luxon';
 import { FaChevronDown, FaChevronRight, FaExpand, FaCompress } from 'react-icons/fa';
 import type {
   Task,
@@ -21,6 +22,8 @@ import type {
   PhaseScheduleDiff,
   TaskScheduleDiff,
 } from '../../api/types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { toDateKey, toDateTime, todayInTimezone } from '../../utils/dateTime';
 import './ProjectGanttChart.css';
 
 // ============================================
@@ -37,6 +40,7 @@ interface ProjectGanttChartProps {
   baselineDiff: ScheduleDiff | null;
   onTaskUpdate?: (taskId: string, updates: { start_not_before?: string; due_date?: string }) => void;
   onPhaseUpdate?: (phaseId: string, updates: { start_date?: string; end_date?: string }) => void;
+  onTaskClick?: (taskId: string) => void;
   className?: string;
 }
 
@@ -58,7 +62,7 @@ interface GanttRow {
   bufferStatus?: BufferStatus;
   bufferPercentage?: number;
   bufferType?: 'ccpm' | 'fixed';
-  milestoneDate?: Date;
+  milestoneDate?: DateTime;
   dependencyIds?: string[];
   isExpanded?: boolean;
   childCount?: number;
@@ -74,26 +78,24 @@ interface MonthHeader {
 // Helpers
 // ============================================
 
-const formatMonthYear = (date: Date): string => {
-  return date.toLocaleDateString('ja-JP', { year: 'numeric', month: 'long' });
+const formatMonthYear = (date: DateTime): string => {
+  return date.setLocale('ja-JP').toLocaleString({ year: 'numeric', month: 'long' });
 };
 
-const formatDayLabel = (date: Date): string => {
-  return date.getDate().toString();
+const formatDayLabel = (date: DateTime): string => {
+  return date.day.toString();
 };
 
-const formatWeekday = (date: Date): string => {
-  return date.toLocaleDateString('ja-JP', { weekday: 'short' });
+const formatWeekday = (date: DateTime): string => {
+  return date.setLocale('ja-JP').toLocaleString({ weekday: 'short' });
 };
 
-const isWeekend = (date: Date): boolean => {
-  const day = date.getDay();
-  return day === 0 || day === 6;
+const isWeekend = (date: DateTime): boolean => {
+  return date.weekday === 6 || date.weekday === 7;
 };
 
-const isToday = (date: Date): boolean => {
-  const today = new Date();
-  return date.toDateString() === today.toDateString();
+const isToday = (date: DateTime, today: DateTime): boolean => {
+  return date.hasSame(today, 'day');
 };
 
 const getBufferStatusColor = (status: BufferStatus): string => {
@@ -112,21 +114,14 @@ const getBufferStatusIcon = (status: BufferStatus): string => {
   }
 };
 
-const generateDateRange = (startDate: Date, days: number): Date[] => {
-  const result: Date[] = [];
-  const current = new Date(startDate);
-  current.setHours(0, 0, 0, 0);
+const generateDateRange = (startDate: DateTime, days: number): DateTime[] => {
+  const result: DateTime[] = [];
+  let current = startDate.startOf('day');
   for (let i = 0; i < days; i++) {
-    result.push(new Date(current));
-    current.setDate(current.getDate() + 1);
+    result.push(current);
+    current = current.plus({ days: 1 });
   }
   return result;
-};
-
-const parseDate = (dateStr: string | undefined): Date | null => {
-  if (!dateStr) return null;
-  const d = new Date(dateStr);
-  return isNaN(d.getTime()) ? null : d;
 };
 
 // ============================================
@@ -140,8 +135,11 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   baselineDiff,
   onTaskUpdate,
   onPhaseUpdate,
+  onTaskClick,
   className,
 }) => {
+  const timezone = useTimezone();
+  const today = useMemo(() => todayInTimezone(timezone), [timezone]);
   const [viewMode, setViewMode] = useState<ViewMode>('day');
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(() => new Set(phases.map(p => p.id)));
   const [showTaskList, setShowTaskList] = useState(true);
@@ -153,13 +151,22 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
     startX: number;
     originalStart: number;
     originalEnd: number;
+    previewStart: number;
+    previewEnd: number;
   } | null>(null);
+
+  const parseDate = useCallback(
+    (dateStr: string | undefined): DateTime | null => {
+      if (!dateStr) return null;
+      const parsed = toDateTime(dateStr, timezone).startOf('day');
+      return parsed.isValid ? parsed : null;
+    },
+    [timezone],
+  );
 
   // 日付範囲の計算（前後3ヶ月 = 約180日）
   const dateRange = useMemo(() => {
-    const allDates: Date[] = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const allDates: DateTime[] = [];
 
     // フェーズの日付
     phases.forEach(p => {
@@ -198,46 +205,45 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
       allDates.push(today);
     }
 
-    const minDate = new Date(Math.min(...allDates.map(d => d.getTime())));
-    const maxDate = new Date(Math.max(...allDates.map(d => d.getTime())));
+    const minMillis = Math.min(...allDates.map(d => d.toMillis()));
+    const maxMillis = Math.max(...allDates.map(d => d.toMillis()));
+    const minDate = DateTime.fromMillis(minMillis, { zone: timezone }).startOf('day');
+    const maxDate = DateTime.fromMillis(maxMillis, { zone: timezone }).startOf('day');
 
     // 前後に余裕を持たせる（前1ヶ月、後2ヶ月）
-    minDate.setDate(minDate.getDate() - 30);
-    maxDate.setDate(maxDate.getDate() + 60);
+    const rangeStart = minDate.minus({ days: 30 });
+    const rangeEnd = maxDate.plus({ days: 60 });
 
-    const days = Math.ceil((maxDate.getTime() - minDate.getTime()) / (1000 * 60 * 60 * 24));
-    return generateDateRange(minDate, Math.max(days, 90));
-  }, [phases, milestones, tasks, baselineDiff]);
+    const days = Math.ceil(rangeEnd.diff(rangeStart, 'days').days) + 1;
+    return generateDateRange(rangeStart, Math.max(days, 90));
+  }, [phases, milestones, tasks, baselineDiff, parseDate, timezone, today]);
 
   // 月ヘッダーの計算
   const monthHeaders = useMemo((): MonthHeader[] => {
     const headers: MonthHeader[] = [];
-    let currentMonth = -1;
-    let currentYear = -1;
+    let currentMonthKey = '';
     let startIndex = 0;
 
     dateRange.forEach((date, index) => {
-      const month = date.getMonth();
-      const year = date.getFullYear();
+      const monthKey = `${date.year}-${date.month}`;
 
-      if (month !== currentMonth || year !== currentYear) {
-        if (currentMonth !== -1) {
+      if (monthKey !== currentMonthKey) {
+        if (currentMonthKey) {
           headers.push({
-            label: formatMonthYear(new Date(currentYear, currentMonth)),
+            label: formatMonthYear(dateRange[startIndex].startOf('month')),
             startIndex,
             span: index - startIndex,
           });
         }
-        currentMonth = month;
-        currentYear = year;
+        currentMonthKey = monthKey;
         startIndex = index;
       }
     });
 
-    // 最後の月を追加
-    if (currentMonth !== -1) {
+    // ????????E????????????
+    if (currentMonthKey) {
       headers.push({
-        label: formatMonthYear(new Date(currentYear, currentMonth)),
+        label: formatMonthYear(dateRange[startIndex].startOf('month')),
         startIndex,
         span: dateRange.length - startIndex,
       });
@@ -250,7 +256,10 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   const dateIndexMap = useMemo(() => {
     const map = new Map<string, number>();
     dateRange.forEach((date, index) => {
-      map.set(date.toISOString().slice(0, 10), index);
+      const dateKey = date.toISODate();
+      if (dateKey) {
+        map.set(dateKey, index);
+      }
     });
     return map;
   }, [dateRange]);
@@ -258,9 +267,9 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   // 日付文字列からインデックスを取得
   const getDateIndex = useCallback((dateStr: string | undefined): number => {
     if (!dateStr) return -1;
-    const normalized = dateStr.slice(0, 10);
+    const normalized = toDateKey(dateStr, timezone);
     return dateIndexMap.get(normalized) ?? -1;
-  }, [dateIndexMap]);
+  }, [dateIndexMap, timezone]);
 
   // フェーズのバッファ情報を取得
   const getPhaseBufferInfo = useCallback((phaseId: string): PhaseScheduleDiff | undefined => {
@@ -338,7 +347,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
           endIndex = Math.max(...indices);
         } else {
           // デフォルト: 今日から2週間
-          const todayIdx = dateIndexMap.get(new Date().toISOString().slice(0, 10)) ?? 0;
+          const todayIdx = dateIndexMap.get(today.toISODate() ?? '') ?? 0;
           startIndex = todayIdx;
           endIndex = todayIdx + 14;
         }
@@ -377,8 +386,8 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
         // マイルストーン
         phaseMilestones
           .sort((a, b) => {
-            const dateA = parseDate(a.due_date)?.getTime() ?? 0;
-            const dateB = parseDate(b.due_date)?.getTime() ?? 0;
+            const dateA = parseDate(a.due_date)?.toMillis() ?? 0;
+            const dateB = parseDate(b.due_date)?.toMillis() ?? 0;
             return dateA - dateB;
           })
           .forEach(milestone => {
@@ -400,8 +409,8 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
         const parentTasks = phaseTasks.filter(t => !t.parent_id);
         parentTasks
           .sort((a, b) => {
-            const dateA = parseDate(a.due_date)?.getTime() ?? 0;
-            const dateB = parseDate(b.due_date)?.getTime() ?? 0;
+            const dateA = parseDate(a.due_date)?.toMillis() ?? 0;
+            const dateB = parseDate(b.due_date)?.toMillis() ?? 0;
             return dateA - dateB;
           })
           .forEach(task => {
@@ -479,7 +488,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
         // バッファ行（消費されている場合のみ表示）
         const bufferBaseIndex = endIndex >= 0
           ? endIndex
-          : (dateIndexMap.get(new Date().toISOString().slice(0, 10)) ?? 0);
+          : (dateIndexMap.get(today.toISODate() ?? '') ?? 0);
         const bufferStartIndex = bufferBaseIndex + 1;
         const bufferLabel = bufferInfo ? ` Remaining ${Math.round(bufferInfo.buffer_percentage)}%` : '';
         if (bufferInfo && (ccpmBufferDays > 0 || fixedBufferDays > 0)) {
@@ -613,6 +622,11 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
     return arrows;
   }, [rows]);
 
+  // 1日あたりの幅（ビューモードに応じて変化）
+  const dayWidth = useMemo(() => {
+    return viewMode === 'day' ? 40 : viewMode === 'week' ? 16 : 6;
+  }, [viewMode]);
+
   // フェーズ展開/折りたたみ
   const togglePhase = useCallback((phaseId: string) => {
     setExpandedPhases(prev => {
@@ -639,7 +653,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   // 今日の位置にスクロール
   useEffect(() => {
     if (scrollRef.current) {
-      const todayIndex = dateIndexMap.get(new Date().toISOString().slice(0, 10)) ?? 0;
+      const todayIndex = dateIndexMap.get(today.toISODate() ?? '') ?? 0;
       const dayWidth = viewMode === 'day' ? 40 : viewMode === 'week' ? 16 : 6;
       const scrollPosition = Math.max(0, todayIndex * dayWidth - 200);
       scrollRef.current.scrollLeft = scrollPosition;
@@ -660,6 +674,8 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
       startX: e.clientX,
       originalStart: bar.startIndex,
       originalEnd: bar.endIndex,
+      previewStart: bar.startIndex,
+      previewEnd: bar.endIndex,
     });
   }, []);
 
@@ -667,8 +683,36 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   useEffect(() => {
     if (!dragState) return;
 
-    const handleMouseMove = (_e: MouseEvent) => {
-      // リアルタイムプレビューは後で実装
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - dragState.startX;
+      const deltaDays = Math.round(deltaX / dayWidth);
+
+      let newStart = dragState.originalStart;
+      let newEnd = dragState.originalEnd;
+
+      if (dragState.type === 'move') {
+        newStart += deltaDays;
+        newEnd += deltaDays;
+      } else if (dragState.type === 'resize-start') {
+        newStart += deltaDays;
+        // 開始日が終了日を超えないようにする
+        if (newStart > newEnd) newStart = newEnd;
+      } else if (dragState.type === 'resize-end') {
+        newEnd += deltaDays;
+        // 終了日が開始日より前にならないようにする
+        if (newEnd < newStart) newEnd = newStart;
+      }
+
+      // 範囲内に収める
+      newStart = Math.max(0, Math.min(newStart, dateRange.length - 1));
+      newEnd = Math.max(0, Math.min(newEnd, dateRange.length - 1));
+
+      // プレビュー位置を更新
+      setDragState(prev => prev ? {
+        ...prev,
+        previewStart: newStart,
+        previewEnd: newEnd,
+      } : null);
     };
 
     const handleMouseUp = (e: MouseEvent) => {
@@ -676,8 +720,10 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
       const deltaX = e.clientX - dragState.startX;
       const deltaDays = Math.round(deltaX / dayWidth);
 
+      const row = rows.find(r => r.id === dragState.rowId);
+
       if (deltaDays !== 0) {
-        const row = rows.find(r => r.id === dragState.rowId);
+        // ドラッグが発生した場合は日付を更新
         if (row) {
           let newStart = dragState.originalStart;
           let newEnd = dragState.originalEnd;
@@ -692,8 +738,8 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
           }
 
           // 日付に変換
-          const startDate = dateRange[Math.max(0, Math.min(newStart, dateRange.length - 1))]?.toISOString().slice(0, 10);
-          const endDate = dateRange[Math.max(0, Math.min(newEnd, dateRange.length - 1))]?.toISOString().slice(0, 10);
+          const startDate = dateRange[Math.max(0, Math.min(newStart, dateRange.length - 1))]?.toISODate();
+          const endDate = dateRange[Math.max(0, Math.min(newEnd, dateRange.length - 1))]?.toISODate();
 
           if (startDate && endDate) {
             if (row.type === 'task' && onTaskUpdate) {
@@ -702,6 +748,11 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
               onPhaseUpdate(row.id, { start_date: startDate, end_date: endDate });
             }
           }
+        }
+      } else {
+        // ドラッグが発生しなかった場合はクリックとして扱う
+        if (row?.type === 'task' && onTaskClick && dragState.type === 'move') {
+          onTaskClick(row.id);
         }
       }
 
@@ -714,7 +765,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
       document.removeEventListener('mousemove', handleMouseMove);
       document.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [dragState, viewMode, dateRange, rows, onTaskUpdate, onPhaseUpdate]);
+  }, [dragState, viewMode, dateRange, rows, onTaskUpdate, onPhaseUpdate, onTaskClick, dayWidth]);
 
   // バーのクラス名
   const getBarClass = (row: GanttRow, bar: GanttBar, variant: 'baseline' | 'current' = 'current'): string => {
@@ -732,7 +783,6 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   };
 
   const totalPhases = phases.length + (tasks.some(t => !t.phase_id) ? 1 : 0);
-  const dayWidth = viewMode === 'day' ? 40 : viewMode === 'week' ? 16 : 6;
 
   if (rows.length === 0) {
     return (
@@ -789,9 +839,13 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
               {rows.map((row) => (
                 <div
                   key={`sidebar-${row.type}-${row.id}`}
-                  className={`pgantt-sidebar-row ${row.type} depth-${row.depth}`}
+                  className={`pgantt-sidebar-row ${row.type} depth-${row.depth}${row.type === 'task' ? ' clickable' : ''}`}
                   style={{ '--depth': row.depth } as CSSProperties}
-                  onClick={row.type === 'phase' ? () => togglePhase(row.id) : undefined}
+                  onClick={
+                    row.type === 'phase' ? () => togglePhase(row.id) :
+                    row.type === 'task' && onTaskClick ? () => onTaskClick(row.id) :
+                    undefined
+                  }
                 >
                   {row.type === 'phase' && (
                     <span className="pgantt-toggle">
@@ -831,13 +885,13 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
           <div className="pgantt-day-header" style={{ width: `${dateRange.length * dayWidth}px` }}>
             {dateRange.map((date, index) => {
               const showLabel = viewMode === 'day' ||
-                (viewMode === 'week' && date.getDay() === 1) ||
-                (viewMode === 'month' && date.getDate() === 1);
+                (viewMode === 'week' && date.weekday === 1) ||
+                (viewMode === 'month' && date.day === 1);
 
               return (
                 <div
                   key={`day-${index}`}
-                  className={`pgantt-day-cell ${isWeekend(date) ? 'weekend' : ''} ${isToday(date) ? 'today' : ''}`}
+                  className={`pgantt-day-cell ${isWeekend(date) ? 'weekend' : ''} ${isToday(date, today) ? 'today' : ''}`}
                   style={{ width: `${dayWidth}px` }}
                 >
                   {showLabel && viewMode === 'day' && (
@@ -861,7 +915,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
               {dateRange.map((date, index) => (
                 <div
                   key={`grid-${index}`}
-                  className={`pgantt-grid-cell ${isWeekend(date) ? 'weekend' : ''} ${isToday(date) ? 'today' : ''}`}
+                  className={`pgantt-grid-cell ${isWeekend(date) ? 'weekend' : ''} ${isToday(date, today) ? 'today' : ''}`}
                   style={{ left: `${index * dayWidth}px`, width: `${dayWidth}px` }}
                 />
               ))}
@@ -911,46 +965,66 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                     title={`Plan: ${row.title}`}
                   />
                 )}
-                {row.bar && row.bar.startIndex >= 0 && (
-                  <div
-                    className={getBarClass(row, row.bar)}
-                    style={{
-                      left: `${row.bar.startIndex * dayWidth + 2}px`,
-                      width: `${Math.max((row.bar.endIndex - row.bar.startIndex + 1) * dayWidth - 4, 8)}px`,
-                      '--progress': `${row.bar.progress}%`,
-                      '--buffer-color': row.bufferStatus ? getBufferStatusColor(row.bufferStatus) : undefined,
-                    } as CSSProperties}
-                    onMouseDown={(e) => {
-                      if (row.type === 'task' || row.type === 'phase') {
-                        handleDragStart(e, row.id, 'move', row.bar!);
-                      }
-                    }}
-                    title={`${row.title}${row.bar.progress > 0 ? ` (${Math.round(row.bar.progress)}%)` : ''}`}
-                  >
-                    {row.type === 'milestone' && <span className="pgantt-bar-milestone">?</span>}
-                    {row.bar.progress > 0 && row.bar.progress < 100 && row.type !== 'milestone' && (
-                      <div className="pgantt-bar-progress" />
-                    )}
-                    {(row.type === 'task' || row.type === 'phase') && (
-                      <>
-                        <div
-                          className="pgantt-resize-handle start"
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            handleDragStart(e, row.id, 'resize-start', row.bar!);
-                          }}
-                        />
-                        <div
-                          className="pgantt-resize-handle end"
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            handleDragStart(e, row.id, 'resize-end', row.bar!);
-                          }}
-                        />
-                      </>
-                    )}
-                  </div>
-                )}
+                {row.bar && row.bar.startIndex >= 0 && (() => {
+                  // ドラッグ中の行はプレビュー位置を使用
+                  const isDragging = dragState?.rowId === row.id;
+                  const barStart = isDragging ? dragState.previewStart : row.bar.startIndex;
+                  const barEnd = isDragging ? dragState.previewEnd : row.bar.endIndex;
+                  const startDate = dateRange[barStart];
+                  const endDate = dateRange[barEnd];
+
+                  return (
+                    <div
+                      className={`${getBarClass(row, row.bar)}${isDragging ? ' dragging' : ''}`}
+                      style={{
+                        left: `${barStart * dayWidth + 2}px`,
+                        width: `${Math.max((barEnd - barStart + 1) * dayWidth - 4, 8)}px`,
+                        '--progress': `${row.bar.progress}%`,
+                        '--buffer-color': row.bufferStatus ? getBufferStatusColor(row.bufferStatus) : undefined,
+                      } as CSSProperties}
+                      onMouseDown={(e) => {
+                        if (row.type === 'task' || row.type === 'phase') {
+                          handleDragStart(e, row.id, 'move', row.bar!);
+                        }
+                      }}
+                      title={`${row.title}${row.bar.progress > 0 ? ` (${Math.round(row.bar.progress)}%)` : ''}`}
+                    >
+                      {row.type === 'milestone' && <span className="pgantt-bar-milestone">?</span>}
+                      {row.bar.progress > 0 && row.bar.progress < 100 && row.type !== 'milestone' && (
+                        <div className="pgantt-bar-progress" />
+                      )}
+                      {(row.type === 'task' || row.type === 'phase') && (
+                        <>
+                          <div
+                            className="pgantt-resize-handle start"
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              handleDragStart(e, row.id, 'resize-start', row.bar!);
+                            }}
+                          />
+                          <div
+                            className="pgantt-resize-handle end"
+                            onMouseDown={(e) => {
+                              e.stopPropagation();
+                              handleDragStart(e, row.id, 'resize-end', row.bar!);
+                            }}
+                          />
+                        </>
+                      )}
+                      {/* ドラッグ中の日付プレビュー */}
+                      {isDragging && startDate && endDate && (
+                        <div className="pgantt-drag-preview">
+                          <span className="pgantt-drag-date start">
+                            {startDate.toFormat('M/d')}
+                          </span>
+                          <span className="pgantt-drag-date end">
+                            {endDate.toFormat('M/d')}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             ))}
           </div>

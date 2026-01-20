@@ -2,6 +2,8 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { Gantt, Task as GanttTask, ViewMode } from 'gantt-task-react';
 import 'gantt-task-react/dist/index.css';
 import { Task, ScheduleDiff, Phase, Milestone } from '../../api/types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { toDateTime, todayInTimezone } from '../../utils/dateTime';
 import './ProjectGanttContent.css';
 
 interface ProjectGanttContentProps {
@@ -50,6 +52,7 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
   baselineDiff,
   className,
 }) => {
+  const timezone = useTimezone();
   const [viewMode, setViewMode] = useState<ViewMode>(ViewMode.Day);
   const [showTaskList, setShowTaskList] = useState(true);
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(new Set());
@@ -103,8 +106,7 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
   // ガントチャートデータの構築
   const ganttTasks = useMemo(() => {
     const result: CustomGanttTask[] = [];
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = todayInTimezone(timezone);
 
     // フェーズ順にソート
     const sortedPhases = [...phases].sort(
@@ -113,33 +115,35 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
 
     sortedPhases.forEach((phase) => {
       // フェーズの期間を決定
-      let phaseStart: Date;
-      let phaseEnd: Date;
+      let phaseStart: ReturnType<typeof toDateTime>;
+      let phaseEnd: ReturnType<typeof toDateTime>;
 
       if (phase.start_date && phase.end_date) {
-        phaseStart = new Date(phase.start_date);
-        phaseEnd = new Date(phase.end_date);
+        phaseStart = toDateTime(phase.start_date, timezone);
+        phaseEnd = toDateTime(phase.end_date, timezone);
       } else {
         // フェーズに日付がない場合、タスクから推定
         const phaseTasks = tasksByPhase.get(phase.id) || [];
         const phaseMilestones = milestonesByPhase.get(phase.id) || [];
 
-        const dates: Date[] = [];
+        const dates: ReturnType<typeof toDateTime>[] = [];
         phaseTasks.forEach((t) => {
-          if (t.due_date) dates.push(new Date(t.due_date));
-          if (t.start_not_before) dates.push(new Date(t.start_not_before));
+          if (t.due_date) dates.push(toDateTime(t.due_date, timezone));
+          if (t.start_not_before) dates.push(toDateTime(t.start_not_before, timezone));
         });
         phaseMilestones.forEach((m) => {
-          if (m.due_date) dates.push(new Date(m.due_date));
+          if (m.due_date) dates.push(toDateTime(m.due_date, timezone));
         });
 
-        if (dates.length > 0) {
-          phaseStart = new Date(Math.min(...dates.map((d) => d.getTime())));
-          phaseEnd = new Date(Math.max(...dates.map((d) => d.getTime())));
+        const validDates = dates.filter((d) => d.isValid);
+        if (validDates.length > 0) {
+          const minMillis = Math.min(...validDates.map((d) => d.toMillis()));
+          const maxMillis = Math.max(...validDates.map((d) => d.toMillis()));
+          phaseStart = toDateTime(new Date(minMillis), timezone);
+          phaseEnd = toDateTime(new Date(maxMillis), timezone);
         } else {
-          phaseStart = new Date(today);
-          phaseEnd = new Date(today);
-          phaseEnd.setDate(phaseEnd.getDate() + 14); // デフォルト2週間
+          phaseStart = today;
+          phaseEnd = today.plus({ days: 14 });
         }
       }
 
@@ -162,8 +166,8 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
 
       // フェーズ行を追加（project type）
       result.push({
-        start: phaseStart,
-        end: phaseEnd,
+        start: phaseStart.toJSDate(),
+        end: phaseEnd.toJSDate(),
         name: phaseDisplayName,
         id: `phase-${phase.id}`,
         type: 'project' as GanttItemType,
@@ -186,10 +190,10 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
         .sort((a, b) => a.order_in_phase - b.order_in_phase)
         .forEach((milestone) => {
           if (milestone.due_date) {
-            const dueDate = new Date(milestone.due_date);
+            const dueDate = toDateTime(milestone.due_date, timezone);
             result.push({
-              start: dueDate,
-              end: dueDate,
+              start: dueDate.toJSDate(),
+              end: dueDate.toJSDate(),
               name: `◆ ${milestone.title}`,
               id: `milestone-${milestone.id}`,
               type: 'milestone' as GanttItemType,
@@ -211,14 +215,12 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
       // バッファ表示（フェーズ末尾に）
       if (bufferPercentage < 100 && phaseDiff) {
         // バッファを視覚化：フェーズ終了後に1日のバー
-        const bufferStart = new Date(phaseEnd);
-        bufferStart.setDate(bufferStart.getDate() + 1);
-        const bufferEnd = new Date(bufferStart);
-        bufferEnd.setDate(bufferEnd.getDate() + 1);
+        const bufferStart = phaseEnd.plus({ days: 1 });
+        const bufferEnd = bufferStart.plus({ days: 1 });
 
         result.push({
-          start: bufferStart,
-          end: bufferEnd,
+          start: bufferStart.toJSDate(),
+          end: bufferEnd.toJSDate(),
           name: `バッファ残 ${Math.round(bufferPercentage)}%`,
           id: `buffer-${phase.id}`,
           type: 'task' as GanttItemType,
@@ -248,10 +250,10 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
           taskDiffs
             .sort((a, b) => {
               const dateA = a.current_start
-                ? new Date(a.current_start).getTime()
+                ? toDateTime(a.current_start, timezone).toMillis()
                 : 0;
               const dateB = b.current_start
-                ? new Date(b.current_start).getTime()
+                ? toDateTime(b.current_start, timezone).toMillis()
                 : 0;
               return dateA - dateB;
             })
@@ -264,13 +266,15 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
 
               // 実績バー
               if (diff.current_start && diff.current_end) {
-                const start = new Date(diff.current_start);
-                const end = new Date(diff.current_end);
-                if (end <= start) end.setTime(start.getTime() + 3600000);
+                let start = toDateTime(diff.current_start, timezone);
+                let end = toDateTime(diff.current_end, timezone);
+                if (end.toMillis() <= start.toMillis()) {
+                  end = start.plus({ hours: 1 });
+                }
 
                 result.push({
-                  start,
-                  end,
+                  start: start.toJSDate(),
+                  end: end.toJSDate(),
                   name: task.title,
                   id: `task-${task.id}`,
                   type: 'task' as GanttItemType,
@@ -293,8 +297,8 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
           phaseTasks
             .filter((t) => !t.parent_id) // 親タスクのみ
             .sort((a, b) => {
-              const dateA = a.due_date ? new Date(a.due_date).getTime() : 0;
-              const dateB = b.due_date ? new Date(b.due_date).getTime() : 0;
+              const dateA = a.due_date ? toDateTime(a.due_date, timezone).toMillis() : 0;
+              const dateB = b.due_date ? toDateTime(b.due_date, timezone).toMillis() : 0;
               return dateA - dateB;
             })
             .forEach((task) => {
@@ -302,33 +306,30 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
               const taskProgress = task.progress ?? (isDone ? 100 : 0);
 
               // 日付を決定
-              let taskStart: Date;
-              let taskEnd: Date;
+              let taskStart: ReturnType<typeof toDateTime>;
+              let taskEnd: ReturnType<typeof toDateTime>;
 
               if (task.start_not_before && task.due_date) {
-                taskStart = new Date(task.start_not_before);
-                taskEnd = new Date(task.due_date);
+                taskStart = toDateTime(task.start_not_before, timezone);
+                taskEnd = toDateTime(task.due_date, timezone);
               } else if (task.due_date) {
-                taskEnd = new Date(task.due_date);
-                taskStart = new Date(taskEnd);
+                taskEnd = toDateTime(task.due_date, timezone);
                 const durationDays = Math.ceil(
                   (task.estimated_minutes || 60) / (8 * 60)
                 );
-                taskStart.setDate(taskStart.getDate() - durationDays);
+                taskStart = taskEnd.minus({ days: durationDays });
               } else {
-                taskStart = new Date(today);
-                taskEnd = new Date(today);
-                taskEnd.setDate(taskEnd.getDate() + 1);
+                taskStart = today;
+                taskEnd = today.plus({ days: 1 });
               }
 
-              if (taskEnd <= taskStart) {
-                taskEnd = new Date(taskStart);
-                taskEnd.setDate(taskEnd.getDate() + 1);
+              if (taskEnd.toMillis() <= taskStart.toMillis()) {
+                taskEnd = taskStart.plus({ days: 1 });
               }
 
               result.push({
-                start: taskStart,
-                end: taskEnd,
+                start: taskStart.toJSDate(),
+                end: taskEnd.toJSDate(),
                 name: task.title,
                 id: `task-${task.id}`,
                 type: 'task' as GanttItemType,
@@ -353,19 +354,22 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
     const unassignedTasks = tasks.filter((t) => !t.phase_id && !t.parent_id);
     if (unassignedTasks.length > 0) {
       const dates = unassignedTasks
-        .map((t) => (t.due_date ? new Date(t.due_date) : null))
-        .filter((d): d is Date => d !== null);
+        .map((t) => (t.due_date ? toDateTime(t.due_date, timezone) : null))
+        .filter((d): d is ReturnType<typeof toDateTime> => d !== null);
 
+      const validDates = dates.filter((d) => d.isValid);
       const unassignedStart =
-        dates.length > 0 ? new Date(Math.min(...dates.map((d) => d.getTime()))) : today;
+        validDates.length > 0
+          ? toDateTime(new Date(Math.min(...validDates.map((d) => d.toMillis()))), timezone)
+          : today;
       const unassignedEnd =
-        dates.length > 0
-          ? new Date(Math.max(...dates.map((d) => d.getTime())))
-          : new Date(today.getTime() + 14 * 24 * 60 * 60 * 1000);
+        validDates.length > 0
+          ? toDateTime(new Date(Math.max(...validDates.map((d) => d.toMillis()))), timezone)
+          : today.plus({ days: 14 });
 
       result.push({
-        start: unassignedStart,
-        end: unassignedEnd,
+        start: unassignedStart.toJSDate(),
+        end: unassignedEnd.toJSDate(),
         name: '📋 未割当タスク',
         id: 'phase-unassigned',
         type: 'project' as GanttItemType,
@@ -388,19 +392,18 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
           const taskProgress = task.progress ?? (isDone ? 100 : 0);
 
           let taskStart = task.start_not_before
-            ? new Date(task.start_not_before)
-            : new Date(today);
-          let taskEnd = task.due_date ? new Date(task.due_date) : new Date(today);
-          taskEnd.setDate(taskEnd.getDate() + 1);
+            ? toDateTime(task.start_not_before, timezone)
+            : today;
+          let taskEnd = task.due_date ? toDateTime(task.due_date, timezone) : today;
+          taskEnd = taskEnd.plus({ days: 1 });
 
-          if (taskEnd <= taskStart) {
-            taskEnd = new Date(taskStart);
-            taskEnd.setDate(taskEnd.getDate() + 1);
+          if (taskEnd.toMillis() <= taskStart.toMillis()) {
+            taskEnd = taskStart.plus({ days: 1 });
           }
 
           result.push({
-            start: taskStart,
-            end: taskEnd,
+            start: taskStart.toJSDate(),
+            end: taskEnd.toJSDate(),
             name: task.title,
             id: `task-${task.id}`,
             type: 'task' as GanttItemType,
@@ -421,7 +424,16 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
     }
 
     return result;
-  }, [tasks, phases, milestones, baselineDiff, expandedPhases, tasksByPhase, milestonesByPhase]);
+  }, [
+    tasks,
+    phases,
+    milestones,
+    baselineDiff,
+    expandedPhases,
+    tasksByPhase,
+    milestonesByPhase,
+    timezone,
+  ]);
 
   // クリックハンドラ
   const handleTaskClick = useCallback(

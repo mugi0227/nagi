@@ -3,11 +3,16 @@ import { useEffect, useMemo, useState } from 'react';
 import {
   FaCalendarAlt,
   FaChartBar,
+  FaCheck,
   FaCheckCircle,
   FaColumns,
+  FaEdit,
+  FaPlus,
   FaStream,
   FaTasks,
   FaThLarge,
+  FaTimes,
+  FaTrash,
   FaUsers,
 } from 'react-icons/fa';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -40,6 +45,8 @@ import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { TaskFormModal } from '../components/tasks/TaskFormModal';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { useTasks } from '../hooks/useTasks';
+import { useTimezone } from '../hooks/useTimezone';
+import { formatDate, toDateKey, toDateTime, todayInTimezone } from '../utils/dateTime';
 import { userStorage } from '../utils/userStorage';
 import './ProjectDetailV2Page.css';
 
@@ -81,13 +88,6 @@ const DEFAULT_PLAN_UTILIZATION_RATIO = 0.7;
 
 const getPlanUtilizationKey = (projectId?: string) =>
   projectId ? `planUtilizationRatio:${projectId}` : 'planUtilizationRatio';
-
-const formatShortDate = (value?: string) => {
-  if (!value) return '';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
-};
 
 const formatHours = (minutes: number) => {
   const hours = Math.round((minutes / 60) * 10) / 10;
@@ -135,6 +135,7 @@ export function ProjectDetailV2Page() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const timezone = useTimezone();
 
   // Read initial tab from URL query parameter
   const getInitialTab = (): TabId => {
@@ -177,6 +178,21 @@ export function ProjectDetailV2Page() {
   const [planUtilizationRatio, setPlanUtilizationRatio] = useState(DEFAULT_PLAN_UTILIZATION_RATIO);
   const [phaseBufferDrafts, setPhaseBufferDrafts] = useState<Record<string, string>>({});
   const [phaseBufferActionId, setPhaseBufferActionId] = useState<string | null>(null);
+
+  // Phase edit/delete state
+  const [editingPhaseId, setEditingPhaseId] = useState<string | null>(null);
+  const [editPhaseName, setEditPhaseName] = useState('');
+  const [editPhaseDescription, setEditPhaseDescription] = useState('');
+
+  // Milestone edit/add/delete state
+  const [editingMilestoneId, setEditingMilestoneId] = useState<string | null>(null);
+  const [editMilestoneTitle, setEditMilestoneTitle] = useState('');
+  const [editMilestoneDescription, setEditMilestoneDescription] = useState('');
+  const [editMilestoneDueDate, setEditMilestoneDueDate] = useState('');
+  const [addingMilestonePhaseId, setAddingMilestonePhaseId] = useState<string | null>(null);
+  const [newMilestoneTitle, setNewMilestoneTitle] = useState('');
+  const [newMilestoneDescription, setNewMilestoneDescription] = useState('');
+  const [newMilestoneDueDate, setNewMilestoneDueDate] = useState('');
 
   const {
     tasks,
@@ -354,6 +370,13 @@ export function ProjectDetailV2Page() {
     ? Math.round((project.completed_tasks / project.total_tasks) * 100)
     : 0;
   const planUtilizationPercent = Math.round(planUtilizationRatio * 100);
+  const formatShortDate = (value?: string) => {
+    if (!value) return '';
+    return formatDate(value, { month: 'numeric', day: 'numeric' }, timezone);
+  };
+  const formatFullDate = (value: string) => {
+    return formatDate(value, { year: 'numeric', month: 'numeric', day: 'numeric' }, timezone);
+  };
 
   const inProgressCount = useMemo(
     () => tasks.filter(task => task.status === 'IN_PROGRESS').length,
@@ -384,14 +407,13 @@ export function ProjectDetailV2Page() {
   }, [tasks]);
 
   const overdueTasks = useMemo(() => {
-    const today = new Date();
-    const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const today = todayInTimezone(timezone);
     return tasks.filter(task => {
       if (!task.due_date || task.status === 'DONE') return false;
-      const due = new Date(task.due_date);
-      return due < todayDate;
+      const due = toDateTime(task.due_date, timezone).startOf('day');
+      return due.isValid && due < today;
     });
-  }, [tasks]);
+  }, [tasks, timezone]);
 
   const memberLabelById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -476,16 +498,16 @@ export function ProjectDetailV2Page() {
 
   const currentPhase = useMemo(() => {
     if (sortedPhases.length === 0) return null;
-    const today = new Date();
-    const todayDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const today = todayInTimezone(timezone);
     const byDate = sortedPhases.find((phase) => {
       if (!phase.start_date || !phase.end_date) return false;
-      const start = new Date(phase.start_date);
-      const end = new Date(phase.end_date);
-      return start <= todayDate && todayDate <= end;
+      const start = toDateTime(phase.start_date, timezone).startOf('day');
+      const end = toDateTime(phase.end_date, timezone).startOf('day');
+      if (!start.isValid || !end.isValid) return false;
+      return start <= today && today <= end;
     });
     return byDate ?? sortedPhases.find(phase => phase.status === 'ACTIVE') ?? sortedPhases[0];
-  }, [sortedPhases]);
+  }, [sortedPhases, timezone]);
 
   const milestonesByPhaseId = useMemo(() => {
     const map: Record<string, Milestone[]> = {};
@@ -600,8 +622,8 @@ export function ProjectDetailV2Page() {
   const priorityTasks = useMemo(() => {
     const openTasks = tasks.filter(task => task.status !== 'DONE');
     return [...openTasks].sort((a, b) => {
-      const aDue = a.due_date ? new Date(a.due_date).getTime() : Number.POSITIVE_INFINITY;
-      const bDue = b.due_date ? new Date(b.due_date).getTime() : Number.POSITIVE_INFINITY;
+      const aDue = a.due_date ? toDateTime(a.due_date, timezone).toMillis() : Number.POSITIVE_INFINITY;
+      const bDue = b.due_date ? toDateTime(b.due_date, timezone).toMillis() : Number.POSITIVE_INFINITY;
       if (aDue !== bDue) return aDue - bDue;
       const urgencyGap = (PRIORITY_RANK[a.urgency] ?? 99) - (PRIORITY_RANK[b.urgency] ?? 99);
       if (urgencyGap !== 0) return urgencyGap;
@@ -609,7 +631,7 @@ export function ProjectDetailV2Page() {
       if (importanceGap !== 0) return importanceGap;
       return a.title.localeCompare(b.title);
     }).slice(0, 5);
-  }, [tasks]);
+  }, [tasks, timezone]);
 
   const activityFeed = useMemo(() => {
     const items: { id: string; type: string; title: string; detail?: string; timestamp: string }[] = [];
@@ -642,9 +664,9 @@ export function ProjectDetailV2Page() {
     });
     return items
       .filter(item => item.timestamp)
-      .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+      .sort((a, b) => toDateTime(b.timestamp, timezone).toMillis() - toDateTime(a.timestamp, timezone).toMillis())
       .slice(0, 10);
-  }, [blockers, checkins, memberLabelById, taskTitleById, tasks]);
+  }, [blockers, checkins, memberLabelById, taskTitleById, tasks, timezone]);
 
   const handleTaskClick = (task: Task) => {
     if (task.parent_id) {
@@ -742,14 +764,14 @@ export function ProjectDetailV2Page() {
 
   const getPhaseRemainingDays = (phase: { start_date?: string; end_date?: string }) => {
     if (!phase.start_date || !phase.end_date) return null;
-    const startDate = new Date(phase.start_date);
-    const endDate = new Date(phase.end_date);
-    if (Number.isNaN(startDate.getTime()) || Number.isNaN(endDate.getTime())) return null;
-    const today = new Date();
+    const startDate = toDateTime(phase.start_date, timezone).startOf('day');
+    const endDate = toDateTime(phase.end_date, timezone).startOf('day');
+    if (!startDate.isValid || !endDate.isValid) return null;
+    const today = todayInTimezone(timezone);
     const start = startDate > today ? startDate : today;
     if (endDate < start) return 0;
-    const diff = endDate.getTime() - start.getTime();
-    return Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)) + 1);
+    const diff = endDate.diff(start, 'days').days;
+    return Math.max(0, Math.ceil(diff) + 1);
   };
 
   const getPhaseCapacityMinutes = (phase: { start_date?: string; end_date?: string }, member: ProjectMember) => {
@@ -852,6 +874,121 @@ export function ProjectDetailV2Page() {
       alert('固定バッファの更新に失敗しました。');
     } finally {
       setPhaseBufferActionId(null);
+    }
+  };
+
+  // Phase edit/delete handlers
+  const handleStartPhaseEdit = (phase: PhaseWithTaskCount) => {
+    setEditingPhaseId(phase.id);
+    setEditPhaseName(phase.name);
+    setEditPhaseDescription(phase.description || '');
+  };
+
+  const handleCancelPhaseEdit = () => {
+    setEditingPhaseId(null);
+    setEditPhaseName('');
+    setEditPhaseDescription('');
+  };
+
+  const handlePhaseUpdate = async () => {
+    if (!editingPhaseId || !editPhaseName.trim()) return;
+    try {
+      await phasesApi.update(editingPhaseId, {
+        name: editPhaseName.trim(),
+        description: editPhaseDescription.trim() || undefined,
+      });
+      await refreshPhases();
+      handleCancelPhaseEdit();
+    } catch (err) {
+      console.error('Failed to update phase:', err);
+      alert('フェーズの更新に失敗しました。');
+    }
+  };
+
+  const handleDeletePhase = async (phaseId: string) => {
+    if (!confirm('このフェーズを削除しますか？')) return;
+    try {
+      await phasesApi.delete(phaseId);
+      await refreshPhases();
+    } catch (err) {
+      console.error('Failed to delete phase:', err);
+      alert('フェーズの削除に失敗しました。');
+    }
+  };
+
+  // Milestone edit/add/delete handlers
+  const handleStartMilestoneEdit = (milestone: Milestone) => {
+    setEditingMilestoneId(milestone.id);
+    setEditMilestoneTitle(milestone.title);
+    setEditMilestoneDescription(milestone.description || '');
+    setEditMilestoneDueDate(milestone.due_date ? toDateKey(milestone.due_date, timezone) : '');
+  };
+
+  const handleCancelMilestoneEdit = () => {
+    setEditingMilestoneId(null);
+    setEditMilestoneTitle('');
+    setEditMilestoneDescription('');
+    setEditMilestoneDueDate('');
+  };
+
+  const handleMilestoneUpdate = async () => {
+    if (!editingMilestoneId || !editMilestoneTitle.trim()) return;
+    try {
+      await milestonesApi.update(editingMilestoneId, {
+        title: editMilestoneTitle.trim(),
+        description: editMilestoneDescription.trim() || undefined,
+        due_date: editMilestoneDueDate || undefined,
+      });
+      await refreshMilestones();
+      handleCancelMilestoneEdit();
+    } catch (err) {
+      console.error('Failed to update milestone:', err);
+      alert('マイルストーンの更新に失敗しました。');
+    }
+  };
+
+  const handleDeleteMilestone = async (milestoneId: string) => {
+    if (!confirm('このマイルストーンを削除しますか？')) return;
+    try {
+      await milestonesApi.delete(milestoneId);
+      await refreshMilestones();
+    } catch (err) {
+      console.error('Failed to delete milestone:', err);
+      alert('マイルストーンの削除に失敗しました。');
+    }
+  };
+
+  const handleStartAddMilestone = (phaseId: string) => {
+    setAddingMilestonePhaseId(phaseId);
+    setNewMilestoneTitle('');
+    setNewMilestoneDescription('');
+    setNewMilestoneDueDate('');
+  };
+
+  const handleCancelAddMilestone = () => {
+    setAddingMilestonePhaseId(null);
+    setNewMilestoneTitle('');
+    setNewMilestoneDescription('');
+    setNewMilestoneDueDate('');
+  };
+
+  const handleCreateMilestone = async (phaseId: string) => {
+    if (!projectId || !newMilestoneTitle.trim()) return;
+    try {
+      const phaseMilestones = milestonesByPhaseId[phaseId] || [];
+      await milestonesApi.create({
+        project_id: projectId,
+        phase_id: phaseId,
+        title: newMilestoneTitle.trim(),
+        description: newMilestoneDescription.trim() || undefined,
+        due_date: newMilestoneDueDate || undefined,
+        order_in_phase: phaseMilestones.length + 1,
+      });
+      await refreshMilestones();
+      handleCancelAddMilestone();
+    } catch (err) {
+      console.error('Failed to create milestone:', err);
+      alert('マイルストーンの作成に失敗しました。');
     }
   };
 
@@ -1174,39 +1311,148 @@ export function ProjectDetailV2Page() {
                 </div>
                 */}
 
-                <div className="project-v2-card">
+                <div className="project-v2-card project-v2-priority-tasks">
                   <div className="project-v2-card-header">
                     <h3>今日の優先タスク</h3>
                   </div>
                   {priorityTasks.length === 0 ? (
-                    <p className="project-v2-muted">優先タスクはありません。</p>
+                    <p className="project-v2-muted project-v2-empty-state">優先タスクはありません。</p>
                   ) : (
-                    <div className="project-v2-task-list">
-                      {priorityTasks.map((task) => {
-                        const assigneeLabel = assigneeByTaskId[task.id];
-                        const assigneeInitial = assigneeLabel ? assigneeLabel.trim().charAt(0) : '?';
-                        const dueLabel = task.due_date ? formatShortDate(task.due_date) : '期限未設定';
-                        const dueDate = task.due_date ? new Date(task.due_date) : null;
-                        const isOverdue = Boolean(dueDate && dueDate < new Date());
+                    <>
+                      {/* NEXT ACTION - 最初のタスクを強調表示 */}
+                      {(() => {
+                        const focusTask = priorityTasks[0];
+                        const isDone = focusTask.status === 'DONE';
+                        const progress = focusTask.progress ?? (isDone ? 100 : 0);
+                        const parentTask = focusTask.parent_id ? tasks.find(t => t.id === focusTask.parent_id) : null;
+                        const assigneeLabel = assigneeByTaskId[focusTask.id];
+                        const assigneeInitial = assigneeLabel ? assigneeLabel.trim().charAt(0) : null;
+                        const formatTime = (mins: number) => {
+                          if (mins >= 60) {
+                            const h = Math.floor(mins / 60);
+                            const m = mins % 60;
+                            return m > 0 ? `${h}h ${m}m` : `${h}h`;
+                          }
+                          return `${mins}m`;
+                        };
+
                         return (
-                          <div key={task.id} className="project-v2-task-item">
-                            <span className={`project-v2-task-priority priority-${task.urgency.toLowerCase()}`} />
-                            <div className="project-v2-task-content">
-                              <div className="project-v2-task-title">{task.title}</div>
-                              <div className="project-v2-task-meta">
-                                {task.estimated_minutes ? `${Math.round(task.estimated_minutes / 60)}h` : '見積未設定'}
-                                <span className="project-v2-task-divider">•</span>
-                                {dueLabel}
+                          <div className="project-v2-focus-section">
+                            <div className="project-v2-focus-label">NEXT ACTION</div>
+                            <div
+                              className="project-v2-focus-item"
+                              onClick={() => {
+                                if (focusTask.parent_id) {
+                                  setOpenedParentTask(parentTask || null);
+                                } else {
+                                  setOpenedParentTask(null);
+                                }
+                                setSelectedTask(focusTask);
+                              }}
+                            >
+                              {/* 進捗バー背景 */}
+                              <div
+                                className="project-v2-focus-progress"
+                                style={{ width: `${progress}%` }}
+                              />
+                              {/* チェックボックス */}
+                              <div
+                                className={`project-v2-focus-checkbox ${isDone ? 'checked' : ''}`}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  updateTask(focusTask.id, { status: isDone ? 'TODO' : 'DONE' });
+                                }}
+                              />
+                              <div className="project-v2-focus-content">
+                                <div className={`project-v2-focus-title ${isDone ? 'done' : ''}`}>
+                                  {focusTask.title}
+                                </div>
+                                {parentTask && (
+                                  <div className="project-v2-focus-parent">{parentTask.title}</div>
+                                )}
+                                <div className="project-v2-focus-meta">
+                                  {focusTask.estimated_minutes ? formatTime(focusTask.estimated_minutes) : '0m'}
+                                  {' / 目標100%'}
+                                </div>
                               </div>
-                            </div>
-                            <div className="project-v2-task-assignee">{assigneeInitial}</div>
-                            <div className={`project-v2-task-due ${isOverdue ? 'overdue' : ''}`}>
-                              {isOverdue ? '期限超過' : STATUS_LABELS[task.status]}
+                              {/* 担当者アイコン */}
+                              {assigneeInitial && (
+                                <div className="project-v2-focus-assignee" title={assigneeLabel}>
+                                  {assigneeInitial}
+                                </div>
+                              )}
                             </div>
                           </div>
                         );
-                      })}
-                    </div>
+                      })()}
+
+                      {/* 残りのタスクリスト */}
+                      {priorityTasks.length > 1 && (
+                        <div className="project-v2-task-list">
+                          {priorityTasks.slice(1).map((task) => {
+                            const isDone = task.status === 'DONE';
+                            const progress = task.progress ?? (isDone ? 100 : 0);
+                            const parentTask = task.parent_id ? tasks.find(t => t.id === task.parent_id) : null;
+                            const taskAssigneeLabel = assigneeByTaskId[task.id];
+                            const taskAssigneeInitial = taskAssigneeLabel ? taskAssigneeLabel.trim().charAt(0) : null;
+                            const formatTime = (mins: number) => {
+                              if (mins >= 60) {
+                                const h = Math.floor(mins / 60);
+                                const m = mins % 60;
+                                return m > 0 ? `${h}h ${m}m` : `${h}h`;
+                              }
+                              return `${mins}m`;
+                            };
+
+                            return (
+                              <div
+                                key={task.id}
+                                className={`project-v2-task-item ${isDone ? 'done' : ''}`}
+                                onClick={() => {
+                                  if (task.parent_id) {
+                                    setOpenedParentTask(parentTask || null);
+                                  } else {
+                                    setOpenedParentTask(null);
+                                  }
+                                  setSelectedTask(task);
+                                }}
+                              >
+                                {/* 進捗バー */}
+                                <div
+                                  className="project-v2-task-progress-bar"
+                                  style={{ width: `${progress}%` }}
+                                />
+                                {/* チェックボックス */}
+                                <div
+                                  className={`project-v2-task-checkbox ${isDone ? 'checked' : ''}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    updateTask(task.id, { status: isDone ? 'TODO' : 'DONE' });
+                                  }}
+                                />
+                                <div className="project-v2-task-content">
+                                  <div className={`project-v2-task-title ${isDone ? 'done' : ''}`}>
+                                    {task.title}
+                                  </div>
+                                  {parentTask && (
+                                    <div className="project-v2-task-parent">{parentTask.title}</div>
+                                  )}
+                                </div>
+                                <div className="project-v2-task-time">
+                                  {task.estimated_minutes ? formatTime(task.estimated_minutes) : '0m'}
+                                </div>
+                                {/* 担当者アイコン */}
+                                {taskAssigneeInitial && (
+                                  <div className="project-v2-task-assignee" title={taskAssigneeLabel}>
+                                    {taskAssigneeInitial}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
@@ -1247,7 +1493,7 @@ export function ProjectDetailV2Page() {
                           <div className="project-v2-baseline-meta">アクティブ計画</div>
                           <div className="project-v2-baseline-name">{activeBaseline.name}</div>
                           <div className="project-v2-baseline-meta">
-                            {new Date(activeBaseline.created_at).toLocaleDateString('ja-JP')} 作成
+                            {formatFullDate(activeBaseline.created_at)} 作成
                           </div>
                           <div className="project-v2-baseline-meta">
                             計画稼働率 {Math.round((activeBaseline.plan_utilization_ratio ?? 1) * 100)}%
@@ -1652,78 +1898,247 @@ export function ProjectDetailV2Page() {
                   {sortedPhases.map((phase) => {
                     const isCurrent = currentPhase?.id === phase.id;
                     const isCompleted = phase.status === 'COMPLETED';
+                    const isEditing = editingPhaseId === phase.id;
                     return (
                       <div
                         key={phase.id}
                         className={`project-v2-timeline-item ${isCurrent ? 'is-current' : ''} ${isCompleted ? 'is-complete' : ''}`}
                       >
                         <div className="project-v2-timeline-card">
-                          <div className="project-v2-timeline-title">
-                            <span>
-                              {phase.name}
-                              {isCurrent && <span className="project-v2-phase-badge">進行中</span>}
-                            </span>
-                            {!isCurrent && (
-                              <button
-                                className="project-v2-phase-set-current-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleSetCurrentPhase(phase.id);
-                                }}
-                                title="このフェーズを現在フェーズに設定"
-                              >
-                                <FaCheckCircle />
-                              </button>
-                            )}
-                          </div>
-                          <div className="project-v2-muted">{getPhaseRangeLabel(phase)}</div>
-                          <div className="project-v2-muted">
-                            完了 {phase.completed_tasks} / 全体 {phase.total_tasks}
-                          </div>
-                          <div className="project-v2-inline-field project-v2-phase-buffer">
-                            <label className="project-v2-inline-label" htmlFor={`phase-buffer-${phase.id}`}>
-                              固定バッファ (h)
-                            </label>
-                            <input
-                              id={`phase-buffer-${phase.id}`}
-                              className="project-v2-input"
-                              type="number"
-                              min="0"
-                              step="0.5"
-                              value={phaseBufferDrafts[phase.id] ?? ''}
-                              onChange={(e) => handlePhaseBufferDraftChange(phase.id, e.target.value)}
-                              disabled={phaseBufferActionId === phase.id}
-                            />
-                            <button
-                              className="project-v2-button"
-                              onClick={() => handlePhaseBufferSave(phase)}
-                              disabled={phaseBufferActionId === phase.id}
-                            >
-                              {phaseBufferActionId === phase.id ? '保存中...' : '保存'}
-                            </button>
-                          </div>
-                          <div className="project-v2-milestone-list">
-                            {isMilestonesLoading ? (
-                              <p className="project-v2-muted">マイルストーン読み込み中...</p>
-                            ) : (milestonesByPhaseId[phase.id] || []).length === 0 ? (
-                              <p className="project-v2-muted">マイルストーンはまだありません。</p>
-                            ) : (
-                              (milestonesByPhaseId[phase.id] || []).map((milestone) => (
-                                <div key={milestone.id} className="project-v2-milestone-item">
-                                  <div className="project-v2-list-title">{milestone.title}</div>
-                                  <div className="project-v2-muted">
-                                    {milestone.due_date ? formatShortDate(milestone.due_date) : '期限未設定'}
-                                  </div>
+                          {isEditing ? (
+                            <div className="project-v2-phase-edit-form">
+                              <input
+                                className="project-v2-input"
+                                type="text"
+                                value={editPhaseName}
+                                onChange={(e) => setEditPhaseName(e.target.value)}
+                                placeholder="フェーズ名"
+                                autoFocus
+                              />
+                              <textarea
+                                className="project-v2-textarea"
+                                value={editPhaseDescription}
+                                onChange={(e) => setEditPhaseDescription(e.target.value)}
+                                placeholder="説明（任意）"
+                                rows={2}
+                              />
+                              <div className="project-v2-phase-edit-actions">
+                                <button
+                                  className="project-v2-button"
+                                  onClick={handlePhaseUpdate}
+                                >
+                                  <FaCheck /> 保存
+                                </button>
+                                <button
+                                  className="project-v2-button ghost"
+                                  onClick={handleCancelPhaseEdit}
+                                >
+                                  <FaTimes /> キャンセル
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="project-v2-timeline-title">
+                                <span>
+                                  {phase.name}
+                                  {isCurrent && <span className="project-v2-phase-badge">進行中</span>}
+                                </span>
+                                <div className="project-v2-phase-actions">
+                                  {!isCurrent && (
+                                    <button
+                                      className="project-v2-phase-set-current-btn"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleSetCurrentPhase(phase.id);
+                                      }}
+                                      title="このフェーズを現在フェーズに設定"
+                                    >
+                                      <FaCheckCircle />
+                                    </button>
+                                  )}
+                                  <button
+                                    className="project-v2-icon-btn"
+                                    onClick={() => handleStartPhaseEdit(phase)}
+                                    title="編集"
+                                  >
+                                    <FaEdit />
+                                  </button>
+                                  <button
+                                    className="project-v2-icon-btn danger"
+                                    onClick={() => handleDeletePhase(phase.id)}
+                                    title="削除"
+                                  >
+                                    <FaTrash />
+                                  </button>
                                 </div>
-                              ))
-                            )}
-                          </div>
-                          <button
-                            className="project-v2-phase-generate-tasks-btn"
-                            onClick={() => handleGenerateTasksFromPhase(phase.id)}
-                          >
-                            <FaTasks /> タスクを生成
-                          </button>
+                              </div>
+                              {phase.description && (
+                                <div className="project-v2-muted project-v2-phase-description">
+                                  {phase.description}
+                                </div>
+                              )}
+                              <div className="project-v2-muted">{getPhaseRangeLabel(phase)}</div>
+                              <div className="project-v2-muted">
+                                完了 {phase.completed_tasks} / 全体 {phase.total_tasks}
+                              </div>
+                              <div className="project-v2-inline-field project-v2-phase-buffer">
+                                <label className="project-v2-inline-label" htmlFor={`phase-buffer-${phase.id}`}>
+                                  固定バッファ (h)
+                                </label>
+                                <input
+                                  id={`phase-buffer-${phase.id}`}
+                                  className="project-v2-input"
+                                  type="number"
+                                  min="0"
+                                  step="0.5"
+                                  value={phaseBufferDrafts[phase.id] ?? ''}
+                                  onChange={(e) => handlePhaseBufferDraftChange(phase.id, e.target.value)}
+                                  disabled={phaseBufferActionId === phase.id}
+                                />
+                                <button
+                                  className="project-v2-button"
+                                  onClick={() => handlePhaseBufferSave(phase)}
+                                  disabled={phaseBufferActionId === phase.id}
+                                >
+                                  {phaseBufferActionId === phase.id ? '保存中...' : '保存'}
+                                </button>
+                              </div>
+                              <div className="project-v2-milestone-section">
+                                <div className="project-v2-milestone-header">
+                                  <span className="project-v2-milestone-header-title">マイルストーン</span>
+                                  <button
+                                    className="project-v2-icon-btn"
+                                    onClick={() => handleStartAddMilestone(phase.id)}
+                                    title="マイルストーン追加"
+                                  >
+                                    <FaPlus />
+                                  </button>
+                                </div>
+                                <div className="project-v2-milestone-list">
+                                  {isMilestonesLoading ? (
+                                    <p className="project-v2-muted">マイルストーン読み込み中...</p>
+                                  ) : (milestonesByPhaseId[phase.id] || []).length === 0 ? (
+                                    <p className="project-v2-muted">マイルストーンはまだありません。</p>
+                                  ) : (
+                                    (milestonesByPhaseId[phase.id] || []).map((milestone) => (
+                                      <div key={milestone.id} className="project-v2-milestone-item">
+                                        {editingMilestoneId === milestone.id ? (
+                                          <div className="project-v2-milestone-edit-form">
+                                            <input
+                                              className="project-v2-input"
+                                              type="text"
+                                              value={editMilestoneTitle}
+                                              onChange={(e) => setEditMilestoneTitle(e.target.value)}
+                                              placeholder="マイルストーン名"
+                                              autoFocus
+                                            />
+                                            <input
+                                              className="project-v2-input"
+                                              type="date"
+                                              value={editMilestoneDueDate}
+                                              onChange={(e) => setEditMilestoneDueDate(e.target.value)}
+                                            />
+                                            <textarea
+                                              className="project-v2-textarea"
+                                              value={editMilestoneDescription}
+                                              onChange={(e) => setEditMilestoneDescription(e.target.value)}
+                                              placeholder="説明（任意）"
+                                              rows={2}
+                                            />
+                                            <div className="project-v2-milestone-edit-actions">
+                                              <button
+                                                className="project-v2-button"
+                                                onClick={handleMilestoneUpdate}
+                                              >
+                                                <FaCheck /> 保存
+                                              </button>
+                                              <button
+                                                className="project-v2-button ghost"
+                                                onClick={handleCancelMilestoneEdit}
+                                              >
+                                                <FaTimes /> キャンセル
+                                              </button>
+                                            </div>
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <div className="project-v2-milestone-content">
+                                              <div className="project-v2-list-title">{milestone.title}</div>
+                                              <div className="project-v2-muted">
+                                                {milestone.due_date ? formatShortDate(milestone.due_date) : '期限未設定'}
+                                              </div>
+                                            </div>
+                                            <div className="project-v2-milestone-actions">
+                                              <button
+                                                className="project-v2-icon-btn"
+                                                onClick={() => handleStartMilestoneEdit(milestone)}
+                                                title="編集"
+                                              >
+                                                <FaEdit />
+                                              </button>
+                                              <button
+                                                className="project-v2-icon-btn danger"
+                                                onClick={() => handleDeleteMilestone(milestone.id)}
+                                                title="削除"
+                                              >
+                                                <FaTrash />
+                                              </button>
+                                            </div>
+                                          </>
+                                        )}
+                                      </div>
+                                    ))
+                                  )}
+                                  {addingMilestonePhaseId === phase.id && (
+                                    <div className="project-v2-milestone-add-form">
+                                      <input
+                                        className="project-v2-input"
+                                        type="text"
+                                        value={newMilestoneTitle}
+                                        onChange={(e) => setNewMilestoneTitle(e.target.value)}
+                                        placeholder="マイルストーン名"
+                                        autoFocus
+                                      />
+                                      <input
+                                        className="project-v2-input"
+                                        type="date"
+                                        value={newMilestoneDueDate}
+                                        onChange={(e) => setNewMilestoneDueDate(e.target.value)}
+                                      />
+                                      <textarea
+                                        className="project-v2-textarea"
+                                        value={newMilestoneDescription}
+                                        onChange={(e) => setNewMilestoneDescription(e.target.value)}
+                                        placeholder="説明（任意）"
+                                        rows={2}
+                                      />
+                                      <div className="project-v2-milestone-edit-actions">
+                                        <button
+                                          className="project-v2-button"
+                                          onClick={() => handleCreateMilestone(phase.id)}
+                                        >
+                                          <FaCheck /> 作成
+                                        </button>
+                                        <button
+                                          className="project-v2-button ghost"
+                                          onClick={handleCancelAddMilestone}
+                                        >
+                                          <FaTimes /> キャンセル
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <button
+                                className="project-v2-phase-generate-tasks-btn"
+                                onClick={() => handleGenerateTasksFromPhase(phase.id)}
+                              >
+                                <FaTasks /> タスクを生成
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     );
@@ -1786,6 +2201,19 @@ export function ProjectDetailV2Page() {
                       refreshPhases();
                     } catch (err) {
                       console.error('Failed to update phase:', err);
+                    }
+                  }}
+                  onTaskClick={(taskId) => {
+                    const task = tasks.find(t => t.id === taskId);
+                    if (task) {
+                      // サブタスクの場合は親タスクも設定
+                      if (task.parent_id) {
+                        const parent = tasks.find(t => t.id === task.parent_id);
+                        setOpenedParentTask(parent || null);
+                      } else {
+                        setOpenedParentTask(null);
+                      }
+                      setSelectedTask(task);
                     }
                   }}
                 />

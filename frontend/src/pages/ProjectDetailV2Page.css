@@ -540,6 +540,307 @@
   color: #ef4444;
 }
 
+/* ============================================
+   Today's Priority Tasks - Dashboard Style
+   ============================================ */
+
+.project-v2-priority-tasks {
+  overflow: hidden;
+}
+
+.project-v2-empty-state {
+  padding: 40px 20px;
+  text-align: center;
+}
+
+/* Focus Section (NEXT ACTION) */
+.project-v2-focus-section {
+  padding: 24px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: radial-gradient(circle at top right, rgba(14, 165, 233, 0.08), transparent);
+}
+
+.project-v2-focus-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  color: #ec4899;
+  margin-bottom: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.project-v2-focus-label::after {
+  content: '';
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(90deg, #ec4899, transparent);
+  opacity: 0.3;
+}
+
+.project-v2-focus-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background: var(--bg-card);
+  box-shadow: 0 10px 30px -10px rgba(14, 165, 233, 0.25);
+  cursor: pointer;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  border: 1px solid rgba(14, 165, 233, 0.1);
+  animation: focus-pulse 4s infinite alternate ease-in-out;
+}
+
+@keyframes focus-pulse {
+  0% {
+    box-shadow: 0 10px 25px -10px rgba(14, 165, 233, 0.2);
+    border-color: rgba(14, 165, 233, 0.1);
+  }
+  100% {
+    box-shadow: 0 15px 35px -10px rgba(14, 165, 233, 0.4);
+    border-color: rgba(14, 165, 233, 0.3);
+  }
+}
+
+.project-v2-focus-item:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 20px 40px -12px rgba(14, 165, 233, 0.4);
+}
+
+.project-v2-focus-progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  background: rgba(14, 165, 233, 0.05);
+  pointer-events: none;
+  transition: width 0.3s ease;
+}
+
+.project-v2-focus-checkbox {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  border: 2.5px solid var(--primary);
+  border-radius: 10px;
+  flex-shrink: 0;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+  margin-top: 2px;
+  background: var(--bg-card);
+  z-index: 1;
+}
+
+.project-v2-focus-checkbox:hover {
+  background: var(--primary-light);
+  transform: scale(1.05);
+}
+
+.project-v2-focus-checkbox.checked {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
+.project-v2-focus-checkbox.checked::after {
+  content: '✓';
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
+}
+
+.project-v2-focus-content {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  z-index: 1;
+}
+
+.project-v2-focus-title {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--primary);
+  margin-bottom: 6px;
+  line-height: 1.3;
+  letter-spacing: -0.01em;
+}
+
+.project-v2-focus-title.done {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.project-v2-focus-parent {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.project-v2-focus-meta {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 10px;
+}
+
+.project-v2-focus-assignee {
+  position: relative;
+  z-index: 1;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+/* Task List Section */
+.project-v2-priority-tasks .project-v2-task-list {
+  padding: 14px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  opacity: 0.8;
+  transition: opacity 0.3s;
+}
+
+.project-v2-priority-tasks .project-v2-task-list:hover {
+  opacity: 1;
+}
+
+.project-v2-priority-tasks .project-v2-task-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 12px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  cursor: pointer;
+  transition: background 0.15s;
+  border: none;
+  background: transparent;
+}
+
+.project-v2-priority-tasks .project-v2-task-item:hover {
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.project-v2-priority-tasks .project-v2-task-item.done {
+  opacity: 0.5;
+}
+
+.project-v2-task-progress-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  background: rgba(74, 222, 128, 0.1);
+  pointer-events: none;
+  z-index: 0;
+  transition: width 0.3s ease;
+}
+
+.project-v2-task-checkbox {
+  position: relative;
+  z-index: 1;
+  width: 20px;
+  height: 20px;
+  min-width: 20px;
+  border: 2px solid var(--text-muted);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-card);
+}
+
+.project-v2-task-checkbox:hover {
+  border-color: var(--primary);
+}
+
+.project-v2-task-checkbox.checked {
+  background: #4ade80;
+  border-color: #4ade80;
+}
+
+.project-v2-task-checkbox.checked::after {
+  content: '✓';
+  color: white;
+  font-size: 11px;
+  font-weight: bold;
+}
+
+.project-v2-priority-tasks .project-v2-task-content {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-width: 0;
+}
+
+.project-v2-priority-tasks .project-v2-task-title {
+  font-size: 14px;
+  color: var(--text-main);
+  margin-bottom: 0;
+}
+
+.project-v2-priority-tasks .project-v2-task-title.done {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+
+.project-v2-task-parent {
+  font-size: 11px;
+  color: var(--primary);
+  margin-top: 2px;
+}
+
+.project-v2-task-time {
+  position: relative;
+  z-index: 1;
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.project-v2-priority-tasks .project-v2-task-assignee {
+  position: relative;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  border-radius: 50%;
+  background: var(--primary);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.project-v2-task-meta .overdue {
+  color: #ef4444;
+  font-weight: 500;
+}
+
 .priority-high {
   background: #ef4444;
 }
@@ -903,6 +1204,119 @@
 .project-v2-milestone-item:last-child {
   border-bottom: none;
   padding-bottom: 0;
+}
+
+/* Phase edit/delete */
+.project-v2-phase-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.project-v2-icon-btn {
+  padding: 4px 6px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.project-v2-icon-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-main);
+}
+
+.project-v2-icon-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--red);
+}
+
+.project-v2-phase-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.project-v2-phase-edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.project-v2-phase-description {
+  margin: 4px 0 8px;
+  font-style: italic;
+}
+
+/* Milestone section */
+.project-v2-milestone-section {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border-color);
+}
+
+.project-v2-milestone-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.project-v2-milestone-header-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.project-v2-milestone-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.project-v2-milestone-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.project-v2-milestone-edit-form,
+.project-v2-milestone-add-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px;
+  background: var(--bg-hover);
+  border-radius: var(--radius-sm);
+  width: 100%;
+}
+
+.project-v2-milestone-edit-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.project-v2-textarea {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--bg-main);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-main);
+  font-size: 13px;
+  resize: vertical;
+  font-family: inherit;
+}
+
+.project-v2-textarea:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
 }
 
 .project-v2-phase-generate-tasks-btn {

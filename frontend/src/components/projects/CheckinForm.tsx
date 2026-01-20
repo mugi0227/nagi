@@ -13,6 +13,8 @@ import type {
   Task,
   ProjectMember,
 } from '../../api/types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, toDateKey, todayInTimezone } from '../../utils/dateTime';
 
 interface CheckinFormProps {
   projectId: string;
@@ -43,6 +45,7 @@ export function CheckinForm({
   hideCancel = false,
   compact = false,
 }: CheckinFormProps) {
+  const timezone = useTimezone();
   const currentMember = members.find(m => m.member_user_id === currentUserId);
   const memberUserId = currentMember?.member_user_id || currentUserId;
 
@@ -95,7 +98,7 @@ export function CheckinForm({
 
   const handleSubmit = async () => {
     const items = buildItems();
-    const today = new Date().toISOString().split('T')[0];
+    const today = toDateKey(todayInTimezone(timezone).toJSDate(), timezone);
     const data: CheckinCreateV2 = {
       member_user_id: memberUserId,
       checkin_date: today,
@@ -166,7 +169,11 @@ export function CheckinForm({
           Check-in
         </h3>
         <p style={{ fontSize: compact ? '12px' : '14px', opacity: 0.9, marginTop: '2px' }}>
-          {new Date().toLocaleDateString('ja-JP', { month: 'long', day: 'numeric', weekday: 'short' })}
+          {formatDate(
+            todayInTimezone(timezone).toJSDate(),
+            { month: 'long', day: 'numeric', weekday: 'short' },
+            timezone,
+          )}
         </p>
       </div>
 

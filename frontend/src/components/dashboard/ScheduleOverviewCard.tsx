@@ -9,6 +9,8 @@ import { FaCalendarAlt, FaList, FaChartBar } from 'react-icons/fa';
 import type { Task, TaskScheduleInfo, TaskStatus } from '../../api/types';
 import { GanttChartView } from './GanttChartView';
 import { userStorage } from '../../utils/userStorage';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, toDateKey, toDateTime, todayInTimezone } from '../../utils/dateTime';
 import './ScheduleOverviewCard.css';
 
 const HORIZON_OPTIONS = [7, 14, 30];
@@ -61,57 +63,49 @@ const formatMinutes = (minutes: number) => {
   return `${mins}m`;
 };
 
-const toDateKey = (value: Date) =>
-  `${value.getFullYear()}-${value.getMonth()}-${value.getDate()}`;
-
-const formatDayLabel = (dateStr: string) => {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('ja-JP', {
-    month: 'numeric',
-    day: 'numeric',
-  });
+const formatDayLabel = (dateStr: string, timezone: string) => {
+  return formatDate(dateStr, { month: 'numeric', day: 'numeric' }, timezone);
 };
 
-const formatWeekday = (dateStr: string) => {
-  const date = new Date(dateStr);
-  return date.toLocaleDateString('ja-JP', { weekday: 'short' });
+const formatWeekday = (dateStr: string, timezone: string) => {
+  return formatDate(dateStr, { weekday: 'short' }, timezone);
 };
 
-const formatShortDate = (value?: string) => {
-  if (!value) return null;
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return null;
-  return date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' });
+const formatShortDate = (value: string | Date, timezone: string) => {
+  return formatDate(value, { month: 'numeric', day: 'numeric' }, timezone);
 };
 
-const getDueTag = (task: TaskScheduleInfo | undefined, day: Date) => {
+const getDueTag = (task: TaskScheduleInfo | undefined, day: Date, timezone: string) => {
   if (!task?.due_date) return null;
-  const due = new Date(task.due_date);
-  const dueDateOnly = new Date(due.getFullYear(), due.getMonth(), due.getDate());
-  const dayDateOnly = new Date(day.getFullYear(), day.getMonth(), day.getDate());
-  if (toDateKey(due) === toDateKey(day)) return TEXT.dueToday;
-  if (dueDateOnly < dayDateOnly) return TEXT.dueOver;
+  const due = toDateTime(task.due_date, timezone);
+  const dayDate = toDateTime(day, timezone).startOf('day');
+  if (!due.isValid || !dayDate.isValid) return null;
+  if (toDateKey(due.toJSDate(), timezone) === toDateKey(day, timezone)) {
+    return TEXT.dueToday;
+  }
+  if (due.startOf('day').toMillis() < dayDate.toMillis()) return TEXT.dueOver;
   return null;
 };
 
-const getStartNotBeforeTag = (task?: Task, parent?: Task) => {
-  const dates: Date[] = [];
+const getStartNotBeforeTag = (task: Task | undefined, parent: Task | undefined, timezone: string) => {
+  const dates: ReturnType<typeof toDateTime>[] = [];
   if (task?.start_not_before) {
-    const parsed = new Date(task.start_not_before);
-    if (!Number.isNaN(parsed.getTime())) {
+    const parsed = toDateTime(task.start_not_before, timezone);
+    if (parsed.isValid) {
       dates.push(parsed);
     }
   }
   if (parent?.start_not_before) {
-    const parsed = new Date(parent.start_not_before);
-    if (!Number.isNaN(parsed.getTime())) {
+    const parsed = toDateTime(parent.start_not_before, timezone);
+    if (parsed.isValid) {
       dates.push(parsed);
     }
   }
   if (dates.length === 0) return null;
-  const latest = new Date(Math.max(...dates.map(date => date.getTime())));
-  const label = formatShortDate(latest.toISOString());
-  if (!label) return null;
+  const latest = dates.reduce((acc, current) =>
+    acc.toMillis() >= current.toMillis() ? acc : current,
+  );
+  const label = formatShortDate(latest.toJSDate(), timezone);
   return `${TEXT.startNotBefore} ${label}`;
 };
 
@@ -165,6 +159,7 @@ export function ScheduleOverviewCard({
   onTaskClick,
   defaultViewMode,
 }: ScheduleOverviewCardProps) {
+  const timezone = useTimezone();
   const [horizon, setHorizon] = useState(14);
   const [viewMode, setViewMode] = useState<'list' | 'gantt'>(defaultViewMode ?? 'list');
   const { data, isLoading, error, refetch, isFetching } = useSchedule(horizon);
@@ -173,7 +168,7 @@ export function ScheduleOverviewCard({
   const [isExcludedOpen, setIsExcludedOpen] = useState(false);
   const displayTitle = title ?? TEXT.scheduleTitle;
   const displayTag = tag ?? TEXT.scheduleTag;
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = toDateKey(todayInTimezone(timezone).toJSDate(), timezone);
   const lockInfo = useMemo(() => {
     const raw = userStorage.get(LOCK_STORAGE_KEY);
     if (!raw) return null;
@@ -490,7 +485,7 @@ export function ScheduleOverviewCard({
   const days = scheduleData?.days ?? [];
   const unscheduledCount = scheduleData?.unscheduled_task_ids.length ?? 0;
   const excludedCount = scheduleData?.excluded_tasks?.length ?? 0;
-  const todayKey = toDateKey(new Date());
+  const todayKey = toDateKey(todayInTimezone(timezone).toJSDate(), timezone);
 
   return (
     <div className="schedule-overview-card">
@@ -645,8 +640,8 @@ export function ScheduleOverviewCard({
       ) : (
         <div className="schedule-days">
           {days.map(day => {
-            const dayDate = new Date(day.date);
-            const dayKey = toDateKey(dayDate);
+            const dayDate = toDateTime(day.date, timezone);
+            const dayKey = toDateKey(dayDate.toJSDate(), timezone);
             const isLockedToday = Boolean(activeLockInfo && day.date === todayIso);
             const lockedAllocations = isLockedToday && activeLockInfo?.allocations
               ? activeLockInfo.taskIds.map(taskId => ({
@@ -672,7 +667,7 @@ export function ScheduleOverviewCard({
             const capacity = effectiveDay.capacity_minutes;
             const baseCapacityMinutes = Math.max(
               0,
-              Math.round(getCapacityForDate(dayDate) * 60)
+              Math.round(getCapacityForDate(dayDate.toJSDate()) * 60)
             );
             const displayCapacity = baseCapacityMinutes || capacity;
             const percent = displayCapacity
@@ -702,7 +697,7 @@ export function ScheduleOverviewCard({
                 allocation,
                 info,
                 dayCount: taskDayCounts.get(allocation.task_id) || 1,
-                dueTag: getDueTag(info, dayDate),
+                dueTag: getDueTag(info, dayDate.toJSDate(), timezone),
               });
             });
 
@@ -715,8 +710,8 @@ export function ScheduleOverviewCard({
               >
                 <div className="schedule-day-header">
                   <div>
-                    <div className="schedule-day-date">{formatDayLabel(day.date)}</div>
-                    <div className="schedule-day-weekday">{formatWeekday(day.date)}</div>
+                    <div className="schedule-day-date">{formatDayLabel(day.date, timezone)}</div>
+                    <div className="schedule-day-weekday">{formatWeekday(day.date, timezone)}</div>
                   </div>
                   <div className="schedule-day-meta">
                     <span className="schedule-day-capacity">
@@ -805,7 +800,13 @@ export function ScheduleOverviewCard({
                                 {item.info?.title || TEXT.task}
                                 {isMeeting && taskDetail?.start_time && (
                                   <span className="meeting-time-inline">
-                                    {' '}({new Date(taskDetail.start_time).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false })})
+                                    {' '}(
+                                      {formatDate(
+                                        taskDetail.start_time,
+                                        { hour: '2-digit', minute: '2-digit', hour12: false },
+                                        timezone,
+                                      )}
+                                    )
                                   </span>
                                 )}
                                 </span>
@@ -817,7 +818,7 @@ export function ScheduleOverviewCard({
                               const parent = item.info?.parent_id
                                 ? taskDetailsCache[item.info.parent_id]
                                 : undefined;
-                              const startNotBeforeTag = getStartNotBeforeTag(taskDetail, parent);
+                              const startNotBeforeTag = getStartNotBeforeTag(taskDetail, parent, timezone);
                               if (!startNotBeforeTag) return null;
                               return (
                                 <span className="schedule-task-tag">
@@ -881,7 +882,13 @@ export function ScheduleOverviewCard({
                             {item.info?.title || TEXT.task}
                             {isMeeting && taskDetail?.start_time && (
                               <span className="meeting-time-inline">
-                                {' '}({new Date(taskDetail.start_time).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', hour12: false })})
+                                {' '}(
+                                      {formatDate(
+                                        taskDetail.start_time,
+                                        { hour: '2-digit', minute: '2-digit', hour12: false },
+                                        timezone,
+                                      )}
+                                    )
                               </span>
                             )}
                           </span>
@@ -896,7 +903,7 @@ export function ScheduleOverviewCard({
                             const parent = item.info?.parent_id
                               ? taskDetailsCache[item.info.parent_id]
                               : undefined;
-                            const startNotBeforeTag = getStartNotBeforeTag(taskDetail, parent);
+                            const startNotBeforeTag = getStartNotBeforeTag(taskDetail, parent, timezone);
                             if (!startNotBeforeTag) return null;
                             return (
                               <span className="schedule-task-tag">

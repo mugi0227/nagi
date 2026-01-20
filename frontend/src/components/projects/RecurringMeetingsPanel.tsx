@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { FaCalendarAlt, FaPause, FaPlay, FaPlus, FaTrash, FaPen, FaCalendarPlus } from 'react-icons/fa';
 import { recurringMeetingsApi } from '../../api/recurringMeetings';
 import type { RecurringMeeting, RecurringMeetingCreate, RecurrenceFrequency } from '../../api/types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate, nowInTimezone, toDateTime } from '../../utils/dateTime';
 import './RecurringMeetingsPanel.css';
 
 const WEEKDAYS = [
@@ -29,47 +31,40 @@ const defaultFormState = {
   attendees: '',
 };
 
-const buildNextOccurrence = (meeting: RecurringMeeting) => {
-  const now = new Date();
-  const anchorDate = new Date(`${meeting.anchor_date}T00:00:00`);
+const buildNextOccurrence = (meeting: RecurringMeeting, timezone: string) => {
+  const now = nowInTimezone(timezone);
+  const anchorDate = toDateTime(`${meeting.anchor_date}T00:00:00`, timezone);
   const [hour, minute] = meeting.start_time.split(':').map((value) => parseInt(value, 10));
-  const targetWeekday = (meeting.weekday + 1) % 7;
+  const targetWeekday = meeting.weekday + 1;
 
-  const alignToWeekday = (date: Date) => {
-    const delta = (targetWeekday - date.getDay() + 7) % 7;
-    const aligned = new Date(date);
-    aligned.setDate(date.getDate() + delta);
-    return aligned;
+  const alignToWeekday = (date: ReturnType<typeof toDateTime>) => {
+    const delta = (targetWeekday - date.weekday + 7) % 7;
+    return date.plus({ days: delta });
   };
 
-  let candidate = alignToWeekday(now);
-  candidate.setHours(hour, minute, 0, 0);
-  if (candidate <= now) {
-    candidate.setDate(candidate.getDate() + 7);
+  let candidate = alignToWeekday(now).set({ hour, minute, second: 0, millisecond: 0 });
+  if (candidate.toMillis() <= now.toMillis()) {
+    candidate = candidate.plus({ days: 7 });
   }
-  if (candidate < anchorDate) {
-    candidate = new Date(anchorDate);
-    candidate.setHours(hour, minute, 0, 0);
+  if (candidate.toMillis() < anchorDate.toMillis()) {
+    candidate = anchorDate.set({ hour, minute, second: 0, millisecond: 0 });
   }
 
   const intervalWeeks = meeting.frequency === 'weekly' ? 1 : 2;
-  const weekMillis = 7 * 24 * 60 * 60 * 1000;
-  while (Math.floor((candidate.getTime() - anchorDate.getTime()) / weekMillis) % intervalWeeks !== 0) {
-    candidate.setDate(candidate.getDate() + 7);
+  while (Math.floor(candidate.diff(anchorDate, 'days').days / 7) % intervalWeeks !== 0) {
+    candidate = candidate.plus({ days: 7 });
   }
 
   return candidate;
 };
 
-const formatNextOccurrence = (meeting: RecurringMeeting) => {
-  const next = buildNextOccurrence(meeting);
-  return next.toLocaleString('ja-JP', {
-    month: 'numeric',
-    day: 'numeric',
-    weekday: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+const formatNextOccurrence = (meeting: RecurringMeeting, timezone: string) => {
+  const next = buildNextOccurrence(meeting, timezone);
+  return formatDate(
+    next.toJSDate(),
+    { month: 'numeric', day: 'numeric', weekday: 'short', hour: '2-digit', minute: '2-digit' },
+    timezone,
+  );
 };
 
 interface RecurringMeetingsPanelProps {
@@ -77,6 +72,7 @@ interface RecurringMeetingsPanelProps {
 }
 
 export function RecurringMeetingsPanel({ projectId }: RecurringMeetingsPanelProps) {
+  const timezone = useTimezone();
   const [meetings, setMeetings] = useState<RecurringMeeting[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -109,12 +105,12 @@ export function RecurringMeetingsPanel({ projectId }: RecurringMeetingsPanelProp
   const meetingCards = useMemo(() => {
     return meetings.map((meeting) => ({
       ...meeting,
-      nextLabel: formatNextOccurrence(meeting),
+      nextLabel: formatNextOccurrence(meeting, timezone),
       frequencyLabel: FREQUENCIES.find((item) => item.value === meeting.frequency)?.label ?? meeting.frequency,
       weekdayLabel: WEEKDAYS.find((item) => item.value === meeting.weekday)?.label ?? String(meeting.weekday),
       startTimeLabel: meeting.start_time.slice(0, 5),
     }));
-  }, [meetings]);
+  }, [meetings, timezone]);
 
   const resetForm = () => {
     setFormState(defaultFormState);

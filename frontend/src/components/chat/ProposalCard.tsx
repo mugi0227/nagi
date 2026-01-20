@@ -8,13 +8,9 @@ import type {
   TaskAssignmentProposal,
   PhaseBreakdownProposal,
 } from '../../api/types';
+import { useTimezone } from '../../hooks/useTimezone';
+import { formatDate as formatDateValue, toDateTime } from '../../utils/dateTime';
 import './ProposalCard.css';
-
-const formatTime = (date: Date) =>
-  date.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
-
-const formatDate = (date: Date) =>
-  date.toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric', weekday: 'short' });
 
 interface ProposalCardProps {
   proposalId: string;
@@ -33,6 +29,11 @@ export function ProposalCard({
   onApprove,
   onReject,
 }: ProposalCardProps) {
+  const timezone = useTimezone();
+  const formatTime = (value: Date) =>
+    formatDateValue(value, { hour: '2-digit', minute: '2-digit' }, timezone);
+  const formatDate = (value: Date) =>
+    formatDateValue(value, { month: 'numeric', day: 'numeric', weekday: 'short' }, timezone);
   const [status, setStatus] = useState<'pending' | 'approving' | 'rejecting' | 'done'>('pending');
   const [error, setError] = useState<string | null>(null);
 
@@ -91,13 +92,13 @@ export function ProposalCard({
     if (!isTask || !taskPayload?.is_fixed_time || !taskPayload.start_time || !taskPayload.end_time) {
       return null;
     }
-    const start = new Date(taskPayload.start_time);
-    const end = new Date(taskPayload.end_time);
-    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) {
+    const start = toDateTime(taskPayload.start_time, timezone);
+    const end = toDateTime(taskPayload.end_time, timezone);
+    if (!start.isValid || !end.isValid) {
       return null;
     }
-    const startMinutes = start.getHours() * 60 + start.getMinutes();
-    const endMinutes = end.getHours() * 60 + end.getMinutes();
+    const startMinutes = start.hour * 60 + start.minute;
+    const endMinutes = end.hour * 60 + end.minute;
     const hourHeight = 28;
     const previewStartHour = Math.max(6, Math.min(9, Math.floor(startMinutes / 60) - 1));
     const previewEndHour = Math.min(22, Math.max(18, Math.ceil(endMinutes / 60) + 1));
@@ -114,8 +115,8 @@ export function ProposalCard({
     const height = Math.max(14, ((clampedEnd - clampedStart) / 60) * hourHeight);
     const totalHeight = hourCount * hourHeight;
     return {
-      start,
-      end,
+      start: start.toJSDate(),
+      end: end.toJSDate(),
       hours,
       top,
       height,
