@@ -1,5 +1,5 @@
 import { type DateTime } from 'luxon';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { FaCalendarAlt, FaCheckCircle, FaCircle } from 'react-icons/fa';
 import { FaBatteryFull, FaBatteryQuarter, FaClock, FaFire, FaHourglass, FaLeaf, FaListCheck, FaLock, FaLockOpen, FaPen, FaTrash, FaUser } from 'react-icons/fa6';
 import type { Task, TaskStatus } from '../../api/types';
@@ -102,7 +102,6 @@ export function KanbanCard({
   const completedSubtasks = subtasks.filter(st => st.status === 'DONE').length;
   const totalSubtasks = subtasks.length;
   const isDone = task.status === 'DONE';
-  const [breakdownInstruction, setBreakdownInstruction] = useState('');
 
   const taskLookup = useMemo(() => {
     return new Map(allTasks.map(t => [t.id, t]));
@@ -292,32 +291,14 @@ export function KanbanCard({
         </span>
       </div>
 
-      <div
-        className="breakdown-control"
-        onClick={(e) => e.stopPropagation()}
-        onMouseDown={(e) => e.stopPropagation()}
+      <button
+        type="button"
+        className="breakdown-btn"
+        onClick={(e) => handleActionClick(e, handleBreakdown)}
       >
-        <input
-          type="text"
-          className="breakdown-input"
-          value={breakdownInstruction}
-          onChange={(e) => setBreakdownInstruction(e.target.value)}
-          placeholder="タスク分解の指示（任意）"
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              handleBreakdown();
-            }
-          }}
-        />
-        <button
-          type="button"
-          className="breakdown-btn"
-          onClick={(e) => handleActionClick(e, handleBreakdown)}
-        >
-          <FaListCheck />
-          <span>AIで分解</span>
-        </button>
-      </div>
+        <FaListCheck />
+        <span>AIで分解</span>
+      </button>
 
       {memberOptions && memberOptions.length > 0 && onAssignMultiple && (
         <div className="card-assignee-row">

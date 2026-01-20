@@ -180,34 +180,8 @@
   margin-bottom: 0.5rem;
 }
 
-.breakdown-control {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  margin-bottom: 0.5rem;
-}
-
-.breakdown-input {
-  flex: 1;
-  min-width: 0;
-  padding: 0.35rem 0.5rem;
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  background: rgba(148, 163, 184, 0.08);
-  color: var(--text-main);
-  font-size: 0.75rem;
-}
-
-.breakdown-input::placeholder {
-  color: var(--text-muted);
-}
-
-.breakdown-input:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-
 .breakdown-btn {
+  margin-bottom: 0.5rem;
   display: inline-flex;
   align-items: center;
   gap: 0.35rem;
