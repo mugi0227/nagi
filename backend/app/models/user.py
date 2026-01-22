@@ -18,6 +18,8 @@ class UserCreate(BaseModel):
     provider_sub: str = Field(..., min_length=1, max_length=255)
     email: Optional[str] = Field(None, max_length=255)
     display_name: Optional[str] = Field(None, max_length=255)
+    first_name: Optional[str] = Field(None, max_length=100)
+    last_name: Optional[str] = Field(None, max_length=100)
     username: Optional[str] = Field(None, max_length=255)
     password_hash: Optional[str] = Field(None, max_length=255)
     timezone: str = Field(default="Asia/Tokyo", max_length=50, description="IANA timezone (e.g., Asia/Tokyo, America/New_York)")
@@ -31,6 +33,8 @@ class UserAccount(BaseModel):
     provider_sub: str
     email: Optional[str] = None
     display_name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     username: Optional[str] = None
     password_hash: Optional[str] = None
     timezone: str = "Asia/Tokyo"
@@ -47,6 +51,8 @@ class UserUpdate(BaseModel):
     provider_sub: Optional[str] = Field(None, min_length=1, max_length=255)
     email: Optional[str] = Field(None, max_length=255)
     display_name: Optional[str] = Field(None, max_length=255)
+    first_name: Optional[str] = Field(None, max_length=100)
+    last_name: Optional[str] = Field(None, max_length=100)
     username: Optional[str] = Field(None, max_length=255)
     password_hash: Optional[str] = Field(None, max_length=255)
     timezone: Optional[str] = Field(None, max_length=50, description="IANA timezone")

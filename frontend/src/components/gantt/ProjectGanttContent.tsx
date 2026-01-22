@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useCallback } from 'react';
 import { Gantt, Task as GanttTask, ViewMode } from 'gantt-task-react';
 import 'gantt-task-react/dist/index.css';
-import { Task, ScheduleDiff, Phase, Milestone } from '../../api/types';
+import { Task, Phase, Milestone } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { toDateTime, todayInTimezone } from '../../utils/dateTime';
 import './ProjectGanttContent.css';
@@ -10,7 +10,6 @@ interface ProjectGanttContentProps {
   tasks: Task[];
   phases: Phase[];
   milestones: Milestone[];
-  baselineDiff: ScheduleDiff | null;
   className?: string;
 }
 
@@ -21,35 +20,10 @@ interface CustomGanttTask extends GanttTask {
   phaseId?: string;
 }
 
-// バッファステータスの色
-const getBufferStatusColor = (status: string): string => {
-  switch (status) {
-    case 'critical':
-      return '#ef4444';
-    case 'warning':
-      return '#f59e0b';
-    default:
-      return '#10b981';
-  }
-};
-
-// バッファステータスのアイコン
-const getBufferStatusIcon = (status: string): string => {
-  switch (status) {
-    case 'critical':
-      return '🔴';
-    case 'warning':
-      return '🟡';
-    default:
-      return '🟢';
-  }
-};
-
 export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
   tasks,
   phases,
   milestones,
-  baselineDiff,
   className,
 }) => {
   const timezone = useTimezone();
@@ -147,36 +121,27 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
         }
       }
 
-      // バッファ情報を取得
-      const phaseDiff = baselineDiff?.phase_diffs.find(
-        (pd) => pd.phase_id === phase.id
-      );
-      const bufferStatus = phaseDiff?.buffer_status || 'healthy';
-      const bufferPercentage = phaseDiff?.buffer_percentage ?? 100;
-
       // フェーズ内のタスク数
       const phaseTasks = tasksByPhase.get(phase.id) || [];
       const completedTasks = phaseTasks.filter((t) => t.status === 'DONE').length;
       const totalTasks = phaseTasks.length;
       const progress = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
 
-      // フェーズ名にバッファステータスを追加
-      const phaseDisplayName = `${getBufferStatusIcon(bufferStatus)} ${phase.name}`;
       const isExpanded = expandedPhases.has(phase.id);
 
       // フェーズ行を追加（project type）
       result.push({
         start: phaseStart.toJSDate(),
         end: phaseEnd.toJSDate(),
-        name: phaseDisplayName,
+        name: phase.name,
         id: `phase-${phase.id}`,
         type: 'project' as GanttItemType,
         progress,
         isDisabled: false,
         hideChildren: !isExpanded,
         styles: {
-          progressColor: getBufferStatusColor(bufferStatus),
-          progressSelectedColor: getBufferStatusColor(bufferStatus),
+          progressColor: '#10b981',
+          progressSelectedColor: '#10b981',
           backgroundColor: '#e2e8f0',
           backgroundSelectedColor: '#cbd5e1',
         },
@@ -212,89 +177,10 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
           }
         });
 
-      // バッファ表示（フェーズ末尾に）
-      if (bufferPercentage < 100 && phaseDiff) {
-        // バッファを視覚化：フェーズ終了後に1日のバー
-        const bufferStart = phaseEnd.plus({ days: 1 });
-        const bufferEnd = bufferStart.plus({ days: 1 });
-
-        result.push({
-          start: bufferStart.toJSDate(),
-          end: bufferEnd.toJSDate(),
-          name: `バッファ残 ${Math.round(bufferPercentage)}%`,
-          id: `buffer-${phase.id}`,
-          type: 'task' as GanttItemType,
-          progress: bufferPercentage,
-          isDisabled: true,
-          project: `phase-${phase.id}`,
-          styles: {
-            progressColor: getBufferStatusColor(bufferStatus),
-            progressSelectedColor: getBufferStatusColor(bufferStatus),
-            backgroundColor: '#f1f5f9',
-            backgroundSelectedColor: '#e2e8f0',
-          },
-          itemType: 'buffer',
-          phaseId: phase.id,
-        });
-      }
-
       // タスクを追加（展開時のみ）
       if (isExpanded) {
-        // ベースラインDiffがある場合はそれを使用
-        if (baselineDiff) {
-          const taskDiffs = baselineDiff.task_diffs.filter((td) => {
-            const task = tasks.find((t) => t.id === td.task_id);
-            return task?.phase_id === phase.id;
-          });
-
-          taskDiffs
-            .sort((a, b) => {
-              const dateA = a.current_start
-                ? toDateTime(a.current_start, timezone).toMillis()
-                : 0;
-              const dateB = b.current_start
-                ? toDateTime(b.current_start, timezone).toMillis()
-                : 0;
-              return dateA - dateB;
-            })
-            .forEach((diff) => {
-              const task = tasks.find((t) => t.id === diff.task_id);
-              if (!task) return;
-
-              const isDone = task.status === 'DONE';
-              const taskProgress = task.progress ?? (isDone ? 100 : 0);
-
-              // 実績バー
-              if (diff.current_start && diff.current_end) {
-                let start = toDateTime(diff.current_start, timezone);
-                let end = toDateTime(diff.current_end, timezone);
-                if (end.toMillis() <= start.toMillis()) {
-                  end = start.plus({ hours: 1 });
-                }
-
-                result.push({
-                  start: start.toJSDate(),
-                  end: end.toJSDate(),
-                  name: task.title,
-                  id: `task-${task.id}`,
-                  type: 'task' as GanttItemType,
-                  project: `phase-${phase.id}`,
-                  progress: taskProgress,
-                  isDisabled: false,
-                  styles: {
-                    progressColor: isDone ? '#10b981' : '#3b82f6',
-                    progressSelectedColor: isDone ? '#059669' : '#2563eb',
-                    backgroundColor: isDone ? '#d1fae5' : '#dbeafe',
-                    backgroundSelectedColor: isDone ? '#a7f3d0' : '#bfdbfe',
-                  },
-                  itemType: 'task',
-                  phaseId: phase.id,
-                });
-              }
-            });
-        } else {
-          // ベースラインがない場合はタスクをそのまま表示
-          phaseTasks
+        // タスクを着手日/作成日〜期限で表示
+        phaseTasks
             .filter((t) => !t.parent_id) // 親タスクのみ
             .sort((a, b) => {
               const dateA = a.due_date ? toDateTime(a.due_date, timezone).toMillis() : 0;
@@ -346,7 +232,6 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
                 phaseId: phase.id,
               });
             });
-        }
       }
     });
 
@@ -428,7 +313,6 @@ export const ProjectGanttContent: React.FC<ProjectGanttContentProps> = ({
     tasks,
     phases,
     milestones,
-    baselineDiff,
     expandedPhases,
     tasksByPhase,
     milestonesByPhase,

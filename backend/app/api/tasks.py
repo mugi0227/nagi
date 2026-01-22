@@ -131,14 +131,31 @@ async def load_project_priorities(project_repo: ProjectRepo, user_id: str) -> di
     return {project.id: project.priority for project in projects}
 
 
-async def _get_task_or_404(user: CurrentUser, repo: TaskRepo, task_id: UUID) -> Task:
+async def _get_task_or_404(
+    user: CurrentUser, repo: TaskRepo, task_id: UUID, project_repo: ProjectRepo = None
+) -> tuple[Task, str]:
+    """
+    Get task by ID with permission check.
+    Returns (task, owner_user_id) where owner_user_id is the project owner's ID.
+    For personal tasks, owner_user_id is the user's own ID.
+    """
+    # First try personal access (Inbox tasks)
     task = await repo.get(user.id, task_id)
-    if not task:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Task {task_id} not found",
-        )
-    return task
+    if task:
+        return task, user.id
+
+    # If not found and project_repo is provided, try project-based access
+    if project_repo:
+        projects = await project_repo.list(user.id, limit=1000)
+        for project in projects:
+            task = await repo.get(user.id, task_id, project_id=project.id)
+            if task:
+                return task, project.user_id  # Return project owner's user_id
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"Task {task_id} not found",
+    )
 
 
 @router.post("", response_model=Task, status_code=status.HTTP_201_CREATED)
@@ -601,9 +618,10 @@ async def create_action_items(
     task_id: UUID,
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
 ):
     """Create action item subtasks from meeting notes."""
-    task = await _get_task_or_404(user, repo, task_id)
+    task, _ = await _get_task_or_404(user, repo, task_id, project_repo)
     if not task.meeting_notes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -642,11 +660,12 @@ async def get_task_assignment(
     task_id: UUID,
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
     assignment_repo: TaskAssignmentRepo,
 ):
     """Get assignment for a task (returns first assignee)."""
-    await _get_task_or_404(user, repo, task_id)
-    assignment = await assignment_repo.get_by_task(user.id, task_id)
+    _, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+    assignment = await assignment_repo.get_by_task(owner_user_id, task_id)
     if not assignment:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -660,11 +679,12 @@ async def list_task_assignments(
     task_id: UUID,
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
     assignment_repo: TaskAssignmentRepo,
 ):
     """List all assignments for a task (multiple assignees)."""
-    await _get_task_or_404(user, repo, task_id)
-    return await assignment_repo.list_by_task(user.id, task_id)
+    _, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+    return await assignment_repo.list_by_task(owner_user_id, task_id)
 
 
 @router.post("/{task_id}/assignment", response_model=TaskAssignment, status_code=status.HTTP_201_CREATED)
@@ -673,11 +693,12 @@ async def assign_task(
     assignment: TaskAssignmentCreate,
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
     assignment_repo: TaskAssignmentRepo,
 ):
     """Assign a task to a member (upsert)."""
-    await _get_task_or_404(user, repo, task_id)
-    return await assignment_repo.assign(user.id, task_id, assignment)
+    _, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+    return await assignment_repo.assign(owner_user_id, task_id, assignment)
 
 
 @router.put("/{task_id}/assignments", response_model=list[TaskAssignment])
@@ -686,11 +707,12 @@ async def assign_task_multiple(
     assignments: TaskAssignmentsCreate,
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
     assignment_repo: TaskAssignmentRepo,
 ):
     """Assign a task to multiple members. Replaces existing assignments."""
-    await _get_task_or_404(user, repo, task_id)
-    return await assignment_repo.assign_multiple(user.id, task_id, assignments)
+    _, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+    return await assignment_repo.assign_multiple(owner_user_id, task_id, assignments)
 
 
 @router.patch("/assignments/{assignment_id}", response_model=TaskAssignment)
@@ -698,11 +720,24 @@ async def update_task_assignment(
     assignment_id: UUID,
     update: TaskAssignmentUpdate,
     user: CurrentUser,
+    repo: TaskRepo,
+    project_repo: ProjectRepo,
     assignment_repo: TaskAssignmentRepo,
 ):
     """Update assignment fields."""
+    # First get the assignment to find the task_id
+    assignment = await assignment_repo.get_by_id(assignment_id)
+    if not assignment:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Assignment {assignment_id} not found",
+        )
+
+    # Verify project access and get owner_user_id
+    _, owner_user_id = await _get_task_or_404(user, repo, assignment.task_id, project_repo)
+
     try:
-        return await assignment_repo.update(user.id, assignment_id, update)
+        return await assignment_repo.update(owner_user_id, assignment_id, update)
     except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -715,11 +750,12 @@ async def unassign_task(
     task_id: UUID,
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
     assignment_repo: TaskAssignmentRepo,
 ):
     """Remove assignment from a task."""
-    await _get_task_or_404(user, repo, task_id)
-    deleted = await assignment_repo.delete_by_task(user.id, task_id)
+    _, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+    deleted = await assignment_repo.delete_by_task(owner_user_id, task_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -732,11 +768,12 @@ async def list_task_blockers(
     task_id: UUID,
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
     blocker_repo: BlockerRepo,
 ):
     """List blockers for a task."""
-    await _get_task_or_404(user, repo, task_id)
-    return await blocker_repo.list_by_task(user.id, task_id)
+    _, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+    return await blocker_repo.list_by_task(owner_user_id, task_id)
 
 
 @router.post("/{task_id}/blockers", response_model=Blocker, status_code=status.HTTP_201_CREATED)
@@ -745,11 +782,12 @@ async def create_task_blocker(
     blocker: BlockerCreate,
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
     blocker_repo: BlockerRepo,
 ):
     """Create a blocker for a task."""
-    await _get_task_or_404(user, repo, task_id)
-    return await blocker_repo.create(user.id, task_id, blocker)
+    _, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+    return await blocker_repo.create(owner_user_id, task_id, blocker)
 
 
 @router.patch("/blockers/{blocker_id}", response_model=Blocker)
@@ -757,11 +795,24 @@ async def update_task_blocker(
     blocker_id: UUID,
     update: BlockerUpdate,
     user: CurrentUser,
+    repo: TaskRepo,
+    project_repo: ProjectRepo,
     blocker_repo: BlockerRepo,
 ):
     """Update a blocker."""
+    # First get the blocker to find the task_id
+    blocker = await blocker_repo.get_by_id(blocker_id)
+    if not blocker:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Blocker {blocker_id} not found",
+        )
+
+    # Verify project access and get owner_user_id
+    _, owner_user_id = await _get_task_or_404(user, repo, blocker.task_id, project_repo)
+
     try:
-        return await blocker_repo.update(user.id, blocker_id, update)
+        return await blocker_repo.update(owner_user_id, blocker_id, update)
     except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

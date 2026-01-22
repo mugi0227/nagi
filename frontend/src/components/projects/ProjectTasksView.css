@@ -38,6 +38,25 @@
   gap: 12px;
 }
 
+.create-task-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 12px;
+  background: var(--primary);
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.create-task-btn:hover {
+  background: var(--primary-dark, #2563eb);
+  border-color: var(--primary-dark, #2563eb);
+}
+
 .selection-mode-btn {
   display: flex;
   align-items: center;

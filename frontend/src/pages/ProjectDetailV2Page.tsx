@@ -19,27 +19,28 @@ import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { milestonesApi } from '../api/milestones';
 import { phasesApi } from '../api/phases';
 import { getProject, projectsApi } from '../api/projects';
-import { scheduleSnapshotsApi } from '../api/scheduleSnapshots';
 import { tasksApi } from '../api/tasks';
 import type {
   Blocker,
-  Checkin,
+  CheckinV2,
   Milestone,
   PhaseWithTaskCount,
   ProjectInvitation,
   ProjectKpiMetric,
   ProjectMember,
   ProjectWithTaskCount,
-  ScheduleDiff,
-  ScheduleSnapshot,
   Task,
   TaskAssignment,
+  TaskCreate,
   TaskStatus,
   TaskUpdate,
 } from '../api/types';
+import type { UserSearchResult } from '../api/users';
 import type { DraftCardData } from '../components/chat/DraftCard';
+import { UserSearchInput } from '../components/common/UserSearchInput';
 import { ProjectGanttChart } from '../components/gantt/ProjectGanttChart';
 import { MeetingsTab } from '../components/meetings/MeetingsTab';
+import { ProjectDetailModal } from '../components/projects/ProjectDetailModal';
 import { ProjectTasksView } from '../components/projects/ProjectTasksView';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { TaskFormModal } from '../components/tasks/TaskFormModal';
@@ -47,7 +48,6 @@ import { useCurrentUser } from '../hooks/useCurrentUser';
 import { useTasks } from '../hooks/useTasks';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDate, toDateKey, toDateTime, todayInTimezone } from '../utils/dateTime';
-import { userStorage } from '../utils/userStorage';
 import './ProjectDetailV2Page.css';
 
 type TabId = 'dashboard' | 'team' | 'timeline' | 'board' | 'gantt' | 'meetings';
@@ -83,11 +83,6 @@ const PRIORITY_RANK: Record<string, number> = {
   MEDIUM: 1,
   LOW: 2,
 };
-
-const DEFAULT_PLAN_UTILIZATION_RATIO = 0.7;
-
-const getPlanUtilizationKey = (projectId?: string) =>
-  projectId ? `planUtilizationRatio:${projectId}` : 'planUtilizationRatio';
 
 const formatHours = (minutes: number) => {
   const hours = Math.round((minutes / 60) * 10) / 10;
@@ -153,7 +148,7 @@ export function ProjectDetailV2Page() {
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [invitations, setInvitations] = useState<ProjectInvitation[]>([]);
   const [blockers, setBlockers] = useState<Blocker[]>([]);
-  const [checkins, setCheckins] = useState<Checkin[]>([]);
+  const [checkins, setCheckins] = useState<CheckinV2[]>([]);
   const [isCollabLoading, setIsCollabLoading] = useState(false);
   const [inviteMode, setInviteMode] = useState<InviteMode>('email');
   const [inviteValue, setInviteValue] = useState('');
@@ -163,6 +158,8 @@ export function ProjectDetailV2Page() {
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [openedParentTask, setOpenedParentTask] = useState<Task | null>(null);
   const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const [newTaskInitialData, setNewTaskInitialData] = useState<Partial<TaskCreate> | null>(null);
   const [assignments, setAssignments] = useState<TaskAssignment[]>([]);
   const [phases, setPhases] = useState<PhaseWithTaskCount[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
@@ -171,11 +168,6 @@ export function ProjectDetailV2Page() {
   const [phasePlanInstruction, setPhasePlanInstruction] = useState('');
   const [capacityDrafts, setCapacityDrafts] = useState<Record<string, string>>({});
   const [capacityActionId, setCapacityActionId] = useState<string | null>(null);
-  const [activeBaseline, setActiveBaseline] = useState<ScheduleSnapshot | null>(null);
-  const [baselineDiff, setBaselineDiff] = useState<ScheduleDiff | null>(null);
-  const [isBaselineLoading, setIsBaselineLoading] = useState(false);
-  const [isCreatingBaseline, setIsCreatingBaseline] = useState(false);
-  const [planUtilizationRatio, setPlanUtilizationRatio] = useState(DEFAULT_PLAN_UTILIZATION_RATIO);
   const [phaseBufferDrafts, setPhaseBufferDrafts] = useState<Record<string, string>>({});
   const [phaseBufferActionId, setPhaseBufferActionId] = useState<string | null>(null);
 
@@ -193,6 +185,12 @@ export function ProjectDetailV2Page() {
   const [newMilestoneTitle, setNewMilestoneTitle] = useState('');
   const [newMilestoneDescription, setNewMilestoneDescription] = useState('');
   const [newMilestoneDueDate, setNewMilestoneDueDate] = useState('');
+
+  // Project edit/delete state
+  const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isDeletingProject, setIsDeletingProject] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
 
   const {
     tasks,
@@ -256,7 +254,7 @@ export function ProjectDetailV2Page() {
           projectsApi.listMembers(projectId),
           projectsApi.listInvitations(projectId),
           projectsApi.listBlockers(projectId),
-          projectsApi.listCheckins(projectId),
+          projectsApi.listCheckinsV2(projectId),
           projectsApi.listAssignments(projectId),
         ]);
         setMembers(Array.isArray(membersData) ? membersData : []);
@@ -306,40 +304,6 @@ export function ProjectDetailV2Page() {
     refreshMilestones();
   }, [projectId]);
 
-  // Fetch active baseline and diff
-  useEffect(() => {
-    if (!projectId) return;
-    const fetchBaseline = async () => {
-      setIsBaselineLoading(true);
-      try {
-        const baseline = await scheduleSnapshotsApi.getActive(projectId);
-        setActiveBaseline(baseline);
-        if (baseline) {
-          const diff = await scheduleSnapshotsApi.getDiff(projectId);
-          setBaselineDiff(diff);
-        } else {
-          setBaselineDiff(null);
-        }
-      } catch (err) {
-        console.error('Failed to fetch baseline:', err);
-      } finally {
-        setIsBaselineLoading(false);
-      }
-    };
-    fetchBaseline();
-  }, [projectId]);
-
-  useEffect(() => {
-    if (!projectId) return;
-    const raw = userStorage.get(getPlanUtilizationKey(projectId));
-    const parsed = raw ? Number(raw) : NaN;
-    if (!Number.isNaN(parsed) && parsed > 0 && parsed <= 1) {
-      setPlanUtilizationRatio(parsed);
-    } else {
-      setPlanUtilizationRatio(DEFAULT_PLAN_UTILIZATION_RATIO);
-    }
-  }, [projectId]);
-
   useEffect(() => {
     if (members.length === 0) {
       setCapacityDrafts({});
@@ -369,13 +333,9 @@ export function ProjectDetailV2Page() {
   const completionRate = project && project.total_tasks > 0
     ? Math.round((project.completed_tasks / project.total_tasks) * 100)
     : 0;
-  const planUtilizationPercent = Math.round(planUtilizationRatio * 100);
   const formatShortDate = (value?: string) => {
     if (!value) return '';
     return formatDate(value, { month: 'numeric', day: 'numeric' }, timezone);
-  };
-  const formatFullDate = (value: string) => {
-    return formatDate(value, { year: 'numeric', month: 'numeric', day: 'numeric' }, timezone);
   };
 
   const inProgressCount = useMemo(
@@ -620,8 +580,15 @@ export function ProjectDetailV2Page() {
   );
 
   const priorityTasks = useMemo(() => {
-    const openTasks = tasks.filter(task => task.status !== 'DONE');
-    return [...openTasks].sort((a, b) => {
+    // 子タスクを持つタスクID（親タスク）を特定
+    const parentTaskIds = new Set(
+      tasks.filter(t => t.parent_id).map(t => t.parent_id as string)
+    );
+    // 親タスクを除外し、DONEでないタスクのみをフィルタリング（ダッシュボードと同じ仕様）
+    const openLeafTasks = tasks.filter(
+      task => task.status !== 'DONE' && !parentTaskIds.has(task.id)
+    );
+    return [...openLeafTasks].sort((a, b) => {
       const aDue = a.due_date ? toDateTime(a.due_date, timezone).toMillis() : Number.POSITIVE_INFINITY;
       const bDue = b.due_date ? toDateTime(b.due_date, timezone).toMillis() : Number.POSITIVE_INFINITY;
       if (aDue !== bDue) return aDue - bDue;
@@ -634,7 +601,7 @@ export function ProjectDetailV2Page() {
   }, [tasks, timezone]);
 
   const activityFeed = useMemo(() => {
-    const items: { id: string; type: string; title: string; detail?: string; timestamp: string }[] = [];
+    const items: { id: string; type: string; title: string; detail?: string; timestamp: string; checkin?: CheckinV2 }[] = [];
     tasks.forEach((task) => {
       items.push({
         id: `task-${task.id}`,
@@ -651,6 +618,7 @@ export function ProjectDetailV2Page() {
         title: memberLabelById[checkin.member_user_id] || checkin.member_user_id,
         detail: checkin.raw_text,
         timestamp: checkin.created_at,
+        checkin,
       });
     });
     blockers.forEach((blocker) => {
@@ -667,6 +635,18 @@ export function ProjectDetailV2Page() {
       .sort((a, b) => toDateTime(b.timestamp, timezone).toMillis() - toDateTime(a.timestamp, timezone).toMillis())
       .slice(0, 10);
   }, [blockers, checkins, memberLabelById, taskTitleById, tasks, timezone]);
+
+  const handleDeleteCheckin = async (checkinId: string) => {
+    if (!projectId) return;
+    if (!confirm('このチェックインを削除しますか？')) return;
+    try {
+      await projectsApi.deleteCheckinV2(projectId, checkinId);
+      setCheckins(prev => prev.filter(c => c.id !== checkinId));
+    } catch (err) {
+      console.error('Failed to delete checkin:', err);
+      alert('チェックインの削除に失敗しました');
+    }
+  };
 
   const handleTaskClick = (task: Task) => {
     if (task.parent_id) {
@@ -838,18 +818,6 @@ export function ProjectDetailV2Page() {
     }
   };
 
-  const handlePlanUtilizationChange = (value: string) => {
-    if (!projectId) return;
-    const trimmed = value.trim();
-    if (trimmed === '') return;
-    const parsed = Number(trimmed);
-    if (!Number.isFinite(parsed)) return;
-    const ratio = parsed <= 1 ? parsed : parsed / 100;
-    const clamped = Math.min(1, Math.max(0.01, ratio));
-    setPlanUtilizationRatio(clamped);
-    userStorage.set(getPlanUtilizationKey(projectId), String(clamped));
-  };
-
   const handlePhaseBufferDraftChange = (phaseId: string, value: string) => {
     setPhaseBufferDrafts((prev) => ({ ...prev, [phaseId]: value }));
   };
@@ -1018,8 +986,9 @@ export function ProjectDetailV2Page() {
     }
   };
 
-  const handleCopyInviteLink = async (token: string) => {
-    const link = `${window.location.origin}/invite/accept?token=${token}`;
+  const handleCopyInviteLink = async (token: string, email?: string) => {
+    const emailParam = email ? `&email=${encodeURIComponent(email)}` : '';
+    const link = `${window.location.origin}/invite/accept?token=${encodeURIComponent(token)}${emailParam}`;
     if (navigator.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(link);
@@ -1040,25 +1009,6 @@ export function ProjectDetailV2Page() {
       document.body.removeChild(textarea);
     } catch (err) {
       console.error('Fallback copy failed:', err);
-    }
-  };
-
-  const handleCreateBaseline = async () => {
-    if (!projectId) return;
-    setIsCreatingBaseline(true);
-    try {
-      const newBaseline = await scheduleSnapshotsApi.create(projectId, {
-        plan_utilization_ratio: planUtilizationRatio,
-      });
-      setActiveBaseline(newBaseline);
-      // Fetch diff for the new baseline
-      const diff = await scheduleSnapshotsApi.getDiff(projectId);
-      setBaselineDiff(diff);
-    } catch (err) {
-      console.error('Failed to create baseline:', err);
-      alert('ベースラインの作成に失敗しました。');
-    } finally {
-      setIsCreatingBaseline(false);
     }
   };
 
@@ -1134,6 +1084,77 @@ export function ProjectDetailV2Page() {
     setTaskToEdit(null);
   };
 
+  const handleOpenCreateTask = (phaseId: string | null) => {
+    setNewTaskInitialData({
+      project_id: projectId,
+      phase_id: phaseId ?? undefined,
+    });
+    setIsCreatingTask(true);
+  };
+
+  const handleSubmitNewTask = async (data: TaskCreate | TaskUpdate) => {
+    try {
+      await tasksApi.create(data as TaskCreate);
+      refetchTasks();
+      setIsCreatingTask(false);
+      setNewTaskInitialData(null);
+    } catch (err) {
+      console.error('Failed to create task:', err);
+      alert('タスクの作成に失敗しました。');
+    }
+  };
+
+  // Current user's role in this project
+  const currentUserMember = members.find((m) => m.member_user_id === currentUser?.id);
+  const canDeleteProject = currentUserMember?.role === 'OWNER' || currentUserMember?.role === 'ADMIN';
+
+  const handleOpenProjectModal = () => {
+    setIsProjectModalOpen(true);
+  };
+
+  const handleCloseProjectModal = () => {
+    setIsProjectModalOpen(false);
+  };
+
+  const handleProjectUpdate = async () => {
+    if (!projectId) return;
+    try {
+      const data = await getProject(projectId);
+      setProject(data ?? null);
+    } catch (err) {
+      console.error('Failed to refresh project:', err);
+    }
+  };
+
+  const handleOpenDeleteConfirm = () => {
+    setDeleteConfirmText('');
+    setIsDeleteConfirmOpen(true);
+  };
+
+  const handleCancelDelete = () => {
+    setIsDeleteConfirmOpen(false);
+    setDeleteConfirmText('');
+  };
+
+  const handleDeleteProject = async () => {
+    if (!projectId || deleteConfirmText !== project?.name) return;
+    setIsDeletingProject(true);
+    try {
+      await projectsApi.delete(projectId);
+      navigate('/projects');
+    } catch (err: unknown) {
+      console.error('Failed to delete project:', err);
+      const errorMessage = err instanceof Error ? err.message : '';
+      if (errorMessage.includes('403') || errorMessage.includes('Forbidden')) {
+        alert('プロジェクトの削除権限がありません。オーナーまたは管理者のみが削除できます。');
+      } else {
+        alert('プロジェクトの削除に失敗しました。');
+      }
+    } finally {
+      setIsDeletingProject(false);
+    }
+  };
+
   if (error) {
     return (
       <div className="project-v2-page">
@@ -1187,6 +1208,22 @@ export function ProjectDetailV2Page() {
                 onClick={() => navigate(`/projects/${projectId}`)}
               >
                 v1を開く
+              </button>
+            )}
+            <button
+              className="project-v2-icon-btn"
+              onClick={handleOpenProjectModal}
+              title="プロジェクトを編集"
+            >
+              <FaEdit />
+            </button>
+            {canDeleteProject && (
+              <button
+                className="project-v2-icon-btn danger"
+                onClick={handleOpenDeleteConfirm}
+                title="プロジェクトを削除"
+              >
+                <FaTrash />
               </button>
             )}
           </div>
@@ -1458,89 +1495,6 @@ export function ProjectDetailV2Page() {
               </div>
 
               <div className="project-v2-dashboard-side">
-                {/* Baseline & Buffer Card */}
-                <div className="project-v2-card project-v2-baseline-card">
-                  <div className="project-v2-card-header">
-                    <h3>ベースライン & バッファ</h3>
-                    {baselineDiff && (
-                      <button className="project-v2-button ghost">差分を見る</button>
-                    )}
-                  </div>
-                  <div className="project-v2-baseline-setting">
-                    <div>
-                      <div className="project-v2-baseline-meta">計画稼働率</div>
-                      <div className="project-v2-muted">推奨 60-75%（週工数に掛ける係数）</div>
-                    </div>
-                    <div className="project-v2-baseline-setting-control">
-                      <input
-                        className="project-v2-input"
-                        type="number"
-                        min="1"
-                        max="100"
-                        step="1"
-                        value={planUtilizationPercent}
-                        onChange={(e) => handlePlanUtilizationChange(e.target.value)}
-                      />
-                      <span className="project-v2-baseline-setting-suffix">%</span>
-                    </div>
-                  </div>
-                  {isBaselineLoading ? (
-                    <p className="project-v2-muted">読み込み中...</p>
-                  ) : activeBaseline ? (
-                    <>
-                      <div className="project-v2-baseline-row">
-                        <div>
-                          <div className="project-v2-baseline-meta">アクティブ計画</div>
-                          <div className="project-v2-baseline-name">{activeBaseline.name}</div>
-                          <div className="project-v2-baseline-meta">
-                            {formatFullDate(activeBaseline.created_at)} 作成
-                          </div>
-                          <div className="project-v2-baseline-meta">
-                            計画稼働率 {Math.round((activeBaseline.plan_utilization_ratio ?? 1) * 100)}%
-                          </div>
-                        </div>
-                        {(() => {
-                          const total = activeBaseline.total_buffer_minutes;
-                          const consumed = activeBaseline.consumed_buffer_minutes;
-                          const remaining = total > 0 ? Math.round(((total - consumed) / total) * 100) : 100;
-                          const statusClass: string = remaining >= 67 ? 'healthy' : remaining >= 33 ? 'warn' : 'critical';
-                          return (
-                            <div className={`project-v2-buffer-pill ${statusClass}`}>
-                              バッファ残り {remaining}%
-                            </div>
-                          );
-                        })()}
-                      </div>
-                      {baselineDiff && (
-                        <div className="project-v2-baseline-summary">
-                          <div>差分: 遅延 {baselineDiff.summary.delayed_count}件 / 前倒し {baselineDiff.summary.ahead_count}件</div>
-                          <div>完了 {baselineDiff.summary.completed_count}件 / 順調 {baselineDiff.summary.on_track_count}件</div>
-                        </div>
-                      )}
-                      <div className="project-v2-baseline-actions">
-                        <button
-                          className="project-v2-button primary"
-                          onClick={handleCreateBaseline}
-                          disabled={isCreatingBaseline}
-                        >
-                          {isCreatingBaseline ? '作成中...' : 'ベースラインを更新'}
-                        </button>
-                      </div>
-                    </>
-                  ) : (
-                    <>
-                      <p className="project-v2-muted">ベースラインが設定されていません。</p>
-                      <button
-                        className="project-v2-button primary"
-                        onClick={handleCreateBaseline}
-                        disabled={isCreatingBaseline}
-                      >
-                        {isCreatingBaseline ? '作成中...' : 'ベースラインを作成'}
-                      </button>
-                    </>
-                  )}
-                </div>
-
                 <div className="project-v2-card">
                   <div className="project-v2-card-header">
                     <h3>ブロッカー</h3>
@@ -1578,9 +1532,20 @@ export function ProjectDetailV2Page() {
                             <div className="project-v2-muted">{item.title}</div>
                             {item.detail && <div className="project-v2-muted">{item.detail}</div>}
                           </div>
-                          <span className="project-v2-muted">
-                            {formatShortDate(item.timestamp)}
-                          </span>
+                          <div className="project-v2-activity-actions">
+                            <span className="project-v2-muted">
+                              {formatShortDate(item.timestamp)}
+                            </span>
+                            {item.checkin && item.checkin.user_id === currentUser?.id && (
+                              <button
+                                className="project-v2-activity-delete-btn"
+                                onClick={() => handleDeleteCheckin(item.checkin!.id)}
+                                title="削除"
+                              >
+                                <FaTrash />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -1738,25 +1703,54 @@ export function ProjectDetailV2Page() {
                     disabled={isInviting}
                   >
                     <option value="email">Email</option>
-                    <option value="user_id">User ID</option>
+                    <option value="user_id">ユーザー検索</option>
                   </select>
-                  <input
-                    className="project-v2-input"
-                    type="text"
-                    placeholder={inviteMode === 'email' ? 'member@example.com' : 'user-id'}
-                    value={inviteValue}
-                    onChange={(e) => setInviteValue(e.target.value)}
-                    disabled={isInviting}
-                  />
-                  <button
-                    className="project-v2-button primary"
-                    onClick={handleInvite}
-                    disabled={!inviteValue.trim() || isInviting}
-                  >
-                    {inviteMode === 'email' ? '招待' : '追加'}
-                  </button>
+                  {inviteMode === 'email' ? (
+                    <>
+                      <input
+                        className="project-v2-input"
+                        type="text"
+                        placeholder="member@example.com"
+                        value={inviteValue}
+                        onChange={(e) => setInviteValue(e.target.value)}
+                        disabled={isInviting}
+                      />
+                      <button
+                        className="project-v2-button primary"
+                        onClick={handleInvite}
+                        disabled={!inviteValue.trim() || isInviting}
+                      >
+                        招待
+                      </button>
+                    </>
+                  ) : (
+                    <UserSearchInput
+                      placeholder="ユーザー名またはメールで検索..."
+                      disabled={isInviting}
+                      onSelect={async (selectedUser: UserSearchResult) => {
+                        if (!projectId) return;
+                        setIsInviting(true);
+                        try {
+                          await projectsApi.addMember(projectId, {
+                            member_user_id: selectedUser.id,
+                          });
+                          const [membersData, invitationsData] = await Promise.all([
+                            projectsApi.listMembers(projectId),
+                            projectsApi.listInvitations(projectId),
+                          ]);
+                          setMembers(membersData);
+                          setInvitations(invitationsData);
+                        } catch (err) {
+                          console.error('Failed to add member:', err);
+                          alert('メンバー追加に失敗しました');
+                        } finally {
+                          setIsInviting(false);
+                        }
+                      }}
+                    />
+                  )}
                 </div>
-                <p className="project-v2-muted">Email招待とUser ID追加を選べます。</p>
+                <p className="project-v2-muted">Email招待とユーザー検索で追加を選べます。</p>
 
                 {isCollabLoading ? (
                   <p className="project-v2-muted">読み込み中...</p>
@@ -1837,7 +1831,7 @@ export function ProjectDetailV2Page() {
                             {invitation.token && (
                               <button
                                 className="project-v2-button"
-                                onClick={() => handleCopyInviteLink(invitation.token as string)}
+                                onClick={() => handleCopyInviteLink(invitation.token as string, invitation.email)}
                               >
                                 リンクコピー
                               </button>
@@ -2172,6 +2166,7 @@ export function ProjectDetailV2Page() {
                     refetchTasks();
                   }}
                   onRefreshTasks={refetchTasks}
+                  onCreateTask={handleOpenCreateTask}
                 />
               )}
             </div>
@@ -2186,7 +2181,6 @@ export function ProjectDetailV2Page() {
                   tasks={tasks}
                   phases={phases}
                   milestones={milestones}
-                  baselineDiff={baselineDiff}
                   onTaskUpdate={async (taskId, updates) => {
                     try {
                       await tasksApi.update(taskId, updates);
@@ -2263,6 +2257,73 @@ export function ProjectDetailV2Page() {
           onSubmit={handleSubmitTaskForm}
           isSubmitting={false}
         />
+      )}
+
+      {isCreatingTask && (
+        <TaskFormModal
+          initialData={newTaskInitialData ?? undefined}
+          allTasks={tasks}
+          onClose={() => {
+            setIsCreatingTask(false);
+            setNewTaskInitialData(null);
+          }}
+          onSubmit={handleSubmitNewTask}
+          isSubmitting={false}
+        />
+      )}
+
+      {/* Project Edit Modal (v1 reuse) */}
+      {isProjectModalOpen && project && (
+        <ProjectDetailModal
+          project={project}
+          onClose={handleCloseProjectModal}
+          onUpdate={handleProjectUpdate}
+        />
+      )}
+
+      {/* Project Delete Confirmation Modal */}
+      {isDeleteConfirmOpen && (
+        <div className="project-v2-modal-overlay" onClick={handleCancelDelete}>
+          <div className="project-v2-modal project-v2-modal-danger" onClick={(e) => e.stopPropagation()}>
+            <div className="project-v2-modal-header">
+              <h2>プロジェクトを削除</h2>
+              <button className="project-v2-icon-btn" onClick={handleCancelDelete}>
+                <FaTimes />
+              </button>
+            </div>
+            <div className="project-v2-modal-body">
+              <p className="project-v2-modal-warning">
+                この操作は取り消せません。プロジェクト「{project?.name}」とそれに関連するすべてのデータ（タスク、フェーズ、マイルストーンなど）が完全に削除されます。
+              </p>
+              <label className="project-v2-label">
+                確認のため、プロジェクト名「<strong>{project?.name}</strong>」を入力してください
+                <input
+                  type="text"
+                  className="project-v2-input"
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder={project?.name}
+                />
+              </label>
+            </div>
+            <div className="project-v2-modal-actions">
+              <button
+                className="project-v2-button ghost"
+                onClick={handleCancelDelete}
+                disabled={isDeletingProject}
+              >
+                キャンセル
+              </button>
+              <button
+                className="project-v2-button danger"
+                onClick={handleDeleteProject}
+                disabled={isDeletingProject || deleteConfirmText !== project?.name}
+              >
+                {isDeletingProject ? '削除中...' : '削除する'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

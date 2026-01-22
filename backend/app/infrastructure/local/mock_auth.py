@@ -50,6 +50,8 @@ class MockAuthProvider(IAuthProvider):
         if token in self._mock_users:
             return self._mock_users[token]
         # Default user for any token
+        if "@" in token:
+            return User(id=token, email=token, display_name=token)
         return User(id=token, email=f"{token}@example.com", display_name=token)
 
     async def get_user(self, user_id: str) -> Optional[User]:

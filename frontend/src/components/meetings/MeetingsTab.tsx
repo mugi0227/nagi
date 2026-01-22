@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FaCalendarAlt, FaList, FaPlus, FaArrowLeft, FaCog } from 'react-icons/fa';
+import { FaCalendarAlt, FaList, FaPlus, FaArrowLeft, FaCog, FaTrash } from 'react-icons/fa';
 import { api as client } from '../../api/client';
 import { projectsApi } from '../../api/projects';
 import type { CheckinCreateV2, CheckinV2, ProjectMember, RecurringMeeting, Task } from '../../api/types';
@@ -111,6 +111,18 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId }: Meetin
         }
     };
 
+    const handleDeleteCheckin = async (checkinId: string, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!confirm('このチェックインを削除しますか？')) return;
+        try {
+            await projectsApi.deleteCheckinV2(projectId, checkinId);
+            setCheckinsV2(prev => prev.filter(c => c.id !== checkinId));
+        } catch (err) {
+            console.error('Failed to delete checkin:', err);
+            alert('チェックインの削除に失敗しました');
+        }
+    };
+
     return (
         <div className="meetings-tab-wrapper">
             <div className="meetings-tab-view-toggle">
@@ -216,11 +228,22 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId }: Meetin
                                                             {formatDate(checkin.checkin_date, { month: 'short', day: 'numeric' }, timezone)}
                                                         </span>
                                                     </div>
-                                                    {checkin.mood && (
-                                                        <span className="checkin-item-mood">
-                                                            {checkin.mood === 'good' ? '😊' : checkin.mood === 'okay' ? '😐' : '😰'}
-                                                        </span>
-                                                    )}
+                                                    <div className="checkin-item-header-right">
+                                                        {checkin.mood && (
+                                                            <span className="checkin-item-mood">
+                                                                {checkin.mood === 'good' ? '😊' : checkin.mood === 'okay' ? '😐' : '😰'}
+                                                            </span>
+                                                        )}
+                                                        {checkin.user_id === currentUserId && (
+                                                            <button
+                                                                className="checkin-item-delete-btn"
+                                                                onClick={(e) => handleDeleteCheckin(checkin.id, e)}
+                                                                title="削除"
+                                                            >
+                                                                <FaTrash />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 {checkin.items && checkin.items.length > 0 && (
                                                     <div className="checkin-item-items">
@@ -333,11 +356,22 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId }: Meetin
                                                             {formatDate(checkin.checkin_date, { month: 'short', day: 'numeric' }, timezone)}
                                                         </span>
                                                     </div>
-                                                    {checkin.mood && (
-                                                        <span className="checkin-item-mood">
-                                                            {checkin.mood === 'good' ? '😊' : checkin.mood === 'okay' ? '😐' : '😰'}
-                                                        </span>
-                                                    )}
+                                                    <div className="checkin-item-header-right">
+                                                        {checkin.mood && (
+                                                            <span className="checkin-item-mood">
+                                                                {checkin.mood === 'good' ? '😊' : checkin.mood === 'okay' ? '😐' : '😰'}
+                                                            </span>
+                                                        )}
+                                                        {checkin.user_id === currentUserId && (
+                                                            <button
+                                                                className="checkin-item-delete-btn"
+                                                                onClick={(e) => handleDeleteCheckin(checkin.id, e)}
+                                                                title="削除"
+                                                            >
+                                                                <FaTrash />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
                                                 {checkin.items && checkin.items.length > 0 && (
                                                     <div className="checkin-item-items">

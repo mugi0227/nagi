@@ -144,6 +144,10 @@ async def run_migrations():
             await conn.execute(text("ALTER TABLE users ADD COLUMN timezone VARCHAR(50) DEFAULT 'Asia/Tokyo' NOT NULL"))
             # Set existing users to Asia/Tokyo (in case DEFAULT doesn't apply to existing rows)
             await conn.execute(text("UPDATE users SET timezone = 'Asia/Tokyo' WHERE timezone IS NULL"))
+        if "first_name" not in user_columns:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN first_name VARCHAR(100)"))
+        if "last_name" not in user_columns:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN last_name VARCHAR(100)"))
 
         # Create recurring_meetings table if missing
         recurring_result = await conn.execute(
@@ -521,8 +525,11 @@ async def _ensure_username_unique(conn):
                 provider_sub VARCHAR(255) NOT NULL,
                 email VARCHAR(255),
                 display_name VARCHAR(255),
+                first_name VARCHAR(100),
+                last_name VARCHAR(100),
                 username VARCHAR(255),
                 password_hash VARCHAR(255),
+                timezone VARCHAR(50) NOT NULL DEFAULT 'Asia/Tokyo',
                 created_at DATETIME,
                 updated_at DATETIME,
                 CONSTRAINT uq_user_provider UNIQUE (provider_issuer, provider_sub),
@@ -537,11 +544,13 @@ async def _ensure_username_unique(conn):
             """
             INSERT INTO users (
                 id, provider_issuer, provider_sub, email, display_name,
-                username, password_hash, created_at, updated_at
+                first_name, last_name, username, password_hash, timezone,
+                created_at, updated_at
             )
             SELECT
                 id, provider_issuer, provider_sub, email, display_name,
-                username, password_hash, created_at, updated_at
+                first_name, last_name, username, password_hash, timezone,
+                created_at, updated_at
             FROM users_old
             """
         )

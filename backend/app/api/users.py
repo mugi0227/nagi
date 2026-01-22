@@ -18,11 +18,18 @@ from app.models.user import UserUpdate
 router = APIRouter()
 
 
+def _build_display_name(first_name: Optional[str], last_name: Optional[str], fallback: str) -> str:
+    parts = [part for part in (last_name, first_name) if part]
+    return " ".join(parts) if parts else fallback
+
+
 class UserProfile(BaseModel):
     id: str
     email: Optional[str] = None
     display_name: Optional[str] = None
     username: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     timezone: Optional[str] = "Asia/Tokyo"
 
 
@@ -38,6 +45,8 @@ class UpdateCredentialsRequest(BaseModel):
     current_password: str = Field(..., min_length=8, max_length=128)
     username: Optional[str] = Field(None, min_length=3, max_length=50)
     email: Optional[str] = Field(None, min_length=3, max_length=255)
+    first_name: Optional[str] = Field(None, max_length=100)
+    last_name: Optional[str] = Field(None, max_length=100)
     new_password: Optional[str] = Field(None, min_length=8, max_length=128)
     timezone: Optional[str] = Field(None, max_length=50, description="IANA timezone")
 
@@ -72,6 +81,8 @@ async def get_current_user_profile(
         email=user.email,
         display_name=user.display_name,
         username=None,
+        first_name=None,
+        last_name=None,
     )
     try:
         user_uuid = UUID(user.id)
@@ -87,6 +98,8 @@ async def get_current_user_profile(
         email=record.email or user.email,
         display_name=record.display_name or user.display_name,
         username=record.username,
+        first_name=record.first_name,
+        last_name=record.last_name,
         timezone=record.timezone,
     )
 
@@ -151,6 +164,30 @@ async def update_credentials(
                 )
             update_fields.email = email
 
+    if data.last_name:
+        last_name = data.last_name.strip()
+        if last_name and last_name != (record.last_name or ""):
+            update_fields.last_name = last_name
+
+    if data.first_name:
+        first_name = data.first_name.strip()
+        if first_name and first_name != (record.first_name or ""):
+            update_fields.first_name = first_name
+
+    if update_fields.first_name is not None or update_fields.last_name is not None:
+        next_first = (
+            update_fields.first_name
+            if update_fields.first_name is not None
+            else record.first_name
+        )
+        next_last = (
+            update_fields.last_name
+            if update_fields.last_name is not None
+            else record.last_name
+        )
+        fallback = record.display_name or record.username or ""
+        update_fields.display_name = _build_display_name(next_first, next_last, fallback)
+
     if data.new_password:
         update_fields.password_hash = hash_password(data.new_password)
 
@@ -164,6 +201,8 @@ async def update_credentials(
         for value in (
             update_fields.username,
             update_fields.email,
+            update_fields.first_name,
+            update_fields.last_name,
             update_fields.password_hash,
             update_fields.timezone,
         )
@@ -179,5 +218,7 @@ async def update_credentials(
         email=updated.email,
         display_name=updated.display_name,
         username=updated.username,
+        first_name=updated.first_name,
+        last_name=updated.last_name,
         timezone=updated.timezone,
     )

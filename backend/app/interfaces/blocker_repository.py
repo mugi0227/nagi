@@ -25,6 +25,11 @@ class IBlockerRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_by_id(self, blocker_id: UUID) -> Optional[Blocker]:
+        """Get blocker by ID only (for access verification)."""
+        pass
+
+    @abstractmethod
     async def list_by_task(self, user_id: str, task_id: UUID) -> list[Blocker]:
         """List blockers for a task."""
         pass

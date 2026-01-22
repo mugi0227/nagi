@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { FaCheckSquare, FaRegSquare } from 'react-icons/fa';
+import { FaCheckSquare, FaPlus, FaRegSquare } from 'react-icons/fa';
 import { phasesApi } from '../../api/phases';
 import { tasksApi } from '../../api/tasks';
 import type {
@@ -23,6 +23,7 @@ interface ProjectTasksViewProps {
   memberOptions: { id: string; label: string }[];
   onAssignMultiple: (taskId: string, memberUserIds: string[]) => Promise<void>;
   onRefreshTasks?: () => void;
+  onCreateTask?: (phaseId: string | null) => void;
 }
 
 export function ProjectTasksView({
@@ -36,6 +37,7 @@ export function ProjectTasksView({
   memberOptions,
   onAssignMultiple,
   onRefreshTasks,
+  onCreateTask,
 }: ProjectTasksViewProps) {
   const queryClient = useQueryClient();
   const [phases, setPhases] = useState<PhaseWithTaskCount[]>([]);
@@ -212,6 +214,16 @@ export function ProjectTasksView({
         {/* Toolbar */}
         <div className="project-tasks-toolbar">
           <div className="toolbar-left">
+            {onCreateTask && (
+              <button
+                className="create-task-btn"
+                onClick={() => onCreateTask(selectedPhaseId)}
+                title="タスクを追加"
+              >
+                <FaPlus />
+                <span>タスク追加</span>
+              </button>
+            )}
             <button
               className={`selection-mode-btn ${selectionMode ? 'active' : ''}`}
               onClick={handleToggleSelectionMode}

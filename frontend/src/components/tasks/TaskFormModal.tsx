@@ -131,14 +131,13 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
   return (
     <motion.div
       className="modal-overlay"
-      onClick={onClose}
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
       <motion.div
         className="task-form-modal"
-        onClick={(e) => e.stopPropagation()}
         initial={{ scale: 0.95, opacity: 0, y: 10 }}
         animate={{ scale: 1, opacity: 1, y: 0 }}
         exit={{ scale: 0.95, opacity: 0, y: 10 }}

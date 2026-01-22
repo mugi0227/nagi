@@ -16,6 +16,7 @@ import type { MeetingSessionStatus } from '../../types/session';
 import { MeetingCompleted } from './MeetingCompleted';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, toDateKey, todayInTimezone } from '../../utils/dateTime';
+import { AgendaList } from '../agenda';
 import './MeetingInProgress.css';
 
 interface MeetingMainContentProps {
@@ -352,48 +353,12 @@ export function MeetingMainContent({
                             </div>
                         )}
 
-                        <div className="agenda-list">
-                            {agendaItems.length === 0 ? (
-                                <div className="empty-state">
-                                    <p>
-                                        {mode === 'ARCHIVE'
-                                            ? 'このミーティングにはアジェンダが登録されていませんでした。'
-                                            : 'アジェンダがまだありません。「AIでドラフト作成」を試すか、手動で追加してください。'}
-                                    </p>
-                                </div>
-                            ) : (
-                                agendaItems.map((item, index) => {
-                                    // Check if agenda is completed based on session progress
-                                    const currentIndex = session?.current_agenda_index ?? 0;
-                                    const isCompletedByProgress = !!(session && session.status !== 'PREPARATION' && index < currentIndex);
-                                    const isChecked = !!(item.is_completed || isCompletedByProgress);
-
-                                    return (
-                                        <div key={item.id} className={`agenda-item ${isChecked ? 'completed' : ''}`}>
-                                            <input
-                                                type="checkbox"
-                                                className="agenda-checkbox"
-                                                checked={isChecked}
-                                                onChange={() => { }}
-                                                readOnly
-                                            />
-                                            <div className="agenda-content">
-                                                <div className="agenda-title">
-                                                    {item.title}
-                                                    {item.duration_minutes && (
-                                                        <span className="ml-2 text-sm text-gray-500 font-normal">
-                                                            ({item.duration_minutes} min)
-                                                        </span>
-                                                    )}
-                                                </div>
-                                                {item.description && <div className="agenda-desc">{item.description}</div>}
-                                            </div>
-                                        </div>
-                                    );
-                                })
-                            )}
-                        </div>
-
+                        <AgendaList
+                            meetingId={recurringMeetingId}
+                            taskId={isStandalone ? taskId : undefined}
+                            eventDate={dateStr}
+                            readonly={mode === 'ARCHIVE'}
+                        />
                     </div>
                 )}
 

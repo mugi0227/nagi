@@ -27,7 +27,7 @@ from app.api.deps import (
 )
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError
-from app.utils.datetime_utils import now_utc
+from app.utils.datetime_utils import ensure_utc, now_utc
 from app.models.collaboration import (
     Blocker,
     Checkin,
@@ -37,6 +37,7 @@ from app.models.collaboration import (
     CheckinSummaryRequest,
     CheckinSummarySave,
     CheckinSummary,
+    CheckinUpdateV2,
     CheckinV2,
     ProjectMember,
     ProjectMemberCreate,
@@ -360,8 +361,10 @@ async def update_project(
     repo: ProjectRepo,
 ):
     """Update a project."""
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
     try:
-        return await repo.update(user.id, project_id, update)
+        return await repo.update(owner_id, project_id, update)
     except NotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -374,9 +377,23 @@ async def delete_project(
     project_id: UUID,
     user: CurrentUser,
     repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
-    """Delete a project."""
-    deleted = await repo.delete(user.id, project_id)
+    """Delete a project. Only OWNER or ADMIN can delete."""
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
+
+    # Check if user has OWNER or ADMIN role
+    members = await member_repo.list(owner_id, project_id)
+    user_member = next((m for m in members if m.member_user_id == user.id), None)
+
+    if not user_member or user_member.role not in (ProjectRole.OWNER, ProjectRole.ADMIN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only project owner or admin can delete the project",
+        )
+
+    deleted = await repo.delete(owner_id, project_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -425,7 +442,8 @@ async def add_project_member(
     user_repo: UserRepo,
 ):
     """Add a member to a project."""
-    await _get_project_or_404(user, repo, project_id)
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
 
     # Validate that the member user exists
     try:
@@ -440,7 +458,7 @@ async def add_project_member(
             detail=f"User {member.member_user_id} not found",
         )
 
-    return await member_repo.create(user.id, project_id, member)
+    return await member_repo.create(owner_id, project_id, member)
 
 
 @router.patch("/{project_id}/members/{member_id}", response_model=ProjectMember)
@@ -453,14 +471,15 @@ async def update_project_member(
     member_repo: ProjectMemberRepo,
 ):
     """Update a project member."""
-    await _get_project_or_404(user, repo, project_id)
-    existing = await member_repo.get(user.id, member_id)
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
+    existing = await member_repo.get(owner_id, member_id)
     if not existing or existing.project_id != project_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project member {member_id} not found",
         )
-    return await member_repo.update(user.id, member_id, update)
+    return await member_repo.update(owner_id, member_id, update)
 
 
 @router.delete("/{project_id}/members/{member_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -472,14 +491,15 @@ async def delete_project_member(
     member_repo: ProjectMemberRepo,
 ):
     """Remove a member from a project."""
-    await _get_project_or_404(user, repo, project_id)
-    existing = await member_repo.get(user.id, member_id)
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
+    existing = await member_repo.get(owner_id, member_id)
     if not existing or existing.project_id != project_id:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project member {member_id} not found",
         )
-    deleted = await member_repo.delete(user.id, member_id)
+    deleted = await member_repo.delete(owner_id, member_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -514,7 +534,7 @@ async def create_project_invitation(
     """Create a project invitation (or add member if user exists)."""
     project = await _get_project_or_404(user, repo, project_id)
     normalized_email = _normalize_email(invitation.email)
-    pending = await invitation_repo.get_pending_by_email(project.user_id, project_id, normalized_email)
+    pending = await invitation_repo.get_pending_by_email(project_id, normalized_email)
 
     existing_user = await user_repo.get_by_email(normalized_email)
     member_user_id = str(existing_user.id) if existing_user else None
@@ -562,13 +582,14 @@ async def update_project_invitation(
     invitation_repo: ProjectInvitationRepo,
 ):
     """Update invitation status."""
-    await _get_project_or_404(user, repo, project_id)
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
     if update.status not in {InvitationStatus.REVOKED, InvitationStatus.EXPIRED}:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="Only REVOKED or EXPIRED status updates are allowed",
         )
-    return await invitation_repo.update(user.id, invitation_id, update)
+    return await invitation_repo.update(owner_id, invitation_id, update)
 
 
 @router.post("/invitations/{token}/accept", response_model=ProjectInvitation)
@@ -591,7 +612,8 @@ async def accept_project_invitation(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invitation is not pending",
         )
-    if invitation.expires_at and invitation.expires_at < now_utc():
+    expires_at = ensure_utc(invitation.expires_at)
+    if expires_at and expires_at < now_utc():
         await invitation_repo.update(
             invitation.user_id,
             invitation.id,
@@ -694,9 +716,10 @@ async def summarize_project_checkins(
     checkin_type: Optional[CheckinType] = Query(None, description="Filter by check-in type"),
 ):
     """Summarize check-ins for a project within a date range."""
-    await _get_project_or_404(user, repo, project_id)
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
     checkins = await checkin_repo.list(
-        user.id,
+        owner_id,
         project_id,
         member_user_id=member_user_id,
         start_date=start_date,
@@ -724,9 +747,10 @@ async def summarize_project_checkins_post(
     llm_provider: LLMProvider,
 ):
     """Summarize check-ins with optional weekly context."""
-    await _get_project_or_404(user, repo, project_id)
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
     checkins = await checkin_repo.list(
-        user.id,
+        owner_id,
         project_id,
         member_user_id=payload.member_user_id,
         start_date=payload.start_date,
@@ -783,8 +807,9 @@ async def create_project_checkin(
     checkin_repo: CheckinRepo,
 ):
     """Create a new check-in for a project."""
-    await _get_project_or_404(user, repo, project_id)
-    return await checkin_repo.create(user.id, project_id, checkin)
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
+    return await checkin_repo.create(owner_id, project_id, checkin)
 
 
 # =============================================================================
@@ -805,8 +830,9 @@ async def create_project_checkin_v2(
     checkin_repo: CheckinRepo,
 ):
     """Create a structured check-in (V2)."""
-    await _get_project_or_404(user, repo, project_id)
-    return await checkin_repo.create_v2(user.id, project_id, checkin)
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
+    return await checkin_repo.create_v2(owner_id, project_id, checkin)
 
 
 @router.get("/{project_id}/checkins/v2", response_model=list[CheckinV2])
@@ -820,14 +846,91 @@ async def list_project_checkins_v2(
     end_date: Optional[date] = Query(None),
 ):
     """List structured check-ins (V2)."""
-    await _get_project_or_404(user, repo, project_id)
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
     return await checkin_repo.list_v2(
-        user.id,
+        owner_id,
         project_id,
         member_user_id=member_user_id,
         start_date=start_date,
         end_date=end_date,
     )
+
+
+@router.patch("/{project_id}/checkins/v2/{checkin_id}", response_model=CheckinV2)
+async def update_project_checkin_v2(
+    project_id: UUID,
+    checkin_id: UUID,
+    checkin_update: CheckinUpdateV2,
+    user: CurrentUser,
+    repo: ProjectRepo,
+    checkin_repo: CheckinRepo,
+):
+    """Update a structured check-in (V2). Only the creator can update."""
+    await _get_project_or_404(user, repo, project_id)
+
+    # Get existing checkin to verify ownership
+    existing = await checkin_repo.get_v2(checkin_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Check-in {checkin_id} not found",
+        )
+    if existing.project_id != project_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Check-in {checkin_id} not found in project {project_id}",
+        )
+    if existing.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only update your own check-ins",
+        )
+
+    result = await checkin_repo.update_v2(checkin_id, checkin_update)
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Check-in {checkin_id} not found",
+        )
+    return result
+
+
+@router.delete("/{project_id}/checkins/v2/{checkin_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_project_checkin_v2(
+    project_id: UUID,
+    checkin_id: UUID,
+    user: CurrentUser,
+    repo: ProjectRepo,
+    checkin_repo: CheckinRepo,
+):
+    """Delete a structured check-in (V2). Only the creator can delete."""
+    await _get_project_or_404(user, repo, project_id)
+
+    # Get existing checkin to verify ownership
+    existing = await checkin_repo.get_v2(checkin_id)
+    if not existing:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Check-in {checkin_id} not found",
+        )
+    if existing.project_id != project_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Check-in {checkin_id} not found in project {project_id}",
+        )
+    if existing.user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete your own check-ins",
+        )
+
+    deleted = await checkin_repo.delete_v2(checkin_id)
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Check-in {checkin_id} not found",
+        )
 
 
 @router.get("/{project_id}/checkins/agenda-items", response_model=CheckinAgendaItems)
@@ -840,9 +943,10 @@ async def get_project_checkin_agenda_items(
     end_date: Optional[date] = Query(None),
 ):
     """Get check-in items grouped by category for meeting agenda generation."""
-    await _get_project_or_404(user, repo, project_id)
+    project = await _get_project_or_404(user, repo, project_id)
+    owner_id = project.user_id
     return await checkin_repo.get_agenda_items(
-        user.id,
+        owner_id,
         project_id,
         start_date=start_date,
         end_date=end_date,

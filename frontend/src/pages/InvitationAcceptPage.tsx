@@ -12,6 +12,7 @@ export function InvitationAcceptPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const [tokenInput, setTokenInput] = useState(searchParams.get('token') ?? '');
+  const [inviteEmail, setInviteEmail] = useState(searchParams.get('email') ?? '');
   const [status, setStatus] = useState<AcceptStatus>('idle');
   const [message, setMessage] = useState<string | null>(null);
   const [projectId, setProjectId] = useState<string | null>(null);
@@ -22,6 +23,10 @@ export function InvitationAcceptPage() {
     if (tokenParam) {
       setTokenInput(tokenParam);
     }
+    const emailParam = searchParams.get('email');
+    if (emailParam) {
+      setInviteEmail(emailParam);
+    }
   }, [searchParams]);
 
   useEffect(() => {
@@ -31,9 +36,21 @@ export function InvitationAcceptPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]);
 
+  useEffect(() => {
+    if (status !== 'success' || !projectId) return;
+    const timer = setTimeout(() => {
+      navigate(`/projects/${projectId}/v2`);
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [status, projectId, navigate]);
+
+  const handleAuthRedirect = () => {
+    navigate('/login', { state: { from: location, inviteEmail } });
+  };
+
   const handleAccept = async (tokenValue: string) => {
     if (!token) {
-      navigate('/login', { state: { from: location } });
+      navigate('/login', { state: { from: location, inviteEmail } });
       return;
     }
     if (!tokenValue) return;
@@ -53,6 +70,7 @@ export function InvitationAcceptPage() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (status === 'success') return;
     handleAccept(tokenInput.trim());
   };
 
@@ -74,12 +92,13 @@ export function InvitationAcceptPage() {
           <button
             type="button"
             className="invite-login-btn"
-            onClick={() => navigate('/login', { state: { from: location } })}
+            onClick={handleAuthRedirect}
           >
-            ログインへ進む
+            ログイン/新規登録へ
           </button>
         )}
 
+        {token && status !== 'success' && (
         <form className="invite-form" onSubmit={handleSubmit}>
           <label className="invite-label" htmlFor="invite-token">
             招待トークン
@@ -99,6 +118,7 @@ export function InvitationAcceptPage() {
             承諾する
           </button>
         </form>
+        )}
 
         {status !== 'idle' && message && (
           <div className={`invite-status status-${status}`}>

@@ -19,6 +19,7 @@ import type {
   CheckinSummarySave,
   CheckinV2,
   CheckinCreateV2,
+  CheckinUpdateV2,
   CheckinAgendaItems,
   ProjectKpiTemplate,
   PhaseBreakdownRequest,
@@ -131,6 +132,12 @@ export const projectsApi = {
 
   createCheckinV2: (projectId: string, data: CheckinCreateV2) =>
     api.post<CheckinV2>(`/projects/${projectId}/checkins/v2`, data),
+
+  updateCheckinV2: (projectId: string, checkinId: string, data: CheckinUpdateV2) =>
+    api.patch<CheckinV2>(`/projects/${projectId}/checkins/v2/${checkinId}`, data),
+
+  deleteCheckinV2: (projectId: string, checkinId: string) =>
+    api.delete<void>(`/projects/${projectId}/checkins/v2/${checkinId}`),
 
   getCheckinAgendaItems: (projectId: string, query?: {
     startDate?: string;

@@ -27,6 +27,11 @@ class ITaskAssignmentRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_by_id(self, assignment_id: UUID) -> Optional[TaskAssignment]:
+        """Get assignment by ID (for access verification)."""
+        pass
+
+    @abstractmethod
     async def list_by_project(self, user_id: str, project_id: UUID) -> list[TaskAssignment]:
         """List assignments for tasks in a project."""
         pass

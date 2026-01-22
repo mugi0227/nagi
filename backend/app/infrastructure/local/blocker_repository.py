@@ -64,6 +64,15 @@ class SqliteBlockerRepository(IBlockerRepository):
             orm = result.scalar_one_or_none()
             return self._orm_to_model(orm) if orm else None
 
+    async def get_by_id(self, blocker_id: UUID) -> Optional[Blocker]:
+        """Get blocker by ID only (for access verification)."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(BlockerORM).where(BlockerORM.id == str(blocker_id))
+            )
+            orm = result.scalar_one_or_none()
+            return self._orm_to_model(orm) if orm else None
+
     async def list_by_task(self, user_id: str, task_id: UUID) -> list[Blocker]:
         async with self._session_factory() as session:
             result = await session.execute(

@@ -29,6 +29,8 @@ class SqliteUserRepository(IUserRepository):
             provider_sub=orm.provider_sub,
             email=orm.email,
             display_name=orm.display_name,
+            first_name=orm.first_name,
+            last_name=orm.last_name,
             username=orm.username,
             password_hash=orm.password_hash,
             timezone=orm.timezone,
@@ -78,6 +80,8 @@ class SqliteUserRepository(IUserRepository):
                 provider_sub=data.provider_sub,
                 email=data.email,
                 display_name=data.display_name,
+                first_name=data.first_name,
+                last_name=data.last_name,
                 username=data.username,
                 password_hash=data.password_hash,
                 timezone=data.timezone,
@@ -117,6 +121,10 @@ class SqliteUserRepository(IUserRepository):
                 orm.email = update.email
             if update.display_name is not None:
                 orm.display_name = update.display_name
+            if update.first_name is not None:
+                orm.first_name = update.first_name
+            if update.last_name is not None:
+                orm.last_name = update.last_name
             if update.username is not None:
                 orm.username = update.username
             if update.password_hash is not None:
@@ -140,6 +148,8 @@ class SqliteUserRepository(IUserRepository):
                         UserORM.username.ilike(pattern),
                         UserORM.email.ilike(pattern),
                         UserORM.display_name.ilike(pattern),
+                        UserORM.first_name.ilike(pattern),
+                        UserORM.last_name.ilike(pattern),
                     )
                 )
                 .limit(limit)

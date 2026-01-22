@@ -14,6 +14,8 @@ interface AgendaItemProps {
   onDelete: (id: string) => void;
   onToggleComplete: (id: string, isCompleted: boolean) => void;
   isDragging?: boolean;
+  readonly?: boolean;
+  dragHandleProps?: React.HTMLAttributes<HTMLDivElement>;
 }
 
 export const AgendaItem: React.FC<AgendaItemProps> = ({
@@ -22,20 +24,25 @@ export const AgendaItem: React.FC<AgendaItemProps> = ({
   onDelete,
   onToggleComplete,
   isDragging = false,
+  readonly = false,
+  dragHandleProps,
 }) => {
   return (
     <div
       className={`agenda-item ${isDragging ? 'dragging' : ''} ${item.is_completed ? 'completed' : ''}`}
     >
       {/* Drag handle */}
-      <div className="agenda-drag-handle">
-        <GripVertical className="agenda-icon-md" />
-      </div>
+      {!readonly && (
+        <div className="agenda-drag-handle" {...dragHandleProps}>
+          <GripVertical className="agenda-icon-md" />
+        </div>
+      )}
 
       {/* Complete checkbox */}
       <button
-        onClick={() => onToggleComplete(item.id, !item.is_completed)}
-        className={`agenda-checkbox ${item.is_completed ? 'checked' : ''}`}
+        onClick={() => !readonly && onToggleComplete(item.id, !item.is_completed)}
+        className={`agenda-checkbox ${item.is_completed ? 'checked' : ''} ${readonly ? 'readonly' : ''}`}
+        disabled={readonly}
       >
         {item.is_completed && <CheckCircle2 className="agenda-icon-sm" />}
       </button>
@@ -63,23 +70,25 @@ export const AgendaItem: React.FC<AgendaItemProps> = ({
       </div>
 
       {/* Actions */}
-      <div className="agenda-actions">
-        <button
-          onClick={() => onEdit(item)}
-          className="agenda-action-btn"
-          title="編集"
-        >
-          <Edit2 className="agenda-icon-sm" />
-        </button>
+      {!readonly && (
+        <div className="agenda-actions">
+          <button
+            onClick={() => onEdit(item)}
+            className="agenda-action-btn"
+            title="編集"
+          >
+            <Edit2 className="agenda-icon-sm" />
+          </button>
 
-        <button
-          onClick={() => onDelete(item.id)}
-          className="agenda-action-btn delete"
-          title="削除"
-        >
-          <Trash2 className="agenda-icon-sm" />
-        </button>
-      </div>
+          <button
+            onClick={() => onDelete(item.id)}
+            className="agenda-action-btn delete"
+            title="削除"
+          >
+            <Trash2 className="agenda-icon-sm" />
+          </button>
+        </div>
+      )}
     </div>
   );
 };

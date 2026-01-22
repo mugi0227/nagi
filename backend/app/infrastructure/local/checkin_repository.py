@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_
+from sqlalchemy import select, and_, delete
 
 from app.infrastructure.local.database import (
     CheckinItemORM,
@@ -22,6 +22,7 @@ from app.models.collaboration import (
     CheckinCreate,
     CheckinCreateV2,
     CheckinItemResponse,
+    CheckinUpdateV2,
     CheckinV2,
 )
 from app.models.enums import CheckinItemCategory, CheckinItemUrgency, CheckinMood
@@ -264,6 +265,125 @@ class SqliteCheckinRepository(ICheckinRepository):
                 self._orm_to_model_v2(c, items_by_checkin.get(c.id, []))
                 for c in checkins
             ]
+
+    async def get_v2(
+        self,
+        checkin_id: UUID,
+    ) -> Optional[CheckinV2]:
+        """Get a single check-in by ID."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(CheckinORM).where(CheckinORM.id == str(checkin_id))
+            )
+            orm = result.scalar_one_or_none()
+            if not orm:
+                return None
+
+            # Get items
+            items_result = await session.execute(
+                select(CheckinItemORM)
+                .where(CheckinItemORM.checkin_id == str(checkin_id))
+                .order_by(CheckinItemORM.order_index)
+            )
+            items = items_result.scalars().all()
+            return self._orm_to_model_v2(orm, items)
+
+    async def update_v2(
+        self,
+        checkin_id: UUID,
+        checkin: CheckinUpdateV2,
+    ) -> Optional[CheckinV2]:
+        """Update a structured check-in (V2)."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(CheckinORM).where(CheckinORM.id == str(checkin_id))
+            )
+            orm = result.scalar_one_or_none()
+            if not orm:
+                return None
+
+            # Update fields if provided
+            if checkin.mood is not None:
+                orm.mood = checkin.mood.value
+            if checkin.must_discuss_in_next_meeting is not None:
+                orm.must_discuss_in_next_meeting = checkin.must_discuss_in_next_meeting
+            if checkin.free_comment is not None:
+                orm.free_comment = checkin.free_comment
+
+            # Update items if provided
+            item_orms = []
+            if checkin.items is not None:
+                # Delete existing items
+                await session.execute(
+                    delete(CheckinItemORM).where(
+                        CheckinItemORM.checkin_id == str(checkin_id)
+                    )
+                )
+
+                # Create new items
+                for idx, item in enumerate(checkin.items):
+                    item_orm = CheckinItemORM(
+                        id=str(uuid4()),
+                        checkin_id=str(checkin_id),
+                        user_id=orm.user_id,
+                        category=item.category.value,
+                        content=item.content,
+                        related_task_id=item.related_task_id,
+                        urgency=item.urgency.value,
+                        order_index=idx,
+                        created_at=datetime.utcnow(),
+                    )
+                    session.add(item_orm)
+                    item_orms.append(item_orm)
+
+                # Rebuild raw_text from updated data
+                from app.models.collaboration import CheckinCreateV2 as CreateModel
+                temp_create = CreateModel(
+                    member_user_id=orm.member_user_id,
+                    checkin_date=orm.checkin_date,
+                    items=checkin.items,
+                    mood=CheckinMood(orm.mood) if orm.mood else checkin.mood,
+                    must_discuss_in_next_meeting=orm.must_discuss_in_next_meeting,
+                    free_comment=orm.free_comment,
+                )
+                orm.raw_text = self._build_raw_text(temp_create)
+            else:
+                # Get existing items
+                items_result = await session.execute(
+                    select(CheckinItemORM)
+                    .where(CheckinItemORM.checkin_id == str(checkin_id))
+                    .order_by(CheckinItemORM.order_index)
+                )
+                item_orms = list(items_result.scalars().all())
+
+            await session.commit()
+            await session.refresh(orm)
+            return self._orm_to_model_v2(orm, item_orms)
+
+    async def delete_v2(
+        self,
+        checkin_id: UUID,
+    ) -> bool:
+        """Delete a check-in. Returns True if deleted, False if not found."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(CheckinORM).where(CheckinORM.id == str(checkin_id))
+            )
+            orm = result.scalar_one_or_none()
+            if not orm:
+                return False
+
+            # Delete items first
+            await session.execute(
+                delete(CheckinItemORM).where(
+                    CheckinItemORM.checkin_id == str(checkin_id)
+                )
+            )
+
+            # Delete checkin
+            await session.delete(orm)
+            await session.commit()
+            return True
 
     async def get_agenda_items(
         self,

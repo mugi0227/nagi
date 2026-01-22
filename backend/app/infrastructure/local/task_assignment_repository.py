@@ -81,6 +81,17 @@ class SqliteTaskAssignmentRepository(ITaskAssignmentRepository):
             orm = result.scalar_one_or_none()
             return self._orm_to_model(orm) if orm else None
 
+    async def get_by_id(self, assignment_id: UUID) -> Optional[TaskAssignment]:
+        """Get assignment by ID (for access verification)."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(TaskAssignmentORM).where(
+                    TaskAssignmentORM.id == str(assignment_id)
+                )
+            )
+            orm = result.scalar_one_or_none()
+            return self._orm_to_model(orm) if orm else None
+
     async def list_by_project(self, user_id: str, project_id: UUID) -> list[TaskAssignment]:
         """List assignments for a project (project-based access)."""
         async with self._session_factory() as session:

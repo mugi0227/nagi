@@ -77,6 +77,8 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const authMode = (import.meta.env.VITE_AUTH_MODE as string | undefined)?.toLowerCase() || '';
   const isLocalAuth = authMode === 'local';
   const [userName, setUserName] = useState('');
+  const [userLastName, setUserLastName] = useState('');
+  const [userFirstName, setUserFirstName] = useState('');
   const [userEmail, setUserEmail] = useState('');
   const [userTimezone, setUserTimezone] = useState('Asia/Tokyo');
   const [currentPassword, setCurrentPassword] = useState('');
@@ -116,6 +118,8 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   useEffect(() => {
     if (!currentUser) return;
     setUserName(currentUser.username || currentUser.display_name || '');
+    setUserLastName(currentUser.last_name || '');
+    setUserFirstName(currentUser.first_name || '');
     setUserEmail(currentUser.email || '');
     setUserTimezone(currentUser.timezone || 'Asia/Tokyo');
     setStoredTimezone(currentUser.timezone || 'Asia/Tokyo');
@@ -216,18 +220,30 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       current_password: string;
       username?: string;
       email?: string;
+      first_name?: string;
+      last_name?: string;
       new_password?: string;
       timezone?: string;
     } = { current_password: currentPassword };
 
     const nextUserName = userName.trim();
+    const nextFirstName = userFirstName.trim();
+    const nextLastName = userLastName.trim();
     const nextEmail = userEmail.trim();
     const currentUserName = currentUser?.username || currentUser?.display_name || '';
+    const currentUserFirstName = currentUser?.first_name || '';
+    const currentUserLastName = currentUser?.last_name || '';
     const currentUserEmail = currentUser?.email || '';
     const currentUserTimezone = currentUser?.timezone || 'Asia/Tokyo';
 
     if (nextUserName && nextUserName !== currentUserName) {
       payload.username = nextUserName;
+    }
+    if (nextLastName && nextLastName !== currentUserLastName) {
+      payload.last_name = nextLastName;
+    }
+    if (nextFirstName && nextFirstName !== currentUserFirstName) {
+      payload.first_name = nextFirstName;
     }
     if (nextEmail && nextEmail !== currentUserEmail) {
       payload.email = nextEmail;
@@ -262,7 +278,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   };
 
   return (
-    <div className="settings-modal-overlay" onClick={onClose}>
+    <div className="settings-modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <motion.div
         className="settings-modal"
         onClick={(event) => event.stopPropagation()}
@@ -302,6 +318,40 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               <p className="setting-description">
                 登録時のユーザー名を変更します（ローカル認証のみ）。
               </p>
+            </div>
+            <div className="setting-item">
+              <label htmlFor="userLastName" className="setting-label">
+                姓（任意）
+              </label>
+              <input
+                type="text"
+                id="userLastName"
+                value={userLastName}
+                onChange={(event) => {
+                  setUserLastName(event.target.value);
+                  setAccountError(null);
+                  setAccountSuccess(null);
+                }}
+                className="setting-input"
+                placeholder="Yamada"
+                disabled={!isLocalAuth || isUpdatingAccount}
+              />
+              <label htmlFor="userFirstName" className="setting-label">
+                名（任意）
+              </label>
+              <input
+                type="text"
+                id="userFirstName"
+                value={userFirstName}
+                onChange={(event) => {
+                  setUserFirstName(event.target.value);
+                  setAccountError(null);
+                  setAccountSuccess(null);
+                }}
+                className="setting-input"
+                placeholder="Taro"
+                disabled={!isLocalAuth || isUpdatingAccount}
+              />
             </div>
             <div className="setting-item">
               <label htmlFor="userEmail" className="setting-label">

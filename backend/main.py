@@ -70,7 +70,6 @@ def create_app() -> FastAPI:
         projects,
         proposals,
         recurring_meetings,
-        schedule_snapshots,
         tasks,
         today,
         users,
@@ -92,7 +91,6 @@ def create_app() -> FastAPI:
     app.include_router(heartbeat.router, prefix="/api/heartbeat", tags=["heartbeat"])
     app.include_router(today.router, prefix="/api/today", tags=["today"])
     app.include_router(users.router, prefix="/api/users", tags=["users"])
-    app.include_router(schedule_snapshots.router, prefix="/api", tags=["schedule_snapshots"])
 
     # Mount storage for local development
     storage_path = settings.STORAGE_BASE_PATH

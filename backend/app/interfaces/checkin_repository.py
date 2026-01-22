@@ -14,6 +14,7 @@ from app.models.collaboration import (
     CheckinAgendaItems,
     CheckinCreate,
     CheckinCreateV2,
+    CheckinUpdateV2,
     CheckinV2,
 )
 from app.models.enums import CheckinItemCategory
@@ -67,6 +68,31 @@ class ICheckinRepository(ABC):
         category: Optional[CheckinItemCategory] = None,
     ) -> list[CheckinV2]:
         """List structured check-ins (V2)."""
+        pass
+
+    @abstractmethod
+    async def get_v2(
+        self,
+        checkin_id: UUID,
+    ) -> Optional[CheckinV2]:
+        """Get a single check-in by ID."""
+        pass
+
+    @abstractmethod
+    async def update_v2(
+        self,
+        checkin_id: UUID,
+        checkin: CheckinUpdateV2,
+    ) -> Optional[CheckinV2]:
+        """Update a structured check-in (V2)."""
+        pass
+
+    @abstractmethod
+    async def delete_v2(
+        self,
+        checkin_id: UUID,
+    ) -> bool:
+        """Delete a check-in. Returns True if deleted, False if not found."""
         pass
 
     @abstractmethod

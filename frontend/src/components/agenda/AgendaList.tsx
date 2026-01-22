@@ -39,6 +39,7 @@ interface AgendaListProps {
   meetingId?: string;  // RecurringMeeting ID (for recurring meetings)
   taskId?: string;     // Task ID (for standalone meetings)
   eventDate?: string;  // YYYY-MM-DD format
+  readonly?: boolean;  // Hide edit/delete/add controls
 }
 
 // Sortable wrapper for AgendaItem
@@ -47,14 +48,17 @@ function SortableAgendaItem({
   onEdit,
   onDelete,
   onToggleComplete,
+  readonly,
 }: {
   item: MeetingAgendaItem;
   onEdit: (item: MeetingAgendaItem) => void;
   onDelete: (id: string) => void;
   onToggleComplete: (id: string, isCompleted: boolean) => void;
+  readonly?: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
+    disabled: readonly,
   });
 
   const style = {
@@ -62,20 +66,25 @@ function SortableAgendaItem({
     transition,
   };
 
+  // Pass drag listeners only to the drag handle, not the entire item
+  const dragHandleProps = readonly ? undefined : { ...attributes, ...listeners };
+
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+    <div ref={setNodeRef} style={style}>
       <AgendaItem
         item={item}
         onEdit={onEdit}
         onDelete={onDelete}
         onToggleComplete={onToggleComplete}
         isDragging={isDragging}
+        readonly={readonly}
+        dragHandleProps={dragHandleProps}
       />
     </div>
   );
 }
 
-export const AgendaList: React.FC<AgendaListProps> = ({ meetingId, taskId, eventDate }) => {
+export const AgendaList: React.FC<AgendaListProps> = ({ meetingId, taskId, eventDate, readonly = false }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MeetingAgendaItem | null>(null);
 
@@ -194,13 +203,15 @@ export const AgendaList: React.FC<AgendaListProps> = ({ meetingId, taskId, event
           )}
         </div>
 
-        <button
-          onClick={() => setIsModalOpen(true)}
-          className="agenda-add-btn"
-        >
-          <Plus className="agenda-icon-sm" />
-          <span>追加</span>
-        </button>
+        {!readonly && (
+          <button
+            onClick={() => setIsModalOpen(true)}
+            className="agenda-add-btn"
+          >
+            <Plus className="agenda-icon-sm" />
+            <span>追加</span>
+          </button>
+        )}
       </div>
 
       {/* Agenda items */}
@@ -220,6 +231,7 @@ export const AgendaList: React.FC<AgendaListProps> = ({ meetingId, taskId, event
                   onEdit={handleEdit}
                   onDelete={handleDelete}
                   onToggleComplete={handleToggleComplete}
+                  readonly={readonly}
                 />
               ))}
             </div>

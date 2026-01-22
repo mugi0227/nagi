@@ -21,6 +21,8 @@ class RegisterRequest(BaseModel):
     username: str = Field(..., min_length=3, max_length=50)
     email: str = Field(..., min_length=3, max_length=255)
     password: str = Field(..., min_length=8, max_length=128)
+    first_name: Optional[str] = Field(None, max_length=100)
+    last_name: Optional[str] = Field(None, max_length=100)
     timezone: str = Field(default="Asia/Tokyo", max_length=50, description="IANA timezone")
 
 
@@ -44,6 +46,11 @@ class AuthResponse(BaseModel):
 
 def _normalize_email(value: str) -> str:
     return value.strip().lower()
+
+
+def _build_display_name(first_name: Optional[str], last_name: Optional[str], fallback: str) -> str:
+    parts = [part for part in (last_name, first_name) if part]
+    return " ".join(parts) if parts else fallback
 
 
 def _ensure_local_auth(settings: Settings) -> None:
@@ -118,12 +125,17 @@ async def register(
         )
 
     password_hash = hash_password(data.password)
+    first_name = data.first_name.strip() if data.first_name else None
+    last_name = data.last_name.strip() if data.last_name else None
+    display_name = _build_display_name(first_name, last_name, username)
     user = await user_repo.create(
         UserCreate(
             provider_issuer="local",
             provider_sub=username,
             email=email,
-            display_name=username,
+            display_name=display_name,
+            first_name=first_name,
+            last_name=last_name,
             username=username,
             password_hash=password_hash,
             timezone=data.timezone,

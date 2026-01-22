@@ -1,5 +1,5 @@
 ﻿import { motion } from 'framer-motion';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { clearAuthToken, getAuthToken, setAuthToken } from '../api/auth';
 import { authApi } from '../api/authApi';
@@ -42,6 +42,8 @@ export function LoginPage() {
   const [localIdentifier, setLocalIdentifier] = useState('');
   const [localPassword, setLocalPassword] = useState('');
   const [registerUsername, setRegisterUsername] = useState('');
+  const [registerLastName, setRegisterLastName] = useState('');
+  const [registerFirstName, setRegisterFirstName] = useState('');
   const [registerEmail, setRegisterEmail] = useState('');
   const [registerPassword, setRegisterPassword] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
@@ -64,8 +66,18 @@ export function LoginPage() {
   const oidcReady = oidcEnabled && !!oidcConfig;
   const showOidcButton = oidcEnabled && !token;
 
-  const fromLocation = (location.state as { from?: Location })?.from;
+  const locationState = location.state as { from?: Location; inviteEmail?: string } | null;
+  const inviteEmailFromState = locationState?.inviteEmail;
+  const inviteEmailFromQuery = new URLSearchParams(location.search).get('invite_email');
+  const inviteEmail = inviteEmailFromState || inviteEmailFromQuery || '';
+  const fromLocation = locationState?.from;
   const from = fromLocation ? `${fromLocation.pathname}${fromLocation.search ?? ''}` : '/';
+
+  useEffect(() => {
+    if (!inviteEmail) return;
+    setRegisterEmail((current) => current || inviteEmail);
+    setLocalMode('register');
+  }, [inviteEmail]);
 
   const handleLogin = (value: string) => {
     if (!value) return;
@@ -112,11 +124,15 @@ export function LoginPage() {
     try {
       // Auto-detect user's timezone
       const userTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      const trimmedFirstName = registerFirstName.trim();
+      const trimmedLastName = registerLastName.trim();
 
       const response = await authApi.register({
         username: registerUsername.trim(),
         email: registerEmail.trim(),
         password: registerPassword,
+        first_name: trimmedFirstName || undefined,
+        last_name: trimmedLastName || undefined,
         timezone: userTimezone, // e.g., "Asia/Tokyo"
       });
       setAuthToken(response.access_token);
@@ -273,6 +289,30 @@ export function LoginPage() {
                   onChange={(event) => setRegisterUsername(event.target.value)}
                   placeholder="your-name"
                   autoComplete="username"
+                />
+                <label className="login-label" htmlFor="register-last-name">
+                  姓（任意）
+                </label>
+                <input
+                  id="register-last-name"
+                  className="login-input"
+                  type="text"
+                  value={registerLastName}
+                  onChange={(event) => setRegisterLastName(event.target.value)}
+                  placeholder="Yamada"
+                  autoComplete="family-name"
+                />
+                <label className="login-label" htmlFor="register-first-name">
+                  名（任意）
+                </label>
+                <input
+                  id="register-first-name"
+                  className="login-input"
+                  type="text"
+                  value={registerFirstName}
+                  onChange={(event) => setRegisterFirstName(event.target.value)}
+                  placeholder="Taro"
+                  autoComplete="given-name"
                 />
                 <label className="login-label" htmlFor="register-email">
                   メールアドレス

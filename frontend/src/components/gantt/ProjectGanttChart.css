@@ -458,6 +458,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  user-select: none;
 }
 
 .pgantt-bar:hover {
@@ -531,16 +532,6 @@
   border-style: dashed;
 }
 
-.pgantt-bar.baseline {
-  height: 20px;
-  top: 6px;
-  background: transparent;
-  border: 2px dashed rgba(100, 116, 139, 0.6);
-  box-shadow: none;
-  opacity: 0.7;
-  pointer-events: none;
-}
-
 .pgantt-bar.buffer:hover {
   transform: none;
   box-shadow: none;
@@ -594,6 +585,7 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
   z-index: 100;
   cursor: grabbing;
+  transition: none;
 }
 
 .pgantt-bar.dragging:hover {

@@ -169,8 +169,8 @@ export function ProjectCreateModal({ onClose, onCreate }: ProjectCreateModalProp
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content project-create-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-content project-create-modal">
         <div className="modal-header">
           <h2>新規プロジェクト作成</h2>
           <button className="close-button" onClick={onClose}>

@@ -151,6 +151,8 @@ class UserORM(Base):
     provider_sub = Column(String(255), nullable=False, index=True)
     email = Column(String(255), nullable=True, index=True)
     display_name = Column(String(255), nullable=True)
+    first_name = Column(String(100), nullable=True)
+    last_name = Column(String(100), nullable=True)
     username = Column(String(255), nullable=True, index=True)
     password_hash = Column(String(255), nullable=True)
     timezone = Column(String(50), default="Asia/Tokyo", nullable=False)

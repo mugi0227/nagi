@@ -30,13 +30,18 @@ async def create_milestone(
 async def list_milestones(
     user: CurrentUser,
     repo: MilestoneRepo,
+    project_repo: ProjectRepo,
     project_id: UUID | None = Query(None, description="Filter milestones by project ID"),
     phase_id: UUID | None = Query(None, description="Filter milestones by phase ID"),
 ) -> list[Milestone]:
     """List milestones by project or phase."""
     if project_id:
-        return await repo.list_by_project(user.id, project_id)
+        project = await _get_project_or_404(user, project_repo, project_id)
+        owner_id = project.user_id
+        return await repo.list_by_project(owner_id, project_id)
     if phase_id:
+        # Note: For phase_id queries, we use user.id as fallback
+        # since getting project context from phase requires additional lookup
         return await repo.list_by_phase(user.id, phase_id)
     raise HTTPException(
         status_code=status.HTTP_400_BAD_REQUEST,
@@ -78,8 +83,9 @@ async def list_milestones_by_project(
     project_repo: ProjectRepo,
 ) -> list[Milestone]:
     """List milestones for a project."""
-    await _get_project_or_404(user, project_repo, project_id)
-    return await repo.list_by_project(user.id, project_id)
+    project = await _get_project_or_404(user, project_repo, project_id)
+    owner_id = project.user_id
+    return await repo.list_by_project(owner_id, project_id)
 
 
 @router.patch("/{milestone_id}", response_model=Milestone)
@@ -92,11 +98,13 @@ async def update_milestone(
 ) -> Milestone:
     """Update a milestone."""
     project_id = await repo.get_project_id(milestone_id)
+    owner_id = user.id
     if project_id:
-        await _get_project_or_404(user, project_repo, project_id)
+        project = await _get_project_or_404(user, project_repo, project_id)
+        owner_id = project.user_id
 
     try:
-        return await repo.update(user.id, milestone_id, project_id, milestone)
+        return await repo.update(owner_id, milestone_id, project_id, milestone)
     except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -113,10 +121,12 @@ async def delete_milestone(
 ):
     """Delete a milestone."""
     project_id = await repo.get_project_id(milestone_id)
+    owner_id = user.id
     if project_id:
-        await _get_project_or_404(user, project_repo, project_id)
+        project = await _get_project_or_404(user, project_repo, project_id)
+        owner_id = project.user_id
 
-    deleted = await repo.delete(user.id, milestone_id, project_id)
+    deleted = await repo.delete(owner_id, milestone_id, project_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -5,6 +5,8 @@ export interface UserProfile {
   email?: string | null;
   display_name?: string | null;
   username?: string | null;
+  first_name?: string | null;
+  last_name?: string | null;
   timezone?: string;
 }
 
@@ -19,6 +21,8 @@ export interface UpdateCredentialsRequest {
   current_password: string;
   username?: string;
   email?: string;
+  first_name?: string;
+  last_name?: string;
   new_password?: string;
   timezone?: string;
 }

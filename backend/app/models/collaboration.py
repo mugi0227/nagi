@@ -237,6 +237,16 @@ class CheckinV2(BaseModel):
         from_attributes = True
 
 
+class CheckinUpdateV2(BaseModel):
+    """Update a structured check-in (V2)."""
+
+    # Structured fields (all optional for partial updates)
+    items: Optional[list[CheckinItem]] = None
+    mood: Optional[CheckinMood] = None
+    must_discuss_in_next_meeting: Optional[str] = Field(None, max_length=2000)
+    free_comment: Optional[str] = Field(None, max_length=4000)
+
+
 class CheckinAgendaItems(BaseModel):
     """Structured check-in data for meeting agenda generation."""
 

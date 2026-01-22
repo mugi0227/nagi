@@ -57,9 +57,12 @@ async def list_phases_by_project(
     project_id: UUID,
     user: CurrentUser,
     repo: PhaseRepo,
+    project_repo: ProjectRepo,
 ) -> list[PhaseWithTaskCount]:
     """List all phases for a project with task counts."""
-    return await repo.list_by_project(user.id, project_id)
+    project = await _get_project_or_404(user, project_repo, project_id)
+    owner_id = project.user_id
+    return await repo.list_by_project(owner_id, project_id)
 
 
 @router.patch("/{phase_id}", response_model=Phase)
@@ -72,11 +75,13 @@ async def update_phase(
 ) -> Phase:
     """Update a phase."""
     project_id = await repo.get_project_id(phase_id)
+    owner_id = user.id
     if project_id:
-        await _get_project_or_404(user, project_repo, project_id)
+        project = await _get_project_or_404(user, project_repo, project_id)
+        owner_id = project.user_id
 
     try:
-        return await repo.update(user.id, phase_id, phase, project_id=project_id)
+        return await repo.update(owner_id, phase_id, phase, project_id=project_id)
     except NotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -99,7 +104,7 @@ async def set_current_phase(
     - Earlier phases (lower order_in_project): COMPLETED
     - Later phases (higher order_in_project): PLANNED
     """
-    # Get the target phase
+    # Get the target phase (try with user.id first for personal access)
     phase = await repo.get_by_id(user.id, phase_id)
     if not phase:
         raise HTTPException(
@@ -107,12 +112,13 @@ async def set_current_phase(
             detail=f"Phase {phase_id} not found",
         )
 
-    # Verify project access
+    # Verify project access and get owner_id
     project_id = phase.project_id
-    await _get_project_or_404(user, project_repo, project_id)
+    project = await _get_project_or_404(user, project_repo, project_id)
+    owner_id = project.user_id
 
     # Get all phases in the project
-    all_phases = await repo.list_by_project(user.id, project_id)
+    all_phases = await repo.list_by_project(owner_id, project_id)
 
     # Update each phase's status based on its order
     updated_phases = []
@@ -120,7 +126,7 @@ async def set_current_phase(
         if p.id == phase_id:
             # Set target phase to ACTIVE
             updated = await repo.update(
-                user.id,
+                owner_id,
                 p.id,
                 PhaseUpdate(status=PhaseStatus.ACTIVE),
                 project_id=project_id
@@ -128,7 +134,7 @@ async def set_current_phase(
         elif p.order_in_project < phase.order_in_project:
             # Earlier phases -> COMPLETED
             updated = await repo.update(
-                user.id,
+                owner_id,
                 p.id,
                 PhaseUpdate(status=PhaseStatus.COMPLETED),
                 project_id=project_id
@@ -136,7 +142,7 @@ async def set_current_phase(
         else:
             # Later phases -> PLANNED
             updated = await repo.update(
-                user.id,
+                owner_id,
                 p.id,
                 PhaseUpdate(status=PhaseStatus.PLANNED),
                 project_id=project_id
@@ -155,10 +161,12 @@ async def delete_phase(
 ) -> None:
     """Delete a phase."""
     project_id = await repo.get_project_id(phase_id)
+    owner_id = user.id
     if project_id:
-        await _get_project_or_404(user, project_repo, project_id)
+        project = await _get_project_or_404(user, project_repo, project_id)
+        owner_id = project.user_id
 
-    deleted = await repo.delete(user.id, phase_id, project_id=project_id)
+    deleted = await repo.delete(owner_id, phase_id, project_id=project_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

@@ -312,7 +312,7 @@ export function TaskDetailModal({
   return (
     <motion.div
       className="modal-overlay"
-      onClick={onClose}
+      onMouseDown={(e) => e.target === e.currentTarget && onClose()}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}

@@ -12,7 +12,9 @@ import type {
   ProjectMember,
   ProjectInvitation,
 } from '../../api/types';
+import type { UserSearchResult } from '../../api/users';
 import { projectsApi } from '../../api/projects';
+import { UserSearchInput } from '../common/UserSearchInput';
 import './ProjectDetailModal.css';
 
 const buildKpiConfig = (config?: ProjectKpiConfig | null): ProjectKpiConfig => ({
@@ -298,8 +300,9 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
     }
   };
 
-  const handleCopyInviteLink = async (token: string) => {
-    const link = `${window.location.origin}/invite/accept?token=${token}`;
+  const handleCopyInviteLink = async (token: string, email?: string) => {
+    const emailParam = email ? `&email=${encodeURIComponent(email)}` : '';
+    const link = `${window.location.origin}/invite/accept?token=${encodeURIComponent(token)}${emailParam}`;
     if (navigator.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(link);
@@ -344,8 +347,8 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
   const pendingInvitations = invitations.filter((invitation) => invitation.status === 'PENDING');
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content project-detail-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+      <div className="modal-content project-detail-modal">
         {/* Sidebar Navigation */}
         <aside className="modal-sidebar">
           <div className="sidebar-header">
@@ -678,7 +681,7 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
                               aria-expanded={isInviteMenuOpen}
                               disabled={isInviting}
                             >
-                              {inviteMode === 'email' ? 'Email' : 'User ID'}
+                              {inviteMode === 'email' ? 'Email' : 'User Search'}
                             </button>
                             {isInviteMenuOpen && (
                               <div className="members-invite-menu" role="listbox">
@@ -704,30 +707,58 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
                                   role="option"
                                   aria-selected={inviteMode === 'user_id'}
                                 >
-                                  User ID
+                                  User Search
                                 </button>
                               </div>
                             )}
                           </div>
-                          <input
-                            type="text"
-                            className="text-input members-input"
-                            placeholder={inviteMode === 'email' ? 'member@example.com' : 'user-id'}
-                            value={inviteValue}
-                            onChange={(e) => setInviteValue(e.target.value)}
-                            disabled={isInviting}
-                          />
-                          <button
-                            type="button"
-                            className="members-invite-btn"
-                            onClick={handleInvite}
-                            disabled={!inviteValue.trim() || isInviting}
-                          >
-                            {inviteMode === 'email' ? 'Invite' : 'Add'}
-                          </button>
+                          {inviteMode === 'email' ? (
+                            <>
+                              <input
+                                type="text"
+                                className="text-input members-input"
+                                placeholder="member@example.com"
+                                value={inviteValue}
+                                onChange={(e) => setInviteValue(e.target.value)}
+                                disabled={isInviting}
+                              />
+                              <button
+                                type="button"
+                                className="members-invite-btn"
+                                onClick={handleInvite}
+                                disabled={!inviteValue.trim() || isInviting}
+                              >
+                                Invite
+                              </button>
+                            </>
+                          ) : (
+                            <UserSearchInput
+                              placeholder="Search by username or email..."
+                              disabled={isInviting}
+                              onSelect={async (selectedUser: UserSearchResult) => {
+                                setIsInviting(true);
+                                try {
+                                  await projectsApi.addMember(project.id, {
+                                    member_user_id: selectedUser.id,
+                                  });
+                                  const [membersData, invitationsData] = await Promise.all([
+                                    projectsApi.listMembers(project.id),
+                                    projectsApi.listInvitations(project.id),
+                                  ]);
+                                  setMembers(membersData);
+                                  setInvitations(invitationsData);
+                                } catch (error) {
+                                  console.error('Failed to add member:', error);
+                                  alert('Failed to add member.');
+                                } finally {
+                                  setIsInviting(false);
+                                }
+                              }}
+                            />
+                          )}
                         </div>
                         <p className="members-invite-note">
-                          Invite by email or add by user ID.
+                          Invite by email or search users to add.
                         </p>
                       </div>
 
@@ -795,7 +826,7 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
                                     <button
                                       type="button"
                                       className="invitation-btn primary"
-                                      onClick={() => handleCopyInviteLink(invitation.token as string)}
+                                      onClick={() => handleCopyInviteLink(invitation.token as string, invitation.email)}
                                     >
                                       Copy link
                                     </button>

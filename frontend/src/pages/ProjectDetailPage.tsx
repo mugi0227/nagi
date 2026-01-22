@@ -480,8 +480,9 @@ export function ProjectDetailPage() {
     }
   };
 
-  const handleCopyInviteLink = async (token: string) => {
-    const link = `${window.location.origin}/invite/accept?token=${token}`;
+  const handleCopyInviteLink = async (token: string, email?: string) => {
+    const emailParam = email ? `&email=${encodeURIComponent(email)}` : '';
+    const link = `${window.location.origin}/invite/accept?token=${encodeURIComponent(token)}${emailParam}`;
     if (navigator.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(link);
@@ -1430,7 +1431,7 @@ export function ProjectDetailPage() {
                               <button
                                 type="button"
                                 className="invitation-btn primary"
-                                onClick={() => handleCopyInviteLink(invitation.token as string)}
+                                onClick={() => handleCopyInviteLink(invitation.token as string, invitation.email)}
                               >
                                 リンクコピー
                               </button>
