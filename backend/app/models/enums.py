@@ -53,6 +53,13 @@ class ProjectStatus(str, Enum):
     ARCHIVED = "ARCHIVED"
 
 
+class ProjectVisibility(str, Enum):
+    """Project visibility/privacy setting."""
+
+    PRIVATE = "PRIVATE"  # 個人プロジェクト（自分のみ）
+    TEAM = "TEAM"  # チームプロジェクト（メンバー招待可能）
+
+
 class PhaseStatus(str, Enum):
     """Phase status."""
 

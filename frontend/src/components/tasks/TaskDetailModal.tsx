@@ -486,6 +486,14 @@ export function TaskDetailModal({
                       const stepNumber = stepNumberBySubtaskId.get(subtask.id);
                       const isLocked = isSubtaskLocked(subtask);
 
+                      // Get assignee names for this subtask
+                      const subtaskAssigneeIds = taskAssignments
+                        .filter(a => a.task_id === subtask.id)
+                        .map(a => a.assignee_id);
+                      const subtaskAssigneeNames = subtaskAssigneeIds
+                        .map(id => memberOptions.find(m => m.id === id)?.label)
+                        .filter(Boolean) as string[];
+
                       return (
                         <li
                           key={subtask.id}
@@ -504,6 +512,14 @@ export function TaskDetailModal({
                             {subtask.title}
                           </span>
                           {hasGuide && <HiOutlineBookOpen className="guide-indicator" />}
+                          {subtaskAssigneeNames.length > 0 && (
+                            <span className="subtask-assignee-inline" title={subtaskAssigneeNames.join(', ')}>
+                              <FaUser />
+                              {subtaskAssigneeNames.length <= 2
+                                ? subtaskAssigneeNames.join(', ')
+                                : `${subtaskAssigneeNames[0]} +${subtaskAssigneeNames.length - 1}`}
+                            </span>
+                          )}
                           {subtask.estimated_minutes && <span className="subtask-duration">{subtask.estimated_minutes}分</span>}
                         </li>
                       );

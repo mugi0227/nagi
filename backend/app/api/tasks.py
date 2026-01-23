@@ -34,7 +34,7 @@ from app.models.collaboration import (
 )
 from app.models.schedule import ScheduleResponse, TodayTasksResponse
 from app.models.task import Task, TaskCreate, TaskUpdate
-from app.models.enums import CreatedBy
+from app.models.enums import CreatedBy, ProjectVisibility
 from app.services.planner_service import PlannerService
 from app.services.scheduler_service import SchedulerService
 from app.utils.dependency_validator import DependencyValidator
@@ -163,6 +163,8 @@ async def create_task(
     task: TaskCreate,
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
+    assignment_repo: TaskAssignmentRepo,
 ):
     """Create a new task."""
     # Validate dependencies before creating
@@ -194,7 +196,20 @@ async def create_task(
                 detail=str(e),
             )
 
-    return await repo.create(user.id, task)
+    created_task = await repo.create(user.id, task)
+
+    # Auto-assign user for PRIVATE projects
+    if task.project_id:
+        project = await project_repo.get(user.id, task.project_id)
+        if project and project.visibility == ProjectVisibility.PRIVATE:
+            # Automatically assign the current user to the task
+            await assignment_repo.assign_multiple(
+                user.id,
+                created_task.id,
+                TaskAssignmentsCreate(assignee_ids=[user.id]),
+            )
+
+    return created_task
 
 
 @router.get("", response_model=list[Task])

@@ -5,6 +5,7 @@ import type {
   ProjectKpiConfig,
   ProjectKpiMetric,
   ProjectKpiTemplate,
+  ProjectVisibility,
 } from '../../api/types';
 import { projectsApi } from '../../api/projects';
 import './ProjectDetailModal.css';
@@ -21,6 +22,7 @@ export function ProjectCreateModal({ onClose, onCreate }: ProjectCreateModalProp
   // Form state
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [visibility, setVisibility] = useState<ProjectVisibility>('PRIVATE');
   const [context, setContext] = useState('');
   const [priority, setPriority] = useState(5);
   const [goals, setGoals] = useState<string[]>([]);
@@ -68,6 +70,7 @@ export function ProjectCreateModal({ onClose, onCreate }: ProjectCreateModalProp
       const projectData: ProjectCreate = {
         name: name.trim(),
         description: description.trim() || undefined,
+        visibility,
         context: context.trim() || undefined,
         priority,
         goals,
@@ -190,6 +193,35 @@ export function ProjectCreateModal({ onClose, onCreate }: ProjectCreateModalProp
               placeholder="例: ブログ執筆"
               autoFocus
             />
+          </div>
+
+          {/* Visibility */}
+          <div className="section">
+            <label className="field-label">公開設定</label>
+            <div className="visibility-selector">
+              <label className={`visibility-option ${visibility === 'PRIVATE' ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="visibility"
+                  value="PRIVATE"
+                  checked={visibility === 'PRIVATE'}
+                  onChange={() => setVisibility('PRIVATE')}
+                />
+                <span className="visibility-label">🔒 個人</span>
+                <span className="visibility-desc">自分だけのプロジェクト</span>
+              </label>
+              <label className={`visibility-option ${visibility === 'TEAM' ? 'selected' : ''}`}>
+                <input
+                  type="radio"
+                  name="visibility"
+                  value="TEAM"
+                  checked={visibility === 'TEAM'}
+                  onChange={() => setVisibility('TEAM')}
+                />
+                <span className="visibility-label">👥 チーム</span>
+                <span className="visibility-desc">メンバーを招待して共同作業</span>
+              </label>
+            </div>
           </div>
 
           {/* KPI */}
