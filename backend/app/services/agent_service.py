@@ -104,7 +104,7 @@ class AgentService:
         self._checkin_repo = checkin_repo
         self._recurring_meeting_repo = recurring_meeting_repo
 
-    def _get_or_create_runner(
+    async def _get_or_create_runner(
         self,
         user_id: str,
         session_id: str,
@@ -126,7 +126,7 @@ class AgentService:
                 return runner
 
         # Create new agent (always with proposal tools + auto_approve setting)
-        agent = create_secretary_agent(
+        agent = await create_secretary_agent(
             llm_provider=self._llm_provider,
             task_repo=self._task_repo,
             project_repo=self._project_repo,
@@ -325,7 +325,7 @@ class AgentService:
 
     async def list_user_sessions(self, user_id: str) -> list[dict[str, Any]]:
         """List active sessions for the user."""
-        runner = self._get_or_create_runner(
+        runner = await self._get_or_create_runner(
             user_id,
             session_id="system",
             auto_approve=True,
@@ -401,7 +401,7 @@ class AgentService:
 
     async def get_session_messages(self, user_id: str, session_id: str) -> list[dict[str, Any]]:
         """Get all messages for a specific session."""
-        runner = self._get_or_create_runner(
+        runner = await self._get_or_create_runner(
             user_id,
             session_id=session_id,
             auto_approve=True,
@@ -646,7 +646,7 @@ class AgentService:
             capture_id = capture.id
 
         # Get or create runner with auto_approve setting
-        runner = self._get_or_create_runner(
+        runner = await self._get_or_create_runner(
             user_id,
             session_id=session_id,
             auto_approve=self._resolve_auto_approve(request),
@@ -743,7 +743,7 @@ class AgentService:
             capture_id = capture.id
 
         # Get or create runner with auto_approve setting
-        runner = self._get_or_create_runner(
+        runner = await self._get_or_create_runner(
             user_id,
             session_id=session_id_str,
             auto_approve=self._resolve_auto_approve(request),

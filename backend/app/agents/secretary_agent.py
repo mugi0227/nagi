@@ -23,6 +23,7 @@ from app.interfaces.proposal_repository import IProposalRepository
 from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
+from app.services.skills_service import get_skills_index, format_skills_index_for_prompt
 from app.tools import (
     create_meeting_tool,
     list_kpi_templates_tool,
@@ -52,6 +53,8 @@ from app.tools import (
     assign_task_tool,
     create_project_tool,
     create_skill_tool,
+    load_skill_tool,
+    list_skills_index_tool,
     plan_project_phases_tool,
     plan_phase_tasks_tool,
     list_phases_tool,
@@ -72,7 +75,31 @@ from app.tools import (
 )
 
 
-def create_secretary_agent(
+async def build_system_prompt_with_skills(
+    user_id: str,
+    memory_repo: IMemoryRepository,
+) -> str:
+    """
+    Build the system prompt with dynamic skills index.
+
+    Args:
+        user_id: User ID
+        memory_repo: Memory repository for fetching skills
+
+    Returns:
+        Complete system prompt with skills index appended
+    """
+    # Get skills index
+    skills = await get_skills_index(user_id, memory_repo)
+    skills_section = format_skills_index_for_prompt(skills)
+
+    # Combine base prompt with skills index
+    if skills_section:
+        return f"{SECRETARY_SYSTEM_PROMPT}\n\n{skills_section}"
+    return SECRETARY_SYSTEM_PROMPT
+
+
+async def create_secretary_agent(
     llm_provider: ILLMProvider,
     task_repo: ITaskRepository,
     project_repo: IProjectRepository,
@@ -94,6 +121,9 @@ def create_secretary_agent(
     """
     Create the main Secretary Agent with all tools.
 
+    This is an async function that fetches the skills index to include
+    in the system prompt dynamically.
+
     Args:
         llm_provider: LLM provider instance
         task_repo: Task repository
@@ -111,6 +141,9 @@ def create_secretary_agent(
     Returns:
         Configured ADK Agent instance
     """
+    # Build dynamic system prompt with skills index
+    system_prompt = await build_system_prompt_with_skills(user_id, memory_repo)
+
     # Get model from provider
     model = llm_provider.get_model()
 
@@ -350,13 +383,15 @@ def create_secretary_agent(
         ),
         fetch_meeting_context_tool(checkin_repo, task_repo, meeting_agenda_repo, project_repo, recurring_meeting_repo, user_id),
         list_recurring_meetings_tool(recurring_meeting_repo, project_repo, user_id),
+        load_skill_tool(memory_repo, user_id),
+        list_skills_index_tool(memory_repo, user_id),
     ]
 
     # Create agent
     agent = Agent(
         name="secretary",
         model=model,
-        instruction=SECRETARY_SYSTEM_PROMPT,
+        instruction=system_prompt,
         tools=tools,
     )
 

@@ -33,6 +33,8 @@ from app.tools.memory_tools import (
     add_to_memory_tool,
     refresh_user_profile_tool,
     create_skill_tool,
+    load_skill_tool,
+    list_skills_index_tool,
 )
 from app.tools.scheduler_tools import (
     get_current_datetime_tool,
@@ -89,6 +91,8 @@ __all__ = [
     "add_to_memory_tool",
     "refresh_user_profile_tool",
     "create_skill_tool",
+    "load_skill_tool",
+    "list_skills_index_tool",
     "get_current_datetime_tool",
     "schedule_agent_task_tool",
     "plan_project_phases_tool",
