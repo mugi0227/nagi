@@ -53,6 +53,7 @@ class TaskORM(Base):
     phase_id = Column(String(36), nullable=True, index=True)
     title = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)
+    purpose = Column(Text, nullable=True)
     status = Column(String(20), default="TODO", index=True)
     importance = Column(String(10), default="MEDIUM")
     urgency = Column(String(10), default="MEDIUM")
@@ -91,6 +92,7 @@ class ProjectORM(Base):
     name = Column(String(200), nullable=False)
     description = Column(Text, nullable=True)
     status = Column(String(20), default="ACTIVE")
+    visibility = Column(String(20), default="PRIVATE")  # PRIVATE or TEAM
     context_summary = Column(Text, nullable=True)
     context = Column(Text, nullable=True)  # 詳細コンテキスト（README）
     priority = Column(Integer, default=5)  # プロジェクト優先度（1-10）

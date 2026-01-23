@@ -3,7 +3,8 @@ import { FaTimes, FaSave, FaLock } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { useProjects } from '../../hooks/useProjects';
 import { phasesApi } from '../../api/phases';
-import type { Task, TaskCreate, TaskUpdate, Priority, EnergyLevel, PhaseWithTaskCount } from '../../api/types';
+import { milestonesApi } from '../../api/milestones';
+import type { Task, TaskCreate, TaskUpdate, Priority, EnergyLevel, PhaseWithTaskCount, Milestone } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { toDateTimeLocalValue, toUtcIsoString } from '../../utils/dateTime';
 import './TaskFormModal.css';
@@ -22,11 +23,14 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
   const timezone = useTimezone();
   const isEditMode = !!task;
   const [phaseOptions, setPhaseOptions] = useState<PhaseWithTaskCount[]>([]);
+  const [milestoneOptions, setMilestoneOptions] = useState<Milestone[]>([]);
   const [isPhaseLoading, setIsPhaseLoading] = useState(false);
+  const [isMilestoneLoading, setIsMilestoneLoading] = useState(false);
 
   const [formData, setFormData] = useState({
     title: task?.title || initialData?.title || '',
     description: task?.description || initialData?.description || '',
+    purpose: task?.purpose || initialData?.purpose || '',
     importance: task?.importance || initialData?.importance || 'MEDIUM' as Priority,
     urgency: task?.urgency || initialData?.urgency || 'MEDIUM' as Priority,
     estimated_minutes: task?.estimated_minutes?.toString() || initialData?.estimated_minutes?.toString() || '',
@@ -34,6 +38,7 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
     start_not_before: toDateTimeLocalValue(task?.start_not_before, timezone) || toDateTimeLocalValue(initialData?.start_not_before, timezone),
     project_id: task?.project_id || initialData?.project_id || '',
     phase_id: task?.phase_id || initialData?.phase_id || '',
+    milestone_id: task?.milestone_id || initialData?.milestone_id || '',
     dependency_ids: task?.dependency_ids || initialData?.dependency_ids || [] as string[],
     energy_level: task?.energy_level || initialData?.energy_level || 'LOW' as EnergyLevel,
     // Meeting fields
@@ -89,12 +94,49 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
     };
   }, [formData.project_id, formData.phase_id]);
 
+  // Load milestones when project changes
+  useEffect(() => {
+    let active = true;
+
+    const loadMilestones = async () => {
+      if (!formData.project_id) {
+        setMilestoneOptions([]);
+        setFormData(prev => ({ ...prev, milestone_id: '' }));
+        return;
+      }
+      setIsMilestoneLoading(true);
+      try {
+        const data = await milestonesApi.listByProject(formData.project_id);
+        if (!active) return;
+        setMilestoneOptions(data);
+        const hasMilestone = data.some(m => m.id === formData.milestone_id);
+        if (!hasMilestone) {
+          setFormData(prev => ({ ...prev, milestone_id: '' }));
+        }
+      } catch (error) {
+        if (!active) return;
+        console.error('Failed to load milestones:', error);
+        setMilestoneOptions([]);
+      } finally {
+        if (active) {
+          setIsMilestoneLoading(false);
+        }
+      }
+    };
+
+    loadMilestones();
+    return () => {
+      active = false;
+    };
+  }, [formData.project_id, formData.milestone_id]);
+
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault();
 
     const submitData: TaskCreate | TaskUpdate = {
       title: formData.title,
       description: formData.description || undefined,
+      purpose: formData.purpose || undefined,
       importance: formData.importance,
       urgency: formData.urgency,
       energy_level: formData.energy_level,
@@ -103,6 +145,7 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
       start_not_before: formData.is_fixed_time ? undefined : toUtcIsoString(formData.start_not_before, timezone),
       project_id: formData.project_id || undefined,
       phase_id: formData.phase_id || undefined,
+      milestone_id: formData.milestone_id || undefined,
       dependency_ids: formData.dependency_ids.length > 0 ? formData.dependency_ids : undefined,
       // Meeting fields (only include if is_fixed_time is true)
       ...(formData.is_fixed_time && {
@@ -177,6 +220,18 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
                 placeholder="詳細や補足情報を入力..."
                 rows={3}
               />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="purpose">なぜやるか（目的）</label>
+              <textarea
+                id="purpose"
+                value={formData.purpose}
+                onChange={(e) => setFormData({ ...formData, purpose: e.target.value })}
+                placeholder="このタスクを行う理由・目的を入力..."
+                rows={2}
+              />
+              <p className="field-hint">目的を明確にすると、タスクの優先度判断に役立ちます</p>
             </div>
           </div>
 
@@ -407,6 +462,26 @@ export function TaskFormModal({ task, initialData, allTasks = [], onClose, onSub
                     ))}
                   </select>
                   {isPhaseLoading && <p className="field-hint">フェーズを読み込み中...</p>}
+                </div>
+              )}
+
+              {formData.project_id && milestoneOptions.length > 0 && (
+                <div className="form-group">
+                  <label htmlFor="milestone_id">マイルストーン</label>
+                  <select
+                    id="milestone_id"
+                    value={formData.milestone_id}
+                    onChange={(e) => setFormData({ ...formData, milestone_id: e.target.value })}
+                    disabled={isMilestoneLoading}
+                  >
+                    <option value="">マイルストーンなし</option>
+                    {milestoneOptions.map((milestone) => (
+                      <option key={milestone.id} value={milestone.id}>
+                        {milestone.title}
+                      </option>
+                    ))}
+                  </select>
+                  {isMilestoneLoading && <p className="field-hint">マイルストーンを読み込み中...</p>}
                 </div>
               )}
             </div>

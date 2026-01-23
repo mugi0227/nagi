@@ -10,7 +10,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.models.enums import ProjectStatus
+from app.models.enums import ProjectStatus, ProjectVisibility
 from app.models.project_kpi import ProjectKpiConfig
 
 
@@ -19,6 +19,10 @@ class ProjectBase(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=200, description="プロジェクト名")
     description: Optional[str] = Field(None, max_length=2000, description="プロジェクトの説明")
+    visibility: ProjectVisibility = Field(
+        default=ProjectVisibility.PRIVATE,
+        description="プロジェクトの公開設定（PRIVATE=個人、TEAM=チーム）",
+    )
     context_summary: Optional[str] = Field(
         None,
         max_length=5000,
@@ -60,6 +64,7 @@ class ProjectUpdate(BaseModel):
     name: Optional[str] = Field(None, min_length=1, max_length=200)
     description: Optional[str] = Field(None, max_length=2000)
     status: Optional[ProjectStatus] = None
+    visibility: Optional[ProjectVisibility] = None
     context_summary: Optional[str] = Field(None, max_length=5000)
     context: Optional[str] = None
     priority: Optional[int] = Field(None, ge=1, le=10)

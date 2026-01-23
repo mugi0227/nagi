@@ -707,3 +707,30 @@
 .subtask-assignee-section .metadata-label svg {
   font-size: 0.75rem;
 }
+
+/* Inline assignee display in subtask list */
+.subtask-assignee-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background: rgba(79, 70, 229, 0.1);
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  margin-left: auto;
+  flex-shrink: 0;
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.subtask-assignee-inline svg {
+  font-size: 0.65rem;
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .subtask-assignee-inline {
+  background: rgba(79, 70, 229, 0.2);
+}

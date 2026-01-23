@@ -19,6 +19,7 @@ from app.models.enums import MemoryScope, MemoryType
 from app.models.memory import MemoryCreate, MemoryUpdate
 from app.models.proposal import Proposal, ProposalResponse, ProposalType
 from app.services.llm_utils import generate_text
+from app.services.skills_service import get_skill_by_id, get_skills_index
 from app.tools.approval_tools import create_tool_action_proposal
 
 
@@ -85,6 +86,18 @@ class RefreshUserProfileInput(BaseModel):
     """Input for refresh_user_profile tool."""
 
     limit: int = Field(50, ge=1, le=200, description="参照するメモリ数")
+
+
+class LoadSkillInput(BaseModel):
+    """Input for load_skill tool."""
+
+    skill_id: str = Field(..., description="スキルID（UUID形式）")
+
+
+class ListSkillsIndexInput(BaseModel):
+    """Input for list_skills_index tool."""
+
+    pass
 
 
 # ===========================================
@@ -273,6 +286,49 @@ async def propose_skill(
         description=description,
         payload=proposal.payload,
     ).model_dump(mode="json")
+
+
+async def load_skill(
+    user_id: str,
+    repo: IMemoryRepository,
+    input_data: LoadSkillInput,
+) -> dict:
+    """
+    Load full skill content by ID.
+
+    Args:
+        user_id: User ID
+        repo: Memory repository
+        input_data: Skill ID
+
+    Returns:
+        Full skill content (title, when_to_use, content, tags)
+    """
+    skill = await get_skill_by_id(user_id, repo, input_data.skill_id)
+    if not skill:
+        return {"error": f"Skill not found: {input_data.skill_id}"}
+    return skill.model_dump()
+
+
+async def list_skills_index(
+    user_id: str,
+    repo: IMemoryRepository,
+) -> dict:
+    """
+    List all skills with compact index (title + when_to_use).
+
+    Args:
+        user_id: User ID
+        repo: Memory repository
+
+    Returns:
+        List of skills with id, title, when_to_use, tags
+    """
+    skills = await get_skills_index(user_id, repo)
+    return {
+        "skills": [skill.model_dump() for skill in skills],
+        "count": len(skills),
+    }
 
 
 async def refresh_user_profile(
@@ -527,6 +583,40 @@ def create_skill_tool(
         return memory.model_dump(mode="json")
 
     _tool.__name__ = "create_skill"
+    return FunctionTool(func=_tool)
+
+
+def load_skill_tool(repo: IMemoryRepository, user_id: str) -> FunctionTool:
+    """Create ADK tool for loading full skill content."""
+    async def _tool(input_data: dict) -> dict:
+        """load_skill: スキルの詳細内容を読み込みます。
+
+        Parameters:
+            skill_id (str): スキルID（UUID形式、必須）
+
+        Returns:
+            dict: スキル詳細 (title, when_to_use, content, tags)
+        """
+        return await load_skill(user_id, repo, LoadSkillInput(**input_data))
+
+    _tool.__name__ = "load_skill"
+    return FunctionTool(func=_tool)
+
+
+def list_skills_index_tool(repo: IMemoryRepository, user_id: str) -> FunctionTool:
+    """Create ADK tool for listing skills index."""
+    async def _tool(input_data: dict) -> dict:
+        """list_skills_index: 登録されているスキル一覧（タイトルと用途）を取得します。
+
+        Parameters:
+            (none)
+
+        Returns:
+            dict: スキル一覧 (skills: list, count: int)
+        """
+        return await list_skills_index(user_id, repo)
+
+    _tool.__name__ = "list_skills_index"
     return FunctionTool(func=_tool)
 
 

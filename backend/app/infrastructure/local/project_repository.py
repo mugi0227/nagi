@@ -51,6 +51,7 @@ class SqliteProjectRepository(IProjectRepository):
                 user_id=user_id,
                 name=project.name,
                 description=project.description,
+                visibility=project.visibility.value,
                 context_summary=project.context_summary,
                 context=project.context,
                 priority=project.priority,

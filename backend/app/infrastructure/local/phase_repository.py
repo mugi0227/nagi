@@ -123,30 +123,38 @@ class SqlitePhaseRepository(IPhaseRepository):
                     phases = phase_result.scalars().all()
 
             # Get task counts for each phase (project-based access: no user_id filter)
+            # Note: Only count parent tasks (parent_id is NULL), not subtasks
             result_with_counts = []
             for phase_orm in phases:
-                # Count total tasks
+                # Count total tasks (parent tasks only)
                 total_result = await session.execute(
-                    select(func.count(TaskORM.id)).where(TaskORM.phase_id == phase_orm.id)
+                    select(func.count(TaskORM.id)).where(
+                        and_(
+                            TaskORM.phase_id == phase_orm.id,
+                            TaskORM.parent_id.is_(None),
+                        )
+                    )
                 )
                 total_tasks = total_result.scalar() or 0
-                
-                # Count completed tasks
+
+                # Count completed tasks (parent tasks only)
                 completed_result = await session.execute(
                     select(func.count(TaskORM.id)).where(
                         and_(
                             TaskORM.phase_id == phase_orm.id,
+                            TaskORM.parent_id.is_(None),
                             TaskORM.status == TaskStatus.DONE.value,
                         )
                     )
                 )
                 completed_tasks = completed_result.scalar() or 0
-                
-                # Count in-progress tasks
+
+                # Count in-progress tasks (parent tasks only)
                 in_progress_result = await session.execute(
                     select(func.count(TaskORM.id)).where(
                         and_(
                             TaskORM.phase_id == phase_orm.id,
+                            TaskORM.parent_id.is_(None),
                             TaskORM.status == TaskStatus.IN_PROGRESS.value,
                         )
                     )

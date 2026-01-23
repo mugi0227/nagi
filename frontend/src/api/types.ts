@@ -9,6 +9,7 @@ export type EnergyLevel = 'HIGH' | 'MEDIUM' | 'LOW';
 export type CreatedBy = 'USER' | 'AGENT';
 export type ChatMode = 'dump' | 'consult' | 'breakdown';
 export type ProjectStatus = 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
+export type ProjectVisibility = 'PRIVATE' | 'TEAM';
 export type PhaseStatus = 'PLANNED' | 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
 export type MilestoneStatus = 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
 export type ProjectRole = 'OWNER' | 'ADMIN' | 'MEMBER';
@@ -56,6 +57,7 @@ export interface Task {
   user_id: string;
   title: string;
   description?: string;
+  purpose?: string;
   project_id?: string;
   phase_id?: string;
   status: TaskStatus;
@@ -91,6 +93,7 @@ export interface Task {
 export interface TaskCreate {
   title: string;
   description?: string;
+  purpose?: string;
   project_id?: string;
   phase_id?: string;
   importance?: Priority;
@@ -117,6 +120,7 @@ export interface TaskCreate {
 export interface TaskUpdate {
   title?: string;
   description?: string;
+  purpose?: string;
   project_id?: string;
   phase_id?: string;
   status?: TaskStatus;
@@ -255,6 +259,7 @@ export interface Project {
   user_id: string;
   name: string;
   description?: string;
+  visibility: ProjectVisibility;
   context_summary?: string;
   context?: string;  // 詳細コンテキスト（README）
   priority: number;  // 1-10
@@ -402,6 +407,7 @@ export interface PhaseTaskBreakdownResponse {
 export interface ProjectCreate {
   name: string;
   description?: string;
+  visibility?: ProjectVisibility;
   context_summary?: string;
   context?: string;
   priority?: number;
@@ -414,6 +420,7 @@ export interface ProjectUpdate {
   name?: string;
   description?: string;
   status?: ProjectStatus;
+  visibility?: ProjectVisibility;
   context_summary?: string;
   context?: string;
   priority?: number;
