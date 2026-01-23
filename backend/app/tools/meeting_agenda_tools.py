@@ -14,7 +14,12 @@ from google.adk.tools import FunctionTool
 from pydantic import BaseModel, Field
 
 from app.interfaces.meeting_agenda_repository import IMeetingAgendaRepository
+from app.interfaces.project_repository import IProjectRepository
+from app.interfaces.proposal_repository import IProposalRepository
+from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
+from app.interfaces.task_repository import ITaskRepository
 from app.models.meeting_agenda import MeetingAgendaItemCreate, MeetingAgendaItemUpdate
+from app.tools.approval_tools import create_tool_action_proposal
 
 
 class AddAgendaItemInput(BaseModel):
@@ -63,10 +68,62 @@ class ReorderAgendaItemsInput(BaseModel):
     ordered_ids: list[str] = Field(..., description="並び替え後のアジェンダ項目ID一覧（順序通り）")
 
 
+async def _resolve_owner_id(
+    user_id: str,
+    meeting_id: Optional[UUID],
+    task_id: Optional[UUID],
+    project_repo: Optional[IProjectRepository] = None,
+    recurring_meeting_repo: Optional[IRecurringMeetingRepository] = None,
+    task_repo: Optional[ITaskRepository] = None,
+) -> tuple[Optional[str], Optional[str]]:
+    if meeting_id:
+        if not project_repo or not recurring_meeting_repo:
+            return user_id, None
+        meeting = await recurring_meeting_repo.get(user_id, meeting_id)
+        if meeting:
+            if meeting.project_id:
+                project = await project_repo.get(user_id, meeting.project_id)
+                if project:
+                    return project.user_id, None
+                return None, "Project not found"
+            return user_id, None
+
+        projects = await project_repo.list(user_id, limit=1000)
+        for project in projects:
+            meeting = await recurring_meeting_repo.get(user_id, meeting_id, project_id=project.id)
+            if meeting:
+                return project.user_id, None
+        return None, "Meeting not found"
+
+    if task_id:
+        if not project_repo or not task_repo:
+            return user_id, None
+        task = await task_repo.get(user_id, task_id)
+        if task:
+            if task.project_id:
+                project = await project_repo.get(user_id, task.project_id)
+                if project:
+                    return project.user_id, None
+                return None, "Project not found"
+            return user_id, None
+
+        projects = await project_repo.list(user_id, limit=1000)
+        for project in projects:
+            task = await task_repo.get(user_id, task_id, project_id=project.id)
+            if task:
+                return project.user_id, None
+        return None, "Task not found"
+
+    return user_id, None
+
+
 async def add_agenda_item(
     user_id: str,
     repo: IMeetingAgendaRepository,
     input_data: AddAgendaItemInput,
+    project_repo: Optional[IProjectRepository] = None,
+    recurring_meeting_repo: Optional[IRecurringMeetingRepository] = None,
+    task_repo: Optional[ITaskRepository] = None,
 ) -> dict:
     """Add a new agenda item to a meeting or standalone meeting task."""
     # Validate: either meeting_id or task_id must be provided
@@ -97,13 +154,29 @@ async def add_agenda_item(
         task_id=task_id,
     )
 
-    agenda_item = await repo.create(user_id, meeting_id, create_data)
+    owner_id, error = await _resolve_owner_id(
+        user_id,
+        meeting_id,
+        task_id,
+        project_repo=project_repo,
+        recurring_meeting_repo=recurring_meeting_repo,
+        task_repo=task_repo,
+    )
+    if error:
+        return {"error": error}
+    agenda_item = await repo.create(owner_id or user_id, meeting_id, create_data)
     return agenda_item.model_dump(mode="json")
 
 
 def add_agenda_item_tool(
     repo: IMeetingAgendaRepository,
+    project_repo: Optional[IProjectRepository],
+    recurring_meeting_repo: Optional[IRecurringMeetingRepository],
+    task_repo: Optional[ITaskRepository],
     user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
 ) -> FunctionTool:
     """Create ADK tool for adding agenda items."""
 
@@ -129,7 +202,25 @@ def add_agenda_item_tool(
             - 会議タスクが特定されている場合: task_id を指定
             - 定例会議のテンプレート編集の場合: meeting_id を指定
         """
-        return await add_agenda_item(user_id, repo, AddAgendaItemInput(**input_data))
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "add_agenda_item",
+                payload,
+                proposal_desc,
+            )
+        return await add_agenda_item(
+            user_id,
+            repo,
+            AddAgendaItemInput(**payload),
+            project_repo=project_repo,
+            recurring_meeting_repo=recurring_meeting_repo,
+            task_repo=task_repo,
+        )
 
     _tool.__name__ = "add_agenda_item"
     return FunctionTool(func=_tool)
@@ -162,6 +253,9 @@ async def update_agenda_item(
 def update_agenda_item_tool(
     repo: IMeetingAgendaRepository,
     user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
 ) -> FunctionTool:
     """Create ADK tool for updating agenda items."""
 
@@ -180,7 +274,18 @@ def update_agenda_item_tool(
         Returns:
             dict: 更新されたアジェンダ項目の情報
         """
-        return await update_agenda_item(user_id, repo, UpdateAgendaItemInput(**input_data))
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "update_agenda_item",
+                payload,
+                proposal_desc,
+            )
+        return await update_agenda_item(user_id, repo, UpdateAgendaItemInput(**payload))
 
     _tool.__name__ = "update_agenda_item"
     return FunctionTool(func=_tool)
@@ -204,6 +309,9 @@ async def delete_agenda_item(
 def delete_agenda_item_tool(
     repo: IMeetingAgendaRepository,
     user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
 ) -> FunctionTool:
     """Create ADK tool for deleting agenda items."""
 
@@ -216,7 +324,18 @@ def delete_agenda_item_tool(
         Returns:
             dict: success (bool), deleted_id (str)
         """
-        return await delete_agenda_item(user_id, repo, DeleteAgendaItemInput(**input_data))
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "delete_agenda_item",
+                payload,
+                proposal_desc,
+            )
+        return await delete_agenda_item(user_id, repo, DeleteAgendaItemInput(**payload))
 
     _tool.__name__ = "delete_agenda_item"
     return FunctionTool(func=_tool)
@@ -226,6 +345,9 @@ async def list_agenda_items(
     user_id: str,
     repo: IMeetingAgendaRepository,
     input_data: ListAgendaItemsInput,
+    project_repo: Optional[IProjectRepository] = None,
+    recurring_meeting_repo: Optional[IRecurringMeetingRepository] = None,
+    task_repo: Optional[ITaskRepository] = None,
 ) -> dict:
     """List all agenda items for a meeting or standalone meeting task."""
     # Validate: either meeting_id or task_id must be provided
@@ -239,13 +361,31 @@ async def list_agenda_items(
             meeting_id = UUID(input_data.meeting_id)
         except ValueError:
             return {"error": f"Invalid meeting ID format: {input_data.meeting_id}"}
-        items = await repo.list_by_meeting(user_id, meeting_id, event_date=input_data.event_date)
+        owner_id, error = await _resolve_owner_id(
+            user_id,
+            meeting_id,
+            None,
+            project_repo=project_repo,
+            recurring_meeting_repo=recurring_meeting_repo,
+        )
+        if error:
+            return {"error": error}
+        items = await repo.list_by_meeting(owner_id or user_id, meeting_id, event_date=input_data.event_date)
     elif input_data.task_id:
         try:
             task_id = UUID(input_data.task_id)
         except ValueError:
             return {"error": f"Invalid task ID format: {input_data.task_id}"}
-        items = await repo.list_by_task(user_id, task_id)
+        owner_id, error = await _resolve_owner_id(
+            user_id,
+            None,
+            task_id,
+            project_repo=project_repo,
+            task_repo=task_repo,
+        )
+        if error:
+            return {"error": error}
+        items = await repo.list_by_task(owner_id or user_id, task_id)
 
     return {
         "agenda_items": [item.model_dump(mode="json") for item in items],
@@ -255,6 +395,9 @@ async def list_agenda_items(
 
 def list_agenda_items_tool(
     repo: IMeetingAgendaRepository,
+    project_repo: Optional[IProjectRepository],
+    recurring_meeting_repo: Optional[IRecurringMeetingRepository],
+    task_repo: Optional[ITaskRepository],
     user_id: str,
 ) -> FunctionTool:
     """Create ADK tool for listing agenda items."""
@@ -272,7 +415,14 @@ def list_agenda_items_tool(
         Returns:
             dict: agenda_items (list), count (int)
         """
-        return await list_agenda_items(user_id, repo, ListAgendaItemsInput(**input_data))
+        return await list_agenda_items(
+            user_id,
+            repo,
+            ListAgendaItemsInput(**input_data),
+            project_repo=project_repo,
+            recurring_meeting_repo=recurring_meeting_repo,
+            task_repo=task_repo,
+        )
 
     _tool.__name__ = "list_agenda_items"
     return FunctionTool(func=_tool)
@@ -282,6 +432,9 @@ async def reorder_agenda_items(
     user_id: str,
     repo: IMeetingAgendaRepository,
     input_data: ReorderAgendaItemsInput,
+    project_repo: Optional[IProjectRepository] = None,
+    recurring_meeting_repo: Optional[IRecurringMeetingRepository] = None,
+    task_repo: Optional[ITaskRepository] = None,
 ) -> dict:
     """Reorder agenda items."""
     if not input_data.meeting_id and not input_data.task_id:
@@ -299,7 +452,17 @@ async def reorder_agenda_items(
     except ValueError as e:
         return {"error": f"Invalid ID format: {e}"}
 
-    items = await repo.reorder(user_id, ordered_ids, meeting_id=meeting_id, task_id=task_id)
+    owner_id, error = await _resolve_owner_id(
+        user_id,
+        meeting_id,
+        task_id,
+        project_repo=project_repo,
+        recurring_meeting_repo=recurring_meeting_repo,
+        task_repo=task_repo,
+    )
+    if error:
+        return {"error": error}
+    items = await repo.reorder(owner_id or user_id, ordered_ids, meeting_id=meeting_id, task_id=task_id)
     return {
         "agenda_items": [item.model_dump(mode="json") for item in items],
         "count": len(items),
@@ -308,7 +471,13 @@ async def reorder_agenda_items(
 
 def reorder_agenda_items_tool(
     repo: IMeetingAgendaRepository,
+    project_repo: Optional[IProjectRepository],
+    recurring_meeting_repo: Optional[IRecurringMeetingRepository],
+    task_repo: Optional[ITaskRepository],
     user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
 ) -> FunctionTool:
     """Create ADK tool for reordering agenda items."""
 
@@ -325,7 +494,25 @@ def reorder_agenda_items_tool(
         Returns:
             dict: agenda_items (list), count (int)
         """
-        return await reorder_agenda_items(user_id, repo, ReorderAgendaItemsInput(**input_data))
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "reorder_agenda_items",
+                payload,
+                proposal_desc,
+            )
+        return await reorder_agenda_items(
+            user_id,
+            repo,
+            ReorderAgendaItemsInput(**payload),
+            project_repo=project_repo,
+            recurring_meeting_repo=recurring_meeting_repo,
+            task_repo=task_repo,
+        )
 
     _tool.__name__ = "reorder_agenda_items"
     return FunctionTool(func=_tool)

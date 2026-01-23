@@ -1,9 +1,9 @@
 """Agent tools for Google ADK."""
 
 from app.tools.task_tools import (
-    propose_task_tool,
-    propose_task_assignment_tool,
     create_meeting_tool,
+    create_task_tool,
+    assign_task_tool,
     update_task_tool,
     delete_task_tool,
     search_similar_tasks_tool,
@@ -14,7 +14,7 @@ from app.tools.task_tools import (
     get_task_tool,
 )
 from app.tools.project_tools import (
-    propose_project_tool,
+    create_project_tool,
     list_kpi_templates_tool,
     list_projects_tool,
     list_project_members_tool,
@@ -32,7 +32,7 @@ from app.tools.memory_tools import (
     search_skills_tool,
     add_to_memory_tool,
     refresh_user_profile_tool,
-    propose_skill_tool,
+    create_skill_tool,
 )
 from app.tools.scheduler_tools import (
     get_current_datetime_tool,
@@ -41,7 +41,6 @@ from app.tools.scheduler_tools import (
 from app.tools.phase_tools import (
     plan_project_phases_tool,
     plan_phase_tasks_tool,
-    propose_phase_breakdown_tool,
     list_phases_tool,
     get_phase_tool,
     update_phase_tool,
@@ -64,10 +63,10 @@ from app.tools.meeting_context_tools import (
 )
 
 __all__ = [
-    "propose_task_tool",
-    "propose_task_assignment_tool",
+    "create_task_tool",
+    "assign_task_tool",
     "create_meeting_tool",
-    "propose_project_tool",
+    "create_project_tool",
     "list_kpi_templates_tool",
     "list_projects_tool",
     "list_project_members_tool",
@@ -89,12 +88,11 @@ __all__ = [
     "search_skills_tool",
     "add_to_memory_tool",
     "refresh_user_profile_tool",
-    "propose_skill_tool",
+    "create_skill_tool",
     "get_current_datetime_tool",
     "schedule_agent_task_tool",
     "plan_project_phases_tool",
     "plan_phase_tasks_tool",
-    "propose_phase_breakdown_tool",
     "list_phases_tool",
     "get_phase_tool",
     "update_phase_tool",
@@ -111,4 +109,3 @@ __all__ = [
     "fetch_meeting_context_tool",
     "list_recurring_meetings_tool",
 ]
-

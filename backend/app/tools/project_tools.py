@@ -23,6 +23,7 @@ from app.models.project_kpi import ProjectKpiConfig, ProjectKpiMetric
 from app.models.proposal import Proposal, ProposalResponse, ProposalType
 from app.services.assignee_utils import make_invitation_assignee_id
 from app.services.kpi_templates import get_kpi_templates
+from app.tools.approval_tools import create_tool_action_proposal
 from app.services.llm_utils import generate_text
 
 
@@ -434,6 +435,9 @@ def create_project_tool(
     member_repo: IProjectMemberRepository,
     llm_provider: ILLMProvider,
     user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
 ) -> FunctionTool:
     """Create ADK tool for creating projects."""
     async def _tool(input_data: dict) -> dict:
@@ -461,12 +465,26 @@ def create_project_tool(
             logger.error(f"Expected dict but got {type(input_data)}: {input_data}")
             return {"error": f"input_data must be dict, got {type(input_data)}: {input_data}"}
 
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await propose_project(
+                user_id,
+                session_id,
+                proposal_repo,
+                repo,
+                member_repo,
+                llm_provider,
+                CreateProjectInput(**payload),
+                proposal_desc,
+                False,
+            )
         return await create_project(
             user_id,
             repo,
             member_repo,
             llm_provider,
-            CreateProjectInput(**input_data),
+            CreateProjectInput(**payload),
         )
 
     _tool.__name__ = "create_project"
@@ -534,7 +552,13 @@ async def update_project(
     return project.model_dump(mode="json")
 
 
-def update_project_tool(repo: IProjectRepository, user_id: str) -> FunctionTool:
+def update_project_tool(
+    repo: IProjectRepository,
+    user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
+) -> FunctionTool:
     """Create ADK tool for updating projects."""
     async def _tool(input_data: dict) -> dict:
         """update_project: 既存プロジェクトを更新します。
@@ -563,7 +587,18 @@ def update_project_tool(repo: IProjectRepository, user_id: str) -> FunctionTool:
             logger.error(f"Expected dict but got {type(input_data)}: {input_data}")
             return {"error": f"input_data must be dict, got {type(input_data)}: {input_data}"}
 
-        return await update_project(user_id, repo, UpdateProjectInput(**input_data))
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "update_project",
+                payload,
+                proposal_desc,
+            )
+        return await update_project(user_id, repo, UpdateProjectInput(**payload))
 
     _tool.__name__ = "update_project"
     return FunctionTool(func=_tool)
@@ -869,6 +904,9 @@ def invite_project_member_tool(
     invitation_repo: IProjectInvitationRepository,
     member_repo: IProjectMemberRepository,
     user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
 ) -> FunctionTool:
     """Create ADK tool for inviting project members."""
 
@@ -922,7 +960,23 @@ def invite_project_member_tool(
             logger.error(f"invite_project_member: Expected dict but got {type(input_data)}: {input_data}")
             return {"error": f"input_data must be dict, got {type(input_data)}: {input_data}"}
 
-        return await invite_project_member(user_id, invitation_repo, member_repo, InviteProjectMemberInput(**input_data))
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "invite_project_member",
+                payload,
+                proposal_desc,
+            )
+        return await invite_project_member(
+            user_id,
+            invitation_repo,
+            member_repo,
+            InviteProjectMemberInput(**payload),
+        )
 
     _tool.__name__ = "invite_project_member"
     return FunctionTool(func=_tool)

@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { FaMagic, FaPlay, FaMapMarkerAlt, FaUsers, FaInfoCircle, FaExpand, FaUndo, FaChevronDown, FaChevronUp } from 'react-icons/fa';
+import { FaMagic, FaPlay, FaMapMarkerAlt, FaUsers, FaInfoCircle, FaExpand, FaUndo, FaChevronDown, FaChevronUp, FaHistory } from 'react-icons/fa';
 import { meetingAgendaApi } from '../../api/meetingAgenda';
 import { RecurringMeeting, Task } from '../../api/types';
 import type { DraftCardData } from '../chat/DraftCard';
@@ -10,6 +10,7 @@ import {
     useStartSession,
     useResetSession,
     useReopenSession,
+    useResetToPreparation,
 } from '../../hooks/useMeetingSession';
 import { useMeetingTimer } from '../../contexts/MeetingTimerContext';
 import type { MeetingSessionStatus } from '../../types/session';
@@ -79,6 +80,7 @@ export function MeetingMainContent({
     const startSessionMutation = useStartSession(taskId);
     const resetSessionMutation = useResetSession(taskId);
     const reopenSessionMutation = useReopenSession(taskId);
+    const resetToPreparationMutation = useResetToPreparation(taskId);
 
     // Global timer context
     const meetingTimer = useMeetingTimer();
@@ -241,6 +243,20 @@ export function MeetingMainContent({
         }
     };
 
+    const handleResetToPreparation = async () => {
+        if (!session) return;
+        if (!window.confirm('会議を開始前の状態に戻しますか？\n議事録やサマリーは保持されます。')) return;
+        try {
+            // Stop timer if running
+            if (meetingTimer.session?.id === session.id) {
+                meetingTimer.stopTimer();
+            }
+            await resetToPreparationMutation.mutateAsync(session.id);
+        } catch (error) {
+            console.error('Failed to reset to preparation:', error);
+        }
+    };
+
     if (!selectedDate || !hasMeeting) {
         return (
             <div className="meetings-main justify-center items-center">
@@ -344,6 +360,13 @@ export function MeetingMainContent({
                         {mode === 'ARCHIVE' && session && session.status === 'COMPLETED' && (
                             <div className="agenda-actions">
                                 <button
+                                    className="btn-reset-to-preparation"
+                                    onClick={handleResetToPreparation}
+                                    disabled={resetToPreparationMutation.isPending}
+                                >
+                                    <FaHistory /> 開始前に戻す
+                                </button>
+                                <button
                                     className="btn-reopen-meeting"
                                     onClick={handleReopenSession}
                                     disabled={reopenSessionMutation.isPending}
@@ -384,6 +407,14 @@ export function MeetingMainContent({
                             </span>
                         </div>
                         <div className="meeting-minimized-actions">
+                            <button
+                                className="btn-minimized reset-to-prep"
+                                onClick={handleResetToPreparation}
+                                disabled={resetToPreparationMutation.isPending}
+                                title="開始前に戻す"
+                            >
+                                <FaHistory /> 開始前に戻す
+                            </button>
                             <button
                                 className="btn-minimized reset"
                                 onClick={handleResetSession}

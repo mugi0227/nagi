@@ -9,6 +9,7 @@ import { formatDate } from '../../utils/dateTime';
 import { ChatInput } from './ChatInput';
 import { ChatMessage } from './ChatMessage';
 import { DraftCard, DraftCardData } from './DraftCard';
+import { userStorage } from '../../utils/userStorage';
 import './ChatWindow.css';
 
 interface ChatWindowProps {
@@ -42,6 +43,9 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
   const [isDragging, setIsDragging] = useState(false);
   const [draggedImage, setDraggedImage] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [approvalMode, setApprovalMode] = useState<'manual' | 'auto'>(() => {
+    return (userStorage.get('aiApprovalMode') as 'manual' | 'auto') || 'auto';
+  });
   const { data: meetingTasks = [] } = useQuery<Task[]>({
     queryKey: ['meetings', 'chat-preview'],
     queryFn: () => tasksApi.getAll({ includeDone: true, onlyMeetings: true }),
@@ -153,6 +157,11 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     );
   };
 
+  const handleApprovalModeChange = (mode: 'manual' | 'auto') => {
+    setApprovalMode(mode);
+    userStorage.set('aiApprovalMode', mode);
+  };
+
   return (
     <div
       className={`chat-window ${isDragging ? 'dragging' : ''}`}
@@ -174,16 +183,36 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
           <FaRobot />
           <span>Secretary Partner</span>
         </div>
-        <div className="chat-header-actions">
-          <button className="header-btn" onClick={() => setIsHistoryOpen((prev) => !prev)} title="History">
-            <FaClock />
-          </button>
-          <button className="header-btn" onClick={clearChat} title="New chat">
-            <FaPlus />
-          </button>
-          <button className="header-btn close-btn" onClick={onClose} title="Close">
-            <FaXmark />
-          </button>
+        <div className="chat-header-controls">
+          <div className="chat-approval-toggle" role="group" aria-label="Approval mode">
+            <button
+              className={`approval-toggle-btn ${approvalMode === 'manual' ? 'active' : ''}`}
+              onClick={() => handleApprovalModeChange('manual')}
+              type="button"
+              title="Require approval for edits"
+            >
+              Manual
+            </button>
+            <button
+              className={`approval-toggle-btn ${approvalMode === 'auto' ? 'active' : ''}`}
+              onClick={() => handleApprovalModeChange('auto')}
+              type="button"
+              title="Auto-run tools"
+            >
+              Auto
+            </button>
+          </div>
+          <div className="chat-header-actions">
+            <button className="header-btn" onClick={() => setIsHistoryOpen((prev) => !prev)} title="History">
+              <FaClock />
+            </button>
+            <button className="header-btn" onClick={clearChat} title="New chat">
+              <FaPlus />
+            </button>
+            <button className="header-btn close-btn" onClick={onClose} title="Close">
+              <FaXmark />
+            </button>
+          </div>
         </div>
       </div>
 

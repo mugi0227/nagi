@@ -225,6 +225,29 @@ async def reopen_session(
     return await repo.update(user.id, session_id, update_data)
 
 
+@router.post("/{session_id}/reset-to-preparation", response_model=MeetingSession)
+async def reset_to_preparation(
+    session_id: UUID,
+    user: CurrentUser,
+    repo: MeetingSessionRepo,
+):
+    """Reset a session to PREPARATION status (before meeting started)."""
+    session = await repo.get(user.id, session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    if session.status == MeetingSessionStatus.PREPARATION:
+        raise HTTPException(status_code=400, detail="Session is already in preparation")
+
+    update_data = MeetingSessionUpdate(
+        status=MeetingSessionStatus.PREPARATION,
+        started_at=None,
+        ended_at=None,
+        current_agenda_index=None,
+    )
+    return await repo.update(user.id, session_id, update_data)
+
+
 @router.post("/{session_id}/analyze-transcript", response_model=MeetingSummary)
 async def analyze_transcript(
     session_id: UUID,

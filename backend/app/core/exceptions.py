@@ -59,6 +59,12 @@ class AuthorizationError(SecretaryException):
     pass
 
 
+class ForbiddenError(AuthorizationError):
+    """Forbidden operation (authorization denied)."""
+
+    pass
+
+
 class InfrastructureError(SecretaryException):
     """Infrastructure-related error (DB, external services, etc.)."""
 

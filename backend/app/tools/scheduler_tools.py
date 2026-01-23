@@ -14,8 +14,10 @@ from google.adk.tools import FunctionTool
 from pydantic import BaseModel, Field
 
 from app.interfaces.agent_task_repository import IAgentTaskRepository
+from app.interfaces.proposal_repository import IProposalRepository
 from app.models.agent_task import AgentTaskCreate, AgentTaskPayload
 from app.models.enums import ActionType
+from app.tools.approval_tools import create_tool_action_proposal
 
 
 # ===========================================
@@ -128,7 +130,13 @@ def get_current_datetime_tool() -> FunctionTool:
     return FunctionTool(func=_tool)
 
 
-def schedule_agent_task_tool(repo: IAgentTaskRepository, user_id: str) -> FunctionTool:
+def schedule_agent_task_tool(
+    repo: IAgentTaskRepository,
+    user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
+) -> FunctionTool:
     """Create ADK tool for scheduling agent tasks."""
     async def _tool(input_data: dict) -> dict:
         """schedule_agent_task: 自律行動（リマインド等）をスケジュールします。
@@ -144,7 +152,18 @@ def schedule_agent_task_tool(repo: IAgentTaskRepository, user_id: str) -> Functi
         Returns:
             dict: 作成されたエージェントタスク情報
         """
-        return await schedule_agent_task(user_id, repo, ScheduleAgentTaskInput(**input_data))
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "schedule_agent_task",
+                payload,
+                proposal_desc,
+            )
+        return await schedule_agent_task(user_id, repo, ScheduleAgentTaskInput(**payload))
 
     _tool.__name__ = "schedule_agent_task"
     return FunctionTool(func=_tool)

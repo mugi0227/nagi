@@ -53,6 +53,7 @@ class TaskBase(BaseModel):
     attendees: list[str] = Field(default_factory=list, description="参加者リスト")
     meeting_notes: Optional[str] = Field(None, max_length=5000, description="議事録・メモ")
     recurring_meeting_id: Optional[UUID] = Field(None, description="定例会議ID（定例から生成された場合）")
+    milestone_id: Optional[UUID] = Field(None, description="関連マイルストーンID")
 
     @model_validator(mode='after')
     def validate_fixed_time(self):
@@ -120,6 +121,7 @@ class TaskUpdate(BaseModel):
     attendees: Optional[list[str]] = None
     meeting_notes: Optional[str] = Field(None, max_length=5000)
     recurring_meeting_id: Optional[UUID] = None
+    milestone_id: Optional[UUID] = None
 
 
 class Task(TaskBase):

@@ -78,6 +78,7 @@ class TaskORM(Base):
     attendees = Column(JSON, nullable=True, default=list)
     meeting_notes = Column(Text, nullable=True)
     recurring_meeting_id = Column(String(36), nullable=True, index=True)
+    milestone_id = Column(String(36), nullable=True, index=True)
 
 
 class ProjectORM(Base):
@@ -414,6 +415,37 @@ class ChatMessageORM(Base):
     role = Column(String(20), nullable=False)
     content = Column(Text, nullable=False, default="")
     created_at = Column(DateTime, default=now_utc, index=True)
+
+
+class IssueORM(Base):
+    """Issue ORM model - shared across all users."""
+
+    __tablename__ = "issues"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)  # 投稿者
+    title = Column(String(200), nullable=False)
+    content = Column(Text, nullable=False)
+    category = Column(String(30), nullable=False)
+    status = Column(String(20), default="OPEN", index=True)
+    like_count = Column(Integer, default=0)
+    admin_response = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+
+class IssueLikeORM(Base):
+    """Issue like ORM model."""
+
+    __tablename__ = "issue_likes"
+    __table_args__ = (
+        UniqueConstraint("issue_id", "user_id", name="uq_issue_like"),
+    )
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    issue_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    created_at = Column(DateTime, default=now_utc)
 
 
 class ScheduleSnapshotORM(Base):

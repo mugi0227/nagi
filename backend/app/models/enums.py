@@ -175,6 +175,13 @@ class MemoryType(str, Enum):
     RULE = "RULE"  # 手順・禁則事項
 
 
+class ToolApprovalMode(str, Enum):
+    """Tool approval mode for chat."""
+
+    MANUAL = "manual"
+    AUTO = "auto"
+
+
 class ChatMode(str, Enum):
     """Chat mode."""
 
@@ -189,3 +196,23 @@ class MeetingSessionStatus(str, Enum):
     PREPARATION = "PREPARATION"  # 準備中（デフォルト）
     IN_PROGRESS = "IN_PROGRESS"  # 会議中
     COMPLETED = "COMPLETED"  # 完了
+
+
+class IssueStatus(str, Enum):
+    """Issue status for feature requests and bug reports."""
+
+    OPEN = "OPEN"  # 投稿直後
+    UNDER_REVIEW = "UNDER_REVIEW"  # 検討中
+    PLANNED = "PLANNED"  # 対応予定
+    IN_PROGRESS = "IN_PROGRESS"  # 対応中
+    COMPLETED = "COMPLETED"  # 完了
+    WONT_FIX = "WONT_FIX"  # 対応しない
+
+
+class IssueCategory(str, Enum):
+    """Issue category."""
+
+    FEATURE_REQUEST = "FEATURE_REQUEST"  # 機能要望
+    BUG_REPORT = "BUG_REPORT"  # バグ報告
+    IMPROVEMENT = "IMPROVEMENT"  # 改善提案
+    QUESTION = "QUESTION"  # 質問

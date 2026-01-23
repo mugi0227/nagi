@@ -2210,6 +2210,48 @@ export function ProjectDetailV2Page() {
                       setSelectedTask(task);
                     }
                   }}
+                  onTaskCreate={(phaseId) => {
+                    setNewTaskInitialData({
+                      project_id: projectId,
+                      phase_id: phaseId,
+                    });
+                    setIsCreatingTask(true);
+                  }}
+                  onBatchTaskUpdate={async (updates) => {
+                    try {
+                      // Update all tasks in sequence
+                      for (const { taskId, updates: taskUpdates } of updates) {
+                        await tasksApi.update(taskId, taskUpdates);
+                      }
+                      refetchTasks();
+                    } catch (err) {
+                      console.error('Failed to batch update tasks:', err);
+                    }
+                  }}
+                  onDependencyUpdate={async (taskId, newDependencyIds) => {
+                    try {
+                      await tasksApi.update(taskId, { dependency_ids: newDependencyIds });
+                      refetchTasks();
+                    } catch (err) {
+                      console.error('Failed to update dependencies:', err);
+                    }
+                  }}
+                  onMilestoneLink={async (taskId, milestoneId) => {
+                    try {
+                      await tasksApi.update(taskId, { milestone_id: milestoneId ?? undefined });
+                      refetchTasks();
+                    } catch (err) {
+                      console.error('Failed to link task to milestone:', err);
+                    }
+                  }}
+                  onMilestoneUpdate={async (milestoneId, updates) => {
+                    try {
+                      await milestonesApi.update(milestoneId, updates);
+                      await refreshMilestones();
+                    } catch (err) {
+                      console.error('Failed to update milestone:', err);
+                    }
+                  }}
                 />
               </div>
             </div>
@@ -2246,6 +2288,9 @@ export function ProjectDetailV2Page() {
             updateTask(taskId, { status: status as TaskStatus });
             refetchTasks();
           }}
+          memberOptions={memberOptions}
+          taskAssignments={assignments}
+          onAssigneeChange={handleAssignMultiple}
         />
       )}
 

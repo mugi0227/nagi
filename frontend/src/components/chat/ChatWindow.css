@@ -74,6 +74,39 @@
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
+.chat-header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.chat-approval-toggle {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  background: rgba(255, 255, 255, 0.6);
+  gap: 4px;
+}
+
+.approval-toggle-btn {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.approval-toggle-btn.active {
+  background: var(--primary);
+  color: white;
+  box-shadow: 0 4px 10px rgba(14, 165, 233, 0.25);
+}
+
 .chat-history-panel {
   position: absolute;
   top: 64px;

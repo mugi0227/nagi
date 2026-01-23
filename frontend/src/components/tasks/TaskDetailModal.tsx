@@ -9,6 +9,7 @@ import {
   FaProjectDiagram,
   FaTimes,
   FaTrash,
+  FaUser,
 } from 'react-icons/fa';
 import {
   HiOutlineBookOpen,
@@ -28,13 +29,19 @@ import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { phasesApi } from '../../api/phases';
 import { getProject } from '../../api/projects';
-import type { Phase, Project, Task } from '../../api/types';
+import type { Phase, Project, Task, TaskAssignment } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/dateTime';
 import type { DraftCardData } from '../chat/DraftCard';
 import { AgendaList } from '../agenda';
+import { AssigneeSelect } from '../common/AssigneeSelect';
 import { StepNumber } from '../common/StepNumber';
 import './TaskDetailModal.css';
+
+interface MemberOption {
+  id: string;
+  label: string;
+}
 
 interface TaskDetailModalProps {
   task: Task;
@@ -51,6 +58,10 @@ interface TaskDetailModalProps {
   onActionItemsCreated?: () => void;
   onStatusChange?: (taskId: string, status: string) => void;
   onCreateSubtask?: (parentTaskId: string) => void;
+  // Assignee props (optional for backward compatibility)
+  memberOptions?: MemberOption[];
+  taskAssignments?: TaskAssignment[];
+  onAssigneeChange?: (taskId: string, memberIds: string[]) => void;
 }
 
 // Helper to extract guide from description
@@ -92,7 +103,10 @@ export function TaskDetailModal({
   onTaskCheck,
   onActionItemsCreated: _onActionItemsCreated,
   onStatusChange,
-  onCreateSubtask
+  onCreateSubtask,
+  memberOptions = [],
+  taskAssignments = [],
+  onAssigneeChange,
 }: TaskDetailModalProps) {
   const timezone = useTimezone();
   const [selectedSubtask, setSelectedSubtask] = useState<Task | null>(initialSubtask);
@@ -703,6 +717,20 @@ export function TaskDetailModal({
                     </div>
                   )}
                 </div>
+                {memberOptions.length > 0 && onAssigneeChange && (
+                  <div className="subtask-assignee-section">
+                    <span className="metadata-label"><FaUser /> 担当者</span>
+                    <AssigneeSelect
+                      taskId={selectedSubtask.id}
+                      selectedIds={taskAssignments
+                        .filter(a => a.task_id === selectedSubtask.id)
+                        .map(a => a.assignee_id)}
+                      options={memberOptions}
+                      onChange={onAssigneeChange}
+                      compact
+                    />
+                  </div>
+                )}
               </div>
 
               {selectedGuide?.mainDescription && (

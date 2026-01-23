@@ -18,11 +18,13 @@ from app.core.logger import logger
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.memory_repository import IMemoryRepository
 from app.interfaces.project_repository import IProjectRepository
+from app.interfaces.proposal_repository import IProposalRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.models.enums import MemoryScope, MemoryType, TaskStatus
 from app.models.memory import MemoryCreate
 from app.services.kpi_calculator import apply_project_kpis
 from app.services.llm_utils import generate_text
+from app.tools.approval_tools import create_tool_action_proposal
 
 
 class CreateProjectSummaryInput(BaseModel):
@@ -260,6 +262,9 @@ def create_project_summary_tool(
     memory_repo: IMemoryRepository,
     llm_provider: ILLMProvider,
     user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
 ) -> FunctionTool:
     """Create ADK tool for saving project summaries."""
 
@@ -276,13 +281,24 @@ def create_project_summary_tool(
         Returns:
             dict: 作成されたメモリとサマリ内容
         """
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "create_project_summary",
+                payload,
+                proposal_desc,
+            )
         return await create_project_summary(
             user_id,
             project_repo,
             task_repo,
             memory_repo,
             llm_provider,
-            CreateProjectSummaryInput(**input_data),
+            CreateProjectSummaryInput(**payload),
         )
 
     _tool.__name__ = "create_project_summary"

@@ -31,6 +31,7 @@ from app.interfaces.meeting_session_repository import IMeetingSessionRepository
 from app.interfaces.user_repository import IUserRepository
 from app.interfaces.project_invitation_repository import IProjectInvitationRepository
 from app.interfaces.schedule_snapshot_repository import IScheduleSnapshotRepository
+from app.interfaces.issue_repository import IIssueRepository
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.speech_provider import ISpeechToTextProvider
 from app.interfaces.storage_provider import IStorageProvider
@@ -251,6 +252,17 @@ def get_meeting_session_repository() -> IMeetingSessionRepository:
         return SqliteMeetingSessionRepository()
 
 
+@lru_cache()
+def get_issue_repository() -> IIssueRepository:
+    """Get issue repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Issue repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.issue_repository import SqliteIssueRepository
+        return SqliteIssueRepository()
+
+
 # ===========================================
 # Provider Dependencies
 # ===========================================
@@ -403,4 +415,5 @@ LLMProvider = Annotated[ILLMProvider, Depends(get_llm_provider)]
 StorageProvider = Annotated[IStorageProvider, Depends(get_storage_provider)]
 SpeechProvider = Annotated[ISpeechToTextProvider, Depends(get_speech_provider)]
 ScheduleSnapshotRepo = Annotated[IScheduleSnapshotRepository, Depends(get_schedule_snapshot_repository)]
+IssueRepo = Annotated[IIssueRepository, Depends(get_issue_repository)]
 CurrentUser = Annotated[User, Depends(get_current_user)]

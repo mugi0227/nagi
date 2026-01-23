@@ -36,7 +36,7 @@ from app.interfaces.recurring_meeting_repository import IRecurringMeetingReposit
 from app.interfaces.checkin_repository import ICheckinRepository
 from app.models.capture import CaptureCreate
 from app.models.chat import ChatRequest, ChatResponse
-from app.models.enums import ContentType
+from app.models.enums import ContentType, ToolApprovalMode
 
 
 # Global cache for runners (keyed by user_id + session_id)
@@ -175,6 +175,11 @@ class AgentService:
             return None
         max_len = 50
         return cleaned[:max_len] + ("..." if len(cleaned) > max_len else "")
+
+    def _resolve_auto_approve(self, request: ChatRequest) -> bool:
+        if request.approval_mode:
+            return request.approval_mode == ToolApprovalMode.AUTO
+        return not request.proposal_mode
 
     def _get_user_message_text(self, request: ChatRequest) -> str:
         """Get a storable user message text."""
@@ -641,11 +646,10 @@ class AgentService:
             capture_id = capture.id
 
         # Get or create runner with auto_approve setting
-        # Note: proposal_mode=True means "wait for approval", so auto_approve=NOT proposal_mode
         runner = self._get_or_create_runner(
             user_id,
             session_id=session_id,
-            auto_approve=not request.proposal_mode,
+            auto_approve=self._resolve_auto_approve(request),
         )
 
         # Run agent with user message
@@ -739,11 +743,10 @@ class AgentService:
             capture_id = capture.id
 
         # Get or create runner with auto_approve setting
-        # Note: proposal_mode=True means "wait for approval", so auto_approve=NOT proposal_mode
         runner = self._get_or_create_runner(
             user_id,
             session_id=session_id_str,
-            auto_approve=not request.proposal_mode,
+            auto_approve=self._resolve_auto_approve(request),
         )
 
         try:

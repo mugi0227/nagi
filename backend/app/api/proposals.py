@@ -13,12 +13,14 @@ from app.api.deps import (
     PhaseRepo,
     MilestoneRepo,
     ProjectMemberRepo,
+    ProjectInvitationRepo,
     MemoryRepo,
+    AgentTaskRepo,
+    MeetingAgendaRepo,
+    RecurringMeetingRepo,
     LLMProvider,
 )
 from app.models.proposal import ApprovalResult, ProposalStatus, RejectionResult
-from app.models.project import ProjectCreate
-from app.models.task import TaskCreate
 from app.tools.project_tools import CreateProjectInput
 from app.tools.task_tools import CreateTaskInput, AssignTaskInput, assign_task
 from app.tools.memory_tools import CreateSkillInput
@@ -57,7 +59,11 @@ async def approve_proposal(
     phase_repo: PhaseRepo,
     milestone_repo: MilestoneRepo,
     member_repo: ProjectMemberRepo,
+    invitation_repo: ProjectInvitationRepo,
     memory_repo: MemoryRepo,
+    agent_task_repo: AgentTaskRepo,
+    meeting_agenda_repo: MeetingAgendaRepo,
+    recurring_meeting_repo: RecurringMeetingRepo,
     llm_provider: LLMProvider,
 ) -> ApprovalResult:
     """Approve a proposal and create task/project.
@@ -176,6 +182,197 @@ async def approve_proposal(
         )
         result.phase_ids = created.get("created_phase_ids", [])
         result.milestone_ids = created.get("created_milestone_ids", [])
+
+    elif proposal.proposal_type.value == "tool_action":
+        payload = proposal.payload or {}
+        tool_name = payload.get("tool_name")
+        args = payload.get("args") or {}
+        if not tool_name or not isinstance(args, dict):
+            raise HTTPException(status_code=400, detail="Invalid tool_action payload")
+
+        from app.tools.task_tools import (
+            UpdateTaskInput,
+            DeleteTaskInput,
+            update_task,
+            delete_task,
+        )
+        from app.tools.project_tools import (
+            UpdateProjectInput,
+            InviteProjectMemberInput,
+            update_project,
+            invite_project_member,
+        )
+        from app.tools.project_memory_tools import (
+            CreateProjectSummaryInput,
+            create_project_summary,
+        )
+        from app.tools.memory_tools import (
+            AddToMemoryInput,
+            RefreshUserProfileInput,
+            add_to_memory,
+            refresh_user_profile,
+        )
+        from app.tools.scheduler_tools import (
+            ScheduleAgentTaskInput,
+            schedule_agent_task,
+        )
+        from app.tools.meeting_agenda_tools import (
+            AddAgendaItemInput,
+            UpdateAgendaItemInput,
+            DeleteAgendaItemInput,
+            ReorderAgendaItemsInput,
+            add_agenda_item,
+            update_agenda_item,
+            delete_agenda_item,
+            reorder_agenda_items,
+        )
+        from app.tools.phase_tools import (
+            PlanProjectPhasesInput,
+            PlanPhaseTasksInput,
+            UpdatePhaseInput,
+            CreatePhaseInput,
+            DeletePhaseInput,
+            CreateMilestoneInput,
+            UpdateMilestoneInput,
+            DeleteMilestoneInput,
+            plan_project_phases_tool,
+            plan_phase_tasks_tool,
+            update_phase,
+            create_phase_tool,
+            delete_phase_tool,
+            create_milestone_tool,
+            update_milestone_tool,
+            delete_milestone_tool,
+        )
+        from app.tools.task_tools import (
+            BreakdownTaskInput,
+            breakdown_task,
+        )
+
+        tool_result = None
+
+        if tool_name == "update_task":
+            tool_result = await update_task(user.id, task_repo, UpdateTaskInput(**args))
+        elif tool_name == "delete_task":
+            tool_result = await delete_task(user.id, task_repo, DeleteTaskInput(**args))
+        elif tool_name == "update_project":
+            tool_result = await update_project(user.id, project_repo, UpdateProjectInput(**args))
+        elif tool_name == "invite_project_member":
+            tool_result = await invite_project_member(
+                user.id,
+                invitation_repo,
+                member_repo,
+                InviteProjectMemberInput(**args),
+            )
+        elif tool_name == "create_project_summary":
+            tool_result = await create_project_summary(
+                user.id,
+                project_repo,
+                task_repo,
+                memory_repo,
+                llm_provider,
+                CreateProjectSummaryInput(**args),
+            )
+        elif tool_name == "add_to_memory":
+            tool_result = await add_to_memory(user.id, memory_repo, AddToMemoryInput(**args))
+        elif tool_name == "refresh_user_profile":
+            tool_result = await refresh_user_profile(
+                user.id,
+                memory_repo,
+                llm_provider,
+                RefreshUserProfileInput(**args),
+            )
+        elif tool_name == "schedule_agent_task":
+            tool_result = await schedule_agent_task(
+                user.id,
+                agent_task_repo,
+                ScheduleAgentTaskInput(**args),
+            )
+        elif tool_name == "add_agenda_item":
+            tool_result = await add_agenda_item(
+                user.id,
+                meeting_agenda_repo,
+                AddAgendaItemInput(**args),
+                project_repo=project_repo,
+                recurring_meeting_repo=recurring_meeting_repo,
+                task_repo=task_repo,
+            )
+        elif tool_name == "update_agenda_item":
+            tool_result = await update_agenda_item(
+                user.id,
+                meeting_agenda_repo,
+                UpdateAgendaItemInput(**args),
+            )
+        elif tool_name == "delete_agenda_item":
+            tool_result = await delete_agenda_item(
+                user.id,
+                meeting_agenda_repo,
+                DeleteAgendaItemInput(**args),
+            )
+        elif tool_name == "reorder_agenda_items":
+            tool_result = await reorder_agenda_items(
+                user.id,
+                meeting_agenda_repo,
+                ReorderAgendaItemsInput(**args),
+                project_repo=project_repo,
+                recurring_meeting_repo=recurring_meeting_repo,
+                task_repo=task_repo,
+            )
+        elif tool_name == "plan_project_phases":
+            tool_func = plan_project_phases_tool(
+                project_repo,
+                phase_repo,
+                milestone_repo,
+                task_repo,
+                memory_repo,
+                llm_provider,
+                user.id,
+            ).func
+            tool_result = await tool_func(args)
+        elif tool_name == "plan_phase_tasks":
+            tool_func = plan_phase_tasks_tool(
+                project_repo,
+                phase_repo,
+                milestone_repo,
+                task_repo,
+                memory_repo,
+                llm_provider,
+                user.id,
+            ).func
+            tool_result = await tool_func(args)
+        elif tool_name == "update_phase":
+            tool_result = await update_phase(user.id, phase_repo, UpdatePhaseInput(**args))
+        elif tool_name == "create_phase":
+            tool_func = create_phase_tool(phase_repo, user.id).func
+            tool_result = await tool_func(args)
+        elif tool_name == "delete_phase":
+            tool_func = delete_phase_tool(phase_repo, user.id).func
+            tool_result = await tool_func(args)
+        elif tool_name == "create_milestone":
+            tool_func = create_milestone_tool(milestone_repo, user.id).func
+            tool_result = await tool_func(args)
+        elif tool_name == "update_milestone":
+            tool_func = update_milestone_tool(milestone_repo, user.id).func
+            tool_result = await tool_func(args)
+        elif tool_name == "delete_milestone":
+            tool_func = delete_milestone_tool(milestone_repo, user.id).func
+            tool_result = await tool_func(args)
+        elif tool_name == "breakdown_task":
+            tool_result = await breakdown_task(
+                user.id,
+                task_repo,
+                memory_repo,
+                llm_provider,
+                project_repo,
+                BreakdownTaskInput(**args),
+                assignment_repo,
+            )
+        else:
+            raise HTTPException(status_code=400, detail=f"Unknown tool_action: {tool_name}")
+
+        if hasattr(tool_result, "model_dump"):
+            tool_result = tool_result.model_dump(mode="json")
+        result.result = tool_result if isinstance(tool_result, dict) else {"result": tool_result}
 
     # Update proposal status
     await proposal_repo.update_status(proposal_id, ProposalStatus.APPROVED)

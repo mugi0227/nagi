@@ -26,6 +26,7 @@ from app.models.enums import CreatedBy, EnergyLevel, Priority
 from app.models.proposal import Proposal, ProposalResponse, ProposalType
 from app.models.task import Task, TaskCreate, TaskUpdate
 from app.services.planner_service import PlannerService
+from app.tools.approval_tools import create_tool_action_proposal
 
 
 # ===========================================
@@ -1008,9 +1009,50 @@ def propose_task_assignment_tool(
     return FunctionTool(func=_tool)
 
 
+def assign_task_tool(
+    assignment_repo: ITaskAssignmentRepository,
+    user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
+) -> FunctionTool:
+    """Create ADK tool for assigning tasks."""
+    async def _tool(input_data: dict) -> dict:
+        """assign_task: タスクの担当者を設定します、E
+
+        Parameters:
+            task_id (str): Task ID
+            assignee_id (str, optional): Assignee ID (single)
+            assignee_ids (list[str], optional): Assignee IDs (multiple)
+            proposal_description (str, optional): Proposal description
+
+        Returns:
+            dict: Assignment result or proposal payload
+        """
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await propose_task_assignment(
+                user_id,
+                session_id,
+                proposal_repo,
+                assignment_repo,
+                AssignTaskInput(**payload),
+                proposal_desc,
+                False,
+            )
+        return await assign_task(user_id, assignment_repo, AssignTaskInput(**payload))
+
+    _tool.__name__ = "assign_task"
+    return FunctionTool(func=_tool)
+
+
 def create_task_tool(
     repo: ITaskRepository,
     user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
     assignment_repo: Optional[ITaskAssignmentRepository] = None,
 ) -> FunctionTool:
     """Create ADK tool for creating tasks."""
@@ -1047,13 +1089,32 @@ def create_task_tool(
         Returns:
             dict: 作成されたタスク情報（assignmentsフィールドに担当者割り当て情報を含む）
         """
-        return await create_task(user_id, repo, CreateTaskInput(**input_data), assignment_repo)
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await propose_task(
+                user_id,
+                session_id,
+                proposal_repo,
+                repo,
+                CreateTaskInput(**payload),
+                proposal_desc,
+                False,
+                assignment_repo,
+            )
+        return await create_task(user_id, repo, CreateTaskInput(**payload), assignment_repo)
 
     _tool.__name__ = "create_task"
     return FunctionTool(func=_tool)
 
 
-def update_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
+def update_task_tool(
+    repo: ITaskRepository,
+    user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
+) -> FunctionTool:
     """Create ADK tool for updating tasks."""
     async def _tool(input_data: dict) -> dict:
         """update_task: 既存のタスクを更新します（タイトル、説明、ステータス、進捗率、日付等）。
@@ -1087,13 +1148,30 @@ def update_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
         Returns:
             dict: 更新されたタスク情報
         """
-        return await update_task(user_id, repo, UpdateTaskInput(**input_data))
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "update_task",
+                payload,
+                proposal_desc,
+            )
+        return await update_task(user_id, repo, UpdateTaskInput(**payload))
 
     _tool.__name__ = "update_task"
     return FunctionTool(func=_tool)
 
 
-def delete_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
+def delete_task_tool(
+    repo: ITaskRepository,
+    user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
+) -> FunctionTool:
     """Create ADK tool for deleting tasks."""
     async def _tool(input_data: dict) -> dict:
         """delete_task: タスクを削除します。
@@ -1104,7 +1182,18 @@ def delete_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
         Returns:
             dict: 削除結果 (success, task_id, message)
         """
-        return await delete_task(user_id, repo, DeleteTaskInput(**input_data))
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "delete_task",
+                payload,
+                proposal_desc,
+            )
+        return await delete_task(user_id, repo, DeleteTaskInput(**payload))
 
     _tool.__name__ = "delete_task"
     return FunctionTool(func=_tool)
@@ -1205,6 +1294,7 @@ async def breakdown_task(
     llm_provider: ILLMProvider,
     project_repo: Optional[IProjectRepository],
     input_data: BreakdownTaskInput,
+    assignment_repo: Optional[ITaskAssignmentRepository] = None,
 ) -> dict:
     """
     Break down a task into subtasks using Planner Agent.
@@ -1216,6 +1306,7 @@ async def breakdown_task(
         llm_provider: LLM provider
         project_repo: Project repository (optional)
         input_data: Breakdown parameters
+        assignment_repo: Task assignment repository (for inheriting assignees)
 
     Returns:
         Breakdown result with steps and subtask IDs
@@ -1227,6 +1318,7 @@ async def breakdown_task(
         task_repo=task_repo,
         memory_repo=memory_repo,
         project_repo=project_repo,
+        assignment_repo=assignment_repo,
     )
 
     result = await service.breakdown_task(
@@ -1244,7 +1336,7 @@ def create_meeting_tool(
     proposal_repo: IProposalRepository,
     user_id: str,
     session_id: str,
-    auto_approve: bool = False,
+    auto_approve: bool = True,
 ) -> FunctionTool:
     """Create ADK tool for creating meetings."""
     async def _tool(input_data: dict) -> dict:
@@ -1302,6 +1394,8 @@ def create_meeting_tool(
             meeting_notes=meeting_input.meeting_notes,
         )
         proposal_desc = f'Meeting "{meeting_input.title}" will be added to your schedule.'
+        if auto_approve:
+            return await create_task(user_id, repo, task_input)
         return await propose_task(
             user_id,
             session_id,
@@ -1322,12 +1416,17 @@ def breakdown_task_tool(
     llm_provider: ILLMProvider,
     user_id: str,
     project_repo: Optional[IProjectRepository] = None,
+    assignment_repo: Optional[ITaskAssignmentRepository] = None,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
 ) -> FunctionTool:
     """Create ADK tool for breaking down tasks into subtasks."""
     async def _tool(input_data: dict) -> dict:
         """breakdown_task: タスクを3-5個のサブタスクに分解します（Planner Agentを使用）。
 
         タスクがプロジェクトに属している場合、プロジェクトの目標・重要ポイント・READMEを考慮して分解します。
+        サブタスクには親タスクの担当者が自動的に引き継がれます。
 
         Parameters:
             task_id (str): 分解するタスクのID（UUID文字列、必須）
@@ -1337,8 +1436,26 @@ def breakdown_task_tool(
         Returns:
             dict: 分解結果（steps: ステップリスト、subtasks_created: サブタスク作成有無、subtask_ids: 作成されたサブタスクIDリスト、markdown_guide: Markdownガイド）
         """
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        request = BreakdownTaskInput(**payload)
+        if proposal_repo and session_id and not auto_approve and request.create_subtasks:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "breakdown_task",
+                payload,
+                proposal_desc,
+            )
         return await breakdown_task(
-            user_id, repo, memory_repo, llm_provider, project_repo, BreakdownTaskInput(**input_data)
+            user_id,
+            repo,
+            memory_repo,
+            llm_provider,
+            project_repo,
+            request,
+            assignment_repo,
         )
 
     _tool.__name__ = "breakdown_task"

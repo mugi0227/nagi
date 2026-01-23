@@ -28,6 +28,7 @@ class DependencyValidator:
         dependency_ids: list[UUID],
         user_id: str,
         parent_id: Optional[UUID] = None,
+        project_id: Optional[UUID] = None,
     ) -> None:
         """
         Validate task dependencies.
@@ -37,6 +38,7 @@ class DependencyValidator:
             dependency_ids: List of dependency task IDs
             user_id: User ID for authorization
             parent_id: Parent task ID if this is a subtask
+            project_id: Project ID for project-based access
 
         Raises:
             BusinessLogicError: If dependencies are invalid
@@ -55,7 +57,10 @@ class DependencyValidator:
         # 3. Fetch all dependency tasks
         dep_tasks = []
         for dep_id in dependency_ids:
+            # Try personal access first, then project-based
             dep_task = await self.task_repo.get(user_id, dep_id)
+            if not dep_task and project_id:
+                dep_task = await self.task_repo.get(user_id, dep_id, project_id=project_id)
             if not dep_task:
                 raise BusinessLogicError(f"依存先タスク {dep_id} が見つかりません")
             dep_tasks.append(dep_task)
@@ -67,7 +72,7 @@ class DependencyValidator:
             )
 
         # 5. Check for circular dependencies
-        await self._check_circular_dependency(task_id, dependency_ids, user_id)
+        await self._check_circular_dependency(task_id, dependency_ids, user_id, project_id=project_id)
 
     async def _validate_subtask_dependencies(
         self,
@@ -117,6 +122,7 @@ class DependencyValidator:
         dependency_ids: list[UUID],
         user_id: str,
         visited: Optional[set[UUID]] = None,
+        project_id: Optional[UUID] = None,
     ) -> None:
         """
         Check for circular dependencies using DFS.
@@ -126,6 +132,7 @@ class DependencyValidator:
             dependency_ids: Direct dependencies of the task
             user_id: User ID for authorization
             visited: Set of visited task IDs (for recursion)
+            project_id: Project ID for project-based access
 
         Raises:
             BusinessLogicError: If circular dependency is detected
@@ -140,8 +147,10 @@ class DependencyValidator:
                     f"循環依存が検出されました: タスク {dep_id} はすでに依存チェーン内に存在します"
                 )
 
-            # Fetch the dependency task
+            # Fetch the dependency task (try personal access first, then project-based)
             dep_task = await self.task_repo.get(user_id, dep_id)
+            if not dep_task and project_id:
+                dep_task = await self.task_repo.get(user_id, dep_id, project_id=project_id)
             if not dep_task:
                 continue
 
@@ -149,7 +158,7 @@ class DependencyValidator:
             if dep_task.dependency_ids:
                 new_visited = visited | {dep_id}
                 await self._check_circular_dependency(
-                    dep_id, dep_task.dependency_ids, user_id, new_visited
+                    dep_id, dep_task.dependency_ids, user_id, new_visited, project_id=project_id
                 )
 
     async def validate_parent_child_consistency(

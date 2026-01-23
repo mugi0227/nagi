@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear, FaMoon, FaSun, FaRightFromBracket, FaRightToBracket, FaBookOpen, FaLightbulb } from 'react-icons/fa6';
+import { FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear, FaMoon, FaSun, FaRightFromBracket, FaRightToBracket, FaBookOpen, FaLightbulb, FaComments } from 'react-icons/fa6';
 import { useTheme } from '../../context/ThemeContext';
 import { clearAuthToken, getAuthToken } from '../../api/auth';
 import { SettingsModal } from '../settings/SettingsModal';
@@ -41,6 +41,7 @@ export function Sidebar() {
     { path: '/skills', label: 'Skills', icon: FaLightbulb },
     { path: '/memories', label: 'Memories', icon: FaBookOpen },
     { path: '/achievement', label: 'Achievement', icon: FaTrophy },
+    { path: '/issues', label: 'Issues', icon: FaComments },
   ];
 
   const handleLogout = () => {

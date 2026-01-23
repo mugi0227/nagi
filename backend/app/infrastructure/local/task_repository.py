@@ -63,6 +63,7 @@ class SqliteTaskRepository(ITaskRepository):
             attendees=orm.attendees or [],
             meeting_notes=orm.meeting_notes,
             recurring_meeting_id=UUID(orm.recurring_meeting_id) if orm.recurring_meeting_id else None,
+            milestone_id=UUID(orm.milestone_id) if orm.milestone_id else None,
         )
 
     async def create(self, user_id: str, task: TaskCreate) -> Task:
@@ -94,6 +95,7 @@ class SqliteTaskRepository(ITaskRepository):
                 location=task.location,
                 attendees=task.attendees,
                 meeting_notes=task.meeting_notes,
+                milestone_id=str(task.milestone_id) if task.milestone_id else None,
             )
             session.add(orm)
             await session.commit()
@@ -177,7 +179,7 @@ class SqliteTaskRepository(ITaskRepository):
             status_value = None
             for field, value in update_data.items():
                 if value is not None:
-                    if field in ("project_id", "parent_id", "phase_id"):
+                    if field in ("project_id", "parent_id", "phase_id", "milestone_id"):
                         value = str(value) if value else None
                     elif field == "dependency_ids":
                         value = [str(dep_id) for dep_id in value]

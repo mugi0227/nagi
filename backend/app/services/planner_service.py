@@ -19,12 +19,14 @@ from app.core.exceptions import LLMValidationError, NotFoundError
 from app.core.logger import logger
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.memory_repository import IMemoryRepository
+from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.models.breakdown import (
     BreakdownResponse,
     BreakdownStep,
     TaskBreakdown,
 )
+from app.models.collaboration import TaskAssignmentCreate
 from app.models.enums import CreatedBy, EnergyLevel
 from app.models.task import Task, TaskCreate
 
@@ -45,12 +47,14 @@ class PlannerService:
         task_repo: ITaskRepository,
         memory_repo: IMemoryRepository,
         project_repo: Optional[IProjectRepository] = None,
+        assignment_repo: Optional[ITaskAssignmentRepository] = None,
     ):
         """Initialize Planner Service."""
         self._llm_provider = llm_provider
         self._task_repo = task_repo
         self._memory_repo = memory_repo
         self._project_repo = project_repo
+        self._assignment_repo = assignment_repo
 
     async def breakdown_task(
         self,
@@ -110,10 +114,18 @@ class PlannerService:
         # Generate markdown guide
         markdown_guide = self._generate_markdown_guide(breakdown)
 
+        # Get parent task's assignees for inheritance
+        parent_assignee_ids: list[str] = []
+        if self._assignment_repo:
+            parent_assignments = await self._assignment_repo.list_by_task(user_id, task_id)
+            parent_assignee_ids = [a.assignee_id for a in parent_assignments]
+
         # Create subtasks if requested
         subtask_ids = []
         if create_subtasks:
-            subtask_ids = await self._create_subtasks(user_id, task, breakdown)
+            subtask_ids = await self._create_subtasks(
+                user_id, task, breakdown, parent_assignee_ids
+            )
 
         return BreakdownResponse(
             breakdown=breakdown,
@@ -405,8 +417,16 @@ class PlannerService:
         user_id: str,
         parent_task: Task,
         breakdown: TaskBreakdown,
+        parent_assignee_ids: list[str] | None = None,
     ) -> list[UUID]:
-        """Create subtasks from breakdown steps with dependency relationships."""
+        """Create subtasks from breakdown steps with dependency relationships.
+
+        Args:
+            user_id: User ID
+            parent_task: Parent task being broken down
+            breakdown: Breakdown result from LLM
+            parent_assignee_ids: List of assignee IDs to inherit from parent task
+        """
         # Map step_number -> subtask_id for dependency resolution
         step_to_id: dict[int, UUID] = {}
         subtask_ids = []
@@ -447,6 +467,15 @@ class PlannerService:
                 created_by=CreatedBy.AGENT,
             )
             created = await self._task_repo.create(user_id, subtask)
+
+            # Inherit assignees from parent task
+            if parent_assignee_ids and self._assignment_repo:
+                for assignee_id in parent_assignee_ids:
+                    await self._assignment_repo.assign(
+                        user_id,
+                        created.id,
+                        TaskAssignmentCreate(assignee_id=assignee_id),
+                    )
 
             # Map this step number to the created task ID
             step_to_id[step.step_number] = created.id

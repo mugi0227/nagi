@@ -58,6 +58,10 @@ export const meetingSessionApi = {
         return client.post<MeetingSession>(`/meeting-sessions/${sessionId}/reopen`, {});
     },
 
+    resetToPreparation: async (sessionId: string): Promise<MeetingSession> => {
+        return client.post<MeetingSession>(`/meeting-sessions/${sessionId}/reset-to-preparation`, {});
+    },
+
     // Phase 4: Post-meeting summary
     analyzeTranscript: async (
         sessionId: string,

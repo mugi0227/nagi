@@ -10,7 +10,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
-from app.models.enums import ChatMode
+from app.models.enums import ChatMode, ToolApprovalMode
 
 settings = get_settings()
 
@@ -25,6 +25,7 @@ class ChatRequest(BaseModel):
     mode: ChatMode = Field(ChatMode.DUMP, description="チャットモード")
     session_id: Optional[str] = Field(None, description="セッションID（継続会話用）")
     context: dict[str, Any] = Field(default_factory=dict, description="追加コンテキスト")
+    approval_mode: Optional[ToolApprovalMode] = Field(None, description="Tool approval mode")
     proposal_mode: bool = Field(False, description="提案モード（True: AIが提案→ユーザー承諾、False: AI が直接作成）")
 
 

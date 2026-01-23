@@ -15,27 +15,27 @@ export const meetingAgendaApi = {
 
     create: async (meetingId: string, data: MeetingAgendaItemCreate): Promise<MeetingAgendaItem> => {
         const response = await client.post<MeetingAgendaItem>(
-            `/recurring-meetings/${meetingId}/agenda`,
+            `/meeting-agendas/${meetingId}/items`,
             data
         );
         return response;
     },
 
-    update: async (meetingId: string, itemId: string, data: MeetingAgendaItemUpdate): Promise<MeetingAgendaItem> => {
-        const response = await client.put<MeetingAgendaItem>(
-            `/recurring-meetings/${meetingId}/agenda/${itemId}`,
+    update: async (_meetingId: string, itemId: string, data: MeetingAgendaItemUpdate): Promise<MeetingAgendaItem> => {
+        const response = await client.patch<MeetingAgendaItem>(
+            `/meeting-agendas/items/${itemId}`,
             data
         );
         return response;
     },
 
-    delete: async (meetingId: string, itemId: string): Promise<void> => {
-        await client.delete(`/recurring-meetings/${meetingId}/agenda/${itemId}`);
+    delete: async (_meetingId: string, itemId: string): Promise<void> => {
+        await client.delete(`/meeting-agendas/items/${itemId}`);
     },
 
     reorder: async (meetingId: string, orderedIds: string[]): Promise<MeetingAgendaItem[]> => {
-        const response = await client.put<MeetingAgendaItem[]>(
-            `/recurring-meetings/${meetingId}/agenda/reorder`,
+        const response = await client.post<MeetingAgendaItem[]>(
+            `/meeting-agendas/${meetingId}/items/reorder`,
             orderedIds
         );
         return response;

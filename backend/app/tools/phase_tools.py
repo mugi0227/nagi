@@ -29,6 +29,7 @@ from app.models.phase import PhaseCreate
 from app.models.milestone import MilestoneCreate
 from app.models.proposal import Proposal, ProposalResponse, ProposalType
 from app.services.phase_planner_service import PhasePlannerService
+from app.tools.approval_tools import create_tool_action_proposal
 
 
 class PlanProjectPhasesInput(BaseModel):
@@ -248,6 +249,9 @@ def plan_project_phases_tool(
     memory_repo: IMemoryRepository,
     llm_provider: ILLMProvider,
     user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
 ) -> FunctionTool:
     """Create ADK tool for AI phase/milestone planning."""
 
@@ -263,7 +267,30 @@ def plan_project_phases_tool(
         Returns:
             dict: phases list and created IDs if requested
         """
-        payload = PlanProjectPhasesInput(**input_data)
+        payload_dict = dict(input_data)
+        proposal_desc = payload_dict.pop("proposal_description", "")
+        payload = PlanProjectPhasesInput(**payload_dict)
+        if proposal_repo and session_id and not auto_approve:
+            if payload.create_phases or payload.create_milestones:
+                proposal_input = ProposePhaseBreakdownInput(
+                    project_id=payload.project_id,
+                    instruction=payload.instruction,
+                    create_milestones=payload.create_milestones,
+                )
+                return await propose_phase_breakdown(
+                    user_id,
+                    session_id,
+                    proposal_repo,
+                    project_repo,
+                    phase_repo,
+                    milestone_repo,
+                    task_repo,
+                    memory_repo,
+                    llm_provider,
+                    proposal_input,
+                    proposal_desc,
+                    False,
+                )
         service = PhasePlannerService(
             llm_provider=llm_provider,
             memory_repo=memory_repo,
@@ -295,6 +322,9 @@ def plan_phase_tasks_tool(
     memory_repo: IMemoryRepository,
     llm_provider: ILLMProvider,
     user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
 ) -> FunctionTool:
     """Create ADK tool for AI phase task breakdown."""
 
@@ -309,7 +339,19 @@ def plan_phase_tasks_tool(
         Returns:
             dict: tasks list and created IDs if requested
         """
-        payload = PlanPhaseTasksInput(**input_data)
+        payload_dict = dict(input_data)
+        proposal_desc = payload_dict.pop("proposal_description", "")
+        payload = PlanPhaseTasksInput(**payload_dict)
+        if proposal_repo and session_id and not auto_approve:
+            if payload.create_tasks:
+                return await create_tool_action_proposal(
+                    user_id,
+                    session_id,
+                    proposal_repo,
+                    "plan_phase_tasks",
+                    payload_dict,
+                    proposal_desc,
+                )
         service = PhasePlannerService(
             llm_provider=llm_provider,
             memory_repo=memory_repo,
@@ -555,7 +597,13 @@ async def update_phase(
     return phase.model_dump(mode="json")
 
 
-def update_phase_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionTool:
+def update_phase_tool(
+    phase_repo: IPhaseRepository,
+    user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
+) -> FunctionTool:
     """Create ADK tool for updating phases."""
 
     async def _tool(input_data: dict) -> dict:
@@ -593,7 +641,18 @@ def update_phase_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionToo
             # 名前と説明を更新
             {"phase_id": "123e4567-...", "name": "新しいフェーズ名", "description": "更新された説明"}
         """
-        return await update_phase(user_id, phase_repo, UpdatePhaseInput(**input_data))
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "update_phase",
+                payload,
+                proposal_desc,
+            )
+        return await update_phase(user_id, phase_repo, UpdatePhaseInput(**payload))
 
     _tool.__name__ = "update_phase"
     return FunctionTool(func=_tool)
@@ -649,7 +708,13 @@ class DeleteMilestoneInput(BaseModel):
     milestone_id: str = Field(..., description="マイルストーンID")
 
 
-def create_phase_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionTool:
+def create_phase_tool(
+    phase_repo: IPhaseRepository,
+    user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
+) -> FunctionTool:
     """Create ADK tool for simple phase creation (no AI)."""
 
     async def _tool(input_data: dict) -> dict:
@@ -669,7 +734,18 @@ def create_phase_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionToo
         Returns:
             dict: 作成されたフェーズの情報
         """
-        payload = CreatePhaseInput(**input_data)
+        payload_dict = dict(input_data)
+        proposal_desc = payload_dict.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "create_phase",
+                payload_dict,
+                proposal_desc,
+            )
+        payload = CreatePhaseInput(**payload_dict)
 
         try:
             project_id = UUID(payload.project_id)
@@ -698,7 +774,13 @@ def create_phase_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionToo
     return FunctionTool(func=_tool)
 
 
-def delete_phase_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionTool:
+def delete_phase_tool(
+    phase_repo: IPhaseRepository,
+    user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
+) -> FunctionTool:
     """Create ADK tool for phase deletion."""
 
     async def _tool(input_data: dict) -> dict:
@@ -713,7 +795,18 @@ def delete_phase_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionToo
         Returns:
             dict: {"success": True, "deleted_phase_id": "..."} または {"error": "..."}
         """
-        payload = DeletePhaseInput(**input_data)
+        payload_dict = dict(input_data)
+        proposal_desc = payload_dict.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "delete_phase",
+                payload_dict,
+                proposal_desc,
+            )
+        payload = DeletePhaseInput(**payload_dict)
 
         try:
             phase_id = UUID(payload.phase_id)
@@ -729,7 +822,13 @@ def delete_phase_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionToo
     return FunctionTool(func=_tool)
 
 
-def create_milestone_tool(milestone_repo: IMilestoneRepository, user_id: str) -> FunctionTool:
+def create_milestone_tool(
+    milestone_repo: IMilestoneRepository,
+    user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
+) -> FunctionTool:
     """Create ADK tool for simple milestone creation (no AI)."""
 
     async def _tool(input_data: dict) -> dict:
@@ -748,7 +847,18 @@ def create_milestone_tool(milestone_repo: IMilestoneRepository, user_id: str) ->
         Returns:
             dict: 作成されたマイルストーンの情報
         """
-        payload = CreateMilestoneInput(**input_data)
+        payload_dict = dict(input_data)
+        proposal_desc = payload_dict.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "create_milestone",
+                payload_dict,
+                proposal_desc,
+            )
+        payload = CreateMilestoneInput(**payload_dict)
 
         try:
             project_id = UUID(payload.project_id)
@@ -778,7 +888,13 @@ def create_milestone_tool(milestone_repo: IMilestoneRepository, user_id: str) ->
     return FunctionTool(func=_tool)
 
 
-def update_milestone_tool(milestone_repo: IMilestoneRepository, user_id: str) -> FunctionTool:
+def update_milestone_tool(
+    milestone_repo: IMilestoneRepository,
+    user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
+) -> FunctionTool:
     """Create ADK tool for milestone update."""
 
     async def _tool(input_data: dict) -> dict:
@@ -799,7 +915,18 @@ def update_milestone_tool(milestone_repo: IMilestoneRepository, user_id: str) ->
         """
         from app.models.milestone import MilestoneUpdate
 
-        payload = UpdateMilestoneInput(**input_data)
+        payload_dict = dict(input_data)
+        proposal_desc = payload_dict.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "update_milestone",
+                payload_dict,
+                proposal_desc,
+            )
+        payload = UpdateMilestoneInput(**payload_dict)
 
         try:
             milestone_id = UUID(payload.milestone_id)
@@ -831,7 +958,13 @@ def update_milestone_tool(milestone_repo: IMilestoneRepository, user_id: str) ->
     return FunctionTool(func=_tool)
 
 
-def delete_milestone_tool(milestone_repo: IMilestoneRepository, user_id: str) -> FunctionTool:
+def delete_milestone_tool(
+    milestone_repo: IMilestoneRepository,
+    user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
+) -> FunctionTool:
     """Create ADK tool for milestone deletion."""
 
     async def _tool(input_data: dict) -> dict:
@@ -845,7 +978,18 @@ def delete_milestone_tool(milestone_repo: IMilestoneRepository, user_id: str) ->
         Returns:
             dict: {"success": True, "deleted_milestone_id": "..."} または {"error": "..."}
         """
-        payload = DeleteMilestoneInput(**input_data)
+        payload_dict = dict(input_data)
+        proposal_desc = payload_dict.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "delete_milestone",
+                payload_dict,
+                proposal_desc,
+            )
+        payload = DeleteMilestoneInput(**payload_dict)
 
         try:
             milestone_id = UUID(payload.milestone_id)

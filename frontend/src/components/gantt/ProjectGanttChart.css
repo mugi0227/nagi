@@ -251,6 +251,40 @@
   font-style: italic;
 }
 
+/* Drag handle for reordering */
+.pgantt-drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  color: var(--c-text-muted);
+  cursor: grab;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.pgantt-sidebar-row.task:hover .pgantt-drag-handle {
+  opacity: 1;
+}
+
+.pgantt-drag-handle:hover {
+  color: var(--c-primary);
+}
+
+.pgantt-drag-handle:active {
+  cursor: grabbing;
+}
+
+/* Dragging state for sidebar row */
+.pgantt-sidebar-row.dragging {
+  opacity: 0.5;
+  background: var(--c-primary-light);
+  border: 1px dashed var(--c-primary);
+  border-radius: 4px;
+}
+
 .pgantt-toggle {
   display: flex;
   align-items: center;
@@ -272,11 +306,9 @@
 
 .pgantt-row-title {
   flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 0.85rem;
-  color: var(--c-text);
+  color: #1e293b; /* Always black for readability */
+  word-break: break-word;
 }
 
 .pgantt-sidebar-row.milestone .pgantt-row-title {
@@ -292,6 +324,321 @@
   border: 1px solid var(--c-border-light);
   padding: 2px 8px;
   border-radius: 10px;
+}
+
+.pgantt-add-task-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: auto;
+  background: transparent;
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.15s, color 0.15s;
+}
+
+.pgantt-sidebar-row.phase:hover .pgantt-add-task-btn {
+  opacity: 1;
+}
+
+.pgantt-add-task-btn:hover {
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+  color: white;
+}
+
+/* Phase 3: Sort button */
+.pgantt-sort-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--c-text-secondary);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-left: 8px;
+}
+
+.pgantt-sort-btn:hover {
+  background: var(--c-bg-hover);
+  border-color: var(--c-border);
+  color: var(--c-text);
+}
+
+.pgantt-sort-btn.active {
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+  color: white;
+}
+
+/* Phase 5: Link mode button */
+.pgantt-link-mode-container {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 8px;
+}
+
+.pgantt-link-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--c-text-secondary);
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pgantt-link-btn:hover {
+  background: var(--c-bg-hover);
+  border-color: var(--c-border);
+  color: var(--c-text);
+}
+
+.pgantt-link-btn.active {
+  background: var(--c-success);
+  border-color: var(--c-success);
+  color: white;
+  animation: pulse 1.5s infinite;
+}
+
+.pgantt-link-hint {
+  font-size: 0.7rem;
+  color: var(--c-success);
+  font-weight: 500;
+  padding: 4px 8px;
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.8; }
+}
+
+/* Phase 5: Link mode container styling */
+.pgantt-container.link-mode {
+  cursor: crosshair;
+}
+
+.pgantt-container.link-mode .pgantt-bar.task:hover {
+  transform: scale(1.02);
+  box-shadow: 0 0 12px var(--c-primary);
+}
+
+/* Show "依存先" hint when hovering in link mode with source selected */
+.pgantt-container.link-mode.has-source .pgantt-bar.task:not(.link-source):hover::after {
+  content: '依存先';
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: white;
+  background: var(--c-primary);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+/* Phase 5: Link source highlighting */
+.pgantt-bar.link-source {
+  outline: 3px solid var(--c-success);
+  outline-offset: 2px;
+  animation: pulse 1s infinite;
+}
+
+.pgantt-bar.link-source::after {
+  content: '先行';
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.65rem;
+  font-weight: 600;
+  color: white;
+  background: var(--c-success);
+  padding: 2px 6px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+
+.pgantt-sidebar-row.link-source {
+  background: rgba(16, 185, 129, 0.15);
+  border-left: 3px solid var(--c-success);
+}
+
+.pgantt-sidebar-row.link-source::after {
+  content: '先行タスク';
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--c-success);
+  margin-left: auto;
+  padding: 2px 6px;
+  background: rgba(16, 185, 129, 0.15);
+  border-radius: 4px;
+}
+
+/* Phase 6: Milestone linked indicator */
+.pgantt-linked-icon {
+  color: var(--c-milestone);
+  font-size: 0.8rem;
+  margin-right: 2px;
+  opacity: 0.7;
+}
+
+.pgantt-sidebar-row.milestone-linked {
+  padding-left: calc(16px + var(--depth, 0) * 16px);
+  background: linear-gradient(to right, rgba(168, 85, 247, 0.05), transparent);
+  border-left: 3px solid var(--c-milestone);
+}
+
+.pgantt-sidebar-row.milestone-linked .pgantt-row-title {
+  color: #1e293b; /* Black for readability, same as other tasks */
+}
+
+.pgantt-sidebar-row.milestone-linked:hover {
+  background: linear-gradient(to right, rgba(168, 85, 247, 0.12), rgba(168, 85, 247, 0.05));
+}
+
+/* Phase 6: Milestone drop target - sidebar row */
+.pgantt-sidebar-row.milestone.drop-target {
+  background: rgba(168, 85, 247, 0.2);
+  border: 2px dashed var(--c-milestone);
+  border-radius: 4px;
+  animation: milestone-pulse 0.8s ease-in-out infinite;
+}
+
+@keyframes milestone-pulse {
+  0%, 100% { background: rgba(168, 85, 247, 0.2); }
+  50% { background: rgba(168, 85, 247, 0.35); }
+}
+
+.pgantt-sidebar-row.milestone.drop-target .pgantt-milestone-icon {
+  transform: scale(1.3);
+  filter: drop-shadow(0 0 4px var(--c-milestone));
+}
+
+/* Phase 6: Milestone drop target - timeline bar row */
+.pgantt-bar-row.milestone.drop-target {
+  background: rgba(168, 85, 247, 0.15);
+}
+
+.pgantt-bar.milestone.drop-target {
+  outline: 2px dashed var(--c-milestone);
+  outline-offset: 4px;
+}
+
+/* Phase 6: Milestone-linked task bar */
+.pgantt-bar.milestone-linked {
+  background: linear-gradient(135deg, #c084fc 0%, var(--c-milestone) 100%);
+  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
+}
+
+/* Milestone deadline marker on task rows - faded diamond */
+.pgantt-milestone-marker {
+  position: absolute;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 1.1rem;
+  color: var(--c-milestone);
+  opacity: 0.3;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ============================================
+   Undated Items (No Date)
+   ============================================ */
+
+/* Sidebar warning icon for undated items */
+.pgantt-no-date-icon {
+  color: var(--c-warning);
+  font-size: 0.85rem;
+  margin-right: 4px;
+  animation: warning-pulse 2s ease-in-out infinite;
+}
+
+@keyframes warning-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+/* Sidebar row for undated items */
+.pgantt-sidebar-row.no-date {
+  background: linear-gradient(to right, rgba(245, 158, 11, 0.08), transparent);
+}
+
+.pgantt-sidebar-row.no-date:hover {
+  background: linear-gradient(to right, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.05));
+}
+
+.pgantt-sidebar-row.milestone.no-date .pgantt-milestone-icon {
+  animation: milestone-blink 1.5s ease-in-out infinite;
+}
+
+@keyframes milestone-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* Task bar for undated items - dashed border */
+.pgantt-bar.task.no-date {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(99, 102, 241, 0.3),
+    rgba(99, 102, 241, 0.3) 4px,
+    rgba(99, 102, 241, 0.15) 4px,
+    rgba(99, 102, 241, 0.15) 8px
+  );
+  border: 2px dashed var(--c-primary);
+  box-shadow: none;
+}
+
+.pgantt-bar.task.no-date:hover {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(99, 102, 241, 0.5),
+    rgba(99, 102, 241, 0.5) 4px,
+    rgba(99, 102, 241, 0.25) 4px,
+    rgba(99, 102, 241, 0.25) 8px
+  );
+  border-color: var(--c-primary-light);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+/* Draggable styling for milestones in sidebar */
+.pgantt-sidebar-row.milestone.draggable {
+  cursor: grab;
+}
+
+.pgantt-sidebar-row.milestone.draggable:active {
+  cursor: grabbing;
+}
+
+.pgantt-sidebar-row.milestone.dragging {
+  opacity: 0.5;
+  background: rgba(168, 85, 247, 0.2);
+  border: 1px dashed var(--c-milestone);
+  border-radius: 4px;
 }
 
 /* ============================================
@@ -461,6 +808,10 @@
   user-select: none;
 }
 
+.pgantt-bar.task {
+  position: absolute; /* Ensure position for ::after pseudo-element */
+}
+
 .pgantt-bar:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
@@ -500,12 +851,31 @@
   background: transparent;
   box-shadow: none;
   height: 28px;
-  cursor: default;
+  cursor: grab;
 }
 
 .pgantt-bar.milestone:hover {
-  transform: none;
+  transform: translateY(-2px);
   box-shadow: none;
+}
+
+.pgantt-bar.milestone:active {
+  cursor: grabbing;
+}
+
+.pgantt-bar.milestone.dragging {
+  opacity: 0.9;
+  z-index: 100;
+  cursor: grabbing;
+}
+
+/* Milestone no-date (undated) */
+.pgantt-bar.milestone.no-date {
+  opacity: 0.6;
+}
+
+.pgantt-bar.milestone.no-date .pgantt-bar-milestone {
+  animation: milestone-blink 1.5s ease-in-out infinite;
 }
 
 .pgantt-bar-milestone {
@@ -585,11 +955,26 @@
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
   z-index: 100;
   cursor: grabbing;
-  transition: none;
+  transition: none !important; /* Force disable all transitions during drag */
 }
 
 .pgantt-bar.dragging:hover {
   transform: none;
+}
+
+/* Also disable transitions on dependent bars during any drag operation */
+.pgantt-container:has(.pgantt-bar.dragging) .pgantt-bar.dependent-dragging {
+  transition: none !important;
+}
+
+/* Dependent task being dragged along */
+.pgantt-bar.dependent-dragging {
+  opacity: 0.7;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 99;
+  transition: none; /* Disable transition for instant following */
+  outline: 2px dashed var(--c-primary);
+  outline-offset: 2px;
 }
 
 .pgantt-drag-preview {
@@ -641,9 +1026,74 @@
   transition: opacity 0.15s, stroke 0.15s;
 }
 
-.pgantt-arrow-path:hover {
+.pgantt-arrow-path.animating {
   stroke: var(--c-primary);
+  opacity: 0.8;
+  stroke-width: 2;
+  transition: none; /* Disable transition during drag for instant response */
+}
+
+.pgantt-arrow-path.clickable {
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.pgantt-arrow-path.clickable:hover {
+  stroke: var(--c-danger);
+  stroke-width: 2.5;
   opacity: 1;
+}
+
+/* Delete confirmation popup */
+.pgantt-delete-confirm {
+  background: var(--c-bg);
+  border: 1px solid var(--c-border);
+  border-radius: 8px;
+  padding: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  text-align: center;
+  font-size: 0.8rem;
+}
+
+.pgantt-delete-confirm p {
+  margin: 0 0 10px 0;
+  color: var(--c-text);
+  font-weight: 500;
+}
+
+.pgantt-delete-confirm-buttons {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.pgantt-delete-confirm-buttons button {
+  padding: 6px 12px;
+  border-radius: 6px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pgantt-delete-confirm-buttons button.cancel {
+  background: var(--c-bg-alt);
+  border: 1px solid var(--c-border);
+  color: var(--c-text-secondary);
+}
+
+.pgantt-delete-confirm-buttons button.cancel:hover {
+  background: var(--c-bg-hover);
+}
+
+.pgantt-delete-confirm-buttons button.delete {
+  background: var(--c-danger);
+  border: 1px solid var(--c-danger);
+  color: white;
+}
+
+.pgantt-delete-confirm-buttons button.delete:hover {
+  background: #dc2626;
 }
 
 /* ============================================

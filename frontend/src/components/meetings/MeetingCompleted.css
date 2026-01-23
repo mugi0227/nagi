@@ -21,6 +21,12 @@
     margin-bottom: 12px;
 }
 
+.transcript-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
 .transcript-header h4 {
     font-size: 0.9rem;
     font-weight: 600;
@@ -69,6 +75,36 @@
 
 .edit-btn:hover svg {
     transform: rotate(-10deg);
+}
+
+/* Delete Button */
+.delete-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    background-color: transparent;
+    color: #94a3b8;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.delete-btn:hover:not(:disabled) {
+    background-color: #fef2f2;
+    color: #ef4444;
+}
+
+.delete-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.delete-btn svg {
+    font-size: 0.9rem;
 }
 
 /* Cancel Button */
@@ -253,14 +289,46 @@
     padding: 20px;
 }
 
+.summary-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+}
+
 .summary-section h4 {
     font-size: 0.9rem;
     font-weight: 600;
     color: #1e293b;
-    margin: 0 0 12px 0;
+    margin: 0;
     display: flex;
     align-items: center;
     gap: 8px;
+}
+
+.delete-summary-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background-color: transparent;
+    color: #94a3b8;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.delete-summary-btn:hover:not(:disabled) {
+    background-color: #fef2f2;
+    color: #ef4444;
+    border-color: #fecaca;
+}
+
+.delete-summary-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .overall-summary {

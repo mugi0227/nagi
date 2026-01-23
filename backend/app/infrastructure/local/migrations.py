@@ -64,6 +64,12 @@ async def run_migrations():
                 text("CREATE INDEX IF NOT EXISTS idx_tasks_recurring_meeting_id ON tasks(recurring_meeting_id)")
             )
 
+        if "milestone_id" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN milestone_id VARCHAR(36)"))
+            await conn.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_tasks_milestone_id ON tasks(milestone_id)")
+            )
+
         # Check checkins table for checkin_type and V2 fields
         checkin_result = await conn.execute(text("PRAGMA table_info(checkins)"))
         checkin_columns = {row[1] for row in checkin_result}

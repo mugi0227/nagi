@@ -12,6 +12,7 @@ import type {
   ProjectCreate,
   TaskAssignmentProposal,
   TaskCreate,
+  ToolActionProposalPayload,
 } from '../api/types';
 import { useTimezone } from './useTimezone';
 import { nowInTimezone, toDateTime } from '../utils/dateTime';
@@ -29,9 +30,9 @@ export interface ToolCall {
 export interface ProposalInfo {
   id: string;
   proposalId: string;
-  proposalType: 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown';
+  proposalType: 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown' | 'tool_action';
   description: string;
-  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal;
+  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal | ToolActionProposalPayload;
 }
 
 export interface Message {
@@ -209,14 +210,15 @@ export function useChat() {
       setIsStreaming(true);
 
       try {
-        const proposalMode = userStorage.get('aiProposalMode') === 'true';
+        const approvalMode = (userStorage.get('aiApprovalMode') as 'manual' | 'auto') || 'auto';
 
         for await (const chunk of chatApi.streamMessage({
           text,
           image_base64: imageBase64,
           mode,
           session_id: sessionId,
-          proposal_mode: proposalMode,
+          approval_mode: approvalMode,
+          proposal_mode: approvalMode === 'manual',
         }, abortControllerRef.current.signal)) {
           switch (chunk.chunk_type) {
             case 'tool_start':
@@ -322,9 +324,9 @@ export function useChat() {
                 const proposalInfo: ProposalInfo = {
                   id: crypto.randomUUID(),
                   proposalId: chunk.proposal_id,
-                  proposalType: chunk.proposal_type as 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown',
+                  proposalType: chunk.proposal_type as 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown' | 'tool_action',
                   description: chunk.description || '',
-                  payload: chunk.payload as unknown as TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal,
+                  payload: chunk.payload as unknown as TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal | ToolActionProposalPayload,
                 };
                 setMessages((prev) =>
                   prev.map((msg) =>
@@ -393,11 +395,14 @@ export function useChat() {
       };
       setMessages((prev) => [...prev, userMessage]);
 
+      const approvalMode = (userStorage.get('aiApprovalMode') as 'manual' | 'auto') || 'auto';
       mutation.mutate({
         text,
         mode,
         session_id: sessionId,
         image_url: imageUrl,
+        approval_mode: approvalMode,
+        proposal_mode: approvalMode === 'manual',
       });
     },
     [mutation, sessionId, timezone]

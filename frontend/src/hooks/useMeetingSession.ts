@@ -206,6 +206,26 @@ export function useReopenSession(taskId?: string) {
 }
 
 /**
+ * Reset a session to PREPARATION status (before meeting started)
+ */
+export function useResetToPreparation(taskId?: string) {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (sessionId: string) => {
+      return meetingSessionApi.resetToPreparation(sessionId);
+    },
+    onSuccess: (session: MeetingSession) => {
+      queryClient.invalidateQueries({ queryKey: ['meeting-session', session.id] });
+      if (taskId) {
+        queryClient.invalidateQueries({ queryKey: ['meeting-session', 'task', taskId] });
+        queryClient.invalidateQueries({ queryKey: ['meeting-session', 'task', taskId, 'latest'] });
+      }
+    },
+  });
+}
+
+/**
  * Delete a session
  */
 export function useDeleteSession(taskId?: string) {

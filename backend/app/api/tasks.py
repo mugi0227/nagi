@@ -479,6 +479,7 @@ async def update_task(
                     new_dependency_ids,
                     user.id,
                     new_parent_id,
+                    project_id=task_project_id,
                 )
 
             if update.parent_id is not None:
@@ -525,6 +526,7 @@ async def breakdown_task(
     repo: TaskRepo,
     project_repo: ProjectRepo,
     memory_repo: MemoryRepo,
+    assignment_repo: TaskAssignmentRepo,
     llm_provider: LLMProvider,
     request: BreakdownRequest = BreakdownRequest(),
 ):
@@ -535,6 +537,7 @@ async def breakdown_task(
     manageable 5-15 minute steps for ADHD users.
 
     Optionally creates subtasks from the breakdown.
+    Subtasks inherit the parent task's assignees.
     """
     try:
         # Check permissions (Owner or Project Member)
@@ -549,7 +552,7 @@ async def breakdown_task(
                     project = await project_repo.get(user.id, t.project_id)
                     if project:
                         task = t
-        
+
         if not task:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -561,6 +564,7 @@ async def breakdown_task(
             task_repo=repo,
             memory_repo=memory_repo,
             project_repo=project_repo,
+            assignment_repo=assignment_repo,
         )
         return await service.breakdown_task(
             user_id=user.id,

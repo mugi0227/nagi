@@ -7,6 +7,7 @@ import type {
   MemoryCreate,
   TaskAssignmentProposal,
   PhaseBreakdownProposal,
+  ToolActionProposalPayload,
 } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate as formatDateValue, toDateTime } from '../../utils/dateTime';
@@ -14,9 +15,9 @@ import './ProposalCard.css';
 
 interface ProposalCardProps {
   proposalId: string;
-  proposalType: 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown';
+  proposalType: 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown' | 'tool_action';
   description: string;
-  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal;
+  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal | ToolActionProposalPayload;
   onApprove?: () => void;
   onReject?: () => void;
 }
@@ -74,20 +75,24 @@ export function ProposalCard({
   const isSkill = proposalType === 'create_skill';
   const isAssignment = proposalType === 'assign_task';
   const isPhaseBreakdown = proposalType === 'phase_breakdown';
+  const isToolAction = proposalType === 'tool_action';
   const taskPayload = isTask ? (payload as TaskCreate) : null;
   const projectPayload = isProject ? (payload as ProjectCreate) : null;
   const skillPayload = isSkill ? (payload as MemoryCreate) : null;
   const assignmentPayload = isAssignment ? (payload as TaskAssignmentProposal) : null;
   const phasePayload = isPhaseBreakdown ? (payload as PhaseBreakdownProposal) : null;
-  const badgeLabel = isTask
-    ? 'Task proposal'
-    : isSkill
-      ? 'Skill proposal'
-      : isAssignment
-        ? 'Task assignment proposal'
-        : isPhaseBreakdown
-          ? 'Phase breakdown proposal'
-        : 'Project proposal';
+  const toolPayload = isToolAction ? (payload as ToolActionProposalPayload) : null;
+  const badgeLabel = isToolAction
+    ? 'Approval required'
+    : isTask
+      ? 'Task draft'
+      : isSkill
+        ? 'Skill draft'
+        : isAssignment
+          ? 'Assignment draft'
+          : isPhaseBreakdown
+            ? 'Phase plan'
+            : 'Project draft';
   const meetingPreview = (() => {
     if (!isTask || !taskPayload?.is_fixed_time || !taskPayload.start_time || !taskPayload.end_time) {
       return null;
@@ -319,6 +324,21 @@ export function ProposalCard({
                     ))}
                   </div>
                 </div>
+              </div>
+            </>
+          )}
+
+          {isToolAction && toolPayload && (
+            <>
+              <div className="proposal-detail-row">
+                <span className="detail-label">Tool:</span>
+                <span className="detail-value">{toolPayload.tool_name}</span>
+              </div>
+              <div className="proposal-detail-row">
+                <span className="detail-label">Args:</span>
+                <span className="detail-value detail-value-pre">
+                  {JSON.stringify(toolPayload.args || {}, null, 2)}
+                </span>
               </div>
             </>
           )}

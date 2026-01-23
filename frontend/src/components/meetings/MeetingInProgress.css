@@ -554,6 +554,21 @@
     border: none;
 }
 
+.btn-minimized.reset-to-prep {
+    background-color: white;
+    color: #6366f1;
+    border: 1px solid #c7d2fe;
+}
+
+.btn-minimized.reset-to-prep:hover:not(:disabled) {
+    background-color: #eef2ff;
+}
+
+.btn-minimized.reset-to-prep:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 .btn-minimized.reset {
     background-color: white;
     color: #dc2626;

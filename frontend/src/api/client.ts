@@ -7,6 +7,21 @@ import { getAuthToken } from './auth';
 // Use relative path in development (proxied by Vite), absolute in production
 const API_BASE = import.meta.env.VITE_API_URL || '/api';
 
+/** Get the base URL for API calls (exported for streaming APIs) */
+export function getBaseUrl(): string {
+  return API_BASE;
+}
+
+/** Get auth headers for API calls (exported for streaming APIs) */
+export function getAuthHeaders(): Record<string, string> {
+  const { token } = getAuthToken();
+  const headers: Record<string, string> = {};
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 export class ApiError extends Error {
   constructor(
     public status: number,

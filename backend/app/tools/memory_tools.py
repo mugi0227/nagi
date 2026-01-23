@@ -19,6 +19,7 @@ from app.models.enums import MemoryScope, MemoryType
 from app.models.memory import MemoryCreate, MemoryUpdate
 from app.models.proposal import Proposal, ProposalResponse, ProposalType
 from app.services.llm_utils import generate_text
+from app.tools.approval_tools import create_tool_action_proposal
 
 
 # ===========================================
@@ -410,7 +411,13 @@ def search_skills_tool(repo: IMemoryRepository, user_id: str) -> FunctionTool:
     return FunctionTool(func=_tool)
 
 
-def add_to_memory_tool(repo: IMemoryRepository, user_id: str) -> FunctionTool:
+def add_to_memory_tool(
+    repo: IMemoryRepository,
+    user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
+) -> FunctionTool:
     """Create ADK tool for adding memories."""
     async def _tool(input_data: dict) -> dict:
         """add_to_memory: 記憶（User/Project/Work）を追加します。
@@ -425,7 +432,18 @@ def add_to_memory_tool(repo: IMemoryRepository, user_id: str) -> FunctionTool:
         Returns:
             dict: 作成された記憶情報
         """
-        return await add_to_memory(user_id, repo, AddToMemoryInput(**input_data))
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "add_to_memory",
+                payload,
+                proposal_desc,
+            )
+        return await add_to_memory(user_id, repo, AddToMemoryInput(**payload))
 
     _tool.__name__ = "add_to_memory"
     return FunctionTool(func=_tool)
@@ -465,10 +483,60 @@ def propose_skill_tool(
     return FunctionTool(func=_tool)
 
 
+def create_skill_tool(
+    memory_repo: IMemoryRepository,
+    user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
+) -> FunctionTool:
+    """Create ADK tool for creating skills."""
+    async def _tool(input_data: dict) -> dict:
+        """create_skill: スキルを登録します、E
+        Parameters:
+            content (str): スキル内容 (Markdown)
+            tags (list[str], optional): 検索用タグ
+            proposal_description (str, optional): 承諾用の説明
+        Returns:
+            dict: 作成されたメモリ情報 or proposal payload
+        """
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await propose_skill(
+                user_id,
+                session_id,
+                proposal_repo,
+                memory_repo,
+                CreateSkillInput(**payload),
+                proposal_desc,
+                False,
+            )
+
+        skill = CreateSkillInput(**payload)
+        memory = await memory_repo.create(
+            user_id,
+            MemoryCreate(
+                content=skill.content,
+                scope=skill.scope,
+                memory_type=skill.memory_type,
+                tags=skill.tags,
+                source="agent",
+            ),
+        )
+        return memory.model_dump(mode="json")
+
+    _tool.__name__ = "create_skill"
+    return FunctionTool(func=_tool)
+
+
 def refresh_user_profile_tool(
     repo: IMemoryRepository,
     llm_provider: ILLMProvider,
     user_id: str,
+    proposal_repo: Optional[IProposalRepository] = None,
+    session_id: Optional[str] = None,
+    auto_approve: bool = True,
 ) -> FunctionTool:
     """Create ADK tool for refreshing user profile summary."""
 
@@ -481,11 +549,22 @@ def refresh_user_profile_tool(
         Returns:
             dict: 更新結果とプロフィールメモリ
         """
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        if proposal_repo and session_id and not auto_approve:
+            return await create_tool_action_proposal(
+                user_id,
+                session_id,
+                proposal_repo,
+                "refresh_user_profile",
+                payload,
+                proposal_desc,
+            )
         return await refresh_user_profile(
             user_id,
             repo,
             llm_provider,
-            RefreshUserProfileInput(**input_data),
+            RefreshUserProfileInput(**payload),
         )
 
     _tool.__name__ = "refresh_user_profile"

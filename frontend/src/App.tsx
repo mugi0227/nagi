@@ -14,6 +14,7 @@ import { ProjectDetailV2Page } from './pages/ProjectDetailV2Page';
 import { AchievementPage } from './pages/AchievementPage';
 import { MemoriesPage } from './pages/MemoriesPage';
 import { SkillsPage } from './pages/SkillsPage';
+import { IssuesPage } from './pages/IssuesPage';
 import { LoginPage } from './pages/LoginPage';
 import { RequireAuth } from './components/auth/RequireAuth';
 import { InvitationAcceptPage } from './pages/InvitationAcceptPage';
@@ -50,6 +51,7 @@ function AppRoutes() {
         <Route path="achievement" element={<AchievementPage />} />
         <Route path="skills" element={<SkillsPage />} />
         <Route path="memories" element={<MemoriesPage />} />
+        <Route path="issues" element={<IssuesPage />} />
       </Route>
     </Routes>
   );

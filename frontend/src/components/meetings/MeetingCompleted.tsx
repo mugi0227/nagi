@@ -22,6 +22,7 @@ import {
     FaEdit,
     FaTimes,
     FaRedo,
+    FaTrash,
 } from 'react-icons/fa';
 import { meetingSessionApi } from '../../api/meetingSession';
 import type { MeetingSession, MeetingSummary } from '../../types/session';
@@ -161,6 +162,42 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
         },
     });
 
+    // Delete transcript mutation
+    const deleteTranscriptMutation = useMutation({
+        mutationFn: async () => {
+            return meetingSessionApi.update(session.id, { transcript: '' });
+        },
+        onSuccess: () => {
+            setTranscript('');
+            setSavedTranscript('');
+            setSuccessMessage('議事録を削除しました。');
+            setErrorMessage(null);
+            setIsEditing(true);
+        },
+        onError: (error) => {
+            setErrorMessage('議事録の削除に失敗しました。');
+            console.error('Failed to delete transcript:', error);
+        },
+    });
+
+    // Delete summary mutation
+    const deleteSummaryMutation = useMutation({
+        mutationFn: async () => {
+            return meetingSessionApi.update(session.id, { summary: '' });
+        },
+        onSuccess: () => {
+            setSummary(null);
+            setConvertedActions(new Set());
+            setSelectedActions(new Set());
+            setSuccessMessage('サマリーを削除しました。');
+            setErrorMessage(null);
+        },
+        onError: (error) => {
+            setErrorMessage('サマリーの削除に失敗しました。');
+            console.error('Failed to delete summary:', error);
+        },
+    });
+
     const handleAnalyze = useCallback(() => {
         if (!transcript.trim()) return;
         analyzeMutation.mutate();
@@ -178,6 +215,16 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
     const handleStartEdit = useCallback(() => {
         setIsEditing(true);
     }, []);
+
+    const handleDeleteTranscript = useCallback(() => {
+        if (!window.confirm('議事録を削除しますか？この操作は元に戻せません。')) return;
+        deleteTranscriptMutation.mutate();
+    }, [deleteTranscriptMutation]);
+
+    const handleDeleteSummary = useCallback(() => {
+        if (!window.confirm('サマリーを削除しますか？この操作は元に戻せません。')) return;
+        deleteSummaryMutation.mutate();
+    }, [deleteSummaryMutation]);
 
     const handleToggleAction = useCallback((index: number) => {
         setSelectedActions((prev) => {
@@ -247,11 +294,23 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
                         <FaClipboardList />
                         議事録・トランスクリプト
                     </h4>
-                    {!isEditing && transcript && (
-                        <button className="edit-btn" onClick={handleStartEdit} title="編集">
-                            <FaEdit />
-                        </button>
-                    )}
+                    <div className="transcript-header-actions">
+                        {!isEditing && transcript && (
+                            <>
+                                <button className="edit-btn" onClick={handleStartEdit} title="編集">
+                                    <FaEdit />
+                                </button>
+                                <button
+                                    className="delete-btn"
+                                    onClick={handleDeleteTranscript}
+                                    disabled={deleteTranscriptMutation.isPending}
+                                    title="削除"
+                                >
+                                    <FaTrash />
+                                </button>
+                            </>
+                        )}
+                    </div>
                 </div>
 
                 {isEditing ? (
@@ -316,10 +375,20 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
             {summary && (
                 <>
                     <div className="summary-section">
-                        <h4>
-                            <FaLightbulb />
-                            会議サマリー
-                        </h4>
+                        <div className="summary-header">
+                            <h4>
+                                <FaLightbulb />
+                                会議サマリー
+                            </h4>
+                            <button
+                                className="delete-summary-btn"
+                                onClick={handleDeleteSummary}
+                                disabled={deleteSummaryMutation.isPending}
+                                title="サマリーを削除"
+                            >
+                                <FaTrash /> 削除
+                            </button>
+                        </div>
                         <div className="overall-summary">
                             <p>{summary.overall_summary}</p>
                         </div>

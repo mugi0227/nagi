@@ -85,6 +85,7 @@ export interface Task {
   attendees: string[];
   meeting_notes?: string;
   recurring_meeting_id?: string;
+  milestone_id?: string;
 }
 
 export interface TaskCreate {
@@ -110,6 +111,7 @@ export interface TaskCreate {
   location?: string;
   attendees?: string[];
   meeting_notes?: string;
+  milestone_id?: string;
 }
 
 export interface TaskUpdate {
@@ -136,6 +138,7 @@ export interface TaskUpdate {
   location?: string;
   attendees?: string[];
   meeting_notes?: string;
+  milestone_id?: string;
 }
 
 export interface TaskWithSubtasks extends Task {
@@ -173,6 +176,8 @@ export interface BreakdownResponse {
 }
 
 // Chat models
+export type ToolApprovalMode = 'manual' | 'auto';
+
 export interface ChatRequest {
   text?: string;
   audio_url?: string;
@@ -181,6 +186,7 @@ export interface ChatRequest {
   mode?: ChatMode;
   session_id?: string;
   context?: Record<string, unknown>;
+  approval_mode?: ToolApprovalMode;
   proposal_mode?: boolean; // AI提案モード（true: 提案→承諾、false: 直接作成）
 }
 
@@ -804,7 +810,13 @@ export interface CaptureCreate {
 }
 
 // Proposal models (AI提案承諾機能)
-export type ProposalType = 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown';
+export type ProposalType = 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown' | 'tool_action';
+
+export interface ToolActionProposalPayload {
+  tool_name: string;
+  args: Record<string, unknown>;
+}
+
 export type ProposalStatus = 'pending' | 'approved' | 'rejected' | 'expired';
 
 export interface Proposal {
@@ -813,7 +825,7 @@ export interface Proposal {
   session_id: string;
   proposal_type: ProposalType;
   status: ProposalStatus;
-  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal; // The data for proposals
+  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal | ToolActionProposalPayload; // The data for proposals
   description: string; // AI-generated explanation
   created_at: string;
   expires_at: string;
@@ -823,7 +835,7 @@ export interface ProposalResponse {
   proposal_id: string;
   proposal_type: ProposalType;
   description: string;
-  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal;
+  payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal | ToolActionProposalPayload;
 }
 
 // ===========================================
@@ -863,3 +875,60 @@ export interface MeetingAgendaItemUpdate {
 }
 
 
+// ===========================================
+// Issue Models (Feature Requests / Bug Reports)
+// ===========================================
+
+export type IssueStatus = 'OPEN' | 'UNDER_REVIEW' | 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'WONT_FIX';
+export type IssueCategory = 'FEATURE_REQUEST' | 'BUG_REPORT' | 'IMPROVEMENT' | 'QUESTION';
+
+export interface Issue {
+  id: string;
+  user_id: string;
+  display_name?: string;
+  title: string;
+  content: string;
+  category: IssueCategory;
+  status: IssueStatus;
+  like_count: number;
+  liked_by_me: boolean;
+  admin_response?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IssueCreate {
+  title: string;
+  content: string;
+  category: IssueCategory;
+}
+
+export interface IssueUpdate {
+  title?: string;
+  content?: string;
+  category?: IssueCategory;
+}
+
+export interface IssueStatusUpdate {
+  status: IssueStatus;
+  admin_response?: string;
+}
+
+export interface IssueListResponse {
+  items: Issue[];
+  total: number;
+}
+
+export interface IssueChatRequest {
+  message: string;
+  session_id?: string;
+}
+
+export interface IssueChatChunk {
+  chunk_type: 'session' | 'text' | 'tool_start' | 'tool_end' | 'done' | 'error';
+  session_id?: string;
+  content?: string;
+  tool_name?: string;
+  tool_args?: Record<string, unknown>;
+  tool_result?: unknown;
+}

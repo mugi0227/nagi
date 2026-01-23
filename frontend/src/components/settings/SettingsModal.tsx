@@ -111,9 +111,6 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const [quietHoursEnd, setQuietHoursEnd] = useState(
     () => userStorage.get('quietHoursEnd') || '07:00'
   );
-  const [aiProposalMode, setAiProposalMode] = useState(
-    () => userStorage.get('aiProposalMode') === 'true'
-  );
 
   useEffect(() => {
     if (!currentUser) return;
@@ -198,10 +195,6 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     userStorage.set('quietHoursEnd', value);
   };
 
-  const handleAiProposalModeChange = (checked: boolean) => {
-    setAiProposalMode(checked);
-    userStorage.set('aiProposalMode', String(checked));
-  };
 
   const handleAccountSave = async () => {
     setAccountError(null);
@@ -574,30 +567,6 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
             </div>
           </div>
 
-          <div className="settings-section">
-            <h3 className="section-title">
-              <FaBell />
-              AI提案モード
-            </h3>
-            <div className="setting-item">
-              <div className="setting-row">
-                <div className="setting-label-group">
-                  <span className="setting-label">AI提案を承認してから作成</span>
-                  <p className="setting-description">
-                    ONにすると、AIがタスク/プロジェクトを作成する前に確認を求めます。
-                    <br />
-                    OFFの場合、AIが自動的に作成します（従来の動作）。
-                  </p>
-                </div>
-                <button
-                  className={`toggle-btn ${aiProposalMode ? 'active' : ''}`}
-                  onClick={() => handleAiProposalModeChange(!aiProposalMode)}
-                >
-                  <span className="toggle-slider"></span>
-                </button>
-              </div>
-            </div>
-          </div>
 
           <div className="settings-section">
             <h3 className="section-title">
