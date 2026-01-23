@@ -82,7 +82,7 @@ export function MeetingCalendarView({
     queryFn: () => tasksApi.getAll({
       includeDone: true,
       onlyMeetings: true,
-      ...(projectId ? { project_id: projectId } : {})
+      ...(projectId ? { projectId } : {})
     }),
     staleTime: 30_000,
   });
