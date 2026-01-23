@@ -72,6 +72,7 @@ from app.tools import (
     reorder_agenda_items_tool,
     fetch_meeting_context_tool,
     list_recurring_meetings_tool,
+    ask_user_questions_tool,
 )
 
 
@@ -385,6 +386,7 @@ async def create_secretary_agent(
         list_recurring_meetings_tool(recurring_meeting_repo, project_repo, user_id),
         load_skill_tool(memory_repo, user_id),
         list_skills_index_tool(memory_repo, user_id),
+        ask_user_questions_tool(),
     ]
 
     # Create agent

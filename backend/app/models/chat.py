@@ -37,6 +37,22 @@ class SuggestedAction(BaseModel):
     payload: dict[str, Any] = Field(default_factory=dict, description="アクション実行用データ")
 
 
+class PendingQuestion(BaseModel):
+    """A question awaiting user response."""
+
+    id: str = Field(..., description="質問ID（回答と紐付け用）")
+    question: str = Field(..., description="質問文")
+    options: list[str] = Field(..., description="選択肢（UIで「その他」は自動追加）")
+    allow_multiple: bool = Field(False, description="複数選択可能か（True: チェックボックス, False: ラジオボタン）")
+
+
+class PendingQuestions(BaseModel):
+    """Questions awaiting user response (for ask_user_questions tool)."""
+
+    questions: list[PendingQuestion] = Field(..., description="質問リスト")
+    context: Optional[str] = Field(None, description="質問全体の背景・文脈")
+
+
 class ChatResponse(BaseModel):
     """Response model for chat endpoint."""
 
@@ -49,6 +65,9 @@ class ChatResponse(BaseModel):
     )
     session_id: str = Field(..., description="セッションID")
     capture_id: Optional[UUID] = Field(None, description="作成されたCaptureのID")
+    pending_questions: Optional[PendingQuestions] = Field(
+        None, description="ユーザーへの質問（ask_user_questionsツール使用時）"
+    )
 
 
 class StreamingChatChunk(BaseModel):
