@@ -855,6 +855,16 @@ class AgentService:
                                     "payload": result.get("payload", {}),
                                 }
 
+                            # Send questions chunk when ask_user_questions tool is called
+                            if isinstance(result, dict) and result.get("status") == "awaiting_response":
+                                questions = result.get("questions", [])
+                                if questions:
+                                    yield {
+                                        "chunk_type": "questions",
+                                        "questions": questions,
+                                        "context": result.get("context"),
+                                    }
+
                         text = getattr(part, "text", None)
                         if text:
                             assistant_message_parts.append(text)

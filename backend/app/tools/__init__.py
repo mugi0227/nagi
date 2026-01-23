@@ -63,6 +63,9 @@ from app.tools.meeting_context_tools import (
     fetch_meeting_context_tool,
     list_recurring_meetings_tool,
 )
+from app.tools.user_interaction_tools import (
+    ask_user_questions_tool,
+)
 
 __all__ = [
     "create_task_tool",
@@ -112,4 +115,5 @@ __all__ = [
     "reorder_agenda_items_tool",
     "fetch_meeting_context_tool",
     "list_recurring_meetings_tool",
+    "ask_user_questions_tool",
 ]

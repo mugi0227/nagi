@@ -267,6 +267,9 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
             timestamp={message.timestamp}
             toolCalls={message.toolCalls}
             proposals={message.proposals}
+            questions={message.questions}
+            questionsContext={message.questionsContext}
+            onQuestionsSubmit={(answer) => sendMessageStream(answer)}
             meetingTasks={meetingTasks}
             isStreaming={message.isStreaming}
             imageUrl={message.imageUrl}
