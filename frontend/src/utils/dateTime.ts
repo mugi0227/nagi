@@ -30,7 +30,8 @@ export const toDateTime = (value: string | Date, timezone = getStoredTimezone())
   if (hasTimezoneInfo(value)) {
     return DateTime.fromISO(value, { setZone: true }).setZone(timezone);
   }
-  return DateTime.fromISO(value, { zone: timezone });
+  // バックエンドからのタイムゾーン情報なしの日時はUTCとして解釈し、ユーザーのタイムゾーンに変換
+  return DateTime.fromISO(value, { zone: 'UTC' }).setZone(timezone);
 };
 
 export const toDateKey = (value: string | Date, timezone?: string) => {
