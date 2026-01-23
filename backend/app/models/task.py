@@ -56,6 +56,13 @@ class TaskBase(BaseModel):
     recurring_meeting_id: Optional[UUID] = Field(None, description="定例会議ID（定例から生成された場合）")
     milestone_id: Optional[UUID] = Field(None, description="関連マイルストーンID")
 
+    # Achievement-related fields
+    completion_note: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="達成メモ（どのように達成したか、学んだこと等）",
+    )
+
     @model_validator(mode='after')
     def validate_fixed_time(self):
         """Validate fixed-time task constraints."""
@@ -124,6 +131,7 @@ class TaskUpdate(BaseModel):
     meeting_notes: Optional[str] = Field(None, max_length=5000)
     recurring_meeting_id: Optional[UUID] = None
     milestone_id: Optional[UUID] = None
+    completion_note: Optional[str] = Field(None, max_length=2000)
 
 
 class Task(TaskBase):
@@ -136,6 +144,7 @@ class Task(TaskBase):
     created_by: CreatedBy = Field(CreatedBy.USER)
     created_at: datetime
     updated_at: datetime
+    completed_at: Optional[datetime] = Field(None, description="完了日時（DONEになった時刻）")
 
     class Config:
         from_attributes = True

@@ -32,6 +32,7 @@ from app.interfaces.user_repository import IUserRepository
 from app.interfaces.project_invitation_repository import IProjectInvitationRepository
 from app.interfaces.schedule_snapshot_repository import IScheduleSnapshotRepository
 from app.interfaces.issue_repository import IIssueRepository
+from app.interfaces.achievement_repository import IAchievementRepository
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.speech_provider import ISpeechToTextProvider
 from app.interfaces.storage_provider import IStorageProvider
@@ -263,6 +264,17 @@ def get_issue_repository() -> IIssueRepository:
         return SqliteIssueRepository()
 
 
+@lru_cache()
+def get_achievement_repository() -> IAchievementRepository:
+    """Get achievement repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Achievement repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.achievement_repository import SqliteAchievementRepository
+        return SqliteAchievementRepository()
+
+
 # ===========================================
 # Provider Dependencies
 # ===========================================
@@ -416,4 +428,5 @@ StorageProvider = Annotated[IStorageProvider, Depends(get_storage_provider)]
 SpeechProvider = Annotated[ISpeechToTextProvider, Depends(get_speech_provider)]
 ScheduleSnapshotRepo = Annotated[IScheduleSnapshotRepository, Depends(get_schedule_snapshot_repository)]
 IssueRepo = Annotated[IIssueRepository, Depends(get_issue_repository)]
+AchievementRepo = Annotated[IAchievementRepository, Depends(get_achievement_repository)]
 CurrentUser = Annotated[User, Depends(get_current_user)]

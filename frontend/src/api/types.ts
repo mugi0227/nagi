@@ -958,3 +958,65 @@ export interface QuestionAnswer {
   selected_options: string[];
   other_text?: string;
 }
+
+// ===========================================
+// Achievement Models
+// ===========================================
+
+export type GenerationType = 'AUTO' | 'MANUAL';
+
+export interface SkillExperience {
+  category: string;
+  experience_count: number;
+  percentage: number;
+}
+
+export interface SkillAnalysis {
+  domain_skills: SkillExperience[];
+  soft_skills: SkillExperience[];
+  work_types: SkillExperience[];
+  strengths: string[];
+  growth_areas: string[];
+}
+
+export interface Achievement {
+  id: string;
+  user_id: string;
+  period_start: string;
+  period_end: string;
+  period_label?: string;
+  summary: string;
+  growth_points: string[];
+  skill_analysis: SkillAnalysis;
+  next_suggestions: string[];
+  task_count: number;
+  project_ids: string[];
+  generation_type: GenerationType;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AchievementCreate {
+  period_start: string;
+  period_end: string;
+  period_label?: string;
+}
+
+export interface AchievementListResponse {
+  achievements: Achievement[];
+  total: number;
+}
+
+export interface CompletedTaskPreview {
+  id: string;
+  title: string;
+  description?: string;
+  project_id?: string;
+  completed_at: string;
+  completion_note?: string;
+}
+
+export interface CompletedTasksPreviewResponse {
+  task_count: number;
+  tasks: CompletedTaskPreview[];
+}

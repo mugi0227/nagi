@@ -81,6 +81,10 @@ class TaskORM(Base):
     recurring_meeting_id = Column(String(36), nullable=True, index=True)
     milestone_id = Column(String(36), nullable=True, index=True)
 
+    # Achievement-related fields
+    completion_note = Column(Text, nullable=True)
+    completed_at = Column(DateTime, nullable=True, index=True)
+
 
 class ProjectORM(Base):
     """Project ORM model."""
@@ -470,6 +474,33 @@ class ScheduleSnapshotORM(Base):
     capacity_by_weekday = Column(JSON, nullable=True)  # List of 7 floats
     max_days = Column(Integer, default=60)
     plan_utilization_ratio = Column(Float, default=1.0)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+
+class AchievementORM(Base):
+    """Achievement ORM model for storing AI-generated achievement summaries."""
+
+    __tablename__ = "achievements"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    period_start = Column(DateTime, nullable=False, index=True)
+    period_end = Column(DateTime, nullable=False, index=True)
+    period_label = Column(String(100), nullable=True)
+
+    # AI-generated content (stored as JSON)
+    summary = Column(Text, nullable=False)
+    growth_points = Column(JSON, nullable=True, default=list)
+    skill_analysis = Column(JSON, nullable=True)  # SkillAnalysis as JSON
+    next_suggestions = Column(JSON, nullable=True, default=list)
+
+    # Statistics
+    task_count = Column(Integer, default=0)
+    project_ids = Column(JSON, nullable=True, default=list)
+
+    # Metadata
+    generation_type = Column(String(20), default="MANUAL")  # AUTO or MANUAL
     created_at = Column(DateTime, default=now_utc)
     updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 

@@ -65,6 +65,8 @@ class SqliteTaskRepository(ITaskRepository):
             meeting_notes=orm.meeting_notes,
             recurring_meeting_id=UUID(orm.recurring_meeting_id) if orm.recurring_meeting_id else None,
             milestone_id=UUID(orm.milestone_id) if orm.milestone_id else None,
+            completion_note=orm.completion_note if hasattr(orm, 'completion_note') else None,
+            completed_at=orm.completed_at if hasattr(orm, 'completed_at') else None,
         )
 
     async def create(self, user_id: str, task: TaskCreate) -> Task:
@@ -98,6 +100,7 @@ class SqliteTaskRepository(ITaskRepository):
                 attendees=task.attendees,
                 meeting_notes=task.meeting_notes,
                 milestone_id=str(task.milestone_id) if task.milestone_id else None,
+                completion_note=task.completion_note if hasattr(task, 'completion_note') else None,
             )
             session.add(orm)
             await session.commit()
@@ -193,6 +196,13 @@ class SqliteTaskRepository(ITaskRepository):
 
             orm.updated_at = datetime.utcnow()
 
+            # Auto-set completed_at when status changes to DONE
+            if status_value == TaskStatus.DONE.value and orm.completed_at is None:
+                orm.completed_at = datetime.utcnow()
+            elif status_value is not None and status_value != TaskStatus.DONE.value:
+                # Clear completed_at if status changes from DONE to something else
+                orm.completed_at = None
+
             # Cascade status to subtasks
             if status_value is not None:
                 if orm.project_id:
@@ -210,6 +220,11 @@ class SqliteTaskRepository(ITaskRepository):
                 for subtask in subtask_result.scalars().all():
                     subtask.status = status_value
                     subtask.updated_at = datetime.utcnow()
+                    # Auto-set completed_at for subtasks as well
+                    if status_value == TaskStatus.DONE.value and subtask.completed_at is None:
+                        subtask.completed_at = datetime.utcnow()
+                    elif status_value != TaskStatus.DONE.value:
+                        subtask.completed_at = None
 
             await session.commit()
             await session.refresh(orm)
@@ -374,6 +389,60 @@ class SqliteTaskRepository(ITaskRepository):
                 query = query.where(TaskORM.start_time < end_before)
 
             query = query.order_by(TaskORM.start_time.asc())
+
+            result = await session.execute(query)
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]
+
+    async def list_completed_in_period(
+        self,
+        user_id: str,
+        period_start: datetime,
+        period_end: datetime,
+        project_id: Optional[UUID] = None,
+    ) -> list[Task]:
+        """
+        List tasks completed within a specific period.
+
+        Uses completed_at if available, falls back to updated_at for older data.
+
+        Args:
+            user_id: User ID
+            period_start: Period start datetime (inclusive)
+            period_end: Period end datetime (exclusive)
+            project_id: Optional project ID filter
+
+        Returns:
+            List of completed tasks in the period
+        """
+        async with self._session_factory() as session:
+            # Filter by user and DONE status
+            conditions = [
+                TaskORM.user_id == user_id,
+                TaskORM.status == TaskStatus.DONE.value,
+            ]
+
+            if project_id is not None:
+                conditions.append(TaskORM.project_id == str(project_id))
+
+            # Use completed_at if available, otherwise fall back to updated_at
+            # This handles both new tasks (with completed_at) and legacy tasks
+            conditions.append(
+                or_(
+                    and_(
+                        TaskORM.completed_at.isnot(None),
+                        TaskORM.completed_at >= period_start,
+                        TaskORM.completed_at < period_end,
+                    ),
+                    and_(
+                        TaskORM.completed_at.is_(None),
+                        TaskORM.updated_at >= period_start,
+                        TaskORM.updated_at < period_end,
+                    ),
+                )
+            )
+
+            query = select(TaskORM).where(and_(*conditions))
+            query = query.order_by(TaskORM.completed_at.desc().nullslast(), TaskORM.updated_at.desc())
 
             result = await session.execute(query)
             return [self._orm_to_model(orm) for orm in result.scalars().all()]

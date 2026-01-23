@@ -57,6 +57,7 @@ def create_app() -> FastAPI:
 
     # Include routers
     from app.api import (
+        achievements,
         agent_tasks,
         auth,
         captures,
@@ -93,6 +94,7 @@ def create_app() -> FastAPI:
     app.include_router(today.router, prefix="/api/today", tags=["today"])
     app.include_router(users.router, prefix="/api/users", tags=["users"])
     app.include_router(issues.router, prefix="/api/issues", tags=["issues"])
+    app.include_router(achievements.router, prefix="/api/achievements", tags=["achievements"])
 
     # Mount storage for local development
     storage_path = settings.STORAGE_BASE_PATH
