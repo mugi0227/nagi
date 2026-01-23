@@ -74,9 +74,6 @@ def _compute_total_estimated_minutes(task_list: list[Task]) -> int:
 
 def _compute_task_kpis(tasks: Iterable[Task]) -> dict[str, float | int]:
     task_list = list(tasks)
-    total_tasks = len(task_list)
-    done_tasks = [task for task in task_list if task.status == TaskStatus.DONE]
-    done_count = len(done_tasks)
 
     now = datetime.utcnow()
     week_cutoff = now - timedelta(days=7)
@@ -88,6 +85,14 @@ def _compute_task_kpis(tasks: Iterable[Task]) -> dict[str, float | int]:
 
     task_by_id, tasks_by_parent, top_level = _build_task_index(task_list)
     done_ids = {task.id for task in task_list if task.status == TaskStatus.DONE}
+
+    # For completion rate: exclude parent tasks that have subtasks (count only leaf tasks)
+    # Leaf tasks = subtasks + tasks without children
+    parent_ids_with_children = set(tasks_by_parent.keys())
+    leaf_tasks = [task for task in task_list if task.id not in parent_ids_with_children]
+    total_leaf_tasks = len(leaf_tasks)
+    done_leaf_tasks = [task for task in leaf_tasks if task.status == TaskStatus.DONE]
+    done_leaf_count = len(done_leaf_tasks)
 
     for task in task_list:
         if task.status == TaskStatus.IN_PROGRESS:
@@ -120,7 +125,7 @@ def _compute_task_kpis(tasks: Iterable[Task]) -> dict[str, float | int]:
                     blocked_tasks += 1
                     break
 
-    completion_rate = _round((done_count / total_tasks) * 100) if total_tasks else 0.0
+    completion_rate = _round((done_leaf_count / total_leaf_tasks) * 100) if total_leaf_tasks else 0.0
     remaining_minutes = sum(_remaining_minutes_for_task(task, tasks_by_parent) for task in top_level)
     remaining_hours = _round(remaining_minutes / 60) if remaining_minutes else 0.0
 

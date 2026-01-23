@@ -2,8 +2,8 @@
 Unit tests for Phase task count and KPI completion rate calculations.
 
 These tests verify:
-1. Phase task counts include subtasks
-2. KPI completion rate calculation
+1. Phase task counts only count parent tasks (not subtasks)
+2. KPI completion rate counts leaf tasks only (excludes parents with children)
 3. Behavior after task deletion (physical deletion)
 """
 
@@ -61,8 +61,8 @@ async def test_phase_task_count_basic(session_factory, test_user_id):
 
 
 @pytest.mark.asyncio
-async def test_phase_task_count_includes_subtasks(session_factory, test_user_id):
-    """Test that phase task counts include subtasks."""
+async def test_phase_task_count_excludes_subtasks(session_factory, test_user_id):
+    """Test that phase task counts only count parent tasks, NOT subtasks."""
     project_repo = SqliteProjectRepository(session_factory=session_factory)
     phase_repo = SqlitePhaseRepository(session_factory=session_factory)
     task_repo = SqliteTaskRepository(session_factory=session_factory)
@@ -101,9 +101,9 @@ async def test_phase_task_count_includes_subtasks(session_factory, test_user_id)
             ),
         )
 
-    # Phase should count 3 tasks (1 parent + 2 subtasks)
+    # Phase should count only 1 task (parent only, subtasks excluded)
     phases = await phase_repo.list_by_project(test_user_id, project.id)
-    assert phases[0].total_tasks == 3  # Parent + 2 subtasks
+    assert phases[0].total_tasks == 1  # Parent only, subtasks not counted
 
 
 @pytest.mark.asyncio
@@ -214,11 +214,13 @@ async def test_kpi_completion_rate_basic():
 
 
 @pytest.mark.asyncio
-async def test_kpi_completion_rate_includes_subtasks():
-    """Test that KPI completion rate includes subtasks."""
+async def test_kpi_completion_rate_excludes_parent_with_children():
+    """Test that KPI completion rate excludes parent tasks that have subtasks."""
     parent_id = uuid4()
 
     # Create parent task (TODO) with 2 subtasks (both DONE)
+    # Parent is excluded because it has children
+    # Only leaf tasks (subtasks) are counted
     tasks = [
         _create_mock_task(id=parent_id, status=TaskStatus.TODO),
         _create_mock_task(parent_id=parent_id, status=TaskStatus.DONE),
@@ -227,7 +229,27 @@ async def test_kpi_completion_rate_includes_subtasks():
 
     kpis = _compute_task_kpis(tasks)
 
-    # 2 done out of 3 (including subtasks) = 66.67%
+    # Parent excluded, 2 subtasks both DONE → 2/2 = 100%
+    assert kpis["completion_rate"] == 100.0
+
+
+@pytest.mark.asyncio
+async def test_kpi_completion_rate_mixed_subtasks():
+    """Test KPI completion rate with parent and mixed subtask statuses."""
+    parent_id = uuid4()
+
+    # Parent (TODO) with 3 subtasks: 2 DONE, 1 TODO
+    # Parent is excluded, only 3 subtasks counted
+    tasks = [
+        _create_mock_task(id=parent_id, status=TaskStatus.TODO),
+        _create_mock_task(parent_id=parent_id, status=TaskStatus.DONE),
+        _create_mock_task(parent_id=parent_id, status=TaskStatus.DONE),
+        _create_mock_task(parent_id=parent_id, status=TaskStatus.TODO),
+    ]
+
+    kpis = _compute_task_kpis(tasks)
+
+    # Parent excluded, 2/3 subtasks done → 66.67%
     assert kpis["completion_rate"] == pytest.approx(66.67, rel=0.01)
 
 
