@@ -7,7 +7,7 @@ interface Props {
 }
 
 export function IssueChatWindow({ onClose }: Props) {
-  const { messages, isStreaming, sendMessage, clearMessages } = useIssueChat();
+  const { messages, isStreaming, sendMessage } = useIssueChat();
   const [input, setInput] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -87,11 +87,11 @@ function MessageBubble({ message }: { message: IssueChatMessage }) {
                 <span className="tool-name">
                   {tc.status === 'running' ? '⏳' : '✓'} {tc.name}
                 </span>
-                {tc.result && (
+                {tc.result !== undefined && tc.result !== null && (
                   <span className="tool-result">
                     {typeof tc.result === 'object'
                       ? JSON.stringify(tc.result)
-                      : String(tc.result)}
+                      : String(tc.result as string | number | boolean)}
                   </span>
                 )}
               </div>

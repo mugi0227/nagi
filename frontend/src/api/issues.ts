@@ -57,7 +57,7 @@ export const issuesApi = {
   delete: (issueId: string) => api.delete<void>(`/issues/${issueId}`),
 
   // Like
-  like: (issueId: string) => api.post<Issue>(`/issues/${issueId}/like`),
+  like: (issueId: string) => api.post<Issue>(`/issues/${issueId}/like`, {}),
 
   unlike: (issueId: string) => api.delete<Issue>(`/issues/${issueId}/like`),
 
