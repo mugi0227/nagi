@@ -3,7 +3,7 @@ import { getAuthToken } from './auth';
 import type { ChatRequest, ChatResponse, ChatSession, ChatHistoryMessage } from './types';
 
 export interface StreamChunk {
-  chunk_type: 'tool_start' | 'tool_end' | 'tool_error' | 'text' | 'done' | 'error' | 'proposal';
+  chunk_type: 'tool_start' | 'tool_end' | 'tool_error' | 'text' | 'done' | 'error' | 'proposal' | 'questions';
   tool_name?: string;
   tool_args?: Record<string, unknown>;
   tool_result?: string;
@@ -17,6 +17,14 @@ export interface StreamChunk {
   proposal_type?: 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown' | 'tool_action';
   description?: string;
   payload?: Record<string, unknown>;
+  // Questions-specific fields (ask_user_questions tool)
+  questions?: Array<{
+    id: string;
+    question: string;
+    options: string[];
+    allow_multiple: boolean;
+  }>;
+  context?: string;
 }
 
 export const chatApi = {

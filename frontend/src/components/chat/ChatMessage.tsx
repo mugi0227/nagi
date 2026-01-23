@@ -4,10 +4,11 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { useQueryClient } from '@tanstack/react-query';
 import type { ToolCall, ProposalInfo } from '../../hooks/useChat';
-import type { Task } from '../../api/types';
+import type { PendingQuestion, Task } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, toDateKey, toDateTime } from '../../utils/dateTime';
 import { ProposalCard } from './ProposalCard';
+import { QuestionsCard } from './QuestionsCard';
 import './ChatMessage.css';
 
 const PREVIEW_DEFAULT_START = 8;
@@ -211,6 +212,9 @@ interface ChatMessageProps {
   timestamp: Date;
   toolCalls?: ToolCall[];
   proposals?: ProposalInfo[];
+  questions?: PendingQuestion[];
+  questionsContext?: string;
+  onQuestionsSubmit?: (answer: string) => void;
   meetingTasks?: Task[];
   isStreaming?: boolean;
   imageUrl?: string;  // Added for image attachments
@@ -222,6 +226,9 @@ export function ChatMessage({
   timestamp,
   toolCalls,
   proposals,
+  questions,
+  questionsContext,
+  onQuestionsSubmit,
   meetingTasks,
   isStreaming,
   imageUrl,
@@ -406,6 +413,17 @@ export function ChatMessage({
                 onReject={handleProposalAction}
               />
             ))}
+          </div>
+        )}
+
+        {/* Questions */}
+        {questions && questions.length > 0 && onQuestionsSubmit && (
+          <div className="questions">
+            <QuestionsCard
+              questions={questions}
+              context={questionsContext}
+              onSubmit={onQuestionsSubmit}
+            />
           </div>
         )}
 

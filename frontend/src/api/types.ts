@@ -939,3 +939,22 @@ export interface IssueChatChunk {
   tool_args?: Record<string, unknown>;
   tool_result?: unknown;
 }
+
+// User Questions (ask_user_questions tool)
+export interface PendingQuestion {
+  id: string;
+  question: string;
+  options: string[];
+  allow_multiple: boolean;
+}
+
+export interface PendingQuestions {
+  questions: PendingQuestion[];
+  context?: string;
+}
+
+export interface QuestionAnswer {
+  question_id: string;
+  selected_options: string[];
+  other_text?: string;
+}

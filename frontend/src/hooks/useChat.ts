@@ -8,6 +8,7 @@ import type {
   ChatResponse,
   ChatSession,
   MemoryCreate,
+  PendingQuestion,
   PhaseBreakdownProposal,
   ProjectCreate,
   TaskAssignmentProposal,
@@ -42,6 +43,8 @@ export interface Message {
   timestamp: Date;
   toolCalls?: ToolCall[];
   proposals?: ProposalInfo[];
+  questions?: PendingQuestion[];
+  questionsContext?: string;
   isStreaming?: boolean;
   imageUrl?: string;
 }
@@ -337,6 +340,22 @@ export function useChat() {
                           ...(msg.proposals || []),
                           proposalInfo,
                         ],
+                      }
+                      : msg
+                  )
+                );
+              }
+              break;
+
+            case 'questions':
+              if (chunk.questions && chunk.questions.length > 0) {
+                setMessages((prev) =>
+                  prev.map((msg) =>
+                    msg.id === assistantMessageId
+                      ? {
+                        ...msg,
+                        questions: chunk.questions,
+                        questionsContext: chunk.context,
                       }
                       : msg
                   )
