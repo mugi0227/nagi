@@ -18,6 +18,7 @@ class TaskBase(BaseModel):
 
     title: str = Field(..., min_length=1, max_length=500, description="タスクタイトル")
     description: Optional[str] = Field(None, max_length=2000, description="タスクの詳細説明")
+    purpose: Optional[str] = Field(None, max_length=1000, description="なぜやるか（目的）")
     project_id: Optional[UUID] = Field(None, description="所属プロジェクトID (InboxならNull)")
     phase_id: Optional[UUID] = Field(None, description="所属フェーズID（プロジェクト内での分類）")
     importance: Priority = Field(Priority.MEDIUM, description="重要度 (HIGH/MEDIUM/LOW)")
@@ -99,6 +100,7 @@ class TaskUpdate(BaseModel):
 
     title: Optional[str] = Field(None, min_length=1, max_length=500)
     description: Optional[str] = Field(None, max_length=2000)
+    purpose: Optional[str] = Field(None, max_length=1000)
     project_id: Optional[UUID] = None
     phase_id: Optional[UUID] = None
     status: Optional[TaskStatus] = None

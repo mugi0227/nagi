@@ -53,6 +53,7 @@ class TaskORM(Base):
     phase_id = Column(String(36), nullable=True, index=True)
     title = Column(String(500), nullable=False)
     description = Column(Text, nullable=True)
+    purpose = Column(Text, nullable=True)
     status = Column(String(20), default="TODO", index=True)
     importance = Column(String(10), default="MEDIUM")
     urgency = Column(String(10), default="MEDIUM")

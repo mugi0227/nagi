@@ -56,6 +56,7 @@ export interface Task {
   user_id: string;
   title: string;
   description?: string;
+  purpose?: string;
   project_id?: string;
   phase_id?: string;
   status: TaskStatus;
@@ -91,6 +92,7 @@ export interface Task {
 export interface TaskCreate {
   title: string;
   description?: string;
+  purpose?: string;
   project_id?: string;
   phase_id?: string;
   importance?: Priority;
@@ -117,6 +119,7 @@ export interface TaskCreate {
 export interface TaskUpdate {
   title?: string;
   description?: string;
+  purpose?: string;
   project_id?: string;
   phase_id?: string;
   status?: TaskStatus;

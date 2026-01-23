@@ -395,6 +395,15 @@ export function TaskDetailModal({
                 </div>
               )}
 
+              {task.purpose && (
+                <div className="detail-section">
+                  <h3 className="section-label">なぜやるか（目的）</h3>
+                  <div className="purpose-container">
+                    <p className="purpose-text">{task.purpose}</p>
+                  </div>
+                </div>
+              )}
+
               {isMeeting && (
                 <>
                   <div className="detail-section meeting-section">
