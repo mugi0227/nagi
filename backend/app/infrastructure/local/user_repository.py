@@ -155,3 +155,9 @@ class SqliteUserRepository(IUserRepository):
                 .limit(limit)
             )
             return [self._orm_to_model(orm) for orm in result.scalars().all()]
+
+    async def list_all(self) -> list[UserAccount]:
+        """List all users."""
+        async with self._session_factory() as session:
+            result = await session.execute(select(UserORM))
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]

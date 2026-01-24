@@ -27,10 +27,16 @@ async def lifespan(app: FastAPI):
 
         await init_db()  # This also runs migrations
 
+    # Start background scheduler for periodic jobs
+    from app.services.background_scheduler import start_background_scheduler, stop_background_scheduler
+
+    await start_background_scheduler()
+
     yield
 
     # Shutdown
     print("Shutting down Secretary Partner AI...")
+    await stop_background_scheduler()
 
 
 def create_app() -> FastAPI:
