@@ -22,6 +22,8 @@ from app.models.achievement import Achievement, SkillAnalysis
 from app.models.enums import GenerationType
 from app.services.achievement_service import (
     generate_achievement,
+    generate_achievement_with_answers,
+    generate_review_questions,
     check_and_auto_generate,
 )
 
@@ -39,6 +41,10 @@ class GenerateAchievementRequest(BaseModel):
     period_start: datetime = Field(..., description="Period start datetime")
     period_end: datetime = Field(..., description="Period end datetime")
     period_label: Optional[str] = Field(None, description="Human-readable period label")
+    user_answers: Optional[dict] = Field(
+        None,
+        description="Optional answers from review questions flow"
+    )
 
 
 class AchievementResponse(BaseModel):
@@ -104,6 +110,9 @@ async def create_achievement(
 
     This endpoint uses AI to analyze completed tasks and generate
     a comprehensive achievement summary including skill analysis.
+
+    Optionally accepts user_answers from the review questions flow
+    to enhance the generated achievement with user reflections.
     """
     # Validate period
     if request.period_end <= request.period_start:
@@ -112,16 +121,30 @@ async def create_achievement(
             detail="period_end must be after period_start",
         )
 
-    achievement = await generate_achievement(
-        llm_provider=llm_provider,
-        task_repo=task_repo,
-        achievement_repo=achievement_repo,
-        user_id=user.id,
-        period_start=request.period_start,
-        period_end=request.period_end,
-        period_label=request.period_label,
-        generation_type=GenerationType.MANUAL,
-    )
+    # Use enhanced generation if user answers are provided
+    if request.user_answers:
+        achievement = await generate_achievement_with_answers(
+            llm_provider=llm_provider,
+            task_repo=task_repo,
+            achievement_repo=achievement_repo,
+            user_id=user.id,
+            period_start=request.period_start,
+            period_end=request.period_end,
+            period_label=request.period_label,
+            user_answers=request.user_answers,
+            generation_type=GenerationType.MANUAL,
+        )
+    else:
+        achievement = await generate_achievement(
+            llm_provider=llm_provider,
+            task_repo=task_repo,
+            achievement_repo=achievement_repo,
+            user_id=user.id,
+            period_start=request.period_start,
+            period_end=request.period_end,
+            period_label=request.period_label,
+            generation_type=GenerationType.MANUAL,
+        )
 
     return AchievementResponse.from_model(achievement)
 
@@ -231,6 +254,36 @@ async def auto_generate_achievement(
     if not achievement:
         return None
     return AchievementResponse.from_model(achievement)
+
+
+@router.get("/review-questions")
+async def get_review_questions(
+    user: CurrentUser,
+    task_repo: TaskRepo,
+    period_start: datetime = Query(..., description="Period start datetime"),
+    period_end: datetime = Query(..., description="Period end datetime"),
+):
+    """
+    Get review questions for achievement generation.
+
+    Returns questions based on completed tasks in the period.
+    Users can answer these questions and submit with the
+    achievement generation request for enhanced results.
+    """
+    if period_end <= period_start:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="period_end must be after period_start",
+        )
+
+    result = await generate_review_questions(
+        task_repo=task_repo,
+        user_id=user.id,
+        period_start=period_start,
+        period_end=period_end,
+    )
+
+    return result
 
 
 @router.get("/preview/completed-tasks")

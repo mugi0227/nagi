@@ -380,6 +380,286 @@ async def _create_empty_achievement(
     return await achievement_repo.create(user_id, achievement)
 
 
+def _generate_review_questions(tasks: list[Task]) -> list[dict]:
+    """
+    Generate review questions based on completed tasks.
+
+    Returns questions that help users reflect on their achievements.
+    Used for interactive achievement generation flow.
+    """
+    questions = []
+
+    # Tasks without completion notes
+    tasks_without_notes = [t for t in tasks if not t.completion_note]
+    if tasks_without_notes:
+        # Pick up to 3 representative tasks
+        sample_tasks = tasks_without_notes[:3]
+        task_titles = [t.title for t in sample_tasks]
+        questions.append({
+            "id": "completion_notes",
+            "question": "以下のタスクについて、工夫したことや学んだことがあれば教えてください",
+            "context": "、".join(task_titles),
+            "options": [
+                "特になし",
+                "新しい発見があった",
+                "効率的な方法を見つけた",
+                "難しかったが乗り越えた",
+            ],
+            "allow_multiple": True,
+        })
+
+    # General reflection question
+    questions.append({
+        "id": "highlight",
+        "question": "この期間で一番印象に残っている成果は何ですか？",
+        "options": [
+            "特になし",
+            "大きなタスクを完了した",
+            "新しいスキルを習得した",
+            "困難を乗り越えた",
+            "チームに貢献できた",
+        ],
+        "allow_multiple": False,
+    })
+
+    # Challenge question
+    questions.append({
+        "id": "challenge",
+        "question": "予想より難しかったこと・うまくいかなかったことはありますか？",
+        "options": [
+            "特になし",
+            "時間が足りなかった",
+            "技術的に難しかった",
+            "調整が大変だった",
+            "モチベーション維持が難しかった",
+        ],
+        "allow_multiple": True,
+    })
+
+    # Growth question
+    if len(tasks) >= 3:
+        questions.append({
+            "id": "growth",
+            "question": "この期間で成長を感じたことはありますか？",
+            "options": [
+                "特になし",
+                "作業スピードが上がった",
+                "クオリティが上がった",
+                "新しいことに挑戦できた",
+                "効率的に進められるようになった",
+            ],
+            "allow_multiple": True,
+        })
+
+    return questions
+
+
+async def generate_review_questions(
+    task_repo: ITaskRepository,
+    user_id: str,
+    period_start: datetime,
+    period_end: datetime,
+) -> dict:
+    """
+    Generate review questions for achievement generation.
+
+    Args:
+        task_repo: Task repository
+        user_id: User ID
+        period_start: Period start datetime
+        period_end: Period end datetime
+
+    Returns:
+        Dictionary with questions and task info
+    """
+    # Fetch completed tasks in the period
+    completed_tasks = await task_repo.list_completed_in_period(
+        user_id=user_id,
+        period_start=period_start,
+        period_end=period_end,
+    )
+
+    if not completed_tasks:
+        return {
+            "questions": [],
+            "task_count": 0,
+            "message": "この期間に完了したタスクはありません",
+        }
+
+    questions = _generate_review_questions(completed_tasks)
+
+    return {
+        "questions": questions,
+        "task_count": len(completed_tasks),
+        "tasks_preview": [
+            {
+                "id": str(t.id),
+                "title": t.title,
+                "has_completion_note": bool(t.completion_note),
+            }
+            for t in completed_tasks[:10]  # Preview first 10
+        ],
+    }
+
+
+def _generate_achievement_prompt_with_answers(
+    tasks: list[Task],
+    period_start: datetime,
+    period_end: datetime,
+    period_label: Optional[str] = None,
+    user_answers: Optional[dict] = None,
+) -> str:
+    """Generate the prompt for achievement generation with user answers."""
+    base_prompt = _generate_achievement_prompt(
+        tasks=tasks,
+        period_start=period_start,
+        period_end=period_end,
+        period_label=period_label,
+    )
+
+    if not user_answers:
+        return base_prompt
+
+    # Add user answers section
+    answer_lines = ["", "## ユーザーからの振り返り回答", ""]
+
+    if user_answers.get("highlight"):
+        answer_lines.append(f"- 印象に残った成果: {user_answers['highlight']}")
+
+    if user_answers.get("challenge"):
+        challenges = user_answers["challenge"]
+        if isinstance(challenges, list):
+            answer_lines.append(f"- 難しかったこと: {', '.join(challenges)}")
+        else:
+            answer_lines.append(f"- 難しかったこと: {challenges}")
+
+    if user_answers.get("growth"):
+        growth = user_answers["growth"]
+        if isinstance(growth, list):
+            answer_lines.append(f"- 成長を感じたこと: {', '.join(growth)}")
+        else:
+            answer_lines.append(f"- 成長を感じたこと: {growth}")
+
+    if user_answers.get("completion_notes"):
+        notes = user_answers["completion_notes"]
+        if isinstance(notes, list):
+            answer_lines.append(f"- タスクについての振り返り: {', '.join(notes)}")
+        else:
+            answer_lines.append(f"- タスクについての振り返り: {notes}")
+
+    if user_answers.get("freeform"):
+        answer_lines.append(f"- 自由回答: {user_answers['freeform']}")
+
+    answer_section = "\n".join(answer_lines)
+
+    # Insert before the response format instruction
+    insert_point = base_prompt.rfind("回答はJSON形式で返してください。")
+    if insert_point != -1:
+        return base_prompt[:insert_point] + answer_section + "\n\n" + base_prompt[insert_point:]
+
+    return base_prompt + answer_section
+
+
+async def generate_achievement_with_answers(
+    llm_provider: ILLMProvider,
+    task_repo: ITaskRepository,
+    achievement_repo: IAchievementRepository,
+    user_id: str,
+    period_start: datetime,
+    period_end: datetime,
+    period_label: Optional[str] = None,
+    user_answers: Optional[dict] = None,
+    generation_type: GenerationType = GenerationType.MANUAL,
+) -> Achievement:
+    """
+    Generate an achievement summary with user-provided answers.
+
+    Args:
+        llm_provider: LLM provider for AI generation
+        task_repo: Task repository
+        achievement_repo: Achievement repository
+        user_id: User ID
+        period_start: Period start datetime
+        period_end: Period end datetime
+        period_label: Optional human-readable period label
+        user_answers: Dictionary of user answers to review questions
+        generation_type: AUTO or MANUAL
+
+    Returns:
+        Generated and saved Achievement
+    """
+    # Fetch completed tasks in the period
+    completed_tasks = await task_repo.list_completed_in_period(
+        user_id=user_id,
+        period_start=period_start,
+        period_end=period_end,
+    )
+
+    if not completed_tasks:
+        return await _create_empty_achievement(
+            achievement_repo=achievement_repo,
+            user_id=user_id,
+            period_start=period_start,
+            period_end=period_end,
+            period_label=period_label,
+            generation_type=generation_type,
+        )
+
+    # Generate AI analysis with user answers
+    prompt = _generate_achievement_prompt_with_answers(
+        tasks=completed_tasks,
+        period_start=period_start,
+        period_end=period_end,
+        period_label=period_label,
+        user_answers=user_answers,
+    )
+
+    response_text = generate_text(
+        llm_provider=llm_provider,
+        prompt=prompt,
+        temperature=0.3,
+        max_output_tokens=2000,
+        response_mime_type="application/json",
+    )
+
+    # Parse AI response
+    ai_result = _parse_ai_response(response_text)
+
+    # Calculate statistics
+    project_ids = list(set(
+        task.project_id for task in completed_tasks
+        if task.project_id is not None
+    ))
+
+    # Build skill analysis with percentages
+    skill_analysis = _build_skill_analysis(
+        ai_result.get("skill_analysis", {}),
+        len(completed_tasks),
+    )
+
+    # Create achievement
+    achievement = Achievement(
+        id=uuid4(),
+        user_id=user_id,
+        period_start=period_start,
+        period_end=period_end,
+        period_label=period_label,
+        summary=ai_result.get("summary", "この期間の達成内容をまとめられませんでした。"),
+        growth_points=ai_result.get("growth_points", []),
+        skill_analysis=skill_analysis,
+        next_suggestions=ai_result.get("next_suggestions", []),
+        task_count=len(completed_tasks),
+        project_ids=project_ids,
+        generation_type=generation_type,
+        created_at=datetime.utcnow(),
+        updated_at=datetime.utcnow(),
+    )
+
+    # Save to repository
+    saved = await achievement_repo.create(user_id, achievement)
+    return saved
+
+
 async def check_and_auto_generate(
     llm_provider: ILLMProvider,
     task_repo: ITaskRepository,
