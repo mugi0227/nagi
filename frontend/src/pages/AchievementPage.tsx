@@ -13,9 +13,9 @@ import {
   FaChevronUp,
 } from 'react-icons/fa';
 import { achievementsApi } from '../api/achievements';
-import type { Achievement, SkillExperience } from '../api/types';
+import type { SkillExperience } from '../api/types';
 import { useTimezone } from '../hooks/useTimezone';
-import { formatDate, nowInTimezone, toDateTime } from '../utils/dateTime';
+import { formatDate, nowInTimezone } from '../utils/dateTime';
 import './AchievementPage.css';
 
 type PeriodType = 'H1' | 'H2' | 'custom';
