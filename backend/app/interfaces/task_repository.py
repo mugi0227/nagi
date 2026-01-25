@@ -199,3 +199,25 @@ class ITaskRepository(ABC):
             List of tasks linked to the recurring meeting
         """
         pass
+
+    @abstractmethod
+    async def list_completed_in_period(
+        self,
+        user_id: str,
+        period_start: datetime,
+        period_end: datetime,
+        project_id: Optional[UUID] = None,
+    ) -> list[Task]:
+        """
+        List tasks completed within a specific period.
+
+        Args:
+            user_id: Owner user ID
+            period_start: Period start datetime
+            period_end: Period end datetime
+            project_id: Optional filter by project
+
+        Returns:
+            List of completed tasks in the period
+        """
+        pass

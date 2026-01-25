@@ -33,6 +33,8 @@ from app.interfaces.project_invitation_repository import IProjectInvitationRepos
 from app.interfaces.schedule_snapshot_repository import IScheduleSnapshotRepository
 from app.interfaces.issue_repository import IIssueRepository
 from app.interfaces.achievement_repository import IAchievementRepository
+from app.interfaces.project_achievement_repository import IProjectAchievementRepository
+from app.interfaces.notification_repository import INotificationRepository
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.speech_provider import ISpeechToTextProvider
 from app.interfaces.storage_provider import IStorageProvider
@@ -275,6 +277,28 @@ def get_achievement_repository() -> IAchievementRepository:
         return SqliteAchievementRepository()
 
 
+@lru_cache()
+def get_project_achievement_repository() -> IProjectAchievementRepository:
+    """Get project achievement repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Project achievement repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.project_achievement_repository import SqliteProjectAchievementRepository
+        return SqliteProjectAchievementRepository()
+
+
+@lru_cache()
+def get_notification_repository() -> INotificationRepository:
+    """Get notification repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Notification repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.notification_repository import SqliteNotificationRepository
+        return SqliteNotificationRepository()
+
+
 # ===========================================
 # Provider Dependencies
 # ===========================================
@@ -429,4 +453,6 @@ SpeechProvider = Annotated[ISpeechToTextProvider, Depends(get_speech_provider)]
 ScheduleSnapshotRepo = Annotated[IScheduleSnapshotRepository, Depends(get_schedule_snapshot_repository)]
 IssueRepo = Annotated[IIssueRepository, Depends(get_issue_repository)]
 AchievementRepo = Annotated[IAchievementRepository, Depends(get_achievement_repository)]
+ProjectAchievementRepo = Annotated[IProjectAchievementRepository, Depends(get_project_achievement_repository)]
+NotificationRepo = Annotated[INotificationRepository, Depends(get_notification_repository)]
 CurrentUser = Annotated[User, Depends(get_current_user)]

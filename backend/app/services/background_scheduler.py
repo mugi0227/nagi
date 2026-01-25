@@ -19,10 +19,16 @@ from app.core.config import get_settings
 from app.core.logger import logger
 from app.interfaces.achievement_repository import IAchievementRepository
 from app.interfaces.llm_provider import ILLMProvider
+from app.interfaces.notification_repository import INotificationRepository
+from app.interfaces.project_achievement_repository import IProjectAchievementRepository
+from app.interfaces.project_member_repository import IProjectMemberRepository
+from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.interfaces.user_repository import IUserRepository
 from app.models.enums import GenerationType
+from app.models.notification import NotificationCreate, NotificationType
 from app.services.achievement_service import generate_achievement
+from app.services.project_achievement_service import generate_project_achievement
 
 
 class BackgroundScheduler:
@@ -31,8 +37,9 @@ class BackgroundScheduler:
 
     Features:
     - Weekly achievement auto-generation (Friday 00:00)
+    - Weekly project achievement auto-generation
     - Startup check for missed runs
-    - Staggered user processing to avoid load spikes
+    - Staggered processing to avoid load spikes
     """
 
     def __init__(
@@ -40,11 +47,19 @@ class BackgroundScheduler:
         user_repo: IUserRepository,
         task_repo: ITaskRepository,
         achievement_repo: IAchievementRepository,
+        project_repo: IProjectRepository,
+        project_member_repo: IProjectMemberRepository,
+        project_achievement_repo: IProjectAchievementRepository,
+        notification_repo: INotificationRepository,
         llm_provider: ILLMProvider,
     ):
         self._user_repo = user_repo
         self._task_repo = task_repo
         self._achievement_repo = achievement_repo
+        self._project_repo = project_repo
+        self._project_member_repo = project_member_repo
+        self._project_achievement_repo = project_achievement_repo
+        self._notification_repo = notification_repo
         self._llm_provider = llm_provider
         self._scheduler: Optional[AsyncIOScheduler] = None
         self._last_run: Optional[datetime] = None
@@ -169,14 +184,89 @@ class BackgroundScheduler:
                     logger.error(f"Error generating achievement for user {user.id}: {e}")
 
             logger.info(
-                f"Weekly achievement generation completed: "
+                f"Weekly personal achievement generation completed: "
                 f"{generated_count} generated, {skipped_count} skipped, {error_count} errors"
             )
+
+            # Also generate project achievements
+            await self._run_weekly_project_achievement_generation()
 
             self._last_run = datetime.utcnow()
 
         except Exception as e:
             logger.error(f"Weekly achievement generation failed: {e}")
+
+    async def _run_weekly_project_achievement_generation(self):
+        """
+        Run weekly project achievement generation for all projects.
+        """
+        logger.info("Starting weekly project achievement generation...")
+
+        try:
+            # Get all projects (we need to iterate through unique projects)
+            all_projects = set()
+            users = await self._user_repo.list_all()
+            for user in users:
+                projects = await self._project_repo.list(str(user.id))
+                for project in projects:
+                    all_projects.add(project.id)
+
+            logger.info(f"Processing {len(all_projects)} projects for weekly achievement generation")
+
+            generated_count = 0
+            skipped_count = 0
+            error_count = 0
+
+            now = datetime.utcnow()
+            period_start = now - timedelta(days=7)
+            period_end = now
+
+            for i, project_id in enumerate(all_projects):
+                # Staggered processing
+                if i > 0:
+                    delay = random.uniform(1.0, 10.0)
+                    await asyncio.sleep(delay)
+
+                try:
+                    # Check if there's a recent project achievement
+                    latest = await self._project_achievement_repo.get_latest(project_id)
+                    if latest and (now - latest.created_at).days < 7:
+                        skipped_count += 1
+                        continue
+
+                    # Generate project achievement
+                    achievement = await generate_project_achievement(
+                        llm_provider=self._llm_provider,
+                        task_repo=self._task_repo,
+                        project_repo=self._project_repo,
+                        project_member_repo=self._project_member_repo,
+                        user_repo=self._user_repo,
+                        project_achievement_repo=self._project_achievement_repo,
+                        notification_repo=self._notification_repo,
+                        project_id=project_id,
+                        period_start=period_start,
+                        period_end=period_end,
+                        period_label=f"週次振り返り ({period_start.strftime('%m/%d')} - {period_end.strftime('%m/%d')})",
+                        generation_type=GenerationType.AUTO,
+                    )
+
+                    if achievement:
+                        generated_count += 1
+                        logger.info(f"Generated weekly project achievement for project {project_id}")
+                    else:
+                        skipped_count += 1
+
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"Error generating project achievement for {project_id}: {e}")
+
+            logger.info(
+                f"Weekly project achievement generation completed: "
+                f"{generated_count} generated, {skipped_count} skipped, {error_count} errors"
+            )
+
+        except Exception as e:
+            logger.error(f"Weekly project achievement generation failed: {e}")
 
     async def _generate_weekly_for_user(self, user_id: str) -> bool:
         """
@@ -240,6 +330,10 @@ async def get_background_scheduler() -> BackgroundScheduler:
             get_user_repository,
             get_task_repository,
             get_achievement_repository,
+            get_project_repository,
+            get_project_member_repository,
+            get_project_achievement_repository,
+            get_notification_repository,
             get_llm_provider,
         )
 
@@ -247,6 +341,10 @@ async def get_background_scheduler() -> BackgroundScheduler:
             user_repo=get_user_repository(),
             task_repo=get_task_repository(),
             achievement_repo=get_achievement_repository(),
+            project_repo=get_project_repository(),
+            project_member_repo=get_project_member_repository(),
+            project_achievement_repo=get_project_achievement_repository(),
+            notification_repo=get_notification_repository(),
             llm_provider=get_llm_provider(),
         )
     return _scheduler

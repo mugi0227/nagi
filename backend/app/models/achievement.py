@@ -122,6 +122,84 @@ class AchievementWithTasks(Achievement):
     )
 
 
+# ===========================================
+# Project Achievement (プロジェクト達成項目)
+# ===========================================
+
+
+class MemberContribution(BaseModel):
+    """Individual member's contribution to a project achievement."""
+
+    user_id: str = Field(..., description="メンバーのユーザーID")
+    display_name: str = Field(..., description="表示名")
+    task_count: int = Field(0, ge=0, description="完了タスク数")
+    main_areas: list[str] = Field(
+        default_factory=list,
+        description="主な担当領域（例: 設計、実装、テスト）",
+    )
+    task_titles: list[str] = Field(
+        default_factory=list,
+        description="完了したタスクのタイトル一覧（最大10件）",
+    )
+
+
+class ProjectAchievementBase(BaseModel):
+    """Base project achievement fields."""
+
+    project_id: UUID = Field(..., description="プロジェクトID")
+    period_start: datetime = Field(..., description="対象期間の開始日時")
+    period_end: datetime = Field(..., description="対象期間の終了日時")
+    period_label: Optional[str] = Field(None, description="期間ラベル（例: Week 1）")
+
+
+class ProjectAchievement(ProjectAchievementBase):
+    """Complete project achievement model - チームとしての達成項目."""
+
+    id: UUID
+
+    # チーム全体のサマリー
+    summary: str = Field(..., description="チームとしての達成サマリー")
+    team_highlights: list[str] = Field(
+        default_factory=list,
+        description="チームの成果ハイライト",
+    )
+    challenges: list[str] = Field(
+        default_factory=list,
+        description="課題・反省点",
+    )
+    learnings: list[str] = Field(
+        default_factory=list,
+        description="学び・次への教訓",
+    )
+
+    # メンバー別貢献
+    member_contributions: list[MemberContribution] = Field(
+        default_factory=list,
+        description="メンバー別の貢献",
+    )
+
+    # 統計
+    total_task_count: int = Field(0, ge=0, description="合計タスク数")
+
+    # 引き継ぎ情報
+    remaining_tasks_count: int = Field(0, ge=0, description="残タスク数")
+    open_issues: list[str] = Field(
+        default_factory=list,
+        description="未解決の課題・引き継ぎ事項",
+    )
+
+    # メタデータ
+    generation_type: GenerationType = Field(
+        GenerationType.AUTO,
+        description="生成タイプ",
+    )
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 # Skill category definitions (for AI classification)
 SKILL_CATEGORIES = {
     "domain": {

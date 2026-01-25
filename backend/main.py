@@ -74,7 +74,9 @@ def create_app() -> FastAPI:
         meeting_sessions,
         memories,
         milestones,
+        notifications,
         phases,
+        project_achievements,
         projects,
         proposals,
         recurring_meetings,
@@ -101,6 +103,8 @@ def create_app() -> FastAPI:
     app.include_router(users.router, prefix="/api/users", tags=["users"])
     app.include_router(issues.router, prefix="/api/issues", tags=["issues"])
     app.include_router(achievements.router, prefix="/api/achievements", tags=["achievements"])
+    app.include_router(project_achievements.router, prefix="/api/projects", tags=["project_achievements"])
+    app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 
     # Mount storage for local development
     storage_path = settings.STORAGE_BASE_PATH
