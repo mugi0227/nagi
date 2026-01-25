@@ -116,7 +116,14 @@ class BackgroundScheduler:
             hour=0, minute=0, second=0, microsecond=0
         )
 
-        # Check if any user needs a run
+        # Check personal achievements
+        await self._check_and_run_missed_personal(now, last_friday)
+
+        # Check project achievements
+        await self._check_and_run_missed_projects(now, last_friday)
+
+    async def _check_and_run_missed_personal(self, now: datetime, last_friday: datetime):
+        """Check and run missed personal achievement generation."""
         users = await self._user_repo.list_all()
 
         needs_run = False
@@ -140,10 +147,45 @@ class BackgroundScheduler:
                 break
 
         if needs_run:
-            logger.info("Missed weekly achievement generation detected, running now...")
+            logger.info("Missed weekly personal achievement generation detected, running now...")
             await self._run_weekly_achievement_generation()
         else:
-            logger.info("No missed weekly achievement generation detected")
+            logger.info("No missed weekly personal achievement generation detected")
+
+    async def _check_and_run_missed_projects(self, now: datetime, last_friday: datetime):
+        """Check and run missed project achievement generation."""
+        # Collect all unique project IDs
+        all_projects = set()
+        users = await self._user_repo.list_all()
+        for user in users:
+            projects = await self._project_repo.list(str(user.id))
+            for project in projects:
+                all_projects.add(project.id)
+
+        if not all_projects:
+            logger.info("No projects found, skipping project achievement check")
+            return
+
+        needs_run = False
+        for project_id in all_projects:
+            latest = await self._project_achievement_repo.get_latest(project_id)
+            if latest is None:
+                # Project never had an achievement - check if it has any completed tasks
+                # We'll let the generation function handle this check
+                needs_run = True
+                break
+            if latest.generation_type == GenerationType.AUTO and latest.created_at >= last_friday:
+                # Already ran this week for this project
+                continue
+            # If latest achievement is older than last Friday, needs run
+            needs_run = True
+            break
+
+        if needs_run:
+            logger.info("Missed weekly project achievement generation detected, running now...")
+            await self._run_weekly_project_achievement_generation()
+        else:
+            logger.info("No missed weekly project achievement generation detected")
 
     async def _run_weekly_achievement_generation(self):
         """
