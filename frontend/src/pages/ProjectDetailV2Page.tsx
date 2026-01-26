@@ -13,6 +13,7 @@ import {
   FaThLarge,
   FaTimes,
   FaTrash,
+  FaTrophy,
   FaUsers,
 } from 'react-icons/fa';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
@@ -40,6 +41,7 @@ import type { DraftCardData } from '../components/chat/DraftCard';
 import { UserSearchInput } from '../components/common/UserSearchInput';
 import { ProjectGanttChart } from '../components/gantt/ProjectGanttChart';
 import { MeetingsTab } from '../components/meetings/MeetingsTab';
+import { ProjectAchievementsSection } from '../components/projects/ProjectAchievementsSection';
 import { ProjectDetailModal } from '../components/projects/ProjectDetailModal';
 import { ProjectTasksView } from '../components/projects/ProjectTasksView';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
@@ -50,7 +52,7 @@ import { useTimezone } from '../hooks/useTimezone';
 import { formatDate, toDateKey, toDateTime, todayInTimezone } from '../utils/dateTime';
 import './ProjectDetailV2Page.css';
 
-type TabId = 'dashboard' | 'team' | 'timeline' | 'board' | 'gantt' | 'meetings';
+type TabId = 'dashboard' | 'team' | 'timeline' | 'board' | 'gantt' | 'meetings' | 'achievements';
 type InviteMode = 'email' | 'user_id';
 
 const TAB_LABELS: Record<TabId, string> = {
@@ -60,6 +62,7 @@ const TAB_LABELS: Record<TabId, string> = {
   board: 'ボード',
   gantt: 'ガント',
   meetings: 'ミーティング',
+  achievements: '達成項目',
 };
 
 const TAB_ICONS: Record<TabId, ReactElement> = {
@@ -69,6 +72,7 @@ const TAB_ICONS: Record<TabId, ReactElement> = {
   board: <FaColumns />,
   gantt: <FaChartBar />,
   meetings: <FaCalendarAlt />,
+  achievements: <FaTrophy />,
 };
 
 const STATUS_LABELS: Record<TaskStatus, string> = {
@@ -124,7 +128,7 @@ const getInitial = (value?: string) => {
   return trimmed ? trimmed.charAt(0) : '?';
 };
 
-const VALID_TABS: TabId[] = ['dashboard', 'team', 'timeline', 'board', 'gantt', 'meetings'];
+const VALID_TABS: TabId[] = ['dashboard', 'team', 'timeline', 'board', 'gantt', 'meetings', 'achievements'];
 
 export function ProjectDetailV2Page() {
   const { projectId } = useParams<{ projectId: string }>();
@@ -2265,6 +2269,10 @@ export function ProjectDetailV2Page() {
             tasks={tasks}
             currentUserId={currentUser?.id || members[0]?.member_user_id || ''}
           />
+        )}
+
+        {activeTab === 'achievements' && (
+          <ProjectAchievementsSection projectId={projectId!} />
         )}
       </section>
 
