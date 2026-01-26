@@ -16,6 +16,7 @@ import { UserSearchInput } from '../components/common/UserSearchInput';
 import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
 import { ProjectDetailModal } from '../components/projects/ProjectDetailModal';
 import { ProjectTasksView } from '../components/projects/ProjectTasksView';
+import { ProjectAchievementsSection } from '../components/projects/ProjectAchievementsSection';
 import { RecurringMeetingsPanel } from '../components/projects/RecurringMeetingsPanel';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { TaskFormModal } from '../components/tasks/TaskFormModal';
@@ -1467,6 +1468,11 @@ export function ProjectDetailPage() {
           tag="\u30d7\u30ed\u30b8\u30a7\u30af\u30c8"
           onTaskClick={handleScheduleTaskClick}
         />
+      </div>
+
+      {/* Achievements Section */}
+      <div className="project-achievements-wrapper">
+        <ProjectAchievementsSection projectId={projectId!} />
       </div>
 
       {/* Tasks Section */}

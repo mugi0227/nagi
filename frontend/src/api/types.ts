@@ -958,3 +958,143 @@ export interface QuestionAnswer {
   selected_options: string[];
   other_text?: string;
 }
+
+// ===========================================
+// Achievement Models
+// ===========================================
+
+export type GenerationType = 'AUTO' | 'MANUAL';
+
+export interface SkillExperience {
+  category: string;
+  experience_count: number;
+  percentage: number;
+}
+
+export interface SkillAnalysis {
+  domain_skills: SkillExperience[];
+  soft_skills: SkillExperience[];
+  work_types: SkillExperience[];
+  strengths: string[];
+  growth_areas: string[];
+}
+
+export interface Achievement {
+  id: string;
+  user_id: string;
+  period_start: string;
+  period_end: string;
+  period_label?: string;
+  summary: string;
+  growth_points: string[];
+  skill_analysis: SkillAnalysis;
+  next_suggestions: string[];
+  task_count: number;
+  project_ids: string[];
+  generation_type: GenerationType;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AchievementCreate {
+  period_start: string;
+  period_end: string;
+  period_label?: string;
+}
+
+export interface AchievementListResponse {
+  achievements: Achievement[];
+  total: number;
+}
+
+export interface CompletedTaskPreview {
+  id: string;
+  title: string;
+  description?: string;
+  project_id?: string;
+  completed_at: string;
+  completion_note?: string;
+}
+
+export interface CompletedTasksPreviewResponse {
+  task_count: number;
+  tasks: CompletedTaskPreview[];
+}
+
+// ===========================================
+// Notification Models
+// ===========================================
+
+export type NotificationType =
+  | 'achievement_personal'
+  | 'achievement_project'
+  | 'task_assigned'
+  | 'project_invited'
+  | 'milestone_reached';
+
+export interface Notification {
+  id: string;
+  user_id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  link_type?: string;
+  link_id?: string;
+  project_id?: string;
+  project_name?: string;
+  is_read: boolean;
+  read_at?: string;
+  created_at: string;
+}
+
+export interface NotificationListResponse {
+  notifications: Notification[];
+  unread_count: number;
+  total: number;
+}
+
+export interface UnreadCountResponse {
+  count: number;
+}
+
+// ===========================================
+// Project Achievement Models
+// ===========================================
+
+export interface MemberContribution {
+  user_id: string;
+  display_name: string;
+  task_count: number;
+  main_areas: string[];
+  task_titles: string[];
+}
+
+export interface ProjectAchievement {
+  id: string;
+  project_id: string;
+  period_start: string;
+  period_end: string;
+  period_label?: string;
+  summary: string;
+  team_highlights: string[];
+  challenges: string[];
+  learnings: string[];
+  member_contributions: MemberContribution[];
+  total_task_count: number;
+  remaining_tasks_count: number;
+  open_issues: string[];
+  generation_type: GenerationType;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectAchievementCreate {
+  period_start: string;
+  period_end: string;
+  period_label?: string;
+}
+
+export interface ProjectAchievementListResponse {
+  achievements: ProjectAchievement[];
+  total: number;
+}

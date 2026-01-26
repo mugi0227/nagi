@@ -97,6 +97,11 @@ class UpdateTaskInput(BaseModel):
     dependency_ids: Optional[list[str]] = Field(None, description="依存タスクIDリスト（UUID文字列）")
     progress: Optional[int] = Field(None, ge=0, le=100, description="進捗率（0-100%）")
     source_capture_id: Optional[str] = Field(None, description="元Capture ID（UUID文字列）")
+    completion_note: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="完了時メモ（学んだこと、工夫したこと、感想など。Achievement生成に活用）"
+    )
     # Meeting fields
     is_fixed_time: Optional[bool] = Field(None, description="会議・固定時間イベントの場合true")
     is_all_day: Optional[bool] = Field(None, description="終日タスク（休暇・出張など、その日のキャパシティを0にする）")
@@ -577,6 +582,7 @@ async def update_task(
         dependency_ids=dependency_ids,
         progress=input_data.progress,
         source_capture_id=source_capture_id,
+        completion_note=input_data.completion_note,
         # Meeting fields
         is_fixed_time=input_data.is_fixed_time,
         is_all_day=input_data.is_all_day,
@@ -1144,6 +1150,7 @@ def update_task_tool(
             location (str, optional): 場所（会議用）
             attendees (list[str], optional): 参加者リスト（会議用）
             meeting_notes (str, optional): 議事録・メモ（会議用）
+            completion_note (str, optional): 完了時メモ（学んだこと、工夫したこと、感想など。status=DONEと一緒に指定すると振り返りに活用される）
 
         Returns:
             dict: 更新されたタスク情報

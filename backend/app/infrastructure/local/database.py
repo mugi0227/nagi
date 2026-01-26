@@ -81,6 +81,10 @@ class TaskORM(Base):
     recurring_meeting_id = Column(String(36), nullable=True, index=True)
     milestone_id = Column(String(36), nullable=True, index=True)
 
+    # Achievement-related fields
+    completion_note = Column(Text, nullable=True)
+    completed_at = Column(DateTime, nullable=True, index=True)
+
 
 class ProjectORM(Base):
     """Project ORM model."""
@@ -471,6 +475,92 @@ class ScheduleSnapshotORM(Base):
     max_days = Column(Integer, default=60)
     plan_utilization_ratio = Column(Float, default=1.0)
     created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+
+class AchievementORM(Base):
+    """Achievement ORM model for storing AI-generated achievement summaries."""
+
+    __tablename__ = "achievements"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    period_start = Column(DateTime, nullable=False, index=True)
+    period_end = Column(DateTime, nullable=False, index=True)
+    period_label = Column(String(100), nullable=True)
+
+    # AI-generated content (stored as JSON)
+    summary = Column(Text, nullable=False)
+    growth_points = Column(JSON, nullable=True, default=list)
+    skill_analysis = Column(JSON, nullable=True)  # SkillAnalysis as JSON
+    next_suggestions = Column(JSON, nullable=True, default=list)
+
+    # Statistics
+    task_count = Column(Integer, default=0)
+    project_ids = Column(JSON, nullable=True, default=list)
+
+    # Metadata
+    generation_type = Column(String(20), default="MANUAL")  # AUTO or MANUAL
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+
+class ProjectAchievementORM(Base):
+    """Project Achievement ORM model for team-level achievements."""
+
+    __tablename__ = "project_achievements"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    project_id = Column(String(36), nullable=False, index=True)
+    period_start = Column(DateTime, nullable=False, index=True)
+    period_end = Column(DateTime, nullable=False, index=True)
+    period_label = Column(String(100), nullable=True)
+
+    # Team summary (stored as JSON)
+    summary = Column(Text, nullable=False)
+    team_highlights = Column(JSON, nullable=True, default=list)
+    challenges = Column(JSON, nullable=True, default=list)
+    learnings = Column(JSON, nullable=True, default=list)
+
+    # Member contributions (stored as JSON array)
+    member_contributions = Column(JSON, nullable=True, default=list)
+
+    # Statistics
+    total_task_count = Column(Integer, default=0)
+    remaining_tasks_count = Column(Integer, default=0)
+    open_issues = Column(JSON, nullable=True, default=list)
+
+    # Metadata
+    generation_type = Column(String(20), default="AUTO")
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+
+class NotificationORM(Base):
+    """Notification ORM model."""
+
+    __tablename__ = "notifications"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    type = Column(String(50), nullable=False, index=True)
+    title = Column(String(200), nullable=False)
+    message = Column(String(500), nullable=False)
+
+    # Navigation
+    link_type = Column(String(50), nullable=True)
+    link_id = Column(String(36), nullable=True)
+
+    # Context
+    project_id = Column(String(36), nullable=True, index=True)
+    project_name = Column(String(200), nullable=True)
+
+    # Status
+    is_read = Column(Boolean, default=False, index=True)
+    read_at = Column(DateTime, nullable=True)
+
+    # Timestamps
+    created_at = Column(DateTime, default=now_utc, index=True)
     updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 

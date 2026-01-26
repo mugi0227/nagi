@@ -27,10 +27,16 @@ async def lifespan(app: FastAPI):
 
         await init_db()  # This also runs migrations
 
+    # Start background scheduler for periodic jobs
+    from app.services.background_scheduler import start_background_scheduler, stop_background_scheduler
+
+    await start_background_scheduler()
+
     yield
 
     # Shutdown
     print("Shutting down Secretary Partner AI...")
+    await stop_background_scheduler()
 
 
 def create_app() -> FastAPI:
@@ -57,6 +63,7 @@ def create_app() -> FastAPI:
 
     # Include routers
     from app.api import (
+        achievements,
         agent_tasks,
         auth,
         captures,
@@ -67,7 +74,9 @@ def create_app() -> FastAPI:
         meeting_sessions,
         memories,
         milestones,
+        notifications,
         phases,
+        project_achievements,
         projects,
         proposals,
         recurring_meetings,
@@ -93,6 +102,9 @@ def create_app() -> FastAPI:
     app.include_router(today.router, prefix="/api/today", tags=["today"])
     app.include_router(users.router, prefix="/api/users", tags=["users"])
     app.include_router(issues.router, prefix="/api/issues", tags=["issues"])
+    app.include_router(achievements.router, prefix="/api/achievements", tags=["achievements"])
+    app.include_router(project_achievements.router, prefix="/api/projects", tags=["project_achievements"])
+    app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
 
     # Mount storage for local development
     storage_path = settings.STORAGE_BASE_PATH

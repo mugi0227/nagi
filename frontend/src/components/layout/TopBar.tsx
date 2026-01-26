@@ -1,9 +1,10 @@
 ﻿import { useLocation, useNavigate } from 'react-router-dom';
 import { useTheme } from '../../context/ThemeContext';
-import { FaMoon, FaSun, FaBell, FaRightFromBracket, FaRightToBracket } from 'react-icons/fa6';
+import { FaMoon, FaSun, FaRightFromBracket, FaRightToBracket } from 'react-icons/fa6';
 import { clearAuthToken, getAuthToken } from '../../api/auth';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, nowInTimezone } from '../../utils/dateTime';
+import { NotificationDropdown } from '../notifications/NotificationDropdown';
 import './TopBar.css';
 
 export function TopBar() {
@@ -56,10 +57,7 @@ export function TopBar() {
         >
           {theme === 'light' ? <FaMoon /> : <FaSun />}
         </button>
-        <button className="icon-btn notification-btn" title="通知">
-          <FaBell />
-          <span className="badge">3</span>
-        </button>
+        <NotificationDropdown />
         {token ? (
           <button
             className="icon-btn"

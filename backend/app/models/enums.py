@@ -223,3 +223,10 @@ class IssueCategory(str, Enum):
     BUG_REPORT = "BUG_REPORT"  # バグ報告
     IMPROVEMENT = "IMPROVEMENT"  # 改善提案
     QUESTION = "QUESTION"  # 質問
+
+
+class GenerationType(str, Enum):
+    """Achievement generation type."""
+
+    AUTO = "AUTO"  # 週次自動生成
+    MANUAL = "MANUAL"  # 手動生成

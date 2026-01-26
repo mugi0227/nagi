@@ -1,0 +1,406 @@
+"""
+Background scheduler service for periodic jobs.
+
+Handles periodic tasks like weekly achievement auto-generation.
+Uses APScheduler for in-process scheduling without external dependencies.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import random
+from datetime import datetime, timedelta
+from typing import Optional
+
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
+from app.core.config import get_settings
+from app.core.logger import logger
+from app.interfaces.achievement_repository import IAchievementRepository
+from app.interfaces.llm_provider import ILLMProvider
+from app.interfaces.notification_repository import INotificationRepository
+from app.interfaces.project_achievement_repository import IProjectAchievementRepository
+from app.interfaces.project_member_repository import IProjectMemberRepository
+from app.interfaces.project_repository import IProjectRepository
+from app.interfaces.task_repository import ITaskRepository
+from app.interfaces.user_repository import IUserRepository
+from app.models.enums import GenerationType
+from app.models.notification import NotificationCreate, NotificationType
+from app.services.achievement_service import generate_achievement
+from app.services.project_achievement_service import generate_project_achievement
+
+
+class BackgroundScheduler:
+    """
+    Background scheduler for periodic jobs.
+
+    Features:
+    - Weekly achievement auto-generation (Friday 00:00)
+    - Weekly project achievement auto-generation
+    - Startup check for missed runs
+    - Staggered processing to avoid load spikes
+    """
+
+    def __init__(
+        self,
+        user_repo: IUserRepository,
+        task_repo: ITaskRepository,
+        achievement_repo: IAchievementRepository,
+        project_repo: IProjectRepository,
+        project_member_repo: IProjectMemberRepository,
+        project_achievement_repo: IProjectAchievementRepository,
+        notification_repo: INotificationRepository,
+        llm_provider: ILLMProvider,
+    ):
+        self._user_repo = user_repo
+        self._task_repo = task_repo
+        self._achievement_repo = achievement_repo
+        self._project_repo = project_repo
+        self._project_member_repo = project_member_repo
+        self._project_achievement_repo = project_achievement_repo
+        self._notification_repo = notification_repo
+        self._llm_provider = llm_provider
+        self._scheduler: Optional[AsyncIOScheduler] = None
+        self._last_run: Optional[datetime] = None
+
+    async def start(self):
+        """Start the scheduler and check for missed runs."""
+        settings = get_settings()
+
+        # Only run scheduler in non-test environments
+        if settings.ENVIRONMENT == "test":
+            logger.info("Background scheduler disabled in test environment")
+            return
+
+        self._scheduler = AsyncIOScheduler()
+
+        # Schedule weekly achievement generation for Friday at 00:00
+        self._scheduler.add_job(
+            self._run_weekly_achievement_generation,
+            CronTrigger(day_of_week="fri", hour=0, minute=0),
+            id="weekly_achievement_generation",
+            name="Weekly Achievement Generation",
+            replace_existing=True,
+        )
+
+        self._scheduler.start()
+        logger.info("Background scheduler started - Weekly achievement generation scheduled for Friday 00:00")
+
+        # Check for missed runs on startup
+        await self._check_and_run_missed()
+
+    async def stop(self):
+        """Stop the scheduler."""
+        if self._scheduler:
+            self._scheduler.shutdown(wait=False)
+            logger.info("Background scheduler stopped")
+
+    async def _check_and_run_missed(self):
+        """
+        Check if a weekly run was missed and execute if needed.
+
+        A run is considered missed if:
+        - It's past Friday 00:00 of the current week
+        - No AUTO achievement has been created since last Friday 00:00
+        """
+        now = datetime.utcnow()
+
+        # Calculate last Friday 00:00
+        days_since_friday = (now.weekday() - 4) % 7  # 4 = Friday
+        if days_since_friday == 0 and now.hour < 1:
+            # It's Friday but before 01:00, check previous Friday
+            days_since_friday = 7
+
+        last_friday = (now - timedelta(days=days_since_friday)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+
+        # Check personal achievements
+        await self._check_and_run_missed_personal(now, last_friday)
+
+        # Check project achievements
+        await self._check_and_run_missed_projects(now, last_friday)
+
+    async def _check_and_run_missed_personal(self, now: datetime, last_friday: datetime):
+        """Check and run missed personal achievement generation."""
+        users = await self._user_repo.list_all()
+
+        needs_run = False
+        for user in users:
+            latest = await self._achievement_repo.get_latest(str(user.id))
+            if latest is None:
+                # User never had an achievement - needs generation
+                needs_run = True
+                break
+            if latest.generation_type == GenerationType.AUTO and latest.created_at >= last_friday:
+                # Already ran this week for this user
+                continue
+            # Check if there are completed tasks since last achievement
+            completed_tasks = await self._task_repo.list_completed_in_period(
+                user_id=str(user.id),
+                period_start=latest.period_end,
+                period_end=now,
+            )
+            if completed_tasks:
+                needs_run = True
+                break
+
+        if needs_run:
+            logger.info("Missed weekly personal achievement generation detected, running now...")
+            await self._run_weekly_achievement_generation()
+        else:
+            logger.info("No missed weekly personal achievement generation detected")
+
+    async def _check_and_run_missed_projects(self, now: datetime, last_friday: datetime):
+        """Check and run missed project achievement generation."""
+        # Collect all unique project IDs
+        all_projects = set()
+        users = await self._user_repo.list_all()
+        for user in users:
+            projects = await self._project_repo.list(str(user.id))
+            for project in projects:
+                all_projects.add(project.id)
+
+        if not all_projects:
+            logger.info("No projects found, skipping project achievement check")
+            return
+
+        needs_run = False
+        for project_id in all_projects:
+            latest = await self._project_achievement_repo.get_latest(project_id)
+            if latest is None:
+                # Project never had an achievement - check if it has any completed tasks
+                # We'll let the generation function handle this check
+                needs_run = True
+                break
+            if latest.generation_type == GenerationType.AUTO and latest.created_at >= last_friday:
+                # Already ran this week for this project
+                continue
+            # If latest achievement is older than last Friday, needs run
+            needs_run = True
+            break
+
+        if needs_run:
+            logger.info("Missed weekly project achievement generation detected, running now...")
+            await self._run_weekly_project_achievement_generation()
+        else:
+            logger.info("No missed weekly project achievement generation detected")
+
+    async def _run_weekly_achievement_generation(self):
+        """
+        Run weekly achievement generation for all users.
+
+        Features:
+        - Staggered processing with random delays (1-10 seconds between users)
+        - Error isolation (one user's failure doesn't affect others)
+        - Only generates if there are new completed tasks
+        """
+        logger.info("Starting weekly achievement generation...")
+
+        try:
+            users = await self._user_repo.list_all()
+            logger.info(f"Processing {len(users)} users for weekly achievement generation")
+
+            generated_count = 0
+            skipped_count = 0
+            error_count = 0
+
+            for i, user in enumerate(users):
+                # Staggered processing: random delay between 1-10 seconds
+                if i > 0:
+                    delay = random.uniform(1.0, 10.0)
+                    logger.debug(f"Waiting {delay:.1f}s before processing next user")
+                    await asyncio.sleep(delay)
+
+                try:
+                    result = await self._generate_weekly_for_user(str(user.id))
+                    if result:
+                        generated_count += 1
+                        logger.info(f"Generated weekly achievement for user {user.id}")
+                    else:
+                        skipped_count += 1
+                        logger.debug(f"Skipped user {user.id} (no new tasks)")
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"Error generating achievement for user {user.id}: {e}")
+
+            logger.info(
+                f"Weekly personal achievement generation completed: "
+                f"{generated_count} generated, {skipped_count} skipped, {error_count} errors"
+            )
+
+            # Also generate project achievements
+            await self._run_weekly_project_achievement_generation()
+
+            self._last_run = datetime.utcnow()
+
+        except Exception as e:
+            logger.error(f"Weekly achievement generation failed: {e}")
+
+    async def _run_weekly_project_achievement_generation(self):
+        """
+        Run weekly project achievement generation for all projects.
+        """
+        logger.info("Starting weekly project achievement generation...")
+
+        try:
+            # Get all projects (we need to iterate through unique projects)
+            all_projects = set()
+            users = await self._user_repo.list_all()
+            for user in users:
+                projects = await self._project_repo.list(str(user.id))
+                for project in projects:
+                    all_projects.add(project.id)
+
+            logger.info(f"Processing {len(all_projects)} projects for weekly achievement generation")
+
+            generated_count = 0
+            skipped_count = 0
+            error_count = 0
+
+            now = datetime.utcnow()
+            period_start = now - timedelta(days=7)
+            period_end = now
+
+            for i, project_id in enumerate(all_projects):
+                # Staggered processing
+                if i > 0:
+                    delay = random.uniform(1.0, 10.0)
+                    await asyncio.sleep(delay)
+
+                try:
+                    # Check if there's a recent project achievement
+                    latest = await self._project_achievement_repo.get_latest(project_id)
+                    if latest and (now - latest.created_at).days < 7:
+                        skipped_count += 1
+                        continue
+
+                    # Generate project achievement
+                    achievement = await generate_project_achievement(
+                        llm_provider=self._llm_provider,
+                        task_repo=self._task_repo,
+                        project_repo=self._project_repo,
+                        project_member_repo=self._project_member_repo,
+                        user_repo=self._user_repo,
+                        project_achievement_repo=self._project_achievement_repo,
+                        notification_repo=self._notification_repo,
+                        project_id=project_id,
+                        period_start=period_start,
+                        period_end=period_end,
+                        period_label=f"週次振り返り ({period_start.strftime('%m/%d')} - {period_end.strftime('%m/%d')})",
+                        generation_type=GenerationType.AUTO,
+                    )
+
+                    if achievement:
+                        generated_count += 1
+                        logger.info(f"Generated weekly project achievement for project {project_id}")
+                    else:
+                        skipped_count += 1
+
+                except Exception as e:
+                    error_count += 1
+                    logger.error(f"Error generating project achievement for {project_id}: {e}")
+
+            logger.info(
+                f"Weekly project achievement generation completed: "
+                f"{generated_count} generated, {skipped_count} skipped, {error_count} errors"
+            )
+
+        except Exception as e:
+            logger.error(f"Weekly project achievement generation failed: {e}")
+
+    async def _generate_weekly_for_user(self, user_id: str) -> bool:
+        """
+        Generate weekly achievement for a single user.
+
+        Returns:
+            True if achievement was generated, False if skipped
+        """
+        now = datetime.utcnow()
+
+        # Get latest achievement to determine period
+        latest = await self._achievement_repo.get_latest(user_id)
+
+        if latest:
+            # Check if it's been at least 7 days
+            days_since = (now - latest.created_at).days
+            if days_since < 7:
+                return False  # Too soon
+
+            period_start = latest.period_end
+        else:
+            # First time: use last 7 days
+            period_start = now - timedelta(days=7)
+
+        period_end = now
+
+        # Check if there are new completed tasks
+        completed_tasks = await self._task_repo.list_completed_in_period(
+            user_id=user_id,
+            period_start=period_start,
+            period_end=period_end,
+        )
+
+        if not completed_tasks:
+            return False  # No new completions
+
+        # Generate achievement
+        await generate_achievement(
+            llm_provider=self._llm_provider,
+            task_repo=self._task_repo,
+            achievement_repo=self._achievement_repo,
+            user_id=user_id,
+            period_start=period_start,
+            period_end=period_end,
+            period_label=f"週次振り返り ({period_start.strftime('%m/%d')} - {period_end.strftime('%m/%d')})",
+            generation_type=GenerationType.AUTO,
+        )
+
+        return True
+
+
+# Global scheduler instance
+_scheduler: Optional[BackgroundScheduler] = None
+
+
+async def get_background_scheduler() -> BackgroundScheduler:
+    """Get the global background scheduler instance."""
+    global _scheduler
+    if _scheduler is None:
+        from app.api.deps import (
+            get_user_repository,
+            get_task_repository,
+            get_achievement_repository,
+            get_project_repository,
+            get_project_member_repository,
+            get_project_achievement_repository,
+            get_notification_repository,
+            get_llm_provider,
+        )
+
+        _scheduler = BackgroundScheduler(
+            user_repo=get_user_repository(),
+            task_repo=get_task_repository(),
+            achievement_repo=get_achievement_repository(),
+            project_repo=get_project_repository(),
+            project_member_repo=get_project_member_repository(),
+            project_achievement_repo=get_project_achievement_repository(),
+            notification_repo=get_notification_repository(),
+            llm_provider=get_llm_provider(),
+        )
+    return _scheduler
+
+
+async def start_background_scheduler():
+    """Start the global background scheduler."""
+    scheduler = await get_background_scheduler()
+    await scheduler.start()
+
+
+async def stop_background_scheduler():
+    """Stop the global background scheduler."""
+    global _scheduler
+    if _scheduler:
+        await _scheduler.stop()
+        _scheduler = None

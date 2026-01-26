@@ -70,6 +70,16 @@ async def run_migrations():
                 text("CREATE INDEX IF NOT EXISTS idx_tasks_milestone_id ON tasks(milestone_id)")
             )
 
+        # Achievement-related task fields
+        if "completion_note" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN completion_note TEXT"))
+
+        if "completed_at" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN completed_at DATETIME"))
+            await conn.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks(completed_at)")
+            )
+
         # Check checkins table for checkin_type and V2 fields
         checkin_result = await conn.execute(text("PRAGMA table_info(checkins)"))
         checkin_columns = {row[1] for row in checkin_result}
@@ -285,6 +295,43 @@ async def run_migrations():
             )
             await conn.execute(
                 text("CREATE INDEX idx_meeting_sessions_status ON meeting_sessions(status)")
+            )
+
+        # Create achievements table if missing
+        achievement_result = await conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='achievements'")
+        )
+        if not achievement_result.scalar():
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE achievements (
+                        id VARCHAR(36) PRIMARY KEY,
+                        user_id VARCHAR(255) NOT NULL,
+                        period_start DATETIME NOT NULL,
+                        period_end DATETIME NOT NULL,
+                        period_label VARCHAR(100),
+                        summary TEXT NOT NULL,
+                        growth_points JSON,
+                        skill_analysis JSON,
+                        next_suggestions JSON,
+                        task_count INTEGER DEFAULT 0,
+                        project_ids JSON,
+                        generation_type VARCHAR(20) DEFAULT 'MANUAL',
+                        created_at DATETIME,
+                        updated_at DATETIME
+                    )
+                    """
+                )
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_achievements_user_id ON achievements(user_id)")
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_achievements_period_start ON achievements(period_start)")
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_achievements_period_end ON achievements(period_end)")
             )
 
 
