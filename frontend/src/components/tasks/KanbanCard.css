@@ -3,6 +3,7 @@
   border-radius: var(--radius-md);
   padding: 1rem;
   box-shadow: var(--shadow-card);
+  border: 1px solid rgba(148, 163, 184, 0.15);
   cursor: grab;
   transition: all 0.2s ease;
   position: relative;
@@ -367,4 +368,45 @@
   color: var(--text-muted);
   font-style: italic;
   padding-left: 1.125rem;
+}
+
+/* Done task compact view */
+.kanban-card.done-compact {
+  padding: 0.625rem 0.875rem;
+  background: rgba(148, 163, 184, 0.08);
+  border-color: rgba(148, 163, 184, 0.1);
+}
+
+.kanban-card.done-compact .card-header-row {
+  margin-bottom: 0;
+}
+
+.kanban-card.done-compact .card-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-decoration: line-through;
+  text-decoration-color: rgba(148, 163, 184, 0.5);
+}
+
+.kanban-card.done-compact .card-actions {
+  opacity: 0;
+}
+
+.kanban-card.done-compact:hover .card-actions {
+  opacity: 1;
+}
+
+.kanban-card.done-compact .card-action-btn.check {
+  color: var(--accent-green);
+}
+
+.kanban-card.done-compact:hover {
+  transform: none;
+  box-shadow: var(--shadow-card);
+}
+
+/* Dark mode adjustments for done cards */
+[data-theme="dark"] .kanban-card.done-compact {
+  background: rgba(148, 163, 184, 0.05);
 }
