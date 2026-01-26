@@ -45,6 +45,19 @@ class IProjectRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_by_id(self, project_id: UUID) -> Optional[Project]:
+        """
+        Get a project by ID without user check (for system/background processes).
+
+        Args:
+            project_id: Project ID
+
+        Returns:
+            Project if found, None otherwise
+        """
+        pass
+
+    @abstractmethod
     async def list(
         self,
         user_id: str,

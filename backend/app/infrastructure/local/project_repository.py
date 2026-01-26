@@ -88,6 +88,15 @@ class SqliteProjectRepository(IProjectRepository):
             orm = result.scalars().first()
             return self._orm_to_model(orm) if orm else None
 
+    async def get_by_id(self, project_id: UUID) -> Optional[Project]:
+        """Get a project by ID without user check (for system/background processes)."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ProjectORM).where(ProjectORM.id == str(project_id))
+            )
+            orm = result.scalars().first()
+            return self._orm_to_model(orm) if orm else None
+
     async def list(
         self,
         user_id: str,

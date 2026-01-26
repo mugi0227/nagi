@@ -32,6 +32,11 @@ class IProjectMemberRepository(ABC):
         pass
 
     @abstractmethod
+    async def list_by_project(self, project_id: UUID) -> list[ProjectMember]:
+        """List members for a project without user check (for system/background processes)."""
+        pass
+
+    @abstractmethod
     async def update(
         self, user_id: str, member_id: UUID, update: ProjectMemberUpdate
     ) -> ProjectMember:

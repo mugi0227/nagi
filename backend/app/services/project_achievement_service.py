@@ -24,7 +24,7 @@ from app.models.achievement import (
     MemberContribution,
     ProjectAchievement,
 )
-from app.models.enums import GenerationType, TaskStatus
+from app.models.enums import GenerationType
 from app.models.notification import NotificationCreate, NotificationType
 from app.models.task import Task
 from app.services.llm_utils import generate_text
@@ -178,8 +178,8 @@ async def generate_project_achievement(
     Returns:
         Generated and saved ProjectAchievement, or None if no tasks
     """
-    # Get project info
-    project = await project_repo.get(project_id)
+    # Get project info (using get_by_id for system/background processes)
+    project = await project_repo.get_by_id(project_id)
     if not project:
         logger.warning(f"Project {project_id} not found")
         return None
@@ -217,11 +217,11 @@ async def generate_project_achievement(
         logger.info(f"No completed tasks for project {project_id} in period")
         return None
 
-    # Get remaining tasks count
+    # Get remaining tasks count (include_done=False excludes DONE tasks by default)
     remaining_tasks = await task_repo.list(
         user_id=member_user_ids[0] if member_user_ids else "",
         project_id=project_id,
-        statuses=[TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.WAITING],
+        include_done=False,
     )
     remaining_tasks_count = len(remaining_tasks)
 

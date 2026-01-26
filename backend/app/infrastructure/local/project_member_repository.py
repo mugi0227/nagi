@@ -76,6 +76,16 @@ class SqliteProjectMemberRepository(IProjectMemberRepository):
             )
             return [self._orm_to_model(orm) for orm in result.scalars().all()]
 
+    async def list_by_project(self, project_id: UUID) -> list[ProjectMember]:
+        """List members for a project without user check (for system/background processes)."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ProjectMemberORM).where(
+                    ProjectMemberORM.project_id == str(project_id)
+                )
+            )
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]
+
     async def update(
         self, user_id: str, member_id: UUID, update: ProjectMemberUpdate
     ) -> ProjectMember:

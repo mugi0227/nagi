@@ -87,14 +87,23 @@ class BackgroundScheduler:
         self._scheduler.start()
         logger.info("Background scheduler started - Weekly achievement generation scheduled for Friday 00:00")
 
-        # Check for missed runs on startup
-        await self._check_and_run_missed()
+        # Check for missed runs in background (non-blocking)
+        asyncio.create_task(self._check_and_run_missed_background())
 
     async def stop(self):
         """Stop the scheduler."""
         if self._scheduler:
             self._scheduler.shutdown(wait=False)
             logger.info("Background scheduler stopped")
+
+    async def _check_and_run_missed_background(self):
+        """Background wrapper for checking missed runs with error handling."""
+        try:
+            logger.info("Starting background check for missed achievement generation...")
+            await self._check_and_run_missed()
+            logger.info("Background check for missed achievement generation completed")
+        except Exception as e:
+            logger.error(f"Background check for missed achievement generation failed: {e}")
 
     async def _check_and_run_missed(self):
         """

@@ -617,7 +617,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
         // 親タスク（サブタスクを持つか、親がないタスク）
         const parentTasks = phaseTasks.filter(t => !t.parent_id);
 
-        // Phase 3 & 6: Sort tasks by custom order (taskOrderMap), fallback to due_date
+        // Phase 3 & 6: Sort tasks by custom order (taskOrderMap), fallback to due_date/start_not_before
         const sortedTasks = [...parentTasks].sort((a, b) => {
           const orderA = taskOrderMap.get(a.id);
           const orderB = taskOrderMap.get(b.id);
@@ -626,10 +626,10 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
           if (orderA !== undefined && orderB !== undefined) {
             return orderA - orderB;
           }
-          // If neither has custom order, sort by due_date
+          // If neither has custom order, sort by due_date (fallback to start_not_before)
           if (orderA === undefined && orderB === undefined) {
-            const dateA = parseDate(a.due_date)?.toMillis() ?? Infinity;
-            const dateB = parseDate(b.due_date)?.toMillis() ?? Infinity;
+            const dateA = parseDate(a.due_date || a.start_not_before)?.toMillis() ?? Infinity;
+            const dateB = parseDate(b.due_date || b.start_not_before)?.toMillis() ?? Infinity;
             return dateA - dateB;
           }
           // Tasks with custom order come first
@@ -803,7 +803,23 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
       });
 
       if (isExpanded) {
-        unassignedTasks.forEach(task => {
+        // Sort unassigned tasks by taskOrderMap, fallback to due_date/start_not_before
+        const sortedUnassignedTasks = [...unassignedTasks].sort((a, b) => {
+          const orderA = taskOrderMap.get(a.id);
+          const orderB = taskOrderMap.get(b.id);
+
+          if (orderA !== undefined && orderB !== undefined) {
+            return orderA - orderB;
+          }
+          if (orderA === undefined && orderB === undefined) {
+            const dateA = parseDate(a.due_date || a.start_not_before)?.toMillis() ?? Infinity;
+            const dateB = parseDate(b.due_date || b.start_not_before)?.toMillis() ?? Infinity;
+            return dateA - dateB;
+          }
+          return orderA !== undefined ? -1 : 1;
+        });
+
+        sortedUnassignedTasks.forEach(task => {
           let taskStartIndex = getDateIndex(task.start_not_before);
           let taskEndIndex = getDateIndex(task.due_date);
           const hasNoDate = !task.due_date && !task.start_not_before;
@@ -830,6 +846,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
             id: task.id,
             title: task.title,
             depth: 1,
+            phaseId: 'unassigned',  // Set phaseId for drag-and-drop
             bar: {
               startIndex: Math.min(taskStartIndex, taskEndIndex),
               endIndex: Math.max(taskStartIndex, taskEndIndex),
@@ -904,59 +921,74 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   }, []);
 
   // Phase 3: Sort tasks by due date (one-time action)
-  // Groups by milestone, then sorts by due_date within each group
+  // Sorts tasks within each phase by due_date (milestone-linked tasks grouped under their milestone)
   const sortTasksByDueDate = useCallback(() => {
-    // Group tasks by milestone_id
-    const unlinkedTasks: Task[] = [];
-    const tasksByMilestone = new Map<string, Task[]>();
+    const newOrderMap = new Map<string, number>();
+    let globalIndex = 0;
 
-    tasks.forEach(task => {
-      if (task.milestone_id) {
-        const list = tasksByMilestone.get(task.milestone_id) || [];
-        list.push(task);
-        tasksByMilestone.set(task.milestone_id, list);
-      } else {
-        unlinkedTasks.push(task);
-      }
-    });
-
-    // Sort each group by due_date
+    // Sort by due_date helper (fallback to start_not_before if no due_date)
     const sortByDue = (a: Task, b: Task) => {
-      const dateA = a.due_date ? new Date(a.due_date).getTime() : Infinity;
-      const dateB = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+      // Use due_date first, then start_not_before as fallback
+      const dateStrA = a.due_date || a.start_not_before;
+      const dateStrB = b.due_date || b.start_not_before;
+      const dateA = dateStrA ? new Date(dateStrA).getTime() : Infinity;
+      const dateB = dateStrB ? new Date(dateStrB).getTime() : Infinity;
       return dateA - dateB;
     };
 
-    unlinkedTasks.sort(sortByDue);
-    tasksByMilestone.forEach(list => list.sort(sortByDue));
+    // Process each phase
+    const sortedPhases = [...phases].sort((a, b) => a.order_in_project - b.order_in_project);
 
-    // Build ordered list: milestones in order, then unlinked tasks
-    const orderedTasks: Task[] = [];
+    sortedPhases.forEach(phase => {
+      const phaseTasks = (tasksByPhase.get(phase.id) || []).filter(t => !t.parent_id);
+      const phaseMilestones = milestonesByPhase.get(phase.id) || [];
 
-    // Add tasks grouped by milestone (milestone order based on milestone due_date)
-    const sortedMilestoneIds = Array.from(tasksByMilestone.keys()).sort((a, b) => {
-      const msA = milestones.find(m => m.id === a);
-      const msB = milestones.find(m => m.id === b);
-      const dateA = msA?.due_date ? new Date(msA.due_date).getTime() : Infinity;
-      const dateB = msB?.due_date ? new Date(msB.due_date).getTime() : Infinity;
-      return dateA - dateB;
+      // Group tasks by milestone_id
+      const tasksByMilestone = new Map<string, Task[]>();
+      const unlinkedTasks: Task[] = [];
+
+      phaseTasks.forEach(task => {
+        if (task.milestone_id) {
+          const list = tasksByMilestone.get(task.milestone_id) || [];
+          list.push(task);
+          tasksByMilestone.set(task.milestone_id, list);
+        } else {
+          unlinkedTasks.push(task);
+        }
+      });
+
+      // Sort milestones by due_date
+      const sortedMilestones = [...phaseMilestones].sort((a, b) => {
+        const dateA = a.due_date ? new Date(a.due_date).getTime() : Infinity;
+        const dateB = b.due_date ? new Date(b.due_date).getTime() : Infinity;
+        return dateA - dateB;
+      });
+
+      // Add tasks grouped under milestones (sorted by due_date within each milestone)
+      sortedMilestones.forEach(milestone => {
+        const tasksInMilestone = tasksByMilestone.get(milestone.id) || [];
+        tasksInMilestone.sort(sortByDue);
+        tasksInMilestone.forEach(task => {
+          newOrderMap.set(task.id, globalIndex++);
+        });
+      });
+
+      // Add unlinked tasks (sorted by due_date)
+      unlinkedTasks.sort(sortByDue);
+      unlinkedTasks.forEach(task => {
+        newOrderMap.set(task.id, globalIndex++);
+      });
     });
 
-    sortedMilestoneIds.forEach(milestoneId => {
-      const tasksInMilestone = tasksByMilestone.get(milestoneId) || [];
-      orderedTasks.push(...tasksInMilestone);
+    // Handle unassigned tasks
+    const unassignedTasks = tasks.filter(t => !t.phase_id && !t.parent_id);
+    unassignedTasks.sort(sortByDue);
+    unassignedTasks.forEach(task => {
+      newOrderMap.set(task.id, globalIndex++);
     });
 
-    // Add unlinked tasks at the end
-    orderedTasks.push(...unlinkedTasks);
-
-    // Update taskOrderMap
-    const newOrderMap = new Map<string, number>();
-    orderedTasks.forEach((task, index) => {
-      newOrderMap.set(task.id, index);
-    });
     setTaskOrderMap(newOrderMap);
-  }, [tasks, milestones]);
+  }, [tasks, phases, tasksByPhase, milestonesByPhase, milestones]);
 
   // Handle sidebar drag over for milestone highlighting
   const handleSidebarDragOver = useCallback((event: DragOverEvent) => {
@@ -993,8 +1025,11 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
 
     if (!activeRow || !overRow) return;
 
-    // Handle milestone reordering (milestone -> milestone)
+    // Handle milestone reordering (milestone -> milestone, same phase only)
     if (activeRow.type === 'milestone' && overRow.type === 'milestone') {
+      // Only allow reordering within the same phase
+      if (activeRow.phaseId !== overRow.phaseId) return;
+
       const milestoneRows = rows.filter(r => r.type === 'milestone');
       const milestoneIds = milestoneRows.map(r => r.id);
 
@@ -1006,8 +1041,8 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
       // Reorder the array
       const reorderedIds = arrayMove(milestoneIds, oldIndex, newIndex);
 
-      // Update the milestone order map
-      const newOrderMap = new Map<string, number>();
+      // Update the milestone order map (preserving existing orders)
+      const newOrderMap = new Map<string, number>(milestoneOrderMap);
       reorderedIds.forEach((id, index) => {
         newOrderMap.set(id, index);
       });
@@ -1015,8 +1050,12 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
       return;
     }
 
-    // Handle task reordering (task -> task)
+    // Handle task reordering (task -> task, same phase only)
     if (activeRow.type === 'task' && overRow.type === 'task') {
+      // Only allow reordering within the same phase
+      if (activeRow.phaseId !== overRow.phaseId) return;
+
+      // Get all task rows and their current order
       const taskRows = rows.filter(r => r.type === 'task');
       const taskIds = taskRows.map(r => r.id);
 
@@ -1028,14 +1067,14 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
       // Reorder the array
       const reorderedIds = arrayMove(taskIds, oldIndex, newIndex);
 
-      // Update the task order map
-      const newOrderMap = new Map<string, number>();
+      // Update the task order map (preserving existing orders and adding new ones)
+      const newOrderMap = new Map<string, number>(taskOrderMap);
       reorderedIds.forEach((id, index) => {
         newOrderMap.set(id, index);
       });
       setTaskOrderMap(newOrderMap);
     }
-  }, [rows, onMilestoneLink]);
+  }, [rows, onMilestoneLink, taskOrderMap, milestoneOrderMap]);
 
   // Phase 5: Handle link mode task click
   const handleLinkModeClick = useCallback((taskId: string) => {
