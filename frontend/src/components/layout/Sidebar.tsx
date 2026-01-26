@@ -6,6 +6,7 @@ import { clearAuthToken, getAuthToken } from '../../api/auth';
 import { SettingsModal } from '../settings/SettingsModal';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { projectsApi } from '../../api/projects';
+import { NotificationDropdown } from '../notifications/NotificationDropdown';
 import nagiIcon from '../../assets/nagi_icon.png';
 import './Sidebar.css';
 
@@ -92,6 +93,7 @@ export function Sidebar() {
           </div>
         </div>
         <div className="footer-actions">
+          <NotificationDropdown />
           <button
             className="footer-btn theme-toggle-btn"
             onClick={toggleTheme}

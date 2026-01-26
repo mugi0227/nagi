@@ -132,13 +132,13 @@ export function NotificationDropdown() {
   return (
     <div className="notification-dropdown-container" ref={dropdownRef}>
       <button
-        className="icon-btn notification-btn"
+        className="footer-btn notification-btn"
         title="通知"
         onClick={() => setIsOpen(!isOpen)}
       >
         <FaBell />
         {unreadCount > 0 && (
-          <span className="badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
+          <span className="notification-badge">{unreadCount > 99 ? '99+' : unreadCount}</span>
         )}
       </button>
 
