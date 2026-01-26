@@ -4,6 +4,7 @@
   /* Nani Style Colors - Light Mode */
   --bg-main: #f0f4f8;
   --bg-card: #ffffff;
+  --bg-column: #f8fafc; /* Slate 50 - slightly darker than card for contrast */
   --bg-sidebar: #ffffff;
   --bg-glass: rgba(255, 255, 255, 0.85);
   --glass-bg: rgba(255, 255, 255, 0.85);
@@ -52,6 +53,8 @@
   /* Slate 900 */
   --bg-card: #1e293b;
   /* Slate 800 */
+  --bg-column: #151d2e;
+  /* Between Slate 900 and 800 for contrast */
   --bg-sidebar: #1e293b;
   /* Slate 800 */
   --bg-glass: rgba(30, 41, 59, 0.85);

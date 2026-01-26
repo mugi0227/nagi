@@ -177,6 +177,53 @@ export function KanbanCard({
     return memberOptions?.find(m => m.id === task.user_id)?.label;
   }, [memberOptions, task.user_id]);
 
+  // Done tasks show a compact view
+  if (isDone) {
+    return (
+      <div
+        className={`kanban-card done-compact ${isSelected ? 'selected' : ''} ${selectionMode ? 'selection-mode' : ''}`}
+        draggable
+        onClick={handleCardClick}
+        style={{ cursor: onClick || selectionMode ? 'pointer' : 'default' }}
+      >
+        {selectionMode && (
+          <div className="card-selection-checkbox" onClick={handleCheckboxClick}>
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => {}}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        )}
+        <div className="card-header-row">
+          <FaCheckCircle style={{ color: 'var(--accent-green)', flexShrink: 0, fontSize: '0.875rem' }} />
+          <h4 className="card-title">{task.title}</h4>
+          <div className="card-actions">
+            {onEdit && (
+              <button
+                className="card-action-btn"
+                onClick={(e) => handleActionClick(e, () => onEdit(task))}
+                title="Edit"
+              >
+                <FaPen />
+              </button>
+            )}
+            {onDelete && (
+              <button
+                className="card-action-btn delete"
+                onClick={(e) => handleActionClick(e, () => onDelete(task.id))}
+                title="Delete"
+              >
+                <FaTrash />
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       className={`kanban-card ${dependencyStatus.isBlocked ? 'blocked' : ''} ${isSelected ? 'selected' : ''} ${selectionMode ? 'selection-mode' : ''}`}
