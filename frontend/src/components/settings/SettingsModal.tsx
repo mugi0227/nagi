@@ -86,6 +86,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const [accountError, setAccountError] = useState<string | null>(null);
   const [accountSuccess, setAccountSuccess] = useState<string | null>(null);
   const [isUpdatingAccount, setIsUpdatingAccount] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [dailyCapacityHours, setDailyCapacityHours] = useState(() =>
     parseStoredNumber(userStorage.get('dailyCapacityHours'), DEFAULT_DAILY_CAPACITY_HOURS)
   );
@@ -196,7 +197,28 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   };
 
 
-  const handleAccountSave = async () => {
+  const hasAccountChanges = () => {
+    const nextUserName = userName.trim();
+    const nextFirstName = userFirstName.trim();
+    const nextLastName = userLastName.trim();
+    const nextEmail = userEmail.trim();
+    const currentUserName = currentUser?.username || currentUser?.display_name || '';
+    const currentUserFirstName = currentUser?.first_name || '';
+    const currentUserLastName = currentUser?.last_name || '';
+    const currentUserEmail = currentUser?.email || '';
+    const currentUserTimezone = currentUser?.timezone || 'Asia/Tokyo';
+
+    return (
+      (nextUserName && nextUserName !== currentUserName) ||
+      (nextLastName !== currentUserLastName) ||
+      (nextFirstName !== currentUserFirstName) ||
+      (nextEmail && nextEmail !== currentUserEmail) ||
+      newPassword.trim() ||
+      (userTimezone && userTimezone !== currentUserTimezone)
+    );
+  };
+
+  const handleAccountSaveClick = () => {
     setAccountError(null);
     setAccountSuccess(null);
 
@@ -204,6 +226,25 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       setAccountError('ローカル認証のみ更新できます。');
       return;
     }
+
+    if (!hasAccountChanges()) {
+      setAccountError('変更点がありません。');
+      return;
+    }
+
+    setShowPasswordConfirm(true);
+  };
+
+  const handlePasswordConfirmCancel = () => {
+    setShowPasswordConfirm(false);
+    setCurrentPassword('');
+    setAccountError(null);
+  };
+
+  const handleAccountSave = async () => {
+    setAccountError(null);
+    setAccountSuccess(null);
+
     if (!currentPassword.trim()) {
       setAccountError('現在のパスワードを入力してください。');
       return;
@@ -232,10 +273,10 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     if (nextUserName && nextUserName !== currentUserName) {
       payload.username = nextUserName;
     }
-    if (nextLastName && nextLastName !== currentUserLastName) {
+    if (nextLastName !== currentUserLastName) {
       payload.last_name = nextLastName;
     }
-    if (nextFirstName && nextFirstName !== currentUserFirstName) {
+    if (nextFirstName !== currentUserFirstName) {
       payload.first_name = nextFirstName;
     }
     if (nextEmail && nextEmail !== currentUserEmail) {
@@ -248,11 +289,6 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       payload.timezone = userTimezone;
     }
 
-    if (Object.keys(payload).length === 1) {
-      setAccountError('変更点がありません。');
-      return;
-    }
-
     setIsUpdatingAccount(true);
     try {
       await usersApi.updateCredentials(payload);
@@ -262,6 +298,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       setAccountSuccess('更新しました。');
       setCurrentPassword('');
       setNewPassword('');
+      setShowPasswordConfirm(false);
       queryClient.invalidateQueries({ queryKey: ['current-user'] });
     } catch (error) {
       setAccountError(getErrorMessage(error, '更新に失敗しました。'));
@@ -365,24 +402,6 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               />
             </div>
             <div className="setting-item">
-              <label htmlFor="currentPassword" className="setting-label">
-                現在のパスワード
-              </label>
-              <input
-                type="password"
-                id="currentPassword"
-                value={currentPassword}
-                onChange={(event) => {
-                  setCurrentPassword(event.target.value);
-                  setAccountError(null);
-                  setAccountSuccess(null);
-                }}
-                className="setting-input"
-                placeholder="********"
-                disabled={!isLocalAuth || isUpdatingAccount}
-              />
-            </div>
-            <div className="setting-item">
               <label htmlFor="newPassword" className="setting-label">
                 新しいパスワード（任意）
               </label>
@@ -429,14 +448,53 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               </p>
             </div>
             <div className="setting-item">
-              <button
-                type="button"
-                className="setting-action-btn"
-                onClick={handleAccountSave}
-                disabled={!isLocalAuth || isUpdatingAccount}
-              >
-                変更を保存
-              </button>
+              {showPasswordConfirm ? (
+                <div className="password-confirm-section">
+                  <label htmlFor="currentPassword" className="setting-label">
+                    現在のパスワードを入力して確認
+                  </label>
+                  <input
+                    type="password"
+                    id="currentPassword"
+                    value={currentPassword}
+                    onChange={(event) => {
+                      setCurrentPassword(event.target.value);
+                      setAccountError(null);
+                    }}
+                    className="setting-input"
+                    placeholder="現在のパスワード"
+                    disabled={isUpdatingAccount}
+                    autoFocus
+                  />
+                  <div className="password-confirm-actions">
+                    <button
+                      type="button"
+                      className="setting-action-btn secondary"
+                      onClick={handlePasswordConfirmCancel}
+                      disabled={isUpdatingAccount}
+                    >
+                      キャンセル
+                    </button>
+                    <button
+                      type="button"
+                      className="setting-action-btn"
+                      onClick={handleAccountSave}
+                      disabled={isUpdatingAccount}
+                    >
+                      {isUpdatingAccount ? '保存中...' : '確認して保存'}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="setting-action-btn"
+                  onClick={handleAccountSaveClick}
+                  disabled={!isLocalAuth || isUpdatingAccount}
+                >
+                  変更を保存
+                </button>
+              )}
               {!isLocalAuth ? (
                 <p className="setting-description">
                   OIDC/外部認証ではアカウント情報を変更できません。
