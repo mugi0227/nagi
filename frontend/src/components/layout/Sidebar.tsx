@@ -69,7 +69,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             alt="Nagi AI"
             className="logo-icon-img"
           />
-          {!collapsed && <span className="logo-text">秘書AI 凪</span>}
+          {!collapsed && <span className="logo-text">タスク管理AI 凪</span>}
         </div>
         <button
           className="sidebar-toggle-btn"
