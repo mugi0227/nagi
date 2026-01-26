@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear, FaMoon, FaSun, FaRightFromBracket, FaRightToBracket, FaBookOpen, FaLightbulb, FaComments } from 'react-icons/fa6';
+import { FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear, FaMoon, FaSun, FaRightFromBracket, FaRightToBracket, FaBookOpen, FaLightbulb, FaComments, FaChevronLeft, FaChevronRight } from 'react-icons/fa6';
 import { useTheme } from '../../context/ThemeContext';
 import { clearAuthToken, getAuthToken } from '../../api/auth';
 import { SettingsModal } from '../settings/SettingsModal';
@@ -10,7 +10,12 @@ import { NotificationDropdown } from '../notifications/NotificationDropdown';
 import nagiIcon from '../../assets/nagi_icon.png';
 import './Sidebar.css';
 
-export function Sidebar() {
+interface SidebarProps {
+  collapsed: boolean;
+  onToggle: () => void;
+}
+
+export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
@@ -56,14 +61,23 @@ export function Sidebar() {
   };
 
   return (
-    <aside className="sidebar">
-      <div className="sidebar-logo">
-        <img
-          src={nagiIcon}
-          alt="Nagi AI"
-          className="logo-icon-img"
-        />
-        <span className="logo-text">秘書AI 凪</span>
+    <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+      <div className="sidebar-header">
+        <div className="sidebar-logo">
+          <img
+            src={nagiIcon}
+            alt="Nagi AI"
+            className="logo-icon-img"
+          />
+          {!collapsed && <span className="logo-text">秘書AI 凪</span>}
+        </div>
+        <button
+          className="sidebar-toggle-btn"
+          onClick={onToggle}
+          title={collapsed ? 'サイドバーを展開' : 'サイドバーを折りたたむ'}
+        >
+          {collapsed ? <FaChevronRight /> : <FaChevronLeft />}
+        </button>
       </div>
 
       <nav className="sidebar-nav">
@@ -72,11 +86,12 @@ export function Sidebar() {
             key={item.path}
             to={item.path}
             className={`nav-link ${location.pathname === item.path ? 'active' : ''}`}
+            title={collapsed ? item.label : undefined}
           >
             <item.icon className="nav-icon" />
-            <span className="nav-label">{item.label}</span>
+            {!collapsed && <span className="nav-label">{item.label}</span>}
             {item.path === '/projects' && totalUnassigned > 0 && (
-              <span className="nav-badge unassigned-badge" title="未割り当てタスク">
+              <span className={`nav-badge unassigned-badge ${collapsed ? 'collapsed-badge' : ''}`} title="未割り当てタスク">
                 {totalUnassigned}
               </span>
             )}
@@ -84,15 +99,17 @@ export function Sidebar() {
         ))}
       </nav>
 
-      <div className="sidebar-footer">
-        <div className="user-profile">
-          <div className="user-avatar">{avatarLabel}</div>
-          <div className="user-info">
-            <span className="user-name">{displayName}</span>
-            <span className="user-status">{token ? 'Signed in' : 'Guest'}</span>
+      <div className={`sidebar-footer ${collapsed ? 'collapsed' : ''}`}>
+        {!collapsed && (
+          <div className="user-profile">
+            <div className="user-avatar">{avatarLabel}</div>
+            <div className="user-info">
+              <span className="user-name">{displayName}</span>
+              <span className="user-status">{token ? 'Signed in' : 'Guest'}</span>
+            </div>
           </div>
-        </div>
-        <div className="footer-actions">
+        )}
+        <div className={`footer-actions ${collapsed ? 'collapsed' : ''}`}>
           <NotificationDropdown />
           <button
             className="footer-btn theme-toggle-btn"

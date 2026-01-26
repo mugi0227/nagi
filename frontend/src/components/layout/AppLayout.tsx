@@ -9,6 +9,7 @@ import './AppLayout.css';
 import { Sidebar } from './Sidebar';
 
 const CHAT_STORAGE_KEY = 'secretary_chat_state';
+const SIDEBAR_STORAGE_KEY = 'secretary_sidebar_collapsed';
 
 interface ChatState {
   isOpen: boolean;
@@ -26,6 +27,9 @@ export function AppLayout() {
   const [chatWidth, setChatWidth] = useState(() => loadChatState().width);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
   const [pendingDraftCard, setPendingDraftCard] = useState<DraftCardData | null>(null);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() =>
+    userStorage.getJson<boolean>(SIDEBAR_STORAGE_KEY, false)
+  );
 
   const isResizing = useRef(false);
 
@@ -34,6 +38,12 @@ export function AppLayout() {
     const state: ChatState = { isOpen: isChatOpen, width: chatWidth };
     userStorage.setJson(CHAT_STORAGE_KEY, state);
   }, [isChatOpen, chatWidth]);
+
+  useEffect(() => {
+    userStorage.setJson(SIDEBAR_STORAGE_KEY, isSidebarCollapsed);
+  }, [isSidebarCollapsed]);
+
+  const toggleSidebar = () => setIsSidebarCollapsed(!isSidebarCollapsed);
 
   const startResizing = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -99,8 +109,8 @@ export function AppLayout() {
   const toggleChat = () => setIsChatOpen(!isChatOpen);
 
   return (
-    <div className="app-container">
-      <Sidebar />
+    <div className={`app-container ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
+      <Sidebar collapsed={isSidebarCollapsed} onToggle={toggleSidebar} />
       <main className="main-content">
         <AnimatePresence mode="wait">
           <motion.div
