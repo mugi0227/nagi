@@ -9,22 +9,22 @@ from __future__ import annotations
 import json
 from datetime import datetime
 from typing import Optional
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from app.core.logger import logger
 from app.interfaces.achievement_repository import IAchievementRepository
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.task_repository import ITaskRepository
 from app.models.achievement import (
+    SKILL_CATEGORIES,
     Achievement,
     SkillAnalysis,
     SkillExperience,
-    SKILL_CATEGORIES,
+    TaskSnapshot,
 )
 from app.models.enums import GenerationType
 from app.models.task import Task
 from app.services.llm_utils import generate_text
-
 
 # JSON schema for AI response
 ACHIEVEMENT_RESPONSE_SCHEMA = {
@@ -137,6 +137,20 @@ def _build_tasks_prompt(tasks: list[Task]) -> str:
         lines.append("")
 
     return "\n".join(lines)
+
+
+def _build_task_snapshots(tasks: list[Task]) -> list[TaskSnapshot]:
+    return [
+        TaskSnapshot(
+            id=task.id,
+            title=task.title,
+            description=task.description,
+            project_id=task.project_id,
+            completed_at=task.completed_at or task.updated_at,
+            completion_note=task.completion_note,
+        )
+        for task in tasks
+    ]
 
 
 def _generate_achievement_prompt(
@@ -265,6 +279,7 @@ async def generate_achievement(
         ai_result.get("skill_analysis", {}),
         len(completed_tasks),
     )
+    task_snapshots = _build_task_snapshots(completed_tasks)
 
     # Create achievement
     achievement = Achievement(
@@ -279,6 +294,7 @@ async def generate_achievement(
         next_suggestions=ai_result.get("next_suggestions", []),
         task_count=len(completed_tasks),
         project_ids=project_ids,
+        task_snapshots=task_snapshots,
         generation_type=generation_type,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
@@ -373,6 +389,7 @@ async def _create_empty_achievement(
         next_suggestions=["タスクを追加して、日々の活動を記録していきましょう。"],
         task_count=0,
         project_ids=[],
+        task_snapshots=[],
         generation_type=generation_type,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),
@@ -636,6 +653,7 @@ async def generate_achievement_with_answers(
         ai_result.get("skill_analysis", {}),
         len(completed_tasks),
     )
+    task_snapshots = _build_task_snapshots(completed_tasks)
 
     # Create achievement
     achievement = Achievement(
@@ -650,6 +668,7 @@ async def generate_achievement_with_answers(
         next_suggestions=ai_result.get("next_suggestions", []),
         task_count=len(completed_tasks),
         project_ids=project_ids,
+        task_snapshots=task_snapshots,
         generation_type=generation_type,
         created_at=datetime.utcnow(),
         updated_at=datetime.utcnow(),

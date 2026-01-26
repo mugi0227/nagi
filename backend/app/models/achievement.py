@@ -55,6 +55,17 @@ class SkillAnalysis(BaseModel):
     )
 
 
+class TaskSnapshot(BaseModel):
+    """Snapshot of a completed task used for achievement generation."""
+
+    id: UUID
+    title: str
+    description: Optional[str] = None
+    project_id: Optional[UUID] = None
+    completed_at: datetime
+    completion_note: Optional[str] = None
+
+
 class AchievementBase(BaseModel):
     """Base achievement fields."""
 
@@ -98,6 +109,10 @@ class Achievement(AchievementBase):
     project_ids: list[UUID] = Field(
         default_factory=list,
         description="関連プロジェクトID一覧",
+    )
+    task_snapshots: list[TaskSnapshot] = Field(
+        default_factory=list,
+        description="達成項目生成時のタスクスナップショット",
     )
 
     # Metadata

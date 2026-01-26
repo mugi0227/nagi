@@ -991,6 +991,7 @@ export interface Achievement {
   next_suggestions: string[];
   task_count: number;
   project_ids: string[];
+  task_snapshots: CompletedTaskPreview[];
   generation_type: GenerationType;
   created_at: string;
   updated_at: string;

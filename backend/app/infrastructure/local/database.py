@@ -498,6 +498,7 @@ class AchievementORM(Base):
     # Statistics
     task_count = Column(Integer, default=0)
     project_ids = Column(JSON, nullable=True, default=list)
+    task_snapshots = Column(JSON, nullable=True, default=list)
 
     # Metadata
     generation_type = Column(String(20), default="MANUAL")  # AUTO or MANUAL

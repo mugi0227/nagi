@@ -8,14 +8,13 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, select
 
 from app.core.exceptions import NotFoundError
-from app.interfaces.achievement_repository import IAchievementRepository
-from app.models.achievement import Achievement, SkillAnalysis, SkillExperience
-from app.models.enums import GenerationType
 from app.infrastructure.local.database import AchievementORM, get_session_factory
+from app.interfaces.achievement_repository import IAchievementRepository
+from app.models.achievement import Achievement, SkillAnalysis, SkillExperience, TaskSnapshot
+from app.models.enums import GenerationType
 
 
 class SqliteAchievementRepository(IAchievementRepository):
@@ -60,6 +59,7 @@ class SqliteAchievementRepository(IAchievementRepository):
             next_suggestions=orm.next_suggestions or [],
             task_count=orm.task_count or 0,
             project_ids=[UUID(pid) for pid in (orm.project_ids or [])],
+            task_snapshots=[TaskSnapshot(**s) for s in (orm.task_snapshots or [])],
             generation_type=GenerationType(orm.generation_type) if orm.generation_type else GenerationType.MANUAL,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
@@ -84,6 +84,9 @@ class SqliteAchievementRepository(IAchievementRepository):
             "next_suggestions": achievement.next_suggestions,
             "task_count": achievement.task_count,
             "project_ids": [str(pid) for pid in achievement.project_ids],
+            "task_snapshots": [
+                snapshot.model_dump(mode="json") for snapshot in achievement.task_snapshots
+            ],
             "generation_type": achievement.generation_type.value,
         }
 

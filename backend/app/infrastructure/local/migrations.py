@@ -5,6 +5,7 @@ This module provides utilities for managing SQLite database schema migrations.
 """
 
 import re
+
 from sqlalchemy import text
 
 from app.infrastructure.local.database import get_engine
@@ -249,7 +250,6 @@ async def run_migrations():
             # Check for event_date column
             agenda_cols_result = await conn.execute(text("PRAGMA table_info(meeting_agenda_items)"))
             agenda_columns = {row[1] for row in agenda_cols_result}
-            
             if "event_date" not in agenda_columns:
                 await conn.execute(text("ALTER TABLE meeting_agenda_items ADD COLUMN event_date DATE"))
                 await conn.execute(
@@ -328,6 +328,7 @@ async def run_migrations():
                         next_suggestions JSON,
                         task_count INTEGER DEFAULT 0,
                         project_ids JSON,
+                        task_snapshots JSON,
                         generation_type VARCHAR(20) DEFAULT 'MANUAL',
                         created_at DATETIME,
                         updated_at DATETIME
@@ -344,6 +345,13 @@ async def run_migrations():
             await conn.execute(
                 text("CREATE INDEX idx_achievements_period_end ON achievements(period_end)")
             )
+        else:
+            achievement_columns = {
+                row[1]
+                for row in (await conn.execute(text("PRAGMA table_info(achievements)"))).fetchall()
+            }
+            if "task_snapshots" not in achievement_columns:
+                await conn.execute(text("ALTER TABLE achievements ADD COLUMN task_snapshots JSON"))
 
 
 async def _ensure_chat_sessions_composite_pk(conn):

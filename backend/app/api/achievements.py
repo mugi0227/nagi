@@ -17,14 +17,13 @@ from app.api.deps import (
     LLMProvider,
     TaskRepo,
 )
-from app.core.exceptions import NotFoundError
-from app.models.achievement import Achievement, SkillAnalysis
+from app.models.achievement import Achievement, SkillAnalysis, TaskSnapshot
 from app.models.enums import GenerationType
 from app.services.achievement_service import (
+    check_and_auto_generate,
     generate_achievement,
     generate_achievement_with_answers,
     generate_review_questions,
-    check_and_auto_generate,
 )
 
 router = APIRouter()
@@ -61,6 +60,7 @@ class AchievementResponse(BaseModel):
     next_suggestions: list[str]
     task_count: int
     project_ids: list[str]
+    task_snapshots: list[TaskSnapshot]
     generation_type: str
     created_at: datetime
     updated_at: datetime
@@ -79,6 +79,7 @@ class AchievementResponse(BaseModel):
             next_suggestions=achievement.next_suggestions,
             task_count=achievement.task_count,
             project_ids=[str(pid) for pid in achievement.project_ids],
+            task_snapshots=achievement.task_snapshots,
             generation_type=achievement.generation_type.value,
             created_at=achievement.created_at,
             updated_at=achievement.updated_at,
