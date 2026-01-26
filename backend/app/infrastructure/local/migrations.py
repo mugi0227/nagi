@@ -25,6 +25,9 @@ async def run_migrations():
         columns = {row[1] for row in result}
 
         # Add new columns if they don't exist
+        if "purpose" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN purpose TEXT"))
+
         if "start_time" not in columns:
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN start_time DATETIME"))
 
@@ -97,6 +100,14 @@ async def run_migrations():
 
         if "free_comment" not in checkin_columns:
             await conn.execute(text("ALTER TABLE checkins ADD COLUMN free_comment TEXT"))
+
+        # Check projects table for visibility column
+        project_result = await conn.execute(text("PRAGMA table_info(projects)"))
+        project_columns = {row[1] for row in project_result}
+        if "visibility" not in project_columns:
+            await conn.execute(
+                text("ALTER TABLE projects ADD COLUMN visibility VARCHAR(20) DEFAULT 'PRIVATE'")
+            )
 
         # Check phases table for fixed_buffer_minutes
         phase_result = await conn.execute(text("PRAGMA table_info(phases)"))

@@ -12,6 +12,7 @@ from uuid import UUID
 from pydantic import BaseModel, Field
 
 from app.models.enums import GenerationType
+from app.models.task import Task
 
 
 class SkillExperience(BaseModel):
@@ -113,8 +114,6 @@ class Achievement(AchievementBase):
 
 class AchievementWithTasks(Achievement):
     """Achievement with associated completed tasks."""
-
-    from app.models.task import Task
 
     completed_tasks: list[Task] = Field(
         default_factory=list,

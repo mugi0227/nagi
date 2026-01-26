@@ -6,7 +6,7 @@ Defines the contract for achievement storage operations.
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from uuid import UUID
 
 from app.models.achievement import Achievement, AchievementCreate
@@ -51,7 +51,7 @@ class IAchievementRepository(ABC):
         period_end: Optional[datetime] = None,
         limit: int = 20,
         offset: int = 0,
-    ) -> list[Achievement]:
+    ) -> List[Achievement]:
         """
         List achievements for a user.
 
@@ -100,8 +100,8 @@ class IAchievementRepository(ABC):
         user_id: str,
         achievement_id: UUID,
         summary: Optional[str] = None,
-        growth_points: Optional[list[str]] = None,
-        next_suggestions: Optional[list[str]] = None,
+        growth_points: Optional[List[str]] = None,
+        next_suggestions: Optional[List[str]] = None,
     ) -> Achievement:
         """
         Update an achievement (partial update).
