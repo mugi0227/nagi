@@ -89,9 +89,11 @@ export function AchievementPage() {
   const currentYear = now.year;
   const currentMonth = now.month;
   const defaultPeriodType: PeriodType = currentMonth >= 4 && currentMonth <= 9 ? 'H1' : 'H2';
+  // 1-3月は前年の下期に属する
+  const defaultYear = currentMonth >= 1 && currentMonth <= 3 ? currentYear - 1 : currentYear;
 
   const [selectedPeriodType, setSelectedPeriodType] = useState<PeriodType>(defaultPeriodType);
-  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [selectedYear, setSelectedYear] = useState(defaultYear);
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [showTaskList, setShowTaskList] = useState(false);
