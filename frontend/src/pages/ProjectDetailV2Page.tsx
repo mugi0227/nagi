@@ -2204,7 +2204,6 @@ export function ProjectDetailV2Page() {
                   onTaskClick={(taskId) => {
                     const task = tasks.find(t => t.id === taskId);
                     if (task) {
-                      // サブタスクの場合は親タスクも設定
                       if (task.parent_id) {
                         const parent = tasks.find(t => t.id === task.parent_id);
                         setOpenedParentTask(parent || null);
@@ -2254,6 +2253,41 @@ export function ProjectDetailV2Page() {
                       await refreshMilestones();
                     } catch (err) {
                       console.error('Failed to update milestone:', err);
+                    }
+                  }}
+                  onSubtaskCreate={(parentTaskId) => {
+                    const parentTask = tasks.find(t => t.id === parentTaskId);
+                    setNewTaskInitialData({
+                      project_id: projectId,
+                      phase_id: parentTask?.phase_id,
+                      parent_id: parentTaskId,
+                    });
+                    setIsCreatingTask(true);
+                  }}
+                  onGenerateSubtasks={(parentTaskId, taskTitle) => {
+                    const draftCard: DraftCardData = {
+                      type: 'subtask',
+                      title: 'サブタスク生成',
+                      info: [
+                        { label: '親タスク', value: taskTitle },
+                        { label: 'タスクID', value: parentTaskId },
+                      ],
+                      placeholder: '例: 3つに分割して',
+                      promptTemplate: `タスク「${taskTitle}」(ID: ${parentTaskId}) のサブタスクを作成して。
+
+追加の指示があれば以下に記入:
+{instruction}`,
+                    };
+                    window.dispatchEvent(new CustomEvent('secretary:chat-open', {
+                      detail: { draftCard }
+                    }));
+                  }}
+                  onDeleteTask={async (taskId) => {
+                    try {
+                      await tasksApi.delete(taskId);
+                      refetchTasks();
+                    } catch (err) {
+                      console.error('Failed to delete task:', err);
                     }
                   }}
                 />
