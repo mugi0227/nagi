@@ -32,7 +32,7 @@ function getNavigationPath(notification: Notification): string | null {
     case 'achievement':
       return '/achievement';
     case 'project_achievement':
-      return project_id ? `/projects/${project_id}?tab=achievements` : null;
+      return project_id ? `/projects/${project_id}/v2?tab=achievements` : null;
     case 'task':
       return link_id ? `/tasks?task=${link_id}` : '/tasks';
     case 'project':
