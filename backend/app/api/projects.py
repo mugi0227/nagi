@@ -531,27 +531,47 @@ async def create_project_invitation(
     user_repo: UserRepo,
 ):
     """Create a project invitation (or add member if user exists)."""
-    """Create a project invitation (or add member if user exists)."""
     project = await _get_project_or_404(user, repo, project_id)
     normalized_email = _normalize_email(invitation.email)
-    pending = await invitation_repo.get_pending_by_email(project_id, normalized_email)
+    existing_invitation = await invitation_repo.get_by_email(project_id, normalized_email)
 
     existing_user = await user_repo.get_by_email(normalized_email)
     member_user_id = str(existing_user.id) if existing_user else None
 
-    if pending and member_user_id:
-        members = await member_repo.list(project.user_id, project_id)
-        if not any(m.member_user_id == member_user_id for m in members):
-            await member_repo.create(
-                project.user_id,
-                project_id,
-                ProjectMemberCreate(member_user_id=member_user_id, role=invitation.role),
+    # Handle existing invitation based on status
+    if existing_invitation:
+        if existing_invitation.status == InvitationStatus.ACCEPTED:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"An invitation for {normalized_email} has already been accepted",
             )
-        return await invitation_repo.mark_accepted(pending.id, member_user_id)
+        elif existing_invitation.status == InvitationStatus.PENDING:
+            # If user exists, auto-accept the pending invitation
+            if member_user_id:
+                members = await member_repo.list(project.user_id, project_id)
+                if not any(m.member_user_id == member_user_id for m in members):
+                    await member_repo.create(
+                        project.user_id,
+                        project_id,
+                        ProjectMemberCreate(member_user_id=member_user_id, role=invitation.role),
+                    )
+                return await invitation_repo.mark_accepted(existing_invitation.id, member_user_id)
+            return existing_invitation
+        else:
+            # EXPIRED or REVOKED: reinvite
+            reinvited = await invitation_repo.reinvite(existing_invitation.id, user.id)
+            if member_user_id:
+                members = await member_repo.list(project.user_id, project_id)
+                if not any(m.member_user_id == member_user_id for m in members):
+                    await member_repo.create(
+                        project.user_id,
+                        project_id,
+                        ProjectMemberCreate(member_user_id=member_user_id, role=invitation.role),
+                    )
+                return await invitation_repo.mark_accepted(reinvited.id, member_user_id)
+            return reinvited
 
-    if pending:
-        return pending
-
+    # No existing invitation: create new one
     created = await invitation_repo.create(
         project.user_id,
         project_id,

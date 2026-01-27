@@ -112,6 +112,22 @@ class SqliteProjectInvitationRepository(IProjectInvitationRepository):
             orm = result.scalar_one_or_none()
             return self._orm_to_model(orm) if orm else None
 
+    async def get_by_email(
+        self, project_id: UUID, email: str
+    ) -> Optional[ProjectInvitation]:
+        """Get any invitation by email for a project (regardless of status)."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ProjectInvitationORM).where(
+                    and_(
+                        ProjectInvitationORM.project_id == str(project_id),
+                        ProjectInvitationORM.email == email,
+                    )
+                )
+            )
+            orm = result.scalar_one_or_none()
+            return self._orm_to_model(orm) if orm else None
+
     async def update(
         self, user_id: str, invitation_id: UUID, update: ProjectInvitationUpdate
     ) -> ProjectInvitation:
@@ -150,6 +166,29 @@ class SqliteProjectInvitationRepository(IProjectInvitationRepository):
             orm.status = InvitationStatus.ACCEPTED.value
             orm.accepted_by = accepted_by
             orm.accepted_at = datetime.utcnow()
+            orm.updated_at = datetime.utcnow()
+            await session.commit()
+            await session.refresh(orm)
+            return self._orm_to_model(orm)
+
+    async def reinvite(
+        self, invitation_id: UUID, invited_by: str
+    ) -> ProjectInvitation:
+        """Reset an EXPIRED/REVOKED invitation to PENDING status."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ProjectInvitationORM).where(ProjectInvitationORM.id == str(invitation_id))
+            )
+            orm = result.scalar_one_or_none()
+            if not orm:
+                raise NotFoundError(f"Invitation {invitation_id} not found")
+
+            orm.status = InvitationStatus.PENDING.value
+            orm.token = str(uuid4())
+            orm.invited_by = invited_by
+            orm.accepted_by = None
+            orm.accepted_at = None
+            orm.expires_at = datetime.utcnow() + timedelta(days=14)
             orm.updated_at = datetime.utcnow()
             await session.commit()
             await session.refresh(orm)

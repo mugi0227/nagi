@@ -44,6 +44,13 @@ class IProjectInvitationRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_by_email(
+        self, project_id: UUID, email: str
+    ) -> Optional[ProjectInvitation]:
+        """Get any invitation by email for a project (regardless of status)."""
+        pass
+
+    @abstractmethod
     async def update(
         self, user_id: str, invitation_id: UUID, update: ProjectInvitationUpdate
     ) -> ProjectInvitation:
@@ -55,4 +62,11 @@ class IProjectInvitationRepository(ABC):
         self, invitation_id: UUID, accepted_by: str
     ) -> ProjectInvitation:
         """Mark invitation as accepted."""
+        pass
+
+    @abstractmethod
+    async def reinvite(
+        self, invitation_id: UUID, invited_by: str
+    ) -> ProjectInvitation:
+        """Reset an EXPIRED/REVOKED invitation to PENDING status."""
         pass
