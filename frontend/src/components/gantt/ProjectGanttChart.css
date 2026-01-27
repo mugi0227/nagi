@@ -377,10 +377,9 @@
 .pgantt-row-title-popover {
   display: none;
   position: absolute;
-  left: 100%;
-  top: 50%;
-  transform: translateY(-50%);
-  margin-left: 8px;
+  left: 0;
+  top: 100%;
+  margin-top: 6px;
   padding: 8px 12px;
   background: var(--c-text);
   color: var(--c-bg);
@@ -400,12 +399,12 @@
 .pgantt-row-title-popover::before {
   content: '';
   position: absolute;
-  left: -4px;
-  top: 50%;
-  transform: translateY(-50%) rotate(45deg);
+  left: 16px;
+  top: -4px;
   width: 8px;
   height: 8px;
   background: var(--c-text);
+  transform: rotate(45deg);
 }
 
 /* Allow popover to overflow */
@@ -413,11 +412,7 @@
   overflow: visible;
 }
 
-.pgantt-sidebar-row:hover .pgantt-row-title {
-  overflow: visible;
-}
-
-.pgantt-sidebar-row:hover .pgantt-row-title-popover {
+.pgantt-row-title:hover .pgantt-row-title-popover {
   display: block;
 }
 
