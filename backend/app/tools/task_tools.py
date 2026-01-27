@@ -1085,6 +1085,8 @@ def create_task_tool(
             estimated_minutes (int, optional): 見積もり時間（分）
             due_date (str, optional): 期限（ISO形式）
             start_not_before (str, optional): 着手可能日時（ISO形式）
+            parent_id (str, optional): 親タスクID（UUID文字列）- サブタスクとして作成する場合に必須
+            order_in_parent (int, optional): 親タスク内での順序（1から開始）- サブタスクの場合に推奨
             dependency_ids (list[str], optional): このタスクが依存する他のタスクのIDリスト（UUID文字列）
             is_fixed_time (bool, optional): 会議・固定時間イベントの場合true
             is_all_day (bool, optional): 終日タスク（休暇・出張など）。trueの場合、その日のキャパシティを0にする
