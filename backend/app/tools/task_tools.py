@@ -44,6 +44,7 @@ class CreateTaskInput(BaseModel):
         json_schema_extra={"examples": ["買い物リストを作る", "圏論の勉強"]}
     )
     description: Optional[str] = Field(None, description="タスクの詳細説明")
+    purpose: Optional[str] = Field(None, max_length=1000, description="なぜやるか（目的）- タスクを行う理由や背景")
     project_id: Optional[str] = Field(None, description="プロジェクトID（UUID文字列）")
     importance: Priority = Field(Priority.MEDIUM, description="重要度 (HIGH/MEDIUM/LOW)")
     urgency: Priority = Field(Priority.MEDIUM, description="緊急度 (HIGH/MEDIUM/LOW)")
@@ -80,6 +81,7 @@ class UpdateTaskInput(BaseModel):
     task_id: str = Field(..., description="タスクID（UUID文字列）")
     title: Optional[str] = Field(None, description="タスクのタイトル")
     description: Optional[str] = Field(None, description="タスクの詳細説明")
+    purpose: Optional[str] = Field(None, max_length=1000, description="なぜやるか（目的）- タスクを行う理由や背景")
     project_id: Optional[str] = Field(None, description="プロジェクトID（UUID文字列）")
     phase_id: Optional[str] = Field(None, description="フェーズID（UUID文字列）")
     status: Optional[str] = Field(None, description="ステータス (TODO/IN_PROGRESS/WAITING/DONE)")
@@ -436,6 +438,7 @@ async def create_task(
     task_data = TaskCreate(
         title=input_data.title,
         description=input_data.description,
+        purpose=input_data.purpose,
         project_id=project_id,
         importance=input_data.importance,
         urgency=input_data.urgency,
@@ -568,6 +571,7 @@ async def update_task(
     update_data = TaskUpdate(
         title=input_data.title,
         description=input_data.description,
+        purpose=input_data.purpose,
         project_id=project_id,
         phase_id=phase_id,
         status=input_data.status,
@@ -955,6 +959,7 @@ def propose_task_tool(
         Parameters:
             title (str): Task title
             description (str, optional): Task description
+            purpose (str, optional): なぜやるか（目的）- タスクを行う理由や背景
             project_id (str, optional): Project ID
             importance (str, optional): Priority
             urgency (str, optional): Urgency
@@ -1075,6 +1080,7 @@ def create_task_tool(
         Parameters:
             title (str): タスクのタイトル（必須）※task_titleでも可
             description (str, optional): タスクの詳細説明
+            purpose (str, optional): なぜやるか（目的）- タスクを行う理由や背景。ユーザーから聞き出して設定すると優先度判断に役立つ
             project_id (str, optional): プロジェクトID
             importance (str, optional): 重要度 (HIGH/MEDIUM/LOW)、デフォルト: MEDIUM
             urgency (str, optional): 緊急度 (HIGH/MEDIUM/LOW)、デフォルト: MEDIUM
@@ -1129,6 +1135,7 @@ def update_task_tool(
             task_id (str): タスクID（UUID文字列、必須）
             title (str, optional): タスクのタイトル
             description (str, optional): タスクの詳細説明
+            purpose (str, optional): なぜやるか（目的）- タスクを行う理由や背景
             project_id (str, optional): プロジェクトID（UUID文字列、タスクを別プロジェクトに移動）
             phase_id (str, optional): フェーズID（UUID文字列、プロジェクト内での分類）
             status (str, optional): ステータス (TODO/IN_PROGRESS/WAITING/DONE)
