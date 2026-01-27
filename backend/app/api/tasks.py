@@ -337,7 +337,7 @@ async def get_task_schedule(
     # Load assignments if filtering by assignee
     assignments = None
     if filter_by_assignee:
-        assignments = await assignment_repo.list_all_for_user(user.id)
+        assignments = await assignment_repo.list_for_assignee(user.id)
 
     planned_window_by_task = None
     if apply_plan_constraints:
@@ -390,7 +390,7 @@ async def get_today_tasks(
     # Load assignments if filtering by assignee
     assignments = None
     if filter_by_assignee:
-        assignments = await assignment_repo.list_all_for_user(user.id)
+        assignments = await assignment_repo.list_for_assignee(user.id)
 
     planned_window_by_task = None
     if apply_plan_constraints:

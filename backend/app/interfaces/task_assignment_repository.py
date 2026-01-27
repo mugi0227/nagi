@@ -70,6 +70,15 @@ class ITaskAssignmentRepository(ABC):
         pass
 
     @abstractmethod
+    async def list_for_assignee(self, user_id: str) -> list[TaskAssignment]:
+        """
+        List all assignments where user is the assignee.
+
+        Used for schedule filtering to show tasks assigned to the current user.
+        """
+        pass
+
+    @abstractmethod
     async def convert_invitation_to_user(
         self, user_id: str, invitation_assignee_id: str, new_user_id: str
     ) -> int:
