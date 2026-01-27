@@ -251,6 +251,64 @@
   font-style: italic;
 }
 
+/* Subtask row styling */
+.pgantt-sidebar-row.subtask {
+  background: var(--c-bg);
+  font-size: 0.8rem;
+}
+
+.pgantt-sidebar-row.subtask:hover {
+  background: var(--c-bg-hover);
+  color: var(--c-primary);
+}
+
+.pgantt-sidebar-row.is-subtask {
+  background: linear-gradient(to right, rgba(99, 102, 241, 0.02), transparent);
+}
+
+.pgantt-subtask-icon {
+  color: var(--c-text-muted);
+  font-size: 0.8rem;
+  opacity: 0.7;
+}
+
+.pgantt-subtask-count {
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  background: var(--c-bg-alt);
+  border: 1px solid var(--c-border-light);
+  padding: 1px 6px;
+  border-radius: 8px;
+  margin-left: auto;
+}
+
+/* Task toggle button for subtasks */
+.pgantt-task-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.pgantt-task-toggle:hover {
+  background: var(--c-bg-hover);
+  color: var(--c-primary);
+}
+
+.pgantt-sidebar-row.task:hover .pgantt-task-toggle {
+  color: var(--c-text);
+}
+
 /* Drag handle for reordering */
 .pgantt-drag-handle {
   display: flex;
@@ -430,6 +488,81 @@
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.8; }
+}
+
+/* Keyboard shortcuts hint */
+.pgantt-shortcuts-hint {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
+  cursor: help;
+}
+
+.pgantt-shortcut-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--c-text-muted);
+  background: var(--c-bg-alt);
+  border: 1px solid var(--c-border);
+  border-radius: 50%;
+  transition: all 0.15s;
+}
+
+.pgantt-shortcuts-hint:hover .pgantt-shortcut-badge {
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+  color: white;
+}
+
+.pgantt-shortcuts-tooltip {
+  display: none;
+  position: absolute;
+  top: 100%;
+  right: 0;
+  margin-top: 8px;
+  padding: 12px 16px;
+  background: var(--c-text);
+  color: var(--c-bg);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  white-space: nowrap;
+  z-index: 1000;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.pgantt-shortcuts-hint {
+  position: relative;
+}
+
+.pgantt-shortcuts-hint:hover .pgantt-shortcuts-tooltip {
+  display: block;
+}
+
+.pgantt-shortcut-item {
+  padding: 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pgantt-shortcut-item:not(:last-child) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.pgantt-shortcuts-tooltip kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  font-size: 0.65rem;
+  font-family: inherit;
+  font-weight: 600;
+  background: rgba(255, 255, 255, 0.15);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
 }
 
 /* Phase 5: Link mode container styling */
@@ -623,6 +756,30 @@
   border-color: var(--c-primary-light);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+}
+
+/* Subtask bar for undated items */
+.pgantt-bar.subtask.no-date {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(129, 140, 248, 0.25),
+    rgba(129, 140, 248, 0.25) 4px,
+    rgba(129, 140, 248, 0.1) 4px,
+    rgba(129, 140, 248, 0.1) 8px
+  );
+  border: 2px dashed #818cf8;
+  box-shadow: none;
+}
+
+.pgantt-bar.subtask.no-date:hover {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(129, 140, 248, 0.4),
+    rgba(129, 140, 248, 0.4) 4px,
+    rgba(129, 140, 248, 0.2) 4px,
+    rgba(129, 140, 248, 0.2) 8px
+  );
+  transform: translateY(-1px);
 }
 
 /* Draggable styling for milestones in sidebar */
@@ -844,6 +1001,28 @@
 .pgantt-bar.task.in-progress {
   background: linear-gradient(135deg, #60a5fa 0%, #3b82f6 100%);
   box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+}
+
+/* Subtask Bar */
+.pgantt-bar.subtask {
+  height: 22px;
+  background: linear-gradient(135deg, #a5b4fc 0%, #818cf8 100%);
+  box-shadow: 0 1px 4px rgba(99, 102, 241, 0.2);
+  border-radius: 4px;
+}
+
+.pgantt-bar.subtask.done {
+  background: linear-gradient(135deg, #6ee7b7 0%, #34d399 100%);
+  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.2);
+}
+
+.pgantt-bar.subtask.in-progress {
+  background: linear-gradient(135deg, #93c5fd 0%, #60a5fa 100%);
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.2);
+}
+
+.pgantt-bar-row.subtask {
+  background: rgba(248, 250, 252, 0.3);
 }
 
 /* Milestone */

@@ -73,7 +73,7 @@ interface GanttBar {
 }
 
 interface GanttRow {
-  type: 'phase' | 'milestone' | 'task' | 'buffer';
+  type: 'phase' | 'milestone' | 'task' | 'buffer' | 'subtask';
   id: string;
   title: string;
   depth: number;
@@ -89,12 +89,30 @@ interface GanttRow {
   linkedMilestoneId?: string;  // For tasks linked to milestones
   linkedMilestoneDateIndex?: number;  // Date index of the linked milestone (for visual marker)
   hasNoDate?: boolean;  // For undated items
+  parentTaskId?: string;  // For subtasks
+  subtaskCount?: number;  // Number of subtasks for a parent task
 }
 
 interface MonthHeader {
   label: string;
   startIndex: number;
   span: number;
+}
+
+// Undo/Redo History Entry
+interface HistoryEntry {
+  type: 'task-date' | 'phase-date' | 'milestone-date' | 'batch-task-date';
+  timestamp: number;
+  // For single item updates
+  itemId?: string;
+  before?: { start?: string; end?: string };
+  after?: { start?: string; end?: string };
+  // For batch updates (dependency cascade)
+  batchUpdates?: Array<{
+    taskId: string;
+    before: { start_not_before?: string; due_date?: string };
+    after: { start_not_before?: string; due_date?: string };
+  }>;
 }
 
 // ============================================
@@ -217,6 +235,7 @@ interface SortableSidebarRowProps {
   isLinkMode: boolean;
   linkSourceTask: string | null;
   onTogglePhase: (phaseId: string) => void;
+  onToggleTask: (taskId: string) => void;
   onLinkModeClick: (taskId: string) => void;
   onTaskClick?: (taskId: string) => void;
   onTaskCreate?: (phaseId?: string) => void;
@@ -229,14 +248,15 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
   isLinkMode,
   linkSourceTask,
   onTogglePhase,
+  onToggleTask,
   onLinkModeClick,
   onTaskClick,
   onTaskCreate,
   isDragDisabled,
   isDropTarget,
 }) => {
-  // Tasks and milestones are draggable for reordering
-  const isDraggableType = row.type === 'task' || row.type === 'milestone';
+  // Tasks, subtasks, and milestones are draggable for reordering
+  const isDraggableType = row.type === 'task' || row.type === 'subtask' || row.type === 'milestone';
   const {
     attributes,
     listeners,
@@ -259,29 +279,37 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
   const handleClick = () => {
     if (row.type === 'phase') {
       onTogglePhase(row.id);
-    } else if (row.type === 'task' && isLinkMode) {
+    } else if ((row.type === 'task' || row.type === 'subtask') && isLinkMode) {
       onLinkModeClick(row.id);
-    } else if (row.type === 'task' && onTaskClick) {
+    } else if ((row.type === 'task' || row.type === 'subtask') && onTaskClick) {
       onTaskClick(row.id);
     }
   };
 
-  // Tasks and milestones are fully draggable (not just via handle)
+  const handleToggleSubtasks = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    onToggleTask(row.id);
+  };
+
+  // Tasks, subtasks, and milestones are fully draggable (not just via handle)
   // In link mode, disable task drag to allow clicks for linking
-  const canDrag = isDraggableType && !isDragDisabled && !(row.type === 'task' && isLinkMode);
+  const canDrag = isDraggableType && !isDragDisabled && !((row.type === 'task' || row.type === 'subtask') && isLinkMode);
   const dragProps = canDrag ? { ...attributes, ...listeners } : {};
+
+  const hasSubtasks = row.subtaskCount !== undefined && row.subtaskCount > 0;
 
   const classNames = [
     'pgantt-sidebar-row',
     row.type,
     `depth-${row.depth}`,
-    row.type === 'task' ? 'clickable' : '',
+    (row.type === 'task' || row.type === 'subtask') ? 'clickable' : '',
     isDraggableType ? 'draggable' : '',
     row.linkedMilestoneId ? 'milestone-linked' : '',
     isLinkMode && linkSourceTask === row.id ? 'link-source' : '',
     isDragging ? 'dragging' : '',
     isDropTarget ? 'drop-target' : '',
     row.hasNoDate ? 'no-date' : '',
+    row.parentTaskId ? 'is-subtask' : '',
   ].filter(Boolean).join(' ');
 
   return (
@@ -297,10 +325,19 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
           {row.isExpanded ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
         </span>
       )}
+      {row.type === 'task' && hasSubtasks && (
+        <button className="pgantt-toggle pgantt-task-toggle" onClick={handleToggleSubtasks} title={row.isExpanded ? 'サブタスクを閉じる' : 'サブタスクを開く'}>
+          {row.isExpanded ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
+        </button>
+      )}
+      {row.type === 'subtask' && <span className="pgantt-subtask-icon">└</span>}
       {row.type === 'milestone' && <span className="pgantt-milestone-icon">◆</span>}
       {row.linkedMilestoneId && <span className="pgantt-linked-icon">└</span>}
       {row.hasNoDate && <span className="pgantt-no-date-icon" title="期限未設定">⚠</span>}
       <span className="pgantt-row-title" title={row.title}>{row.title}</span>
+      {hasSubtasks && (
+        <span className="pgantt-subtask-count">{row.subtaskCount}</span>
+      )}
       {row.childCount !== undefined && row.childCount > 0 && (
         <span className="pgantt-child-count">{row.childCount}</span>
       )}
@@ -342,6 +379,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   const today = useMemo(() => todayInTimezone(timezone), [timezone]);
   const [viewMode, setViewMode] = useState<ViewMode>('day');
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(() => new Set(phases.map(p => p.id)));
+  const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [showTaskList, setShowTaskList] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -360,6 +398,23 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
 
   // Dependency deletion confirmation state
   const [pendingDeleteArrow, setPendingDeleteArrow] = useState<{ fromId: string; toId: string; x: number; y: number } | null>(null);
+
+  // Scroll position management - prevent unwanted scrolls on state changes
+  const initialScrollDoneRef = useRef(false);
+  const prevViewModeRef = useRef<ViewMode>(viewMode);
+  const prevDayWidthRef = useRef<number>(viewMode === 'day' ? 40 : viewMode === 'week' ? 16 : 6);
+
+  // Middle mouse button pan scroll state
+  const panStateRef = useRef<{
+    isPanning: boolean;
+    startX: number;
+    scrollLeft: number;
+  } | null>(null);
+
+  // Undo/Redo history stacks
+  const [historyStack, setHistoryStack] = useState<HistoryEntry[]>([]);
+  const [futureStack, setFutureStack] = useState<HistoryEntry[]>([]);
+  const isUndoRedoRef = useRef(false); // Flag to prevent recording during undo/redo
 
   // Dnd-kit sensors for sidebar reordering
   const sensors = useSensors(
@@ -383,6 +438,8 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
     previewEnd: number;
     // Dependent tasks preview (taskId -> { startDelta, endDelta })
     dependentPreviews: Map<string, { originalStart: number; originalEnd: number; previewStart: number; previewEnd: number }>;
+    // Ctrl key held: cascade dependencies and move dependent tasks together
+    cascadeDependencies: boolean;
   } | null>(null);
 
   const parseDate = useCallback(
@@ -699,6 +756,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
             }
 
             const subtasks = phaseTasks.filter(t => t.parent_id === task.id);
+            const isTaskExpanded = expandedTasks.has(task.id);
 
             result.push({
               type: 'task',
@@ -713,11 +771,55 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                 status: task.status,
               },
               dependencyIds: task.dependency_ids,
-              childCount: subtasks.length > 0 ? subtasks.length : undefined,
+              subtaskCount: subtasks.length > 0 ? subtasks.length : undefined,
               linkedMilestoneId: milestone.id,
               linkedMilestoneDateIndex: displayIdx >= 0 ? displayIdx : undefined,
               hasNoDate,
+              isExpanded: isTaskExpanded,
             });
+
+            // Add subtasks if parent is expanded
+            if (isTaskExpanded && subtasks.length > 0) {
+              subtasks
+                .sort((a, b) => (a.order_in_parent ?? 0) - (b.order_in_parent ?? 0))
+                .forEach(subtask => {
+                  const subStartStr = subtask.start_not_before || subtask.created_at;
+                  let subStartIndex = getDateIndex(subStartStr);
+                  let subEndIndex = getDateIndex(subtask.due_date);
+                  const subHasNoDate = !subtask.due_date && !subtask.start_not_before;
+
+                  if (subHasNoDate) {
+                    const todayIdx = dateIndexMap.get(today.toISODate() ?? '') ?? 0;
+                    subStartIndex = todayIdx;
+                    subEndIndex = todayIdx + 1;
+                  } else {
+                    if (subStartIndex < 0 && subEndIndex >= 0) {
+                      const estDays = Math.max(1, Math.ceil((subtask.estimated_minutes || 60) / (8 * 60)));
+                      subStartIndex = Math.max(0, subEndIndex - estDays + 1);
+                    }
+                    if (subEndIndex < 0) subEndIndex = subStartIndex >= 0 ? subStartIndex + 1 : -1;
+                    if (subStartIndex < 0) subStartIndex = subEndIndex;
+                    if (subStartIndex < 0 || subEndIndex < 0) return;
+                  }
+
+                  result.push({
+                    type: 'subtask',
+                    id: subtask.id,
+                    title: subtask.title,
+                    depth: 3,
+                    phaseId: phase.id,
+                    parentTaskId: task.id,
+                    bar: {
+                      startIndex: Math.min(subStartIndex, subEndIndex),
+                      endIndex: Math.max(subStartIndex, subEndIndex),
+                      progress: subtask.progress ?? (subtask.status === 'DONE' ? 100 : 0),
+                      status: subtask.status,
+                    },
+                    dependencyIds: subtask.dependency_ids,
+                    hasNoDate: subHasNoDate,
+                  });
+                });
+            }
           });
         });
 
@@ -755,6 +857,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
 
             const subtasks = phaseTasks.filter(t => t.parent_id === task.id);
             const hasSubtasks = subtasks.length > 0;
+            const isTaskExpanded = expandedTasks.has(task.id);
 
             result.push({
               type: 'task',
@@ -769,9 +872,53 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                 status: task.status,
               },
               dependencyIds: task.dependency_ids,
-              childCount: hasSubtasks ? subtasks.length : undefined,
+              subtaskCount: hasSubtasks ? subtasks.length : undefined,
               hasNoDate,
+              isExpanded: isTaskExpanded,
             });
+
+            // Add subtasks if parent is expanded
+            if (isTaskExpanded && subtasks.length > 0) {
+              subtasks
+                .sort((a, b) => (a.order_in_parent ?? 0) - (b.order_in_parent ?? 0))
+                .forEach(subtask => {
+                  const subStartStr = subtask.start_not_before || subtask.created_at;
+                  let subStartIndex = getDateIndex(subStartStr);
+                  let subEndIndex = getDateIndex(subtask.due_date);
+                  const subHasNoDate = !subtask.due_date && !subtask.start_not_before;
+
+                  if (subHasNoDate) {
+                    const todayIdx = dateIndexMap.get(today.toISODate() ?? '') ?? 0;
+                    subStartIndex = todayIdx;
+                    subEndIndex = todayIdx + 1;
+                  } else {
+                    if (subStartIndex < 0 && subEndIndex >= 0) {
+                      const estDays = Math.max(1, Math.ceil((subtask.estimated_minutes || 60) / (8 * 60)));
+                      subStartIndex = Math.max(0, subEndIndex - estDays + 1);
+                    }
+                    if (subEndIndex < 0) subEndIndex = subStartIndex >= 0 ? subStartIndex + 1 : -1;
+                    if (subStartIndex < 0) subStartIndex = subEndIndex;
+                    if (subStartIndex < 0 || subEndIndex < 0) return;
+                  }
+
+                  result.push({
+                    type: 'subtask',
+                    id: subtask.id,
+                    title: subtask.title,
+                    depth: 2,
+                    phaseId: phase.id,
+                    parentTaskId: task.id,
+                    bar: {
+                      startIndex: Math.min(subStartIndex, subEndIndex),
+                      endIndex: Math.max(subStartIndex, subEndIndex),
+                      progress: subtask.progress ?? (subtask.status === 'DONE' ? 100 : 0),
+                      status: subtask.status,
+                    },
+                    dependencyIds: subtask.dependency_ids,
+                    hasNoDate: subHasNoDate,
+                  });
+                });
+            }
           });
       }
     });
@@ -841,6 +988,10 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
             if (taskEndIndex < 0) taskEndIndex = 1;
           }
 
+          // Find subtasks for unassigned tasks
+          const subtasks = tasks.filter(t => !t.phase_id && t.parent_id === task.id);
+          const isTaskExpanded = expandedTasks.has(task.id);
+
           result.push({
             type: 'task',
             id: task.id,
@@ -855,13 +1006,58 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
             },
             dependencyIds: task.dependency_ids,
             hasNoDate,
+            subtaskCount: subtasks.length > 0 ? subtasks.length : undefined,
+            isExpanded: isTaskExpanded,
           });
+
+          // Add subtasks if parent is expanded
+          if (isTaskExpanded && subtasks.length > 0) {
+            subtasks
+              .sort((a, b) => (a.order_in_parent ?? 0) - (b.order_in_parent ?? 0))
+              .forEach(subtask => {
+                const subStartStr = subtask.start_not_before || subtask.created_at;
+                let subStartIndex = getDateIndex(subStartStr);
+                let subEndIndex = getDateIndex(subtask.due_date);
+                const subHasNoDate = !subtask.due_date && !subtask.start_not_before;
+
+                if (subHasNoDate) {
+                  const todayIdx = dateIndexMap.get(today.toISODate() ?? '') ?? 0;
+                  subStartIndex = todayIdx;
+                  subEndIndex = todayIdx + 1;
+                } else {
+                  if (subStartIndex < 0 && subEndIndex >= 0) {
+                    const estDays = Math.max(1, Math.ceil((subtask.estimated_minutes || 60) / (8 * 60)));
+                    subStartIndex = Math.max(0, subEndIndex - estDays + 1);
+                  }
+                  if (subEndIndex < 0) subEndIndex = subStartIndex >= 0 ? subStartIndex + 1 : -1;
+                  if (subStartIndex < 0) subStartIndex = subEndIndex;
+                  if (subStartIndex < 0 || subEndIndex < 0) return;
+                }
+
+                result.push({
+                  type: 'subtask',
+                  id: subtask.id,
+                  title: subtask.title,
+                  depth: 2,
+                  phaseId: 'unassigned',
+                  parentTaskId: task.id,
+                  bar: {
+                    startIndex: Math.min(subStartIndex, subEndIndex),
+                    endIndex: Math.max(subStartIndex, subEndIndex),
+                    progress: subtask.progress ?? (subtask.status === 'DONE' ? 100 : 0),
+                    status: subtask.status,
+                  },
+                  dependencyIds: subtask.dependency_ids,
+                  hasNoDate: subHasNoDate,
+                });
+              });
+          }
         });
       }
     }
 
     return result;
-  }, [phases, tasks, milestones, expandedPhases, tasksByPhase, milestonesByPhase, dateRange, getDateIndex, dateIndexMap, taskOrderMap, milestoneOrderMap, parseDate, today]);
+  }, [phases, tasks, milestones, expandedPhases, expandedTasks, tasksByPhase, milestonesByPhase, dateRange, getDateIndex, dateIndexMap, taskOrderMap, milestoneOrderMap, parseDate, today]);
 
   // 依存関係の矢印データ
   const dependencyArrows = useMemo(() => {
@@ -870,7 +1066,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
     rows.forEach((row, index) => rowIndexMap.set(row.id, index));
 
     rows.forEach((row, rowIndex) => {
-      if (row.type === 'task' && row.dependencyIds && row.bar) {
+      if ((row.type === 'task' || row.type === 'subtask') && row.dependencyIds && row.bar) {
         const currentBar = row.bar;
         row.dependencyIds.forEach(depId => {
           const depRowIndex = rowIndexMap.get(depId);
@@ -897,6 +1093,114 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
     return viewMode === 'day' ? 40 : viewMode === 'week' ? 16 : 6;
   }, [viewMode]);
 
+  // History management for Undo/Redo
+  const pushToHistory = useCallback((entry: HistoryEntry) => {
+    if (isUndoRedoRef.current) return; // Don't record during undo/redo
+    setHistoryStack(prev => [...prev.slice(-49), entry]); // Keep last 50 entries
+    setFutureStack([]); // Clear redo stack on new action
+  }, []);
+
+  const handleUndo = useCallback(() => {
+    if (historyStack.length === 0) return;
+
+    const entry = historyStack[historyStack.length - 1];
+    isUndoRedoRef.current = true;
+
+    try {
+      if (entry.type === 'task-date' && entry.itemId && entry.before && onTaskUpdate) {
+        onTaskUpdate(entry.itemId, {
+          start_not_before: entry.before.start,
+          due_date: entry.before.end,
+        });
+      } else if (entry.type === 'phase-date' && entry.itemId && entry.before && onPhaseUpdate) {
+        onPhaseUpdate(entry.itemId, {
+          start_date: entry.before.start,
+          end_date: entry.before.end,
+        });
+      } else if (entry.type === 'milestone-date' && entry.itemId && entry.before && onMilestoneUpdate) {
+        onMilestoneUpdate(entry.itemId, {
+          due_date: entry.before.start,
+        });
+      } else if (entry.type === 'batch-task-date' && entry.batchUpdates && onBatchTaskUpdate) {
+        const undoUpdates = entry.batchUpdates.map(u => ({
+          taskId: u.taskId,
+          updates: {
+            start_not_before: u.before.start_not_before,
+            due_date: u.before.due_date,
+          },
+        }));
+        onBatchTaskUpdate(undoUpdates);
+      }
+
+      setHistoryStack(prev => prev.slice(0, -1));
+      setFutureStack(prev => [...prev, entry]);
+    } finally {
+      // Reset flag after a short delay to allow state updates
+      setTimeout(() => { isUndoRedoRef.current = false; }, 100);
+    }
+  }, [historyStack, onTaskUpdate, onPhaseUpdate, onMilestoneUpdate, onBatchTaskUpdate]);
+
+  const handleRedo = useCallback(() => {
+    if (futureStack.length === 0) return;
+
+    const entry = futureStack[futureStack.length - 1];
+    isUndoRedoRef.current = true;
+
+    try {
+      if (entry.type === 'task-date' && entry.itemId && entry.after && onTaskUpdate) {
+        onTaskUpdate(entry.itemId, {
+          start_not_before: entry.after.start,
+          due_date: entry.after.end,
+        });
+      } else if (entry.type === 'phase-date' && entry.itemId && entry.after && onPhaseUpdate) {
+        onPhaseUpdate(entry.itemId, {
+          start_date: entry.after.start,
+          end_date: entry.after.end,
+        });
+      } else if (entry.type === 'milestone-date' && entry.itemId && entry.after && onMilestoneUpdate) {
+        onMilestoneUpdate(entry.itemId, {
+          due_date: entry.after.start,
+        });
+      } else if (entry.type === 'batch-task-date' && entry.batchUpdates && onBatchTaskUpdate) {
+        const redoUpdates = entry.batchUpdates.map(u => ({
+          taskId: u.taskId,
+          updates: {
+            start_not_before: u.after.start_not_before,
+            due_date: u.after.due_date,
+          },
+        }));
+        onBatchTaskUpdate(redoUpdates);
+      }
+
+      setFutureStack(prev => prev.slice(0, -1));
+      setHistoryStack(prev => [...prev, entry]);
+    } finally {
+      setTimeout(() => { isUndoRedoRef.current = false; }, 100);
+    }
+  }, [futureStack, onTaskUpdate, onPhaseUpdate, onMilestoneUpdate, onBatchTaskUpdate]);
+
+  // Keyboard shortcuts for Undo/Redo
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Check if focus is inside an input, textarea, or contenteditable
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) {
+        return;
+      }
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
+
   // フェーズ展開/折りたたみ
   const togglePhase = useCallback((phaseId: string) => {
     setExpandedPhases(prev => {
@@ -905,6 +1209,19 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
         next.delete(phaseId);
       } else {
         next.add(phaseId);
+      }
+      return next;
+    });
+  }, []);
+
+  // タスク（サブタスク表示）展開/折りたたみ
+  const toggleTask = useCallback((taskId: string) => {
+    setExpandedTasks(prev => {
+      const next = new Set(prev);
+      if (next.has(taskId)) {
+        next.delete(taskId);
+      } else {
+        next.add(taskId);
       }
       return next;
     });
@@ -1097,15 +1414,32 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
     }
   }, [isLinkMode, linkSourceTask, tasks, onDependencyUpdate]);
 
-  // 今日の位置にスクロール
+  // 今日の位置にスクロール (初回マウント時のみ)
+  // viewMode変更時は相対位置を維持
   useEffect(() => {
-    if (scrollRef.current) {
+    if (!scrollRef.current) return;
+
+    const currentDayWidth = viewMode === 'day' ? 40 : viewMode === 'week' ? 16 : 6;
+
+    if (!initialScrollDoneRef.current) {
+      // Initial scroll to today
       const todayIndex = dateIndexMap.get(today.toISODate() ?? '') ?? 0;
-      const dayWidth = viewMode === 'day' ? 40 : viewMode === 'week' ? 16 : 6;
-      const scrollPosition = Math.max(0, todayIndex * dayWidth - 200);
+      const scrollPosition = Math.max(0, todayIndex * currentDayWidth - 200);
       scrollRef.current.scrollLeft = scrollPosition;
+      initialScrollDoneRef.current = true;
+    } else if (prevViewModeRef.current !== viewMode) {
+      // viewMode changed - maintain relative scroll position
+      const prevDayWidth = prevDayWidthRef.current;
+      const currentScrollLeft = scrollRef.current.scrollLeft;
+      // Convert current position to day index (roughly)
+      const dayIndex = currentScrollLeft / prevDayWidth;
+      // Apply same day index with new day width
+      scrollRef.current.scrollLeft = dayIndex * currentDayWidth;
     }
-  }, [dateIndexMap, viewMode]);
+
+    prevViewModeRef.current = viewMode;
+    prevDayWidthRef.current = currentDayWidth;
+  }, [dateIndexMap, viewMode, today]);
 
   // ドラッグ状態をrefで保持（最新の値にアクセスするため）
   const dragStateRef = useRef(dragState);
@@ -1117,6 +1451,48 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   const handleMouseMoveRef = useRef<((e: MouseEvent) => void) | null>(null);
   const handleMouseUpRef = useRef<((e: MouseEvent) => void) | null>(null);
 
+  // Middle mouse button pan scroll handlers
+  const handleTimelineMouseDown = useCallback((e: React.MouseEvent) => {
+    // Only handle middle mouse button (button === 1)
+    if (e.button !== 1) return;
+
+    e.preventDefault();
+
+    if (scrollRef.current) {
+      panStateRef.current = {
+        isPanning: true,
+        startX: e.clientX,
+        scrollLeft: scrollRef.current.scrollLeft,
+      };
+      scrollRef.current.style.cursor = 'grabbing';
+    }
+  }, []);
+
+  // Effect to handle pan scroll mouse events
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!panStateRef.current?.isPanning || !scrollRef.current) return;
+
+      const deltaX = e.clientX - panStateRef.current.startX;
+      scrollRef.current.scrollLeft = panStateRef.current.scrollLeft - deltaX;
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      if (e.button === 1 && panStateRef.current?.isPanning && scrollRef.current) {
+        panStateRef.current = null;
+        scrollRef.current.style.cursor = '';
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
   // ドラッグ開始
   const handleDragStart = useCallback((
     e: React.MouseEvent,
@@ -1124,12 +1500,19 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
     type: 'move' | 'resize-start' | 'resize-end',
     bar: GanttBar
   ) => {
+    // Only handle left mouse button (button === 0)
+    if (e.button !== 0) return;
+
     e.preventDefault();
     e.stopPropagation();
 
+    // Check if Ctrl key is held - if so, cascade to dependent tasks
+    const cascadeDependencies = e.ctrlKey || e.metaKey;
+
     // Find dependent tasks and their original positions for preview
+    // Only if Ctrl IS held (cascade mode)
     const dependentPreviews = new Map<string, { originalStart: number; originalEnd: number; previewStart: number; previewEnd: number }>();
-    if (type === 'move') {
+    if (type === 'move' && cascadeDependencies) {
       const dependentTasks = findAllDependentTasks(rowId, tasks);
       dependentTasks.forEach(depTask => {
         const depRow = rows.find(r => r.id === depTask.id);
@@ -1153,6 +1536,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
       previewStart: bar.startIndex,
       previewEnd: bar.endIndex,
       dependentPreviews,
+      cascadeDependencies,
     };
 
     setDragState(initialState);
@@ -1189,9 +1573,9 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
       // Note: Milestone linking is handled only via sidebar drag-and-drop (dnd-kit),
       // not via timeline bar dragging
 
-      // Update dependent task previews
+      // Update dependent task previews (only if cascading dependencies with Ctrl)
       const newDependentPreviews = new Map(currentState.dependentPreviews);
-      if (currentState.type === 'move' && deltaDays !== 0) {
+      if (currentState.type === 'move' && deltaDays !== 0 && currentState.cascadeDependencies) {
         currentState.dependentPreviews.forEach((preview, taskId) => {
           newDependentPreviews.set(taskId, {
             ...preview,
@@ -1246,15 +1630,31 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
           const endDate = dateRange[Math.max(0, Math.min(newEnd, maxIndex))]?.toISODate();
 
           if (startDate && endDate) {
-            if (row.type === 'task') {
+            if (row.type === 'task' || row.type === 'subtask') {
+              // Get original task data for history
+              const task = tasks.find(t => t.id === row.id);
+              const originalStartDate = dateRange[currentState.originalStart]?.toISODate();
+              const originalEndDate = dateRange[currentState.originalEnd]?.toISODate();
+
               // Phase 4: Dependency cascade - cascade to dependents in both directions
-              if (currentState.type === 'move' && onBatchTaskUpdate) {
+              // Only cascade if Ctrl key IS held (cascadeDependencies === true)
+              if (currentState.type === 'move' && onBatchTaskUpdate && currentState.cascadeDependencies) {
                 const dependentTasks = findAllDependentTasks(row.id, tasks);
                 if (dependentTasks.length > 0) {
                   // Batch update: main task + all dependents
                   const updates: Array<{ taskId: string; updates: Partial<TaskUpdate> }> = [
                     { taskId: row.id, updates: { start_not_before: startDate, due_date: endDate } }
                   ];
+                  // Build history entry for batch update
+                  const historyBatch: Array<{
+                    taskId: string;
+                    before: { start_not_before?: string; due_date?: string };
+                    after: { start_not_before?: string; due_date?: string };
+                  }> = [{
+                    taskId: row.id,
+                    before: { start_not_before: task?.start_not_before, due_date: task?.due_date },
+                    after: { start_not_before: startDate, due_date: endDate },
+                  }];
 
                   dependentTasks.forEach(depTask => {
                     const depStartStr = depTask.start_not_before || depTask.created_at;
@@ -1268,22 +1668,63 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                           taskId: depTask.id,
                           updates: { start_not_before: newDepStart, due_date: newDepEnd }
                         });
+                        historyBatch.push({
+                          taskId: depTask.id,
+                          before: { start_not_before: depTask.start_not_before, due_date: depTask.due_date },
+                          after: { start_not_before: newDepStart, due_date: newDepEnd },
+                        });
                       }
                     }
                   });
 
+                  // Record to history before updating
+                  pushToHistory({
+                    type: 'batch-task-date',
+                    timestamp: Date.now(),
+                    batchUpdates: historyBatch,
+                  });
                   onBatchTaskUpdate(updates);
                 } else if (onTaskUpdate) {
                   // No dependents, just update the task
+                  pushToHistory({
+                    type: 'task-date',
+                    timestamp: Date.now(),
+                    itemId: row.id,
+                    before: { start: originalStartDate, end: originalEndDate },
+                    after: { start: startDate, end: endDate },
+                  });
                   onTaskUpdate(row.id, { start_not_before: startDate, due_date: endDate });
                 }
               } else if (onTaskUpdate) {
                 // Resizing or no batch handler, just update the task
+                pushToHistory({
+                  type: 'task-date',
+                  timestamp: Date.now(),
+                  itemId: row.id,
+                  before: { start: originalStartDate, end: originalEndDate },
+                  after: { start: startDate, end: endDate },
+                });
                 onTaskUpdate(row.id, { start_not_before: startDate, due_date: endDate });
               }
             } else if (row.type === 'phase' && onPhaseUpdate) {
+              const phase = phases.find(p => p.id === row.id);
+              pushToHistory({
+                type: 'phase-date',
+                timestamp: Date.now(),
+                itemId: row.id,
+                before: { start: phase?.start_date, end: phase?.end_date },
+                after: { start: startDate, end: endDate },
+              });
               onPhaseUpdate(row.id, { start_date: startDate, end_date: endDate });
             } else if (row.type === 'milestone' && onMilestoneUpdate) {
+              const milestone = milestones.find(m => m.id === row.id);
+              pushToHistory({
+                type: 'milestone-date',
+                timestamp: Date.now(),
+                itemId: row.id,
+                before: { start: milestone?.due_date, end: milestone?.due_date },
+                after: { start: startDate, end: startDate },
+              });
               // Milestones only have a due_date (same as startDate for milestone)
               onMilestoneUpdate(row.id, { due_date: startDate });
             }
@@ -1295,7 +1736,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
         const absMovement = Math.abs(deltaX);
         const isClick = absMovement < 5;
 
-        if (isClick && row?.type === 'task' && currentState.type === 'move') {
+        if (isClick && (row?.type === 'task' || row?.type === 'subtask') && currentState.type === 'move') {
           if (isLinkMode) {
             // Link mode: handle linking
             handleLinkModeClick(row.id);
@@ -1327,7 +1768,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
     handleMouseUpRef.current = handleMouseUp;
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
-  }, [viewMode, dateRange, rows, onTaskUpdate, onPhaseUpdate, onMilestoneUpdate, onTaskClick, onBatchTaskUpdate, findAllDependentTasks, tasks, parseDate, isLinkMode, handleLinkModeClick]);
+  }, [viewMode, dateRange, rows, onTaskUpdate, onPhaseUpdate, onMilestoneUpdate, onTaskClick, onBatchTaskUpdate, findAllDependentTasks, tasks, phases, milestones, parseDate, isLinkMode, handleLinkModeClick, pushToHistory]);
 
   // コンポーネントのアンマウント時にクリーンアップ
   useEffect(() => {
@@ -1366,13 +1807,14 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
     if (row.type === 'phase') classes.push('phase');
     if (row.type === 'milestone') classes.push('milestone');
     if (row.type === 'task') classes.push('task');
+    if (row.type === 'subtask') classes.push('subtask');
     if (row.type === 'buffer') classes.push('buffer');
     if (bar.status === 'DONE') classes.push('done');
     if (bar.status === 'IN_PROGRESS') classes.push('in-progress');
     if (row.bufferStatus) classes.push(row.bufferStatus);
     if (row.bufferType) classes.push(row.bufferType);
     // Phase 5: Link mode source highlighting
-    if (isLinkMode && row.type === 'task' && linkSourceTask === row.id) {
+    if (isLinkMode && (row.type === 'task' || row.type === 'subtask') && linkSourceTask === row.id) {
       classes.push('link-source');
     }
     // Phase 6: Milestone drop target highlighting
@@ -1462,6 +1904,16 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
               )}
             </div>
           )}
+          {/* Keyboard shortcuts hint */}
+          <div className="pgantt-shortcuts-hint">
+            <span className="pgantt-shortcut-badge">?</span>
+            <div className="pgantt-shortcuts-tooltip">
+              <div className="pgantt-shortcut-item"><kbd>Ctrl</kbd>+<kbd>Z</kbd> 元に戻す</div>
+              <div className="pgantt-shortcut-item"><kbd>Ctrl</kbd>+<kbd>Y</kbd> やり直し</div>
+              <div className="pgantt-shortcut-item"><kbd>Ctrl</kbd>+ドラッグ 依存タスクも一緒に移動</div>
+              <div className="pgantt-shortcut-item">中央ボタン+ドラッグ 横スクロール</div>
+            </div>
+          </div>
         </div>
         <div className="pgantt-view-modes">
           <button className={viewMode === 'day' ? 'active' : ''} onClick={() => setViewMode('day')}>日</button>
@@ -1484,7 +1936,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                 onDragEnd={handleSidebarDragEnd}
               >
                 <SortableContext
-                  items={rows.filter(r => r.type === 'task' || r.type === 'milestone').map(r => r.id)}
+                  items={rows.filter(r => r.type === 'task' || r.type === 'subtask' || r.type === 'milestone').map(r => r.id)}
                   strategy={verticalListSortingStrategy}
                 >
                   {rows.map((row) => (
@@ -1501,6 +1953,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                         isLinkMode={isLinkMode}
                         linkSourceTask={linkSourceTask}
                         onTogglePhase={togglePhase}
+                        onToggleTask={toggleTask}
                         onLinkModeClick={handleLinkModeClick}
                         onTaskClick={onTaskClick}
                         onTaskCreate={onTaskCreate}
@@ -1516,7 +1969,11 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
         )}
 
         {/* タイムライン */}
-        <div className="pgantt-timeline" ref={scrollRef}>
+        <div
+          className="pgantt-timeline"
+          ref={scrollRef}
+          onMouseDown={handleTimelineMouseDown}
+        >
           {/* 月ヘッダー */}
           <div className="pgantt-month-header" style={{ width: `${dateRange.length * dayWidth}px` }}>
             {monthHeaders.map((month, idx) => (
@@ -1576,7 +2033,11 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
             {/* 依存関係の矢印 */}
             <svg
               className="pgantt-arrows"
-              style={{ width: `${dateRange.length * dayWidth}px`, height: `${rows.length * 44}px` }}
+              style={{
+                width: `${dateRange.length * dayWidth}px`,
+                height: `${rows.length * 44}px`,
+                zIndex: pendingDeleteArrow ? 100 : 5
+              }}
             >
               <defs>
                 <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
@@ -1742,7 +2203,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                         '--buffer-color': row.bufferStatus ? getBufferStatusColor(row.bufferStatus) : undefined,
                       } as CSSProperties}
                       onMouseDown={(e) => {
-                        if (row.type === 'task' || row.type === 'phase' || row.type === 'milestone') {
+                        if (row.type === 'task' || row.type === 'subtask' || row.type === 'phase' || row.type === 'milestone') {
                           handleDragStart(e, row.id, 'move', row.bar!);
                         }
                       }}
@@ -1752,7 +2213,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                       {row.bar.progress > 0 && row.bar.progress < 100 && row.type !== 'milestone' && (
                         <div className="pgantt-bar-progress" />
                       )}
-                      {(row.type === 'task' || row.type === 'phase') && !row.hasNoDate && (
+                      {(row.type === 'task' || row.type === 'subtask' || row.type === 'phase') && !row.hasNoDate && (
                         <>
                           <div
                             className="pgantt-resize-handle start"
