@@ -1800,9 +1800,8 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
           if (isLinkMode) {
             // Link mode: handle linking
             handleLinkModeClick(row.id);
-          } else if (onTaskClick) {
-            onTaskClick(row.id);
           }
+          // バーのクリックではモーダルを開かない（サイドバーのみで開く）
         }
       }
 
