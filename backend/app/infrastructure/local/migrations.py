@@ -329,6 +329,7 @@ async def run_migrations():
                         task_count INTEGER DEFAULT 0,
                         project_ids JSON,
                         task_snapshots JSON,
+                        append_note TEXT,
                         generation_type VARCHAR(20) DEFAULT 'MANUAL',
                         created_at DATETIME,
                         updated_at DATETIME
@@ -352,6 +353,42 @@ async def run_migrations():
             }
             if "task_snapshots" not in achievement_columns:
                 await conn.execute(text("ALTER TABLE achievements ADD COLUMN task_snapshots JSON"))
+            if "append_note" not in achievement_columns:
+                await conn.execute(text("ALTER TABLE achievements ADD COLUMN append_note TEXT"))
+
+        # Create milestones table if missing
+        milestone_result = await conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='milestones'")
+        )
+        if not milestone_result.scalar():
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE milestones (
+                        id VARCHAR(36) PRIMARY KEY,
+                        user_id VARCHAR(255) NOT NULL,
+                        project_id VARCHAR(36) NOT NULL,
+                        phase_id VARCHAR(36) NOT NULL,
+                        title VARCHAR(200) NOT NULL,
+                        description TEXT,
+                        status VARCHAR(20) DEFAULT 'ACTIVE',
+                        order_in_phase INTEGER DEFAULT 1 NOT NULL,
+                        due_date DATETIME,
+                        created_at DATETIME,
+                        updated_at DATETIME
+                    )
+                    """
+                )
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_milestones_user_id ON milestones(user_id)")
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_milestones_project_id ON milestones(project_id)")
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_milestones_phase_id ON milestones(phase_id)")
+            )
 
 
 async def _ensure_chat_sessions_composite_pk(conn):
