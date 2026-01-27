@@ -60,6 +60,7 @@ class SqliteAchievementRepository(IAchievementRepository):
             task_count=orm.task_count or 0,
             project_ids=[UUID(pid) for pid in (orm.project_ids or [])],
             task_snapshots=[TaskSnapshot(**s) for s in (orm.task_snapshots or [])],
+            append_note=orm.append_note,
             generation_type=GenerationType(orm.generation_type) if orm.generation_type else GenerationType.MANUAL,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
@@ -87,6 +88,7 @@ class SqliteAchievementRepository(IAchievementRepository):
             "task_snapshots": [
                 snapshot.model_dump(mode="json") for snapshot in achievement.task_snapshots
             ],
+            "append_note": achievement.append_note,
             "generation_type": achievement.generation_type.value,
         }
 
@@ -179,6 +181,10 @@ class SqliteAchievementRepository(IAchievementRepository):
         summary: Optional[str] = None,
         growth_points: Optional[list[str]] = None,
         next_suggestions: Optional[list[str]] = None,
+        skill_analysis: Optional[SkillAnalysis] = None,
+        strengths: Optional[list[str]] = None,
+        growth_areas: Optional[list[str]] = None,
+        append_note: Optional[str] = None,
     ) -> Achievement:
         """Update an achievement (partial update)."""
         async with self._session_factory() as session:
@@ -201,6 +207,23 @@ class SqliteAchievementRepository(IAchievementRepository):
                 orm.growth_points = growth_points
             if next_suggestions is not None:
                 orm.next_suggestions = next_suggestions
+            if skill_analysis is not None:
+                orm.skill_analysis = {
+                    "domain_skills": [s.model_dump() for s in skill_analysis.domain_skills],
+                    "soft_skills": [s.model_dump() for s in skill_analysis.soft_skills],
+                    "work_types": [s.model_dump() for s in skill_analysis.work_types],
+                    "strengths": skill_analysis.strengths,
+                    "growth_areas": skill_analysis.growth_areas,
+                }
+            elif strengths is not None or growth_areas is not None:
+                skill_analysis_data = orm.skill_analysis or {}
+                if strengths is not None:
+                    skill_analysis_data["strengths"] = strengths
+                if growth_areas is not None:
+                    skill_analysis_data["growth_areas"] = growth_areas
+                orm.skill_analysis = skill_analysis_data
+            if append_note is not None:
+                orm.append_note = append_note
 
             orm.updated_at = datetime.utcnow()
 

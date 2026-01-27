@@ -49,13 +49,11 @@ from app.models.collaboration import (
 )
 from app.models.project import Project, ProjectCreate, ProjectUpdate, ProjectWithTaskCount
 from app.models.project_kpi import ProjectKpiTemplate
-from app.models.phase_breakdown import PhaseBreakdownRequest, PhaseBreakdownResponse
 from app.models.enums import CheckinType, InvitationStatus, MemoryScope, MemoryType, ProjectRole
 from app.models.memory import Memory, MemoryCreate
 from app.services.kpi_calculator import apply_project_kpis
 from app.services.kpi_templates import get_kpi_templates
 from app.services.llm_utils import generate_text, generate_text_with_status
-from app.services.phase_planner_service import PhasePlannerService
 
 router = APIRouter()
 
@@ -973,31 +971,3 @@ async def get_project_checkin_agenda_items(
     )
 
 
-@router.post("/{project_id}/phase-breakdown", response_model=PhaseBreakdownResponse)
-async def breakdown_project_phases(
-    project_id: UUID,
-    request: PhaseBreakdownRequest,
-    user: CurrentUser,
-    repo: ProjectRepo,
-    phase_repo: PhaseRepo,
-    milestone_repo: MilestoneRepo,
-    task_repo: TaskRepo,
-    memory_repo: MemoryRepo,
-    llm_provider: LLMProvider,
-) -> PhaseBreakdownResponse:
-    """Generate phases and milestones for a project using AI."""
-    await _get_project_or_404(user, repo, project_id)
-
-    service = PhasePlannerService(
-        llm_provider=llm_provider,
-        memory_repo=memory_repo,
-        project_repo=repo,
-        phase_repo=phase_repo,
-        milestone_repo=milestone_repo,
-        task_repo=task_repo,
-    )
-    return await service.breakdown_project_phases(
-        user_id=user.id,
-        project_id=project_id,
-        request=request,
-    )

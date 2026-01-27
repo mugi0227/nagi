@@ -23,7 +23,7 @@ const TEXT = {
 export function TasksPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [showPersonalOnly, setShowPersonalOnly] = useState(true);
+  const [showPersonalOnly, setShowPersonalOnly] = useState(false);
   const offset = (page - 1) * PAGE_SIZE;
   const { data: allTasks = [], isLoading, error, isFetching } = useQuery({
     queryKey: ['tasks', 'page', page, PAGE_SIZE, 'exclude-meetings'],
@@ -48,7 +48,6 @@ export function TasksPage() {
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [taskToEdit, setTaskToEdit] = useState<Task | undefined>(undefined);
   const [initialFormData, setInitialFormData] = useState<Partial<TaskCreate> | undefined>(undefined);
-  const [breakdownTaskId, setBreakdownTaskId] = useState<string | null>(null);
 
   const createMutation = useMutation({
     mutationFn: tasksApi.create,
@@ -78,27 +77,6 @@ export function TasksPage() {
       queryClient.invalidateQueries({ queryKey: ['top3'] });
       queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
       queryClient.invalidateQueries({ queryKey: ['schedule'] });
-    },
-  });
-
-  const breakdownMutation = useMutation({
-    mutationFn: ({ id, instruction }: { id: string; instruction?: string }) =>
-      tasksApi.breakdownTask(id, { create_subtasks: true, instruction }),
-    onMutate: ({ id }) => {
-      setBreakdownTaskId(id);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['top3'] });
-      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['schedule'] });
-      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
-    },
-    onError: () => {
-      alert('タスク分解に失敗しました。');
-    },
-    onSettled: () => {
-      setBreakdownTaskId(null);
     },
   });
 
@@ -225,7 +203,7 @@ export function TasksPage() {
   return (
     <div className="tasks-page">
       <div className="page-header">
-        <h2 className="page-title">Tasks</h2>
+        <h2 className="page-title">タスク</h2>
         <div className="header-actions">
           <button
             type="button"
@@ -267,10 +245,6 @@ export function TasksPage() {
         onUpdateTask={handleUpdateStatus}
         onDeleteTask={(taskId) => deleteMutation.mutate(taskId)}
         onTaskClick={handleTaskClick}
-        onBreakdownTask={(taskId, instruction) =>
-          breakdownMutation.mutate({ id: taskId, instruction })
-        }
-        breakdownTaskId={breakdownTaskId}
       />
 
       <AnimatePresence>

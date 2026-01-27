@@ -15,8 +15,6 @@ interface KanbanColumnProps {
   onEditTask?: (task: Task) => void;
   onDeleteTask?: (id: string) => void;
   onTaskClick?: (task: Task) => void;
-  onBreakdownTask?: (id: string, instruction?: string) => void;
-  breakdownTaskId?: string | null;
   onDrop?: (taskId: string, newStatus: TaskStatus) => void;
   onUpdateTask?: (taskId: string, status: TaskStatus) => void;
   // Selection mode
@@ -41,8 +39,6 @@ export function KanbanColumn({
   onEditTask,
   onDeleteTask,
   onTaskClick,
-  onBreakdownTask,
-  breakdownTaskId,
   onDrop,
   onUpdateTask,
   selectionMode = false,
@@ -109,8 +105,6 @@ export function KanbanColumn({
               onEdit={onEditTask}
               onDelete={onDeleteTask}
               onClick={onTaskClick}
-              onBreakdown={onBreakdownTask}
-              isBreakdownPending={breakdownTaskId === task.id}
               onUpdateTask={onUpdateTask}
               selectionMode={selectionMode}
               isSelected={selectedTaskIds?.has(task.id) ?? false}

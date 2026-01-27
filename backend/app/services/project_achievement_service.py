@@ -20,15 +20,11 @@ from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.interfaces.user_repository import IUserRepository
-from app.models.achievement import (
-    MemberContribution,
-    ProjectAchievement,
-)
+from app.models.achievement import MemberContribution, ProjectAchievement
 from app.models.enums import GenerationType
 from app.models.notification import NotificationCreate, NotificationType
 from app.models.task import Task
 from app.services.llm_utils import generate_text
-
 
 # JSON schema for AI response
 PROJECT_ACHIEVEMENT_RESPONSE_SCHEMA = {
@@ -88,6 +84,26 @@ def _build_tasks_by_member_prompt(
     return "\n".join(lines)
 
 
+def _build_member_contributions_prompt(contributions: list[MemberContribution]) -> str:
+    lines = ["## メンバー別の貢献", ""]
+
+    for contribution in contributions:
+        lines.append(f"### {contribution.display_name} ({contribution.task_count}タスク)")
+        if contribution.main_areas:
+            lines.append(f"- 主な領域: {', '.join(contribution.main_areas)}")
+        if contribution.task_titles:
+            lines.append(f"- タスク例: {', '.join(contribution.task_titles[:10])}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _format_bullet_list(items: list[str]) -> str:
+    if not items:
+        return "なし"
+    return "\n".join([f"- {item}" for item in items])
+
+
 def _generate_project_achievement_prompt(
     project_name: str,
     tasks_by_member: dict[str, list[Task]],
@@ -140,6 +156,61 @@ def _generate_project_achievement_prompt(
 - 日本語で回答してください
 
 回答はJSON形式で返してください。
+"""
+    return prompt
+
+
+def _generate_project_achievement_prompt_with_edits(achievement: ProjectAchievement) -> str:
+    period_str = achievement.period_label or (
+        f"{achievement.period_start.strftime('%Y/%m/%d')} - {achievement.period_end.strftime('%Y/%m/%d')}"
+    )
+
+    prompt = f"""あなたはプロジェクトマネージャーです。以下の編集内容と追記を踏まえて、
+プロジェクト達成項目を読みやすく整理し、完成版としてまとめ直してください。
+
+## プロジェクト情報
+- 対象期間: {period_str}
+- 完了タスク数: {achievement.total_task_count}件
+- 残タスク数: {achievement.remaining_tasks_count}件
+- メンバー数: {len(achievement.member_contributions)}人
+
+{_build_member_contributions_prompt(achievement.member_contributions)}
+
+## ユーザーの編集内容（これを尊重して反映）
+
+### サマリー
+{achievement.summary}
+
+### チームの成果ハイライト
+{_format_bullet_list(achievement.team_highlights)}
+
+### 課題・反省点
+{_format_bullet_list(achievement.challenges)}
+
+### 学び
+{_format_bullet_list(achievement.learnings)}
+
+### 未解決の課題
+{_format_bullet_list(achievement.open_issues)}
+
+### 追記
+{achievement.append_note or "なし"}
+
+## 指示
+- 編集内容と追記を優先して、言い回しを整えてください
+- 内容の欠落や矛盾がないように整理してください
+- 日本語で、前向きなトーンにしてください
+
+回答はJSON形式で返してください。
+
+## JSON出力例（この形式で返してください）
+{{
+  "summary": "今週は主要機能の実装とリリース準備を進め、品質改善にも取り組みました。",
+  "team_highlights": ["リリースに向けた機能実装が完了", "レビュー体制を整備できた"],
+  "challenges": ["仕様変更への対応に時間がかかった"],
+  "learnings": ["共有の早期化が進行を助ける"],
+  "open_issues": ["次週の性能検証対応"]
+}}
 """
     return prompt
 
@@ -294,6 +365,54 @@ async def generate_project_achievement(
         )
 
     return saved
+
+
+async def summarize_project_achievement_with_edits(
+    llm_provider: ILLMProvider,
+    project_achievement_repo: IProjectAchievementRepository,
+    achievement: ProjectAchievement,
+) -> ProjectAchievement:
+    prompt = _generate_project_achievement_prompt_with_edits(achievement)
+
+    response_text = generate_text(
+        llm_provider=llm_provider,
+        prompt=prompt,
+        temperature=0.3,
+        max_output_tokens=2000,
+        response_mime_type="application/json",
+    )
+
+    ai_result = _parse_ai_response(response_text)
+
+    summary = ai_result.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        summary = achievement.summary
+
+    team_highlights = ai_result.get("team_highlights")
+    if not isinstance(team_highlights, list):
+        team_highlights = achievement.team_highlights
+
+    challenges = ai_result.get("challenges")
+    if not isinstance(challenges, list):
+        challenges = achievement.challenges
+
+    learnings = ai_result.get("learnings")
+    if not isinstance(learnings, list):
+        learnings = achievement.learnings
+
+    open_issues = ai_result.get("open_issues")
+    if not isinstance(open_issues, list):
+        open_issues = achievement.open_issues
+
+    return await project_achievement_repo.update(
+        project_id=achievement.project_id,
+        achievement_id=achievement.id,
+        summary=summary,
+        team_highlights=team_highlights,
+        challenges=challenges,
+        learnings=learnings,
+        open_issues=open_issues,
+    )
 
 
 def _parse_ai_response(response_text: Optional[str]) -> dict:

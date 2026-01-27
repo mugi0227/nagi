@@ -139,6 +139,28 @@ def _build_tasks_prompt(tasks: list[Task]) -> str:
     return "\n".join(lines)
 
 
+def _build_task_snapshots_prompt(tasks: list[TaskSnapshot]) -> str:
+    """Build task snapshot list section for the prompt."""
+    lines = ["## 完了タスク一覧", ""]
+
+    for i, task in enumerate(tasks, 1):
+        lines.append(f"### タスク {i}")
+        lines.append(f"- タイトル: {task.title}")
+        if task.description:
+            lines.append(f"- 説明: {task.description[:500]}")
+        if task.completion_note:
+            lines.append(f"- 達成メモ: {task.completion_note[:500]}")
+        lines.append("")
+
+    return "\n".join(lines)
+
+
+def _format_bullet_list(items: list[str]) -> str:
+    if not items:
+        return "なし"
+    return "\n".join([f"- {item}" for item in items])
+
+
 def _build_task_snapshots(tasks: list[Task]) -> list[TaskSnapshot]:
     return [
         TaskSnapshot(
@@ -201,6 +223,96 @@ def _generate_achievement_prompt(
 - 日本語で回答してください
 
 回答はJSON形式で返してください。
+
+## JSON出力例（この形式で返してください）
+{{
+  "summary": "今週は要件整理と実装を進め、品質改善にも貢献しました。",
+  "growth_points": ["API設計の理解が深まった", "見積もり精度が上がった"],
+  "skill_analysis": {{
+    "domain_skills": [
+      {{ "category": "バックエンド", "experience_count": 3 }}
+    ],
+    "soft_skills": [
+      {{ "category": "問題解決", "experience_count": 2 }}
+    ],
+    "work_types": [
+      {{ "category": "実装", "experience_count": 4 }}
+    ],
+    "strengths": ["バックエンド設計"],
+    "growth_areas": ["テスト設計"]
+  }},
+  "next_suggestions": ["テスト戦略の学習", "レビュー効率化の工夫"]
+}}
+"""
+    return prompt
+
+
+def _generate_achievement_prompt_with_edits(achievement: Achievement) -> str:
+    """Generate the prompt for achievement regeneration with user edits."""
+    period_str = achievement.period_label or (
+        f"{achievement.period_start.strftime('%Y/%m/%d')} - {achievement.period_end.strftime('%Y/%m/%d')}"
+    )
+    task_snapshots = achievement.task_snapshots
+
+    prompt = f"""あなたはキャリアコーチです。以下の完了タスク一覧とユーザーの編集内容を踏まえて、
+達成項目を読みやすく整理し、完成版としてまとめ直してください。
+
+## 対象期間
+{period_str}
+
+## 完了タスク数
+{len(task_snapshots)}件
+
+{_build_task_snapshots_prompt(task_snapshots)}
+
+{_build_skill_categories_prompt()}
+
+## ユーザーの編集内容（これを尊重して反映）
+
+### サマリー
+{achievement.summary}
+
+### 成長ポイント
+{_format_bullet_list(achievement.growth_points)}
+
+### 強み
+{_format_bullet_list(achievement.skill_analysis.strengths)}
+
+### 伸びしろ
+{_format_bullet_list(achievement.skill_analysis.growth_areas)}
+
+### 次への提案
+{_format_bullet_list(achievement.next_suggestions)}
+
+### 追記
+{achievement.append_note or "なし"}
+
+## 指示
+- 編集内容と追記を優先して、言い回しを整えてください
+- 内容の欠落や矛盾がないように整理してください
+- 日本語で、前向きなトーンにしてください
+
+回答はJSON形式で返してください。
+
+## JSON出力例（この形式で返してください）
+{{
+  "summary": "今週は要件整理と実装を進め、品質改善にも貢献しました。",
+  "growth_points": ["API設計の理解が深まった", "見積もり精度が上がった"],
+  "skill_analysis": {{
+    "domain_skills": [
+      {{ "category": "バックエンド", "experience_count": 3 }}
+    ],
+    "soft_skills": [
+      {{ "category": "問題解決", "experience_count": 2 }}
+    ],
+    "work_types": [
+      {{ "category": "実装", "experience_count": 4 }}
+    ],
+    "strengths": ["バックエンド設計"],
+    "growth_areas": ["テスト設計"]
+  }},
+  "next_suggestions": ["テスト戦略の学習", "レビュー効率化の工夫"]
+}}
 """
     return prompt
 
@@ -329,42 +441,50 @@ def _parse_ai_response(response_text: Optional[str]) -> dict:
 
 def _build_skill_analysis(ai_skill_analysis: dict, total_tasks: int) -> SkillAnalysis:
     """Build SkillAnalysis with percentages calculated."""
-    domain_skills = []
-    for item in ai_skill_analysis.get("domain_skills", []):
-        count = item.get("experience_count", 0)
-        percentage = (count / total_tasks * 100) if total_tasks > 0 else 0
-        domain_skills.append(SkillExperience(
-            category=item.get("category", ""),
-            experience_count=count,
-            percentage=round(percentage, 1),
-        ))
+    if not isinstance(ai_skill_analysis, dict):
+        return SkillAnalysis()
 
-    soft_skills = []
-    for item in ai_skill_analysis.get("soft_skills", []):
-        count = item.get("experience_count", 0)
-        percentage = (count / total_tasks * 100) if total_tasks > 0 else 0
-        soft_skills.append(SkillExperience(
-            category=item.get("category", ""),
-            experience_count=count,
-            percentage=round(percentage, 1),
-        ))
+    def _coerce_items(raw_items: object) -> list[SkillExperience]:
+        items = raw_items if isinstance(raw_items, list) else []
+        results: list[SkillExperience] = []
+        for item in items:
+            if isinstance(item, dict):
+                category = item.get("category", "")
+                try:
+                    count = int(item.get("experience_count", 0))
+                except (TypeError, ValueError):
+                    count = 0
+            elif isinstance(item, str):
+                category = item
+                count = 1
+            else:
+                continue
+            percentage = (count / total_tasks * 100) if total_tasks > 0 else 0
+            results.append(SkillExperience(
+                category=category,
+                experience_count=count,
+                percentage=round(percentage, 1),
+            ))
+        return results
 
-    work_types = []
-    for item in ai_skill_analysis.get("work_types", []):
-        count = item.get("experience_count", 0)
-        percentage = (count / total_tasks * 100) if total_tasks > 0 else 0
-        work_types.append(SkillExperience(
-            category=item.get("category", ""),
-            experience_count=count,
-            percentage=round(percentage, 1),
-        ))
+    strengths = ai_skill_analysis.get("strengths", [])
+    if isinstance(strengths, str):
+        strengths = [strengths]
+    elif not isinstance(strengths, list):
+        strengths = []
+
+    growth_areas = ai_skill_analysis.get("growth_areas", [])
+    if isinstance(growth_areas, str):
+        growth_areas = [growth_areas]
+    elif not isinstance(growth_areas, list):
+        growth_areas = []
 
     return SkillAnalysis(
-        domain_skills=domain_skills,
-        soft_skills=soft_skills,
-        work_types=work_types,
-        strengths=ai_skill_analysis.get("strengths", []),
-        growth_areas=ai_skill_analysis.get("growth_areas", []),
+        domain_skills=_coerce_items(ai_skill_analysis.get("domain_skills", [])),
+        soft_skills=_coerce_items(ai_skill_analysis.get("soft_skills", [])),
+        work_types=_coerce_items(ai_skill_analysis.get("work_types", [])),
+        strengths=strengths,
+        growth_areas=growth_areas,
     )
 
 
@@ -677,6 +797,52 @@ async def generate_achievement_with_answers(
     # Save to repository
     saved = await achievement_repo.create(user_id, achievement)
     return saved
+
+
+async def summarize_achievement_with_edits(
+    llm_provider: ILLMProvider,
+    achievement_repo: IAchievementRepository,
+    achievement: Achievement,
+) -> Achievement:
+    """Summarize an achievement using current edits and append notes."""
+    prompt = _generate_achievement_prompt_with_edits(achievement)
+
+    response_text = generate_text(
+        llm_provider=llm_provider,
+        prompt=prompt,
+        temperature=0.3,
+        max_output_tokens=2000,
+        response_mime_type="application/json",
+    )
+
+    ai_result = _parse_ai_response(response_text)
+
+    summary = ai_result.get("summary")
+    if not isinstance(summary, str) or not summary.strip():
+        summary = achievement.summary
+
+    growth_points = ai_result.get("growth_points")
+    if not isinstance(growth_points, list):
+        growth_points = achievement.growth_points
+
+    next_suggestions = ai_result.get("next_suggestions")
+    if not isinstance(next_suggestions, list):
+        next_suggestions = achievement.next_suggestions
+
+    raw_skill_analysis = ai_result.get("skill_analysis")
+    if isinstance(raw_skill_analysis, dict):
+        skill_analysis = _build_skill_analysis(raw_skill_analysis, len(achievement.task_snapshots))
+    else:
+        skill_analysis = achievement.skill_analysis
+
+    return await achievement_repo.update(
+        user_id=achievement.user_id,
+        achievement_id=achievement.id,
+        summary=summary,
+        growth_points=growth_points,
+        next_suggestions=next_suggestions,
+        skill_analysis=skill_analysis,
+    )
 
 
 async def check_and_auto_generate(

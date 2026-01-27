@@ -14,8 +14,6 @@ interface KanbanBoardProps {
   assignedMemberIdsByTaskId?: Record<string, string[]>;
   memberOptions?: { id: string; label: string }[];
   onAssignMultiple?: (taskId: string, memberUserIds: string[]) => void;
-  onBreakdownTask?: (id: string, instruction?: string) => void;
-  breakdownTaskId?: string | null;
   sortBy?: 'default' | 'dueDate';
   // Selection mode
   selectionMode?: boolean;
@@ -43,8 +41,6 @@ export function KanbanBoard({
   assignedMemberIdsByTaskId,
   memberOptions,
   onAssignMultiple,
-  onBreakdownTask,
-  breakdownTaskId,
   sortBy: _sortBy,
   selectionMode = false,
   selectedTaskIds,
@@ -111,8 +107,6 @@ export function KanbanBoard({
           onEditTask={onEditTask}
           onDeleteTask={onDeleteTask}
           onTaskClick={onTaskClick}
-          onBreakdownTask={onBreakdownTask}
-          breakdownTaskId={breakdownTaskId}
           onUpdateTask={onUpdateTask}
           onDrop={handleDrop}
           selectionMode={selectionMode}

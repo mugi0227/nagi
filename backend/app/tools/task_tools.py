@@ -14,8 +14,6 @@ from google.adk.tools import FunctionTool
 from pydantic import BaseModel, Field
 
 from app.core.config import get_settings
-from app.interfaces.llm_provider import ILLMProvider
-from app.interfaces.memory_repository import IMemoryRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
 from app.utils.datetime_utils import parse_iso_to_utc, ensure_utc
@@ -25,7 +23,6 @@ from app.models.collaboration import TaskAssignmentCreate, TaskAssignmentsCreate
 from app.models.enums import CreatedBy, EnergyLevel, Priority
 from app.models.proposal import Proposal, ProposalResponse, ProposalType
 from app.models.task import Task, TaskCreate, TaskUpdate
-from app.services.planner_service import PlannerService
 from app.tools.approval_tools import create_tool_action_proposal
 
 
@@ -69,6 +66,9 @@ class CreateTaskInput(BaseModel):
     location: Optional[str] = Field(None, description="場所（会議用）")
     attendees: list[str] = Field(default_factory=list, description="参加者リスト（会議用）")
     meeting_notes: Optional[str] = Field(None, description="議事録・メモ（会議用）")
+    # Subtask fields
+    parent_id: Optional[str] = Field(None, description="親タスクID（UUID文字列）- サブタスクとして作成する場合に指定")
+    order_in_parent: Optional[int] = Field(None, ge=1, description="親タスク内での順序（1から開始）")
     # Assignee field for task creation
     assignee_ids: list[str] = Field(default_factory=list, description="担当者IDリスト（UUID文字列）")
 
@@ -146,20 +146,6 @@ class CreateMeetingInput(BaseModel):
     meeting_notes: Optional[str] = Field(None, description="議事録・メモ")
     project_id: Optional[str] = Field(None, description="プロジェクトID（UUID文字列）")
     recurring_meeting_id: Optional[str] = Field(None, description="定例会議ID（定例から生成する場合）")
-
-
-class BreakdownTaskInput(BaseModel):
-    """Input for breakdown_task tool."""
-
-    task_id: str = Field(..., description="分解するタスクのID（UUID文字列、必須）")
-    create_subtasks: bool = Field(
-        True,
-        description="サブタスクを自動作成するか（True: 作成する、False: ステップ案のみ返す）"
-    )
-    instruction: Optional[str] = Field(
-        None,
-        description="Optional instruction or constraints for task breakdown",
-    )
 
 
 class GetTaskInput(BaseModel):
@@ -388,6 +374,14 @@ async def create_task(
     # Parse project_id if provided
     project_id = UUID(input_data.project_id) if input_data.project_id else None
 
+    # Parse parent_id if provided
+    parent_id = None
+    if input_data.parent_id:
+        try:
+            parent_id = UUID(input_data.parent_id)
+        except ValueError:
+            pass  # Invalid UUID format, ignore
+
     # Parse due_date if provided
     due_date = None
     if input_data.due_date:
@@ -448,6 +442,9 @@ async def create_task(
         start_not_before=start_not_before,
         dependency_ids=dependency_ids,
         created_by=CreatedBy.AGENT,
+        # Subtask fields
+        parent_id=parent_id,
+        order_in_parent=input_data.order_in_parent,
         # Meeting fields
         is_fixed_time=input_data.is_fixed_time,
         is_all_day=input_data.is_all_day,
@@ -1301,50 +1298,6 @@ def list_project_assignments_tool(
     return FunctionTool(func=_tool)
 
 
-async def breakdown_task(
-    user_id: str,
-    task_repo: ITaskRepository,
-    memory_repo: IMemoryRepository,
-    llm_provider: ILLMProvider,
-    project_repo: Optional[IProjectRepository],
-    input_data: BreakdownTaskInput,
-    assignment_repo: Optional[ITaskAssignmentRepository] = None,
-) -> dict:
-    """
-    Break down a task into subtasks using Planner Agent.
-
-    Args:
-        user_id: User ID
-        task_repo: Task repository
-        memory_repo: Memory repository
-        llm_provider: LLM provider
-        project_repo: Project repository (optional)
-        input_data: Breakdown parameters
-        assignment_repo: Task assignment repository (for inheriting assignees)
-
-    Returns:
-        Breakdown result with steps and subtask IDs
-    """
-    task_id = UUID(input_data.task_id)
-
-    service = PlannerService(
-        llm_provider=llm_provider,
-        task_repo=task_repo,
-        memory_repo=memory_repo,
-        project_repo=project_repo,
-        assignment_repo=assignment_repo,
-    )
-
-    result = await service.breakdown_task(
-        user_id=user_id,
-        task_id=task_id,
-        create_subtasks=input_data.create_subtasks,
-        instruction=input_data.instruction,
-    )
-
-    return result.model_dump(mode="json")
-
-
 def create_meeting_tool(
     repo: ITaskRepository,
     proposal_repo: IProposalRepository,
@@ -1421,56 +1374,4 @@ def create_meeting_tool(
         )
 
     _tool.__name__ = "create_meeting"
-    return FunctionTool(func=_tool)
-
-
-def breakdown_task_tool(
-    repo: ITaskRepository,
-    memory_repo: IMemoryRepository,
-    llm_provider: ILLMProvider,
-    user_id: str,
-    project_repo: Optional[IProjectRepository] = None,
-    assignment_repo: Optional[ITaskAssignmentRepository] = None,
-    proposal_repo: Optional[IProposalRepository] = None,
-    session_id: Optional[str] = None,
-    auto_approve: bool = True,
-) -> FunctionTool:
-    """Create ADK tool for breaking down tasks into subtasks."""
-    async def _tool(input_data: dict) -> dict:
-        """breakdown_task: タスクを3-5個のサブタスクに分解します（Planner Agentを使用）。
-
-        タスクがプロジェクトに属している場合、プロジェクトの目標・重要ポイント・READMEを考慮して分解します。
-        サブタスクには親タスクの担当者が自動的に引き継がれます。
-
-        Parameters:
-            task_id (str): 分解するタスクのID（UUID文字列、必須）
-            create_subtasks (bool, optional): サブタスクを自動作成するか（デフォルト: True）
-            instruction (str, optional): Optional instruction or constraints for breakdown
-
-        Returns:
-            dict: 分解結果（steps: ステップリスト、subtasks_created: サブタスク作成有無、subtask_ids: 作成されたサブタスクIDリスト、markdown_guide: Markdownガイド）
-        """
-        payload = dict(input_data)
-        proposal_desc = payload.pop("proposal_description", "")
-        request = BreakdownTaskInput(**payload)
-        if proposal_repo and session_id and not auto_approve and request.create_subtasks:
-            return await create_tool_action_proposal(
-                user_id,
-                session_id,
-                proposal_repo,
-                "breakdown_task",
-                payload,
-                proposal_desc,
-            )
-        return await breakdown_task(
-            user_id,
-            repo,
-            memory_repo,
-            llm_provider,
-            project_repo,
-            request,
-            assignment_repo,
-        )
-
-    _tool.__name__ = "breakdown_task"
     return FunctionTool(func=_tool)

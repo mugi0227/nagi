@@ -1,5 +1,5 @@
-import { useQuery } from '@tanstack/react-query';
-import { useEffect, useRef, useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { FaClock, FaComments, FaImage, FaPlus, FaRobot, FaXmark } from 'react-icons/fa6';
 import { tasksApi } from '../../api/tasks';
 import type { Task } from '../../api/types';
@@ -9,6 +9,8 @@ import { formatDate } from '../../utils/dateTime';
 import { ChatInput } from './ChatInput';
 import { ChatMessage } from './ChatMessage';
 import { DraftCard, DraftCardData } from './DraftCard';
+import { ProposalPanel } from './ProposalPanel';
+import { QuestionsPanel } from './QuestionsPanel';
 import { userStorage } from '../../utils/userStorage';
 import './ChatWindow.css';
 
@@ -22,6 +24,7 @@ interface ChatWindowProps {
 }
 
 export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageConsumed, draftCard, onDraftCardConsumed }: ChatWindowProps) {
+  const queryClient = useQueryClient();
   const timezone = useTimezone();
   const {
     messages,
@@ -38,6 +41,8 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     isLoadingHistory,
   } = useChat();
   const [activeDraftCard, setActiveDraftCard] = useState<DraftCardData | null>(null);
+  const [processedProposalIds, setProcessedProposalIds] = useState<Set<string>>(new Set());
+  const [processedQuestionMessageIds, setProcessedQuestionMessageIds] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldAutoScroll = useRef(true);
   const [isDragging, setIsDragging] = useState(false);
@@ -52,6 +57,53 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     staleTime: 30_000,
     enabled: isOpen,
   });
+
+  // Extract pending proposals from messages
+  const pendingProposals = useMemo(() => {
+    const allProposals = messages.flatMap((msg) => msg.proposals || []);
+    return allProposals.filter((p) => !processedProposalIds.has(p.proposalId));
+  }, [messages, processedProposalIds]);
+
+  const invalidateAfterProposal = () => {
+    queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    queryClient.invalidateQueries({ queryKey: ['top3'] });
+    queryClient.invalidateQueries({ queryKey: ['projects'] });
+    queryClient.invalidateQueries({ queryKey: ['meeting-agendas'] });
+  };
+
+  const handleProposalProcessed = (proposalId: string) => {
+    setProcessedProposalIds((prev) => new Set([...prev, proposalId]));
+    invalidateAfterProposal();
+  };
+
+  const handleAllProposalsProcessed = () => {
+    const allIds = pendingProposals.map((p) => p.proposalId);
+    setProcessedProposalIds((prev) => new Set([...prev, ...allIds]));
+    invalidateAfterProposal();
+  };
+
+  // Extract pending questions from messages
+  const pendingQuestionsData = useMemo(() => {
+    for (const msg of messages) {
+      if (msg.questions && msg.questions.length > 0 && !processedQuestionMessageIds.has(msg.id)) {
+        return { messageId: msg.id, questions: msg.questions, context: msg.questionsContext };
+      }
+    }
+    return null;
+  }, [messages, processedQuestionMessageIds]);
+
+  const handleQuestionsSubmit = (answer: string) => {
+    if (pendingQuestionsData) {
+      setProcessedQuestionMessageIds((prev) => new Set([...prev, pendingQuestionsData.messageId]));
+      sendMessageStream(answer);
+    }
+  };
+
+  const handleQuestionsCancel = () => {
+    if (pendingQuestionsData) {
+      setProcessedQuestionMessageIds((prev) => new Set([...prev, pendingQuestionsData.messageId]));
+    }
+  };
 
   useEffect(() => {
     if (messagesEndRef.current) {
@@ -70,12 +122,18 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
   // Note: initialMessage is now passed to ChatInput instead of auto-sending
 
   // Handle draft card from external sources
+  // DraftCard (AI生成ダイアログ) 使用時は、デフォルトで新規チャットを作成する
+  // 既存チャットに追加したい場合は、明示的に newChat: false を指定する
   useEffect(() => {
     if (draftCard) {
+      // Default: clear chat unless explicitly set to false
+      if (draftCard.newChat !== false) {
+        clearChat();
+      }
       setActiveDraftCard(draftCard);
       onDraftCardConsumed?.();
     }
-  }, [draftCard, onDraftCardConsumed]);
+  }, [draftCard, onDraftCardConsumed, clearChat]);
 
   const processImageFile = (file: File) => {
     // Check file size (max 5MB)
@@ -267,37 +325,51 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
             timestamp={message.timestamp}
             toolCalls={message.toolCalls}
             proposals={message.proposals}
-            questions={message.questions}
-            questionsContext={message.questionsContext}
-            onQuestionsSubmit={(answer) => sendMessageStream(answer)}
             meetingTasks={meetingTasks}
             isStreaming={message.isStreaming}
             imageUrl={message.imageUrl}
           />
         ))}
-        {activeDraftCard && (
-          <DraftCard
-            data={activeDraftCard}
-            onSend={(message) => {
-              sendMessageStream(message);
-              setActiveDraftCard(null);
-            }}
-            onCancel={() => setActiveDraftCard(null)}
-          />
-        )}
         <div ref={messagesEndRef} />
       </div>
 
-      <ChatInput
-        onSend={sendMessageStream}
-        onCancel={cancelStream}
-        disabled={isLoading}
-        isStreaming={isStreaming}
-        externalImage={draggedImage}
-        onImageClear={() => setDraggedImage(null)}
-        initialValue={initialMessage}
-        onInitialValueConsumed={onInitialMessageConsumed}
-      />
+      {/* Priority: DraftCard > ProposalPanel > QuestionsPanel > ChatInput */}
+      {activeDraftCard ? (
+        <DraftCard
+          data={activeDraftCard}
+          onSend={(message) => {
+            sendMessageStream(message);
+            setActiveDraftCard(null);
+          }}
+          onCancel={() => setActiveDraftCard(null)}
+        />
+      ) : pendingProposals.length > 0 ? (
+        <ProposalPanel
+          proposals={pendingProposals}
+          onApproved={handleProposalProcessed}
+          onRejected={handleProposalProcessed}
+          onAllApproved={handleAllProposalsProcessed}
+          onAllRejected={handleAllProposalsProcessed}
+        />
+      ) : pendingQuestionsData ? (
+        <QuestionsPanel
+          questions={pendingQuestionsData.questions}
+          context={pendingQuestionsData.context}
+          onSubmit={handleQuestionsSubmit}
+          onCancel={handleQuestionsCancel}
+        />
+      ) : (
+        <ChatInput
+          onSend={sendMessageStream}
+          onCancel={cancelStream}
+          disabled={isLoading}
+          isStreaming={isStreaming}
+          externalImage={draggedImage}
+          onImageClear={() => setDraggedImage(null)}
+          initialValue={initialMessage}
+          onInitialValueConsumed={onInitialMessageConsumed}
+        />
+      )}
     </div>
   );
 }

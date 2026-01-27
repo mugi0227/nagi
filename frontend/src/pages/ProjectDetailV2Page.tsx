@@ -679,26 +679,26 @@ export function ProjectDetailV2Page() {
     }
   };
 
-  const handleGenerateTasksFromPhase = async (phaseId: string) => {
-    const instruction = prompt('タスク生成の指示を入力してください（任意）');
-    if (instruction === null) return; // キャンセルされた
+  const handleGenerateTasksFromPhase = (phaseId: string) => {
+    const phase = phases?.find(p => p.id === phaseId);
+    if (!phase) return;
 
-    try {
-      const response = await phasesApi.breakdownTasks(phaseId, {
-        create_tasks: true,
-        instruction: instruction || undefined,
-      });
+    const draftCard: DraftCardData = {
+      type: 'phase_tasks',
+      title: 'フェーズからタスク生成',
+      info: [
+        { label: 'フェーズ', value: phase.name },
+        { label: 'フェーズID', value: phaseId },
+        ...(phase.description ? [{ label: '説明', value: phase.description }] : []),
+      ],
+      placeholder: '例: テスト作成も含めて、担当者は適切に割り当てて',
+      promptTemplate: `フェーズ「${phase.name}」(ID: ${phaseId}) からタスクを生成して。
 
-      if (response.created_task_ids.length > 0) {
-        alert(`${response.created_task_ids.length}個のタスクを生成しました`);
-        refetchTasks();
-      } else {
-        alert('タスクの生成に失敗しました');
-      }
-    } catch (err) {
-      console.error('Failed to generate tasks from phase:', err);
-      alert('タスクの生成中にエラーが発生しました');
-    }
+追加の指示があれば以下に記入:
+{instruction}`,
+    };
+    const event = new CustomEvent('secretary:chat-open', { detail: { draftCard } });
+    window.dispatchEvent(event);
   };
 
   const handleTaskCheck = async (taskId: string) => {

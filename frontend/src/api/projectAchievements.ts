@@ -7,6 +7,7 @@ import type {
   ProjectAchievement,
   ProjectAchievementCreate,
   ProjectAchievementListResponse,
+  ProjectAchievementUpdate,
 } from './types';
 
 export const projectAchievementsApi = {
@@ -64,4 +65,16 @@ export const projectAchievementsApi = {
    */
   delete: (projectId: string, achievementId: string) =>
     api.delete<void>(`/projects/${projectId}/achievements/${achievementId}`),
+
+  update: (projectId: string, achievementId: string, data: ProjectAchievementUpdate) =>
+    api.patch<ProjectAchievement>(
+      `/projects/${projectId}/achievements/${achievementId}`,
+      data
+    ),
+
+  summarize: (projectId: string, achievementId: string) =>
+    api.post<ProjectAchievement>(
+      `/projects/${projectId}/achievements/${achievementId}/ai-summary`,
+      {}
+    ),
 };

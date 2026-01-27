@@ -5,8 +5,6 @@ import type {
   TaskUpdate,
   TodayTasksResponse,
   ScheduleResponse,
-  BreakdownRequest,
-  BreakdownResponse,
   TaskAssignment,
   TaskAssignmentCreate,
   TaskAssignmentsCreate,
@@ -112,9 +110,6 @@ export const tasksApi = {
     const suffix = params.toString();
     return api.get<ScheduleResponse>(`/tasks/schedule${suffix ? `?${suffix}` : ''}`);
   },
-
-  breakdownTask: (id: string, data: BreakdownRequest) =>
-    api.post<BreakdownResponse>(`/tasks/${id}/breakdown`, data),
 
   getAssignment: (id: string) => api.get<TaskAssignment>(`/tasks/${id}/assignment`),
 

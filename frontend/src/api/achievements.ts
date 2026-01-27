@@ -7,6 +7,7 @@ import type {
   Achievement,
   AchievementCreate,
   AchievementListResponse,
+  AchievementUpdate,
   CompletedTasksPreviewResponse,
 } from './types';
 
@@ -49,6 +50,10 @@ export const achievementsApi = {
    * Delete an achievement
    */
   delete: (id: string) => api.delete<void>(`/achievements/${id}`),
+
+  update: (id: string, data: AchievementUpdate) =>
+    api.patch<Achievement>(`/achievements/${id}`, data),
+  summarize: (id: string) => api.post<Achievement>(`/achievements/${id}/ai-summary`, {}),
 
   /**
    * Trigger auto-generation if conditions are met

@@ -8,13 +8,14 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select, desc
+from sqlalchemy import desc, select
 
+from app.core.exceptions import NotFoundError
 from app.infrastructure.local.database import ProjectAchievementORM, get_session_factory
 from app.interfaces.project_achievement_repository import IProjectAchievementRepository
 from app.models.achievement import (
-    ProjectAchievement,
     MemberContribution,
+    ProjectAchievement,
 )
 from app.models.enums import GenerationType
 
@@ -52,6 +53,7 @@ class SqliteProjectAchievementRepository(IProjectAchievementRepository):
             total_task_count=orm.total_task_count,
             remaining_tasks_count=orm.remaining_tasks_count,
             open_issues=orm.open_issues or [],
+            append_note=orm.append_note,
             generation_type=GenerationType(orm.generation_type),
             created_at=orm.created_at,
             updated_at=orm.updated_at,
@@ -85,6 +87,7 @@ class SqliteProjectAchievementRepository(IProjectAchievementRepository):
                 total_task_count=achievement.total_task_count,
                 remaining_tasks_count=achievement.remaining_tasks_count,
                 open_issues=achievement.open_issues,
+                append_note=achievement.append_note,
                 generation_type=achievement.generation_type.value,
                 created_at=achievement.created_at,
                 updated_at=achievement.updated_at,
@@ -154,3 +157,44 @@ class SqliteProjectAchievementRepository(IProjectAchievementRepository):
             await session.delete(orm)
             await session.commit()
             return True
+
+    async def update(
+        self,
+        project_id: UUID,
+        achievement_id: UUID,
+        summary: Optional[str] = None,
+        team_highlights: Optional[list[str]] = None,
+        challenges: Optional[list[str]] = None,
+        learnings: Optional[list[str]] = None,
+        open_issues: Optional[list[str]] = None,
+        append_note: Optional[str] = None,
+    ) -> ProjectAchievement:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ProjectAchievementORM).where(
+                    ProjectAchievementORM.id == str(achievement_id),
+                    ProjectAchievementORM.project_id == str(project_id),
+                )
+            )
+            orm = result.scalar_one_or_none()
+            if not orm:
+                raise NotFoundError(f"ProjectAchievement {achievement_id} not found")
+
+            if summary is not None:
+                orm.summary = summary
+            if team_highlights is not None:
+                orm.team_highlights = team_highlights
+            if challenges is not None:
+                orm.challenges = challenges
+            if learnings is not None:
+                orm.learnings = learnings
+            if open_issues is not None:
+                orm.open_issues = open_issues
+            if append_note is not None:
+                orm.append_note = append_note
+
+            orm.updated_at = datetime.utcnow()
+
+            await session.commit()
+            await session.refresh(orm)
+            return self._orm_to_model(orm)

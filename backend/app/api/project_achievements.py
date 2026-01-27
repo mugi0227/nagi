@@ -21,9 +21,13 @@ from app.api.deps import (
     TaskRepo,
     UserRepo,
 )
-from app.models.achievement import MemberContribution, ProjectAchievement
+from app.core.exceptions import NotFoundError
+from app.models.achievement import ProjectAchievement
 from app.models.enums import GenerationType
-from app.services.project_achievement_service import generate_project_achievement
+from app.services.project_achievement_service import (
+    generate_project_achievement,
+    summarize_project_achievement_with_edits,
+)
 
 router = APIRouter()
 
@@ -67,6 +71,7 @@ class ProjectAchievementResponse(BaseModel):
     total_task_count: int
     remaining_tasks_count: int
     open_issues: list[str]
+    append_note: Optional[str]
     generation_type: str
     created_at: datetime
     updated_at: datetime
@@ -96,10 +101,22 @@ class ProjectAchievementResponse(BaseModel):
             total_task_count=achievement.total_task_count,
             remaining_tasks_count=achievement.remaining_tasks_count,
             open_issues=achievement.open_issues,
+            append_note=achievement.append_note,
             generation_type=achievement.generation_type.value,
             created_at=achievement.created_at,
             updated_at=achievement.updated_at,
         )
+
+
+class ProjectAchievementUpdateRequest(BaseModel):
+    """Request to update a project achievement."""
+
+    summary: Optional[str] = None
+    team_highlights: Optional[list[str]] = None
+    challenges: Optional[list[str]] = None
+    learnings: Optional[list[str]] = None
+    open_issues: Optional[list[str]] = None
+    append_note: Optional[str] = None
 
 
 class ProjectAchievementListResponse(BaseModel):
@@ -301,3 +318,89 @@ async def delete_project_achievement(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Achievement {achievement_id} not found",
         )
+
+
+@router.patch(
+    "/{project_id}/achievements/{achievement_id}",
+    response_model=ProjectAchievementResponse,
+)
+async def update_project_achievement(
+    project_id: UUID,
+    achievement_id: UUID,
+    request: ProjectAchievementUpdateRequest,
+    user: CurrentUser,
+    project_member_repo: ProjectMemberRepo,
+    project_achievement_repo: ProjectAchievementRepo,
+):
+    """
+    Update a project achievement (partial update).
+
+    User must be a member of the project.
+    """
+    members = await project_member_repo.list_by_project(project_id)
+    member_ids = [str(m.user_id) for m in members]
+    if user.id not in member_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not a member of this project",
+        )
+
+    try:
+        achievement = await project_achievement_repo.update(
+            project_id=project_id,
+            achievement_id=achievement_id,
+            summary=request.summary,
+            team_highlights=request.team_highlights,
+            challenges=request.challenges,
+            learnings=request.learnings,
+            open_issues=request.open_issues,
+            append_note=request.append_note,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+
+    return ProjectAchievementResponse.from_model(achievement)
+
+
+@router.post(
+    "/{project_id}/achievements/{achievement_id}/ai-summary",
+    response_model=ProjectAchievementResponse,
+)
+async def summarize_project_achievement(
+    project_id: UUID,
+    achievement_id: UUID,
+    user: CurrentUser,
+    llm_provider: LLMProvider,
+    project_member_repo: ProjectMemberRepo,
+    project_achievement_repo: ProjectAchievementRepo,
+):
+    """
+    Summarize a project achievement using current edits.
+
+    User must be a member of the project.
+    """
+    members = await project_member_repo.list_by_project(project_id)
+    member_ids = [str(m.user_id) for m in members]
+    if user.id not in member_ids:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You are not a member of this project",
+        )
+
+    achievement = await project_achievement_repo.get(project_id, achievement_id)
+    if not achievement:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Achievement {achievement_id} not found",
+        )
+
+    updated = await summarize_project_achievement_with_edits(
+        llm_provider=llm_provider,
+        project_achievement_repo=project_achievement_repo,
+        achievement=achievement,
+    )
+
+    return ProjectAchievementResponse.from_model(updated)

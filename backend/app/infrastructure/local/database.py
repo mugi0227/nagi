@@ -4,31 +4,26 @@ SQLite database configuration and ORM models.
 This module defines the SQLAlchemy ORM models and database initialization.
 """
 
-from datetime import datetime
-from typing import Optional
 from uuid import uuid4
 
-from app.utils.datetime_utils import now_utc
-
 from sqlalchemy import (
+    JSON,
     Boolean,
     Column,
     Date,
     DateTime,
     Float,
-    ForeignKey,
     ForeignKeyConstraint,
     Integer,
     String,
     Text,
-    JSON,
     UniqueConstraint,
-    create_engine,
 )
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
 from app.core.config import get_settings
+from app.utils.datetime_utils import now_utc
 
 
 class Base(DeclarativeBase):
@@ -499,6 +494,7 @@ class AchievementORM(Base):
     task_count = Column(Integer, default=0)
     project_ids = Column(JSON, nullable=True, default=list)
     task_snapshots = Column(JSON, nullable=True, default=list)
+    append_note = Column(Text, nullable=True)
 
     # Metadata
     generation_type = Column(String(20), default="MANUAL")  # AUTO or MANUAL
@@ -530,6 +526,7 @@ class ProjectAchievementORM(Base):
     total_task_count = Column(Integer, default=0)
     remaining_tasks_count = Column(Integer, default=0)
     open_issues = Column(JSON, nullable=True, default=list)
+    append_note = Column(Text, nullable=True)
 
     # Metadata
     generation_type = Column(String(20), default="AUTO")

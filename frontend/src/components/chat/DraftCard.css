@@ -7,6 +7,15 @@
   margin: 8px 0;
 }
 
+/* When DraftCard is a direct child of chat-window (replaces ChatInput) */
+.chat-window > .draft-card {
+  margin: 0;
+  border-radius: 0;
+  border-left: none;
+  border-right: none;
+  border-bottom: none;
+}
+
 @keyframes draftCardSlideIn {
   from {
     opacity: 0;

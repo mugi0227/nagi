@@ -22,8 +22,6 @@ interface KanbanCardProps {
   onEdit?: (task: Task) => void;
   onDelete?: (id: string) => void;
   onClick?: (task: Task) => void;
-  onBreakdown?: (id: string, instruction?: string) => void;
-  isBreakdownPending?: boolean;
   onUpdateTask?: (id: string, status: TaskStatus) => void;
   // Selection mode
   selectionMode?: boolean;
@@ -42,8 +40,6 @@ export function KanbanCard({
   onEdit,
   onDelete,
   onClick,
-  onBreakdown: _onBreakdown,
-  isBreakdownPending: _isBreakdownPending = false,
   onUpdateTask,
   selectionMode = false,
   isSelected = false,
@@ -143,7 +139,10 @@ export function KanbanCard({
         ...(task.estimated_minutes ? [{ label: '見積もり', value: `${Math.round(task.estimated_minutes / 60)}時間` }] : []),
       ],
       placeholder: '例: テスト作成も含めて',
-      promptTemplate: `タスク「${task.title}」(ID: ${task.id}) をサブタスクに分解して。
+      promptTemplate: `タスク「${task.title}」をサブタスクに分解して。
+
+親タスクID: ${task.id}
+※サブタスク作成時は必ずparent_idに上記IDを指定してね
 
 追加の指示があれば以下に記入:
 {instruction}`,

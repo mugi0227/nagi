@@ -17,6 +17,7 @@ from app.api.deps import (
     LLMProvider,
     TaskRepo,
 )
+from app.core.exceptions import NotFoundError
 from app.models.achievement import Achievement, SkillAnalysis, TaskSnapshot
 from app.models.enums import GenerationType
 from app.services.achievement_service import (
@@ -24,6 +25,7 @@ from app.services.achievement_service import (
     generate_achievement,
     generate_achievement_with_answers,
     generate_review_questions,
+    summarize_achievement_with_edits,
 )
 
 router = APIRouter()
@@ -61,6 +63,7 @@ class AchievementResponse(BaseModel):
     task_count: int
     project_ids: list[str]
     task_snapshots: list[TaskSnapshot]
+    append_note: Optional[str]
     generation_type: str
     created_at: datetime
     updated_at: datetime
@@ -80,10 +83,22 @@ class AchievementResponse(BaseModel):
             task_count=achievement.task_count,
             project_ids=[str(pid) for pid in achievement.project_ids],
             task_snapshots=achievement.task_snapshots,
+            append_note=achievement.append_note,
             generation_type=achievement.generation_type.value,
             created_at=achievement.created_at,
             updated_at=achievement.updated_at,
         )
+
+
+class AchievementUpdateRequest(BaseModel):
+    """Request to update an achievement."""
+
+    summary: Optional[str] = None
+    growth_points: Optional[list[str]] = None
+    next_suggestions: Optional[list[str]] = None
+    strengths: Optional[list[str]] = None
+    growth_areas: Optional[list[str]] = None
+    append_note: Optional[str] = None
 
 
 class AchievementListResponse(BaseModel):
@@ -208,8 +223,62 @@ async def get_achievement(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Achievement {achievement_id} not found",
-        )
+    )
     return AchievementResponse.from_model(achievement)
+
+
+@router.patch("/{achievement_id}", response_model=AchievementResponse)
+async def update_achievement(
+    achievement_id: UUID,
+    request: AchievementUpdateRequest,
+    user: CurrentUser,
+    achievement_repo: AchievementRepo,
+):
+    """
+    Update an achievement (partial update).
+    """
+    try:
+        achievement = await achievement_repo.update(
+            user_id=user.id,
+            achievement_id=achievement_id,
+            summary=request.summary,
+            growth_points=request.growth_points,
+            next_suggestions=request.next_suggestions,
+            strengths=request.strengths,
+            growth_areas=request.growth_areas,
+            append_note=request.append_note,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(exc),
+        ) from exc
+    return AchievementResponse.from_model(achievement)
+
+
+@router.post("/{achievement_id}/ai-summary", response_model=AchievementResponse)
+async def summarize_achievement(
+    achievement_id: UUID,
+    user: CurrentUser,
+    llm_provider: LLMProvider,
+    achievement_repo: AchievementRepo,
+):
+    """
+    Summarize an achievement using current edits and append notes.
+    """
+    achievement = await achievement_repo.get(user.id, achievement_id)
+    if not achievement:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Achievement {achievement_id} not found",
+        )
+
+    updated = await summarize_achievement_with_edits(
+        llm_provider=llm_provider,
+        achievement_repo=achievement_repo,
+        achievement=achievement,
+    )
+    return AchievementResponse.from_model(updated)
 
 
 @router.delete("/{achievement_id}", status_code=status.HTTP_204_NO_CONTENT)

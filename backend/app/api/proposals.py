@@ -227,26 +227,18 @@ async def approve_proposal(
             reorder_agenda_items,
         )
         from app.tools.phase_tools import (
-            PlanProjectPhasesInput,
-            PlanPhaseTasksInput,
             UpdatePhaseInput,
             CreatePhaseInput,
             DeletePhaseInput,
             CreateMilestoneInput,
             UpdateMilestoneInput,
             DeleteMilestoneInput,
-            plan_project_phases_tool,
-            plan_phase_tasks_tool,
             update_phase,
             create_phase_tool,
             delete_phase_tool,
             create_milestone_tool,
             update_milestone_tool,
             delete_milestone_tool,
-        )
-        from app.tools.task_tools import (
-            BreakdownTaskInput,
-            breakdown_task,
         )
 
         tool_result = None
@@ -318,28 +310,6 @@ async def approve_proposal(
                 recurring_meeting_repo=recurring_meeting_repo,
                 task_repo=task_repo,
             )
-        elif tool_name == "plan_project_phases":
-            tool_func = plan_project_phases_tool(
-                project_repo,
-                phase_repo,
-                milestone_repo,
-                task_repo,
-                memory_repo,
-                llm_provider,
-                user.id,
-            ).func
-            tool_result = await tool_func(args)
-        elif tool_name == "plan_phase_tasks":
-            tool_func = plan_phase_tasks_tool(
-                project_repo,
-                phase_repo,
-                milestone_repo,
-                task_repo,
-                memory_repo,
-                llm_provider,
-                user.id,
-            ).func
-            tool_result = await tool_func(args)
         elif tool_name == "update_phase":
             tool_result = await update_phase(user.id, phase_repo, UpdatePhaseInput(**args))
         elif tool_name == "create_phase":
@@ -357,16 +327,6 @@ async def approve_proposal(
         elif tool_name == "delete_milestone":
             tool_func = delete_milestone_tool(milestone_repo, user.id).func
             tool_result = await tool_func(args)
-        elif tool_name == "breakdown_task":
-            tool_result = await breakdown_task(
-                user.id,
-                task_repo,
-                memory_repo,
-                llm_provider,
-                project_repo,
-                BreakdownTaskInput(**args),
-                assignment_repo,
-            )
         else:
             raise HTTPException(status_code=400, detail=f"Unknown tool_action: {tool_name}")
 

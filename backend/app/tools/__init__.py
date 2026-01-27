@@ -10,7 +10,6 @@ from app.tools.task_tools import (
     list_tasks_tool,
     list_task_assignments_tool,
     list_project_assignments_tool,
-    breakdown_task_tool,
     get_task_tool,
 )
 from app.tools.project_tools import (
@@ -41,8 +40,6 @@ from app.tools.scheduler_tools import (
     schedule_agent_task_tool,
 )
 from app.tools.phase_tools import (
-    plan_project_phases_tool,
-    plan_phase_tasks_tool,
     list_phases_tool,
     get_phase_tool,
     update_phase_tool,
@@ -87,7 +84,6 @@ __all__ = [
     "list_tasks_tool",
     "list_task_assignments_tool",
     "list_project_assignments_tool",
-    "breakdown_task_tool",
     "get_task_tool",
     "search_work_memory_tool",
     "search_memories_tool",
@@ -99,8 +95,6 @@ __all__ = [
     "list_skills_index_tool",
     "get_current_datetime_tool",
     "schedule_agent_task_tool",
-    "plan_project_phases_tool",
-    "plan_phase_tasks_tool",
     "list_phases_tool",
     "get_phase_tool",
     "update_phase_tool",

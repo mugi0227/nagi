@@ -149,36 +149,6 @@ export interface TaskWithSubtasks extends Task {
   subtasks: Task[];
 }
 
-export interface BreakdownStep {
-  step_number: number;
-  title: string;
-  description?: string;
-  estimated_minutes: number;
-  energy_level: EnergyLevel;
-  guide: string;
-  dependency_step_numbers: number[];
-}
-
-export interface TaskBreakdown {
-  original_task_id: string;
-  original_task_title: string;
-  steps: BreakdownStep[];
-  total_estimated_minutes: number;
-  work_memory_used: string[];
-}
-
-export interface BreakdownRequest {
-  create_subtasks?: boolean;
-  instruction?: string;
-}
-
-export interface BreakdownResponse {
-  breakdown: TaskBreakdown;
-  subtasks_created: boolean;
-  subtask_ids: string[];
-  markdown_guide: string;
-}
-
 // Chat models
 export type ToolApprovalMode = 'manual' | 'auto';
 
@@ -365,43 +335,11 @@ export interface PhaseSuggestion {
   milestones: MilestoneSuggestion[];
 }
 
-export interface PhaseBreakdownRequest {
-  create_phases?: boolean;
-  create_milestones?: boolean;
-  instruction?: string;
-}
-
-export interface PhaseBreakdownResponse {
-  phases: PhaseSuggestion[];
-  created_phase_ids: string[];
-  created_milestone_ids: string[];
-}
-
 export interface PhaseBreakdownProposal {
   project_id: string;
   instruction?: string;
   create_milestones?: boolean;
   phases: PhaseSuggestion[];
-}
-
-export interface PhaseTaskSuggestion {
-  title: string;
-  description?: string;
-  estimated_minutes?: number;
-  energy_level?: EnergyLevel;
-  importance?: Priority;
-  urgency?: Priority;
-  due_date?: string | null;
-}
-
-export interface PhaseTaskBreakdownRequest {
-  create_tasks?: boolean;
-  instruction?: string;
-}
-
-export interface PhaseTaskBreakdownResponse {
-  tasks: PhaseTaskSuggestion[];
-  created_task_ids: string[];
 }
 
 export interface ProjectCreate {
@@ -992,6 +930,7 @@ export interface Achievement {
   task_count: number;
   project_ids: string[];
   task_snapshots: CompletedTaskPreview[];
+  append_note?: string;
   generation_type: GenerationType;
   created_at: string;
   updated_at: string;
@@ -1001,6 +940,15 @@ export interface AchievementCreate {
   period_start: string;
   period_end: string;
   period_label?: string;
+}
+
+export interface AchievementUpdate {
+  summary?: string;
+  growth_points?: string[];
+  next_suggestions?: string[];
+  strengths?: string[];
+  growth_areas?: string[];
+  append_note?: string;
 }
 
 export interface AchievementListResponse {
@@ -1084,6 +1032,7 @@ export interface ProjectAchievement {
   total_task_count: number;
   remaining_tasks_count: number;
   open_issues: string[];
+  append_note?: string;
   generation_type: GenerationType;
   created_at: string;
   updated_at: string;
@@ -1093,6 +1042,15 @@ export interface ProjectAchievementCreate {
   period_start: string;
   period_end: string;
   period_label?: string;
+}
+
+export interface ProjectAchievementUpdate {
+  summary?: string;
+  team_highlights?: string[];
+  challenges?: string[];
+  learnings?: string[];
+  open_issues?: string[];
+  append_note?: string;
 }
 
 export interface ProjectAchievementListResponse {

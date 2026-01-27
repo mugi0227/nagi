@@ -2,13 +2,10 @@ import type { CSSProperties } from 'react';
 import { FaSpinner, FaCheck, FaWrench, FaTriangleExclamation } from 'react-icons/fa6';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { useQueryClient } from '@tanstack/react-query';
 import type { ToolCall, ProposalInfo } from '../../hooks/useChat';
-import type { PendingQuestion, Task } from '../../api/types';
+import type { Task } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, toDateKey, toDateTime } from '../../utils/dateTime';
-import { ProposalCard } from './ProposalCard';
-import { QuestionsCard } from './QuestionsCard';
 import './ChatMessage.css';
 
 const PREVIEW_DEFAULT_START = 8;
@@ -212,12 +209,9 @@ interface ChatMessageProps {
   timestamp: Date;
   toolCalls?: ToolCall[];
   proposals?: ProposalInfo[];
-  questions?: PendingQuestion[];
-  questionsContext?: string;
-  onQuestionsSubmit?: (answer: string) => void;
   meetingTasks?: Task[];
   isStreaming?: boolean;
-  imageUrl?: string;  // Added for image attachments
+  imageUrl?: string;
 }
 
 export function ChatMessage({
@@ -226,14 +220,10 @@ export function ChatMessage({
   timestamp,
   toolCalls,
   proposals,
-  questions,
-  questionsContext,
-  onQuestionsSubmit,
   meetingTasks,
   isStreaming,
   imageUrl,
 }: ChatMessageProps) {
-  const queryClient = useQueryClient();
   const timezone = useTimezone();
   const combinedPreview = buildCombinedMeetingPreview(proposals, meetingTasks, timezone);
 
@@ -271,13 +261,6 @@ export function ChatMessage({
     return toolNames[toolName] || toolName;
   };
 
-  const handleProposalAction = () => {
-    // Invalidate queries to refresh data after approval/rejection
-    queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    queryClient.invalidateQueries({ queryKey: ['top3'] });
-    queryClient.invalidateQueries({ queryKey: ['projects'] });
-  };
-
   return (
     <div className={`chat-message ${role}`}>
       <div className="message-avatar">
@@ -286,10 +269,10 @@ export function ChatMessage({
       <div className="message-content">
         {/* Tool Calls */}
         {toolCalls && toolCalls.length > 0 && (
-          <div className="tool-calls">
+          <div className="tool-chips">
             {toolCalls.map((tool) => (
-              <div key={tool.id} className={`tool-call ${tool.status}`}>
-                <div className="tool-icon">
+              <div key={tool.id} className={`tool-chip ${tool.status}`}>
+                <span className="tool-chip-icon">
                   {tool.status === 'running' ? (
                     <FaSpinner className="spinner" />
                   ) : tool.status === 'failed' ? (
@@ -297,19 +280,8 @@ export function ChatMessage({
                   ) : (
                     <FaCheck />
                   )}
-                </div>
-                <div className="tool-info">
-                  <div className="tool-name">
-                    <FaWrench className="tool-wrench" />
-                    {getToolDisplayName(tool.name)}
-                  </div>
-                  {tool.status === 'running' && (
-                    <div className="tool-status">実行中...</div>
-                  )}
-                  {tool.status === 'failed' && tool.error && (
-                    <div className="tool-error">{tool.error}</div>
-                  )}
-                </div>
+                </span>
+                <span className="tool-chip-name">{getToolDisplayName(tool.name)}</span>
               </div>
             ))}
           </div>
@@ -322,120 +294,91 @@ export function ChatMessage({
           </div>
         )}
 
-        {/* Proposals */}
-        {proposals && proposals.length > 0 && (
+        {/* Meeting Preview for proposals (visual only - approval handled by ProposalPanel) */}
+        {combinedPreview && (
           <div className="proposals">
-            {combinedPreview && (
-              <div className="proposal-combined-preview">
-                <div className="proposal-preview-header">
-                  <div className="proposal-preview-title">Combined preview</div>
-                  <div className="proposal-preview-range">{combinedPreview.rangeLabel}</div>
-                </div>
+            <div className="proposal-combined-preview">
+              <div className="proposal-preview-header">
+                <div className="proposal-preview-title">Combined preview</div>
+                <div className="proposal-preview-range">{combinedPreview.rangeLabel}</div>
+              </div>
+              <div
+                className="proposal-preview-grid"
+                style={{
+                  '--preview-days': combinedPreview.days.length,
+                  '--preview-hour-height': `${PREVIEW_HOUR_HEIGHT}px`,
+                } as CSSProperties}
+              >
                 <div
-                  className="proposal-preview-grid"
-                  style={{
-                    '--preview-days': combinedPreview.days.length,
-                    '--preview-hour-height': `${PREVIEW_HOUR_HEIGHT}px`,
-                  } as CSSProperties}
+                  className="proposal-preview-header-row"
+                  style={{ '--preview-days': combinedPreview.days.length } as CSSProperties}
                 >
-                  <div
-                    className="proposal-preview-header-row"
-                    style={{ '--preview-days': combinedPreview.days.length } as CSSProperties}
-                  >
-                    <div className="proposal-preview-time-header" />
-                    {combinedPreview.days.map((day) => (
-                      <div key={day.key} className="proposal-preview-day-header">
-                        {day.label}
+                  <div className="proposal-preview-time-header" />
+                  {combinedPreview.days.map((day) => (
+                    <div key={day.key} className="proposal-preview-day-header">
+                      {day.label}
+                    </div>
+                  ))}
+                </div>
+                <div className="proposal-preview-body">
+                  <div className="proposal-preview-time-col">
+                    {combinedPreview.hours.map((hour) => (
+                      <div key={hour} className="proposal-preview-time-slot">
+                        {String(hour).padStart(2, '0')}:00
                       </div>
                     ))}
                   </div>
-                  <div className="proposal-preview-body">
-                    <div className="proposal-preview-time-col">
-                      {combinedPreview.hours.map((hour) => (
-                        <div key={hour} className="proposal-preview-time-slot">
-                          {String(hour).padStart(2, '0')}:00
+                  {combinedPreview.days.map((day) => {
+                    const blocks = combinedPreview.blocksByDay.get(day.key) ?? [];
+                    return (
+                      <div
+                        key={day.key}
+                        className="proposal-preview-day-col"
+                        style={{ height: `${combinedPreview.gridHeight}px` }}
+                      >
+                        <div className="proposal-preview-hour-lines">
+                          {combinedPreview.hours.map((hour) => (
+                            <span key={hour} className="proposal-preview-hour-line" />
+                          ))}
                         </div>
-                      ))}
-                    </div>
-                    {combinedPreview.days.map((day) => {
-                      const blocks = combinedPreview.blocksByDay.get(day.key) ?? [];
-                      return (
-                        <div
-                          key={day.key}
-                          className="proposal-preview-day-col"
-                          style={{ height: `${combinedPreview.gridHeight}px` }}
-                        >
-                          <div className="proposal-preview-hour-lines">
-                            {combinedPreview.hours.map((hour) => (
-                              <span key={hour} className="proposal-preview-hour-line" />
-                            ))}
-                          </div>
-                          {blocks.map((meeting) => {
-                            const startBound = combinedPreview.startHour * 60;
-                            const endBound = combinedPreview.endHour * 60;
-                            const clampedStart = Math.max(startBound, meeting.startMinutes);
-                            const clampedEnd = Math.min(endBound, meeting.endMinutes);
-                            const top = ((clampedStart - startBound) / 60) * PREVIEW_HOUR_HEIGHT;
-                            const height = Math.max(12, ((clampedEnd - clampedStart) / 60) * PREVIEW_HOUR_HEIGHT);
-                            const width = 100 / meeting.laneCount;
-                            const left = width * meeting.lane;
-                            return (
-                              <div
-                                key={meeting.id}
-                                className={`proposal-preview-block ${meeting.kind}`}
-                                style={{ top: `${top}px`, height: `${height}px`, left: `${left}%`, width: `${width}%` }}
-                              >
-                                <div className="proposal-preview-block-title">{meeting.title}</div>
-                                <div className="proposal-preview-block-time">
-                                  {formatTimeLabel(meeting.start, timezone)} - {formatTimeLabel(meeting.end, timezone)}
-                                </div>
-                                {meeting.location && (
-                                  <div className="proposal-preview-block-location">{meeting.location}</div>
-                                )}
+                        {blocks.map((meeting) => {
+                          const startBound = combinedPreview.startHour * 60;
+                          const endBound = combinedPreview.endHour * 60;
+                          const clampedStart = Math.max(startBound, meeting.startMinutes);
+                          const clampedEnd = Math.min(endBound, meeting.endMinutes);
+                          const top = ((clampedStart - startBound) / 60) * PREVIEW_HOUR_HEIGHT;
+                          const height = Math.max(12, ((clampedEnd - clampedStart) / 60) * PREVIEW_HOUR_HEIGHT);
+                          const width = 100 / meeting.laneCount;
+                          const left = width * meeting.lane;
+                          return (
+                            <div
+                              key={meeting.id}
+                              className={`proposal-preview-block ${meeting.kind}`}
+                              style={{ top: `${top}px`, height: `${height}px`, left: `${left}%`, width: `${width}%` }}
+                            >
+                              <div className="proposal-preview-block-title">{meeting.title}</div>
+                              <div className="proposal-preview-block-time">
+                                {formatTimeLabel(meeting.start, timezone)} - {formatTimeLabel(meeting.end, timezone)}
                               </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
-                  </div>
+                              {meeting.location && (
+                                <div className="proposal-preview-block-location">{meeting.location}</div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
-            )}
-            {proposals.map((proposal) => (
-              <ProposalCard
-                key={proposal.id}
-                proposalId={proposal.proposalId}
-                proposalType={proposal.proposalType}
-                description={proposal.description}
-                payload={proposal.payload}
-                onApprove={handleProposalAction}
-                onReject={handleProposalAction}
-              />
-            ))}
+            </div>
           </div>
         )}
 
-        {/* Questions */}
-        {questions && questions.length > 0 && onQuestionsSubmit && (
-          <div className="questions">
-            <QuestionsCard
-              questions={questions}
-              context={questionsContext}
-              onSubmit={onQuestionsSubmit}
-            />
-          </div>
-        )}
+        {/* Questions are now handled by QuestionsPanel in ChatWindow */}
 
         {/* Message Text */}
-        {content ? (
-          <div className="message-text markdown-content">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {content}
-            </ReactMarkdown>
-            {isStreaming && <span className="streaming-cursor">▋</span>}
-          </div>
-        ) : isStreaming && (!toolCalls || toolCalls.length === 0) ? (
+        {isStreaming ? (
           <div className="thinking-animation">
             <div className="thinking-dots">
               <span></span>
@@ -443,6 +386,12 @@ export function ChatMessage({
               <span></span>
             </div>
             <span className="thinking-text">Thinking...</span>
+          </div>
+        ) : content ? (
+          <div className="message-text markdown-content">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>
+              {content}
+            </ReactMarkdown>
           </div>
         ) : null}
 

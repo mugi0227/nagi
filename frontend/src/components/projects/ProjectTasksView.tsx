@@ -42,7 +42,6 @@ export function ProjectTasksView({
   const queryClient = useQueryClient();
   const [phases, setPhases] = useState<PhaseWithTaskCount[]>([]);
   const [isPhasesLoading, setIsPhasesLoading] = useState(false);
-  const [breakdownTaskId, setBreakdownTaskId] = useState<string | null>(null);
   const [sortBy, setSortBy] = useState<'default' | 'dueDate'>('default');
 
   // Phase explorer state
@@ -77,32 +76,6 @@ export function ProjectTasksView({
     }
     return tasks.filter(t => t.phase_id === selectedPhaseId);
   }, [tasks, selectedPhaseId]);
-
-  const breakdownMutation = useMutation({
-    mutationFn: ({ id, instruction }: { id: string; instruction?: string }) =>
-      tasksApi.breakdownTask(id, { create_subtasks: true, instruction }),
-    onMutate: ({ id }) => {
-      setBreakdownTaskId(id);
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['top3'] });
-      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['schedule'] });
-      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
-      onRefreshTasks?.();
-    },
-    onError: () => {
-      alert('タスク分解に失敗しました。');
-    },
-    onSettled: () => {
-      setBreakdownTaskId(null);
-    },
-  });
-
-  const handleBreakdownTask = (id: string, instruction?: string) => {
-    breakdownMutation.mutate({ id, instruction });
-  };
 
   // Selection handlers
   const handleSelectTask = (taskId: string) => {
@@ -264,8 +237,6 @@ export function ProjectTasksView({
               assignedMemberIdsByTaskId={assignedMemberIdsByTaskId}
               memberOptions={memberOptions}
               onAssignMultiple={onAssignMultiple}
-              onBreakdownTask={handleBreakdownTask}
-              breakdownTaskId={breakdownTaskId}
               sortBy={sortBy}
               selectionMode={selectionMode}
               selectedTaskIds={selectedTaskIds}

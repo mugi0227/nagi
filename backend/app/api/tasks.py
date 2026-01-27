@@ -1,7 +1,7 @@
 """
 Tasks API endpoints.
 
-CRUD operations for tasks and task breakdown.
+CRUD operations for tasks.
 """
 
 from datetime import date
@@ -14,15 +14,12 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.api.deps import (
     BlockerRepo,
     CurrentUser,
-    LLMProvider,
-    MemoryRepo,
     ProjectRepo,
     ScheduleSnapshotRepo,
     TaskAssignmentRepo,
     TaskRepo,
 )
-from app.core.exceptions import BusinessLogicError, LLMValidationError, NotFoundError
-from app.models.breakdown import BreakdownRequest, BreakdownResponse
+from app.core.exceptions import BusinessLogicError, NotFoundError
 from app.models.collaboration import (
     Blocker,
     BlockerCreate,
@@ -35,7 +32,6 @@ from app.models.collaboration import (
 from app.models.schedule import ScheduleResponse, TodayTasksResponse
 from app.models.task import Task, TaskCreate, TaskUpdate
 from app.models.enums import CreatedBy, ProjectVisibility
-from app.services.planner_service import PlannerService
 from app.services.scheduler_service import SchedulerService
 from app.utils.dependency_validator import DependencyValidator
 
@@ -531,77 +527,6 @@ async def delete_task(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Task {task_id} not found",
-        )
-
-
-@router.post("/{task_id}/breakdown", response_model=BreakdownResponse)
-async def breakdown_task(
-    task_id: UUID,
-    user: CurrentUser,
-    repo: TaskRepo,
-    project_repo: ProjectRepo,
-    memory_repo: MemoryRepo,
-    assignment_repo: TaskAssignmentRepo,
-    llm_provider: LLMProvider,
-    request: BreakdownRequest = BreakdownRequest(),
-):
-    """
-    Break down a task into micro-steps.
-
-    Uses the Planner Agent to decompose large tasks into
-    manageable 5-15 minute steps for ADHD users.
-
-    Optionally creates subtasks from the breakdown.
-    Subtasks inherit the parent task's assignees.
-    """
-    try:
-        # Check permissions (Owner or Project Member)
-        task = await repo.get(user.id, task_id)
-        if not task:
-            # Not owner, check if member of project
-            tasks = await repo.get_many([task_id])
-            if tasks:
-                t = tasks[0]
-                if t.project_id:
-                    # Check project access
-                    project = await project_repo.get(user.id, t.project_id)
-                    if project:
-                        task = t
-
-        if not task:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Task {task_id} not found",
-            )
-
-        service = PlannerService(
-            llm_provider=llm_provider,
-            task_repo=repo,
-            memory_repo=memory_repo,
-            project_repo=project_repo,
-            assignment_repo=assignment_repo,
-        )
-        return await service.breakdown_task(
-            user_id=user.id,
-            task_id=task_id,
-            create_subtasks=request.create_subtasks,
-            instruction=request.instruction,
-            task_obj=task,
-        )
-    except NotFoundError as e:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
-        )
-    except LLMValidationError as e:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail=f"Failed to parse LLM output: {e.message}",
-        )
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Breakdown failed: {str(e)}",
         )
 
 

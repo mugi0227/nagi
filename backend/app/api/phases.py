@@ -10,18 +10,12 @@ from fastapi import APIRouter, HTTPException, status
 
 from app.api.deps import (
     CurrentUser,
-    LLMProvider,
-    MemoryRepo,
-    MilestoneRepo,
     PhaseRepo,
     ProjectRepo,
-    TaskRepo,
 )
 from app.models.phase import Phase, PhaseCreate, PhaseUpdate, PhaseWithTaskCount
-from app.models.phase_breakdown import PhaseTaskBreakdownRequest, PhaseTaskBreakdownResponse
 from app.models.enums import PhaseStatus
 from app.core.exceptions import NotFoundError
-from app.services.phase_planner_service import PhasePlannerService
 
 router = APIRouter(prefix="/phases", tags=["phases"])
 
@@ -172,34 +166,6 @@ async def delete_phase(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Phase {phase_id} not found",
         )
-
-
-@router.post("/{phase_id}/task-breakdown", response_model=PhaseTaskBreakdownResponse)
-async def breakdown_phase_tasks(
-    phase_id: UUID,
-    request: PhaseTaskBreakdownRequest,
-    user: CurrentUser,
-    repo: PhaseRepo,
-    project_repo: ProjectRepo,
-    milestone_repo: MilestoneRepo,
-    task_repo: TaskRepo,
-    memory_repo: MemoryRepo,
-    llm_provider: LLMProvider,
-) -> PhaseTaskBreakdownResponse:
-    """Generate tasks for a phase using AI."""
-    service = PhasePlannerService(
-        llm_provider=llm_provider,
-        memory_repo=memory_repo,
-        project_repo=project_repo,
-        phase_repo=repo,
-        milestone_repo=milestone_repo,
-        task_repo=task_repo,
-    )
-    return await service.breakdown_phase_tasks(
-        user_id=user.id,
-        phase_id=phase_id,
-        request=request,
-    )
 
 
 async def _get_project_or_404(user: CurrentUser, repo: ProjectRepo, project_id: UUID):

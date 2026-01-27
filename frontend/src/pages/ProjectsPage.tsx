@@ -44,7 +44,7 @@ export function ProjectsPage() {
   return (
     <div className="projects-page">
       <div className="page-header">
-        <h2 className="page-title">Projects</h2>
+        <h2 className="page-title">プロジェクト</h2>
         <div className="header-actions">
           <span className="project-total">全{projects.length}件</span>
           <button className="button button-primary" onClick={() => setShowCreateModal(true)}>

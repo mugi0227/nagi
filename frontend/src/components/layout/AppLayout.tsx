@@ -89,9 +89,9 @@ export function AppLayout() {
   }, []);
 
   useEffect(() => {
-    const handleOpenChat = (e: CustomEvent<{ message?: string; draftCard?: DraftCardData }>) => {
+    const handleOpenChat = (e: CustomEvent<{ message?: string; draftCard?: DraftCardData; newChat?: boolean }>) => {
       if (e.detail?.draftCard) {
-        setPendingDraftCard(e.detail.draftCard);
+        setPendingDraftCard({ ...e.detail.draftCard, newChat: e.detail.newChat });
         setPendingMessage(null);
       } else if (e.detail?.message) {
         setPendingMessage(e.detail.message);

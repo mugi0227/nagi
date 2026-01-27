@@ -46,3 +46,18 @@ class IProjectAchievementRepository(ABC):
     async def delete(self, project_id: UUID, achievement_id: UUID) -> bool:
         """Delete a project achievement. Returns True if deleted."""
         pass
+
+    @abstractmethod
+    async def update(
+        self,
+        project_id: UUID,
+        achievement_id: UUID,
+        summary: Optional[str] = None,
+        team_highlights: Optional[list[str]] = None,
+        challenges: Optional[list[str]] = None,
+        learnings: Optional[list[str]] = None,
+        open_issues: Optional[list[str]] = None,
+        append_note: Optional[str] = None,
+    ) -> ProjectAchievement:
+        """Update a project achievement (partial update)."""
+        pass

@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { DateTime } from 'luxon';
 import {
@@ -8,13 +8,16 @@ import {
   FaLightbulb,
   FaRocket,
   FaStar,
+  FaEdit,
+  FaMagic,
   FaSpinner,
   FaCalendarAlt,
   FaChevronDown,
   FaChevronUp,
+  FaTrash,
 } from 'react-icons/fa';
 import { achievementsApi } from '../api/achievements';
-import type { Achievement, SkillExperience } from '../api/types';
+import type { Achievement, AchievementUpdate, SkillExperience } from '../api/types';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDate, nowInTimezone, toDateTime } from '../utils/dateTime';
 import './AchievementPage.css';
@@ -100,10 +103,38 @@ const isSamePeriod = (
   );
 };
 
-function AchievementCard({ achievement }: { achievement: Achievement }) {
+type EditableSection = 'summary' | 'growth_points' | 'next_suggestions' | 'strengths' | 'growth_areas';
+
+function AchievementCard({
+  achievement,
+  onDelete,
+  onRegenerate,
+  onUpdate,
+  onSummarize,
+  isDeleting,
+  isRegenerating,
+  isUpdating,
+  isSummarizing,
+}: {
+  achievement: Achievement;
+  onDelete: (achievement: Achievement) => void;
+  onRegenerate: (achievement: Achievement) => void;
+  onUpdate: (achievementId: string, payload: AchievementUpdate) => Promise<Achievement>;
+  onSummarize: (achievement: Achievement) => void;
+  isDeleting: boolean;
+  isRegenerating: boolean;
+  isUpdating: boolean;
+  isSummarizing: boolean;
+}) {
   const timezone = useTimezone();
   const [expanded, setExpanded] = useState(false);
   const [showTasks, setShowTasks] = useState(false);
+  const [editing, setEditing] = useState<{
+    section: EditableSection;
+    index?: number;
+    value: string;
+  } | null>(null);
+  const [appendNote, setAppendNote] = useState(achievement.append_note ?? '');
   const taskSnapshots = achievement.task_snapshots ?? [];
   const periodLabel =
     achievement.period_label ||
@@ -115,6 +146,76 @@ function AchievementCard({ achievement }: { achievement: Achievement }) {
     achievement.skill_analysis.domain_skills.length > 0 ||
     achievement.skill_analysis.soft_skills.length > 0 ||
     achievement.skill_analysis.work_types.length > 0;
+  const isBusy = isDeleting || isRegenerating || isUpdating || isSummarizing;
+
+  useEffect(() => {
+    setAppendNote(achievement.append_note ?? '');
+  }, [achievement.append_note]);
+
+  const handleEditStart = (section: EditableSection, value: string, index?: number) => {
+    setEditing({ section, value, index });
+  };
+
+  const handleEditCancel = () => {
+    setEditing(null);
+  };
+
+  const buildListPayload = (section: EditableSection, list: string[]): AchievementUpdate => {
+    switch (section) {
+      case 'growth_points':
+        return { growth_points: list };
+      case 'next_suggestions':
+        return { next_suggestions: list };
+      case 'strengths':
+        return { strengths: list };
+      case 'growth_areas':
+        return { growth_areas: list };
+      default:
+        return {};
+    }
+  };
+
+  const handleEditSave = async () => {
+    if (!editing) return;
+    const trimmed = editing.value.trim();
+    if (!trimmed) return;
+    if (editing.section === 'summary') {
+      await onUpdate(achievement.id, { summary: trimmed });
+      setEditing(null);
+      return;
+    }
+    const listSource =
+      editing.section === 'growth_points'
+        ? achievement.growth_points
+        : editing.section === 'next_suggestions'
+          ? achievement.next_suggestions
+          : editing.section === 'strengths'
+            ? achievement.skill_analysis.strengths
+            : achievement.skill_analysis.growth_areas;
+    const updatedList = listSource.map((item, index) =>
+      index === editing.index ? trimmed : item
+    );
+    await onUpdate(achievement.id, buildListPayload(editing.section, updatedList));
+    setEditing(null);
+  };
+
+  const handleDeleteItem = async (section: EditableSection, index: number) => {
+    if (!window.confirm('削除しますか？')) return;
+    const listSource =
+      section === 'growth_points'
+        ? achievement.growth_points
+        : section === 'next_suggestions'
+          ? achievement.next_suggestions
+          : section === 'strengths'
+            ? achievement.skill_analysis.strengths
+            : achievement.skill_analysis.growth_areas;
+    const updatedList = listSource.filter((_, itemIndex) => itemIndex !== index);
+    await onUpdate(achievement.id, buildListPayload(section, updatedList));
+  };
+
+  const handleAppendNoteSave = async () => {
+    await onUpdate(achievement.id, { append_note: appendNote });
+  };
 
   return (
     <div className="achievement-week-card">
@@ -123,12 +224,121 @@ function AchievementCard({ achievement }: { achievement: Achievement }) {
           <FaCalendarAlt className="achievement-week-icon" />
           <span>{periodLabel}</span>
         </div>
-        <span className={`generation-type ${achievement.generation_type.toLowerCase()}`}>
-          {achievement.generation_type === 'AUTO' ? '自動生成' : '手動生成'}
-        </span>
+        <div className="achievement-week-actions">
+          <span className={`generation-type ${achievement.generation_type.toLowerCase()}`}>
+            {achievement.generation_type === 'AUTO' ? '自動生成' : '手動生成'}
+          </span>
+          <button
+            className="achievement-action-btn summarize"
+            type="button"
+            onClick={() => onSummarize(achievement)}
+            disabled={isBusy}
+          >
+            {isSummarizing ? (
+              <>
+                <FaSpinner className="spinner" />
+                まとめ中
+              </>
+            ) : (
+              <>
+                <FaMagic />
+                AIでまとめる
+              </>
+            )}
+          </button>
+          <button
+            className="achievement-action-btn regenerate"
+            type="button"
+            onClick={() => onRegenerate(achievement)}
+            disabled={isBusy}
+          >
+            {isRegenerating ? (
+              <>
+                <FaSpinner className="spinner" />
+                再生成中
+              </>
+            ) : (
+              <>
+                <FaRocket />
+                再生成
+              </>
+            )}
+          </button>
+          <button
+            className="achievement-action-btn delete"
+            type="button"
+            onClick={() => onDelete(achievement)}
+            disabled={isBusy}
+          >
+            {isDeleting ? (
+              <>
+                <FaSpinner className="spinner" />
+                削除中
+              </>
+            ) : (
+              <>
+                <FaTrash />
+                削除
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
-      <p className="achievement-week-summary">{achievement.summary}</p>
+      <div className="achievement-summary-block">
+        {editing?.section === 'summary' ? (
+          <textarea
+            className="edit-textarea summary-textarea"
+            rows={4}
+            value={editing.value}
+            onChange={(event) =>
+              setEditing((current) =>
+                current ? { ...current, value: event.target.value } : current
+              )
+            }
+            disabled={isBusy}
+          />
+        ) : (
+          <p className="achievement-week-summary">{achievement.summary}</p>
+        )}
+        <div
+          className={`item-actions summary-actions${
+            editing?.section === 'summary' ? '' : ' hover-actions'
+          }`}
+        >
+          {editing?.section === 'summary' ? (
+            <>
+              <button
+                className="item-action-btn save"
+                type="button"
+                onClick={handleEditSave}
+                disabled={isBusy}
+              >
+                {isUpdating ? '保存中' : '保存'}
+              </button>
+              <button
+                className="item-action-btn cancel"
+                type="button"
+                onClick={handleEditCancel}
+                disabled={isBusy}
+              >
+                キャンセル
+              </button>
+            </>
+          ) : (
+              <button
+                className="item-action-btn icon edit"
+                type="button"
+                onClick={() => handleEditStart('summary', achievement.summary)}
+                disabled={isBusy || editing !== null}
+                aria-label="編集"
+                title="編集"
+              >
+                <FaEdit />
+              </button>
+            )}
+        </div>
+      </div>
 
       <div className="achievement-week-stats">
         <div className="achievement-week-stat">
@@ -184,9 +394,78 @@ function AchievementCard({ achievement }: { achievement: Achievement }) {
                       強み
                     </h4>
                     <ul>
-                      {achievement.skill_analysis.strengths.map((s, i) => (
-                        <li key={i}>{s}</li>
-                      ))}
+                      {achievement.skill_analysis.strengths.map((s, i) => {
+                        const isEditing =
+                          editing?.section === 'strengths' && editing.index === i;
+                        return (
+                          <li key={i}>
+                            <div className="insight-item-row">
+                              {isEditing ? (
+                                <textarea
+                                  className="edit-textarea"
+                                  rows={2}
+                                  value={editing.value}
+                                  onChange={(event) =>
+                                    setEditing((current) =>
+                                      current
+                                        ? { ...current, value: event.target.value }
+                                        : current
+                                    )
+                                  }
+                                  disabled={isBusy}
+                                />
+                              ) : (
+                                <span className="insight-item-text">{s}</span>
+                              )}
+                              <div className={`item-actions${isEditing ? '' : ' hover-actions'}`}>
+                                {isEditing ? (
+                                  <>
+                                    <button
+                                      className="item-action-btn save"
+                                      type="button"
+                                      onClick={handleEditSave}
+                                      disabled={isBusy}
+                                    >
+                                      {isUpdating ? '保存中' : '保存'}
+                                    </button>
+                                    <button
+                                      className="item-action-btn cancel"
+                                      type="button"
+                                      onClick={handleEditCancel}
+                                      disabled={isBusy}
+                                    >
+                                      キャンセル
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      className="item-action-btn icon edit"
+                                      type="button"
+                                      onClick={() => handleEditStart('strengths', s, i)}
+                                      disabled={isBusy || editing !== null}
+                                      aria-label="編集"
+                                      title="編集"
+                                    >
+                                      <FaEdit />
+                                    </button>
+                                    <button
+                                      className="item-action-btn icon delete"
+                                      type="button"
+                                      onClick={() => handleDeleteItem('strengths', i)}
+                                      disabled={isBusy || editing !== null}
+                                      aria-label="削除"
+                                      title="削除"
+                                    >
+                                      <FaTrash />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 )}
@@ -197,9 +476,78 @@ function AchievementCard({ achievement }: { achievement: Achievement }) {
                       伸びしろ
                     </h4>
                     <ul>
-                      {achievement.skill_analysis.growth_areas.map((g, i) => (
-                        <li key={i}>{g}</li>
-                      ))}
+                      {achievement.skill_analysis.growth_areas.map((g, i) => {
+                        const isEditing =
+                          editing?.section === 'growth_areas' && editing.index === i;
+                        return (
+                          <li key={i}>
+                            <div className="insight-item-row">
+                              {isEditing ? (
+                                <textarea
+                                  className="edit-textarea"
+                                  rows={2}
+                                  value={editing.value}
+                                  onChange={(event) =>
+                                    setEditing((current) =>
+                                      current
+                                        ? { ...current, value: event.target.value }
+                                        : current
+                                    )
+                                  }
+                                  disabled={isBusy}
+                                />
+                              ) : (
+                                <span className="insight-item-text">{g}</span>
+                              )}
+                              <div className={`item-actions${isEditing ? '' : ' hover-actions'}`}>
+                                {isEditing ? (
+                                  <>
+                                    <button
+                                      className="item-action-btn save"
+                                      type="button"
+                                      onClick={handleEditSave}
+                                      disabled={isBusy}
+                                    >
+                                      {isUpdating ? '保存中' : '保存'}
+                                    </button>
+                                    <button
+                                      className="item-action-btn cancel"
+                                      type="button"
+                                      onClick={handleEditCancel}
+                                      disabled={isBusy}
+                                    >
+                                      キャンセル
+                                    </button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button
+                                      className="item-action-btn icon edit"
+                                      type="button"
+                                      onClick={() => handleEditStart('growth_areas', g, i)}
+                                      disabled={isBusy || editing !== null}
+                                      aria-label="編集"
+                                      title="編集"
+                                    >
+                                      <FaEdit />
+                                    </button>
+                                    <button
+                                      className="item-action-btn icon delete"
+                                      type="button"
+                                      onClick={() => handleDeleteItem('growth_areas', i)}
+                                      disabled={isBusy || editing !== null}
+                                      aria-label="削除"
+                                      title="削除"
+                                    >
+                                      <FaTrash />
+                                    </button>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          </li>
+                        );
+                      })}
                     </ul>
                   </div>
                 )}
@@ -214,12 +562,79 @@ function AchievementCard({ achievement }: { achievement: Achievement }) {
                 成長ポイント
               </h3>
               <ul className="growth-points-list">
-                {achievement.growth_points.map((point, i) => (
-                  <li key={i}>
-                    <FaCheckCircle className="point-icon" />
-                    {point}
-                  </li>
-                ))}
+                {achievement.growth_points.map((point, i) => {
+                  const isEditing =
+                    editing?.section === 'growth_points' && editing.index === i;
+                  return (
+                    <li key={i} className="editable-list-item">
+                      <div className="item-content">
+                        <FaCheckCircle className="point-icon" />
+                        {isEditing ? (
+                          <textarea
+                            className="edit-textarea"
+                            rows={2}
+                            value={editing.value}
+                            onChange={(event) =>
+                              setEditing((current) =>
+                                current
+                                  ? { ...current, value: event.target.value }
+                                  : current
+                              )
+                            }
+                            disabled={isBusy}
+                          />
+                        ) : (
+                          <span>{point}</span>
+                        )}
+                      </div>
+                      <div className={`item-actions${isEditing ? '' : ' hover-actions'}`}>
+                        {isEditing ? (
+                          <>
+                            <button
+                              className="item-action-btn save"
+                              type="button"
+                              onClick={handleEditSave}
+                              disabled={isBusy}
+                            >
+                              {isUpdating ? '保存中' : '保存'}
+                            </button>
+                            <button
+                              className="item-action-btn cancel"
+                              type="button"
+                              onClick={handleEditCancel}
+                              disabled={isBusy}
+                            >
+                              キャンセル
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              className="item-action-btn icon edit"
+                              type="button"
+                              onClick={() => handleEditStart('growth_points', point, i)}
+                              disabled={isBusy || editing !== null}
+                              aria-label="編集"
+                              title="編集"
+                            >
+                              <FaEdit />
+                            </button>
+                            <button
+                              className="item-action-btn icon delete"
+                              type="button"
+                              onClick={() => handleDeleteItem('growth_points', i)}
+                              disabled={isBusy || editing !== null}
+                              aria-label="削除"
+                              title="削除"
+                            >
+                              <FaTrash />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
@@ -231,15 +646,108 @@ function AchievementCard({ achievement }: { achievement: Achievement }) {
                 次への提案
               </h3>
               <ul className="suggestions-list">
-                {achievement.next_suggestions.map((suggestion, i) => (
-                  <li key={i}>
-                    <FaRocket className="suggestion-icon" />
-                    {suggestion}
-                  </li>
-                ))}
+                {achievement.next_suggestions.map((suggestion, i) => {
+                  const isEditing =
+                    editing?.section === 'next_suggestions' && editing.index === i;
+                  return (
+                    <li key={i} className="editable-list-item">
+                      <div className="item-content">
+                        <FaRocket className="suggestion-icon" />
+                        {isEditing ? (
+                          <textarea
+                            className="edit-textarea"
+                            rows={2}
+                            value={editing.value}
+                            onChange={(event) =>
+                              setEditing((current) =>
+                                current
+                                  ? { ...current, value: event.target.value }
+                                  : current
+                              )
+                            }
+                            disabled={isBusy}
+                          />
+                        ) : (
+                          <span>{suggestion}</span>
+                        )}
+                      </div>
+                      <div className={`item-actions${isEditing ? '' : ' hover-actions'}`}>
+                        {isEditing ? (
+                          <>
+                            <button
+                              className="item-action-btn save"
+                              type="button"
+                              onClick={handleEditSave}
+                              disabled={isBusy}
+                            >
+                              {isUpdating ? '保存中' : '保存'}
+                            </button>
+                            <button
+                              className="item-action-btn cancel"
+                              type="button"
+                              onClick={handleEditCancel}
+                              disabled={isBusy}
+                            >
+                              キャンセル
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button
+                              className="item-action-btn icon edit"
+                              type="button"
+                              onClick={() => handleEditStart('next_suggestions', suggestion, i)}
+                              disabled={isBusy || editing !== null}
+                              aria-label="編集"
+                              title="編集"
+                            >
+                              <FaEdit />
+                            </button>
+                            <button
+                              className="item-action-btn icon delete"
+                              type="button"
+                              onClick={() => handleDeleteItem('next_suggestions', i)}
+                              disabled={isBusy || editing !== null}
+                              aria-label="削除"
+                              title="削除"
+                            >
+                              <FaTrash />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </li>
+                  );
+                })}
               </ul>
             </div>
           )}
+
+          <div className="achievement-section">
+            <h3>
+              <FaEdit className="section-icon" />
+              追記
+            </h3>
+            <div className="append-note">
+              <textarea
+                className="edit-textarea"
+                rows={4}
+                value={appendNote}
+                onChange={(event) => setAppendNote(event.target.value)}
+                disabled={isBusy}
+              />
+              <div className="item-actions append-note-actions">
+                <button
+                  className="item-action-btn save"
+                  type="button"
+                  onClick={handleAppendNoteSave}
+                  disabled={isBusy}
+                >
+                  {isUpdating ? '保存中' : '保存'}
+                </button>
+              </div>
+            </div>
+          </div>
 
           <div className="achievement-section">
             <h3>
@@ -293,6 +801,11 @@ export function AchievementPage() {
   const now = nowInTimezone(timezone);
   const { weekStart, weekEnd } = getLatestWeekPeriod(now);
   const [showPreviewTasks, setShowPreviewTasks] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [regenerateTargetId, setRegenerateTargetId] = useState<string | null>(null);
+  const [updateTargetId, setUpdateTargetId] = useState<string | null>(null);
+  const [summarizeTargetId, setSummarizeTargetId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const { data: achievementsData, isLoading: isLoadingAchievements } = useQuery({
     queryKey: ['achievements', 'weekly'],
@@ -327,20 +840,123 @@ export function AchievementPage() {
         period_end: previewEndIso,
         period_label: weekLabel,
       }),
+    onMutate: () => setErrorMessage(null),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['achievements'] });
       setShowPreviewTasks(false);
     },
+    onError: () => {
+      setErrorMessage('週次の生成に失敗しました。時間をおいて再度お試しください。');
+    },
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: (achievementId: string) => achievementsApi.delete(achievementId),
+    onMutate: (achievementId) => {
+      setDeleteTargetId(achievementId);
+      setErrorMessage(null);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['achievements'] });
+    },
+    onError: () => {
+      setErrorMessage('削除に失敗しました。時間をおいて再度お試しください。');
+    },
+    onSettled: () => setDeleteTargetId(null),
+  });
+
+  const regenerateMutation = useMutation({
+    mutationFn: async (achievement: Achievement) => {
+      await achievementsApi.delete(achievement.id);
+      return achievementsApi.create({
+        period_start: achievement.period_start,
+        period_end: achievement.period_end,
+        period_label:
+          achievement.period_label ||
+          formatPeriodLabel(achievement.period_start, achievement.period_end, timezone),
+      });
+    },
+    onMutate: (achievement) => {
+      setRegenerateTargetId(achievement.id);
+      setErrorMessage(null);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['achievements'] });
+    },
+    onError: () => {
+      setErrorMessage('再生成に失敗しました。時間をおいて再度お試しください。');
+    },
+    onSettled: () => setRegenerateTargetId(null),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({
+      achievementId,
+      payload,
+    }: {
+      achievementId: string;
+      payload: AchievementUpdate;
+    }) => achievementsApi.update(achievementId, payload),
+    onMutate: ({ achievementId }) => {
+      setUpdateTargetId(achievementId);
+      setErrorMessage(null);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['achievements'] });
+    },
+    onError: () => {
+      setErrorMessage('更新に失敗しました。時間をおいて再度お試しください。');
+    },
+    onSettled: () => setUpdateTargetId(null),
+  });
+
+  const summarizeMutation = useMutation({
+    mutationFn: (achievementId: string) => achievementsApi.summarize(achievementId),
+    onMutate: (achievementId) => {
+      setSummarizeTargetId(achievementId);
+      setErrorMessage(null);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['achievements'] });
+    },
+    onError: () => {
+      setErrorMessage('AIまとめに失敗しました。時間をおいて再度お試しください。');
+    },
+    onSettled: () => setSummarizeTargetId(null),
+  });
+
+  const handleUpdate = (achievementId: string, payload: AchievementUpdate) =>
+    updateMutation.mutateAsync({ achievementId, payload });
+
+  const handleDelete = (achievement: Achievement) => {
+    if (!window.confirm('この達成項目を削除しますか？')) return;
+    deleteMutation.mutate(achievement.id);
+  };
+
+  const handleRegenerate = (achievement: Achievement) => {
+    if (!window.confirm('この達成項目を再生成しますか？')) return;
+    regenerateMutation.mutate(achievement);
+  };
+
+  const handleSummarize = (achievement: Achievement) => {
+    if (!window.confirm('編集内容と追記を反映してAIでまとめますか？')) return;
+    summarizeMutation.mutate(achievement.id);
+  };
 
   return (
     <div className="achievement-page">
       <div className="page-header">
         <div className="header-left">
           <FaTrophy className="page-icon" />
-          <h2 className="page-title">Achievement</h2>
+          <h2 className="page-title">達成項目</h2>
         </div>
       </div>
+
+      {errorMessage && (
+        <div className="achievement-error" role="alert">
+          {errorMessage}
+        </div>
+      )}
 
       <div className="weekly-generator">
         <div className="weekly-generator-header">
@@ -446,7 +1062,20 @@ export function AchievementPage() {
       ) : (
         <div className="achievement-list">
           {achievements.map((achievement) => (
-            <AchievementCard key={achievement.id} achievement={achievement} />
+            <AchievementCard
+              key={achievement.id}
+              achievement={achievement}
+              onDelete={handleDelete}
+              onRegenerate={handleRegenerate}
+              onUpdate={handleUpdate}
+              onSummarize={handleSummarize}
+              isDeleting={deleteTargetId === achievement.id && deleteMutation.isPending}
+              isRegenerating={regenerateTargetId === achievement.id && regenerateMutation.isPending}
+              isUpdating={updateTargetId === achievement.id && updateMutation.isPending}
+              isSummarizing={
+                summarizeTargetId === achievement.id && summarizeMutation.isPending
+              }
+            />
           ))}
         </div>
       )}

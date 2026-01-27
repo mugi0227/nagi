@@ -1,0 +1,265 @@
+.proposal-panel {
+  background: linear-gradient(135deg, var(--surface-secondary) 0%, var(--surface-primary) 100%);
+  border-top: 1px solid var(--accent-primary);
+  animation: proposalPanelSlideIn 0.3s ease-out;
+}
+
+@keyframes proposalPanelSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.proposal-panel-header {
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  padding: 10px 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.proposal-panel-badge {
+  font-weight: 600;
+  font-size: 13px;
+  color: white;
+}
+
+.proposal-panel-pagination {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.proposal-panel-nav-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  color: white;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.proposal-panel-nav-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.proposal-panel-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.proposal-panel-page {
+  font-size: 13px;
+  font-weight: 500;
+  color: white;
+  min-width: 50px;
+  text-align: center;
+}
+
+.proposal-panel-body {
+  padding: 12px 16px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.proposal-panel-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.proposal-panel-body::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border-radius: 2px;
+}
+
+.proposal-panel-details {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.proposal-panel-description {
+  font-size: 13px;
+  color: var(--text-primary);
+  margin: 0 0 8px 0;
+  line-height: 1.4;
+}
+
+.proposal-panel-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.proposal-panel-label {
+  color: var(--text-secondary);
+  min-width: 80px;
+  flex-shrink: 0;
+}
+
+.proposal-panel-value {
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.proposal-panel-pre {
+  font-family: monospace;
+  font-size: 11px;
+  white-space: pre-wrap;
+  background: var(--surface-primary);
+  padding: 6px 8px;
+  border-radius: 4px;
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+.proposal-panel-phases {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.proposal-panel-phase {
+  display: flex;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.proposal-panel-phase-num {
+  color: var(--text-secondary);
+}
+
+.proposal-panel-phase-name {
+  color: var(--text-primary);
+}
+
+.proposal-panel-error {
+  padding: 8px 16px;
+  font-size: 12px;
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.proposal-panel-actions {
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid var(--border-color);
+}
+
+.proposal-panel-actions-single {
+  display: flex;
+  gap: 8px;
+}
+
+.proposal-panel-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.proposal-panel-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.proposal-panel-btn.reject {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+}
+
+.proposal-panel-btn.reject:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #ef4444;
+  color: #ef4444;
+}
+
+.proposal-panel-btn.approve {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: white;
+}
+
+.proposal-panel-btn.approve:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.proposal-panel-actions-all {
+  display: flex;
+  gap: 8px;
+}
+
+.proposal-panel-btn-all {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.proposal-panel-btn-all:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.proposal-panel-btn-all.reject-all {
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+}
+
+.proposal-panel-btn-all.reject-all:hover:not(:disabled) {
+  background: rgba(239, 68, 68, 0.2);
+}
+
+.proposal-panel-btn-all.approve-all {
+  background: rgba(16, 185, 129, 0.1);
+  color: #10b981;
+}
+
+.proposal-panel-btn-all.approve-all:hover:not(:disabled) {
+  background: rgba(16, 185, 129, 0.2);
+}
+
+/* Spinner animation */
+.proposal-panel-btn .spinner,
+.proposal-panel-btn-all .spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}

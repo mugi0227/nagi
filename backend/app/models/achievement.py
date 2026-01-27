@@ -114,6 +114,10 @@ class Achievement(AchievementBase):
         default_factory=list,
         description="達成項目生成時のタスクスナップショット",
     )
+    append_note: Optional[str] = Field(
+        None,
+        description="ユーザー追記",
+    )
 
     # Metadata
     generation_type: GenerationType = Field(
@@ -200,6 +204,10 @@ class ProjectAchievement(ProjectAchievementBase):
     open_issues: list[str] = Field(
         default_factory=list,
         description="未解決の課題・引き継ぎ事項",
+    )
+    append_note: Optional[str] = Field(
+        None,
+        description="ユーザー追記",
     )
 
     # メタデータ

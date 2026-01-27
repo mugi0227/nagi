@@ -22,8 +22,6 @@ import type {
   CheckinUpdateV2,
   CheckinAgendaItems,
   ProjectKpiTemplate,
-  PhaseBreakdownRequest,
-  PhaseBreakdownResponse,
   Memory,
 } from './types';
 
@@ -153,9 +151,6 @@ export const projectsApi = {
     const suffix = params.toString();
     return api.get<CheckinAgendaItems>(`/projects/${projectId}/checkins/agenda-items${suffix ? `?${suffix}` : ''}`);
   },
-
-  breakdownPhases: (projectId: string, data: PhaseBreakdownRequest) =>
-    api.post<PhaseBreakdownResponse>(`/projects/${projectId}/phase-breakdown`, data),
 };
 
 // Convenience export

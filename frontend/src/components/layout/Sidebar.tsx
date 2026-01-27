@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear, FaMoon, FaSun, FaRightFromBracket, FaRightToBracket, FaBookOpen, FaLightbulb, FaComments, FaChevronLeft, FaChevronRight } from 'react-icons/fa6';
+import { FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear, FaMoon, FaSun, FaRightFromBracket, FaRightToBracket, FaBookOpen, FaComments, FaChevronLeft, FaChevronRight } from 'react-icons/fa6';
 import { useTheme } from '../../context/ThemeContext';
 import { clearAuthToken, getAuthToken } from '../../api/auth';
 import { SettingsModal } from '../settings/SettingsModal';
@@ -41,13 +41,12 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   }, [token, location.pathname]);
 
   const navItems = [
-    { path: '/', label: 'Dashboard', icon: FaChartPie },
-    { path: '/tasks', label: 'Tasks', icon: FaListCheck },
-    { path: '/projects', label: 'Projects', icon: FaFolderOpen },
-    { path: '/skills', label: 'Skills', icon: FaLightbulb },
-    { path: '/memories', label: 'Memories', icon: FaBookOpen },
-    { path: '/achievement', label: 'Achievement', icon: FaTrophy },
-    { path: '/issues', label: 'Issues', icon: FaComments },
+    { path: '/', label: 'ダッシュボード', icon: FaChartPie },
+    { path: '/tasks', label: 'タスク', icon: FaListCheck },
+    { path: '/projects', label: 'プロジェクト', icon: FaFolderOpen },
+    { path: '/memories', label: 'メモリー', icon: FaBookOpen },
+    { path: '/achievement', label: '達成項目', icon: FaTrophy },
+    { path: '/issues', label: '要望', icon: FaComments },
   ];
 
   const handleLogout = () => {

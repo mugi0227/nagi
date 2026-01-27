@@ -9,7 +9,7 @@ from datetime import datetime
 from typing import List, Optional
 from uuid import UUID
 
-from app.models.achievement import Achievement, AchievementCreate
+from app.models.achievement import Achievement, SkillAnalysis
 
 
 class IAchievementRepository(ABC):
@@ -102,6 +102,10 @@ class IAchievementRepository(ABC):
         summary: Optional[str] = None,
         growth_points: Optional[List[str]] = None,
         next_suggestions: Optional[List[str]] = None,
+        skill_analysis: Optional[SkillAnalysis] = None,
+        strengths: Optional[List[str]] = None,
+        growth_areas: Optional[List[str]] = None,
+        append_note: Optional[str] = None,
     ) -> Achievement:
         """
         Update an achievement (partial update).
@@ -112,6 +116,10 @@ class IAchievementRepository(ABC):
             summary: Optional new summary
             growth_points: Optional new growth points
             next_suggestions: Optional new suggestions
+            skill_analysis: Optional full skill analysis
+            strengths: Optional new strengths
+            growth_areas: Optional new growth areas
+            append_note: Optional user notes
 
         Returns:
             Updated achievement

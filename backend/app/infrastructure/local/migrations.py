@@ -356,6 +356,21 @@ async def run_migrations():
             if "append_note" not in achievement_columns:
                 await conn.execute(text("ALTER TABLE achievements ADD COLUMN append_note TEXT"))
 
+        project_achievement_result = await conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='project_achievements'")
+        )
+        if project_achievement_result.scalar():
+            project_achievement_columns = {
+                row[1]
+                for row in (
+                    await conn.execute(text("PRAGMA table_info(project_achievements)"))
+                ).fetchall()
+            }
+            if "append_note" not in project_achievement_columns:
+                await conn.execute(
+                    text("ALTER TABLE project_achievements ADD COLUMN append_note TEXT")
+                )
+
         # Create milestones table if missing
         milestone_result = await conn.execute(
             text("SELECT name FROM sqlite_master WHERE type='table' AND name='milestones'")

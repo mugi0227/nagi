@@ -4,7 +4,7 @@ import { useTimezone } from '../../hooks/useTimezone';
 import { todayInTimezone } from '../../utils/dateTime';
 import './DraftCard.css';
 
-export type DraftCardType = 'task' | 'phase' | 'agenda' | 'subtask' | 'actionItem';
+export type DraftCardType = 'task' | 'phase' | 'agenda' | 'subtask' | 'actionItem' | 'phase_tasks';
 
 export interface DraftCardInfo {
   label: string;
@@ -25,6 +25,8 @@ export interface DraftCardData {
   promptTemplate: string;
   // Agenda-specific options
   checkinOptions?: CheckinOptions;
+  // Flag to start a new chat session
+  newChat?: boolean;
 }
 
 interface DraftCardProps {
@@ -39,6 +41,7 @@ const iconMap: Record<DraftCardType, React.ReactNode> = {
   agenda: <FaFileLines />,
   subtask: <FaCodeBranch />,
   actionItem: <FaClipboardList />,
+  phase_tasks: <FaListCheck />,
 };
 
 export function DraftCard({ data, onSend, onCancel }: DraftCardProps) {
