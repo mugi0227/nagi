@@ -366,7 +366,59 @@
   flex: 1;
   font-size: 0.85rem;
   color: #1e293b; /* Always black for readability */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  position: relative;
+  min-width: 0; /* Allow flex item to shrink below content size */
+}
+
+/* Popover on hover */
+.pgantt-row-title-popover {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 8px;
+  padding: 8px 12px;
+  background: var(--c-text);
+  color: var(--c-bg);
+  font-size: 0.8rem;
+  font-weight: 400;
+  line-height: 1.4;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  white-space: normal;
   word-break: break-word;
+  max-width: 300px;
+  min-width: 150px;
+  z-index: 10000;
+  pointer-events: none;
+}
+
+.pgantt-row-title-popover::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: 50%;
+  transform: translateY(-50%) rotate(45deg);
+  width: 8px;
+  height: 8px;
+  background: var(--c-text);
+}
+
+/* Allow popover to overflow */
+.pgantt-sidebar-body:has(.pgantt-sidebar-row:hover) {
+  overflow: visible;
+}
+
+.pgantt-sidebar-row:hover .pgantt-row-title {
+  overflow: visible;
+}
+
+.pgantt-sidebar-row:hover .pgantt-row-title-popover {
+  display: block;
 }
 
 .pgantt-sidebar-row.milestone .pgantt-row-title {
@@ -1345,4 +1397,131 @@
 .pgantt-sidebar-body::-webkit-scrollbar-thumb {
   background: var(--c-border);
   border-radius: 3px;
+}
+
+/* ============================================
+   Task Action Buttons
+   ============================================ */
+
+.pgantt-task-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.pgantt-sidebar-row.task:hover .pgantt-task-actions,
+.pgantt-sidebar-row.subtask:hover .pgantt-task-actions {
+  opacity: 1;
+}
+
+.pgantt-action-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: 1px solid var(--c-border);
+  border-radius: 4px;
+  color: var(--c-text-muted);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.pgantt-action-btn:hover {
+  background: var(--c-bg-alt);
+  border-color: var(--c-border);
+  color: var(--c-text);
+}
+
+/* Subtask create button */
+.pgantt-subtask-create-btn:hover {
+  background: var(--c-primary);
+  border-color: var(--c-primary);
+  color: white;
+}
+
+/* AI generate button */
+.pgantt-generate-btn:hover {
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  border-color: #8b5cf6;
+  color: white;
+}
+
+/* Delete button */
+.pgantt-delete-btn:hover {
+  background: #ef4444;
+  border-color: #ef4444;
+  color: white;
+}
+
+/* ============================================
+   Dependency Delete Modal
+   ============================================ */
+
+.pgantt-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+.pgantt-modal {
+  background: #ffffff;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  text-align: center;
+  min-width: 280px;
+}
+
+.pgantt-modal p {
+  margin: 0 0 20px 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: #1e293b;
+}
+
+.pgantt-modal-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.pgantt-modal-buttons button {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.pgantt-modal-buttons button.cancel {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  color: #64748b;
+}
+
+.pgantt-modal-buttons button.cancel:hover {
+  background: #f1f5f9;
+}
+
+.pgantt-modal-buttons button.delete {
+  background: #ef4444;
+  border: 1px solid #ef4444;
+  color: white;
+}
+
+.pgantt-modal-buttons button.delete:hover {
+  background: #dc2626;
 }

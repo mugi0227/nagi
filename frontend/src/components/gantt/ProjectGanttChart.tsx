@@ -13,7 +13,7 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import type { CSSProperties } from 'react';
 import { DateTime } from 'luxon';
-import { FaChevronDown, FaChevronRight, FaExpand, FaCompress, FaPlus, FaLink, FaSort } from 'react-icons/fa';
+import { FaChevronDown, FaChevronRight, FaExpand, FaCompress, FaPlus, FaLink, FaSort, FaTrash, FaMagic } from 'react-icons/fa';
 import {
   DndContext,
   closestCenter,
@@ -59,6 +59,9 @@ interface ProjectGanttChartProps {
   onMilestoneUpdate?: (milestoneId: string, updates: { due_date?: string }) => void;
   onTaskClick?: (taskId: string) => void;
   onTaskCreate?: (phaseId?: string) => void;
+  onSubtaskCreate?: (parentTaskId: string) => void;
+  onGenerateSubtasks?: (parentTaskId: string, taskTitle: string) => void;
+  onDeleteTask?: (taskId: string) => void;
   onBatchTaskUpdate?: (updates: Array<{ taskId: string; updates: Partial<TaskUpdate> }>) => void;
   onDependencyUpdate?: (taskId: string, newDependencyIds: string[]) => void;
   onMilestoneLink?: (taskId: string, milestoneId: string | null) => void;
@@ -221,7 +224,10 @@ const DroppableMilestoneRow: React.FC<DroppableMilestoneRowProps> = ({
     >
       <span className="pgantt-milestone-icon">◆</span>
       {row.hasNoDate && <span className="pgantt-no-date-icon" title="期限未設定">⚠</span>}
-      <span className="pgantt-row-title" title={row.title}>{row.title}</span>
+      <span className="pgantt-row-title">
+        {row.title}
+        <span className="pgantt-row-title-popover">{row.title}</span>
+      </span>
     </div>
   );
 };
@@ -239,6 +245,9 @@ interface SortableSidebarRowProps {
   onLinkModeClick: (taskId: string) => void;
   onTaskClick?: (taskId: string) => void;
   onTaskCreate?: (phaseId?: string) => void;
+  onSubtaskCreate?: (parentTaskId: string) => void;
+  onGenerateSubtasks?: (parentTaskId: string, taskTitle: string) => void;
+  onDeleteTask?: (taskId: string) => void;
   isDragDisabled: boolean;
   isDropTarget?: boolean;  // For milestone drop target highlighting
 }
@@ -252,6 +261,9 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
   onLinkModeClick,
   onTaskClick,
   onTaskCreate,
+  onSubtaskCreate,
+  onGenerateSubtasks,
+  onDeleteTask,
   isDragDisabled,
   isDropTarget,
 }) => {
@@ -334,7 +346,10 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
       {row.type === 'milestone' && <span className="pgantt-milestone-icon">◆</span>}
       {row.linkedMilestoneId && <span className="pgantt-linked-icon">└</span>}
       {row.hasNoDate && <span className="pgantt-no-date-icon" title="期限未設定">⚠</span>}
-      <span className="pgantt-row-title" title={row.title}>{row.title}</span>
+      <span className="pgantt-row-title">
+        {row.title}
+        <span className="pgantt-row-title-popover">{row.title}</span>
+      </span>
       {hasSubtasks && (
         <span className="pgantt-subtask-count">{row.subtaskCount}</span>
       )}
@@ -353,6 +368,48 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
           <FaPlus size={10} />
         </button>
       )}
+      {(row.type === 'task' || row.type === 'subtask') && (
+        <div className="pgantt-task-actions">
+          {row.type === 'task' && onSubtaskCreate && (
+            <button
+              className="pgantt-action-btn pgantt-subtask-create-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSubtaskCreate(row.id);
+              }}
+              title="サブタスクを作成"
+            >
+              <FaPlus size={10} />
+            </button>
+          )}
+          {row.type === 'task' && onGenerateSubtasks && (
+            <button
+              className="pgantt-action-btn pgantt-generate-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onGenerateSubtasks(row.id, row.title);
+              }}
+              title="サブタスクをAI生成"
+            >
+              <FaMagic size={10} />
+            </button>
+          )}
+          {onDeleteTask && (
+            <button
+              className="pgantt-action-btn pgantt-delete-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (window.confirm(`「${row.title}」を削除しますか？`)) {
+                  onDeleteTask(row.id);
+                }
+              }}
+              title={row.type === 'subtask' ? 'サブタスクを削除' : 'タスクを削除'}
+            >
+              <FaTrash size={10} />
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 };
@@ -370,6 +427,9 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   onMilestoneUpdate,
   onTaskClick,
   onTaskCreate,
+  onSubtaskCreate,
+  onGenerateSubtasks,
+  onDeleteTask,
   onBatchTaskUpdate,
   onDependencyUpdate,
   onMilestoneLink,
@@ -1690,7 +1750,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                     type: 'task-date',
                     timestamp: Date.now(),
                     itemId: row.id,
-                    before: { start: originalStartDate, end: originalEndDate },
+                    before: { start: originalStartDate ?? undefined, end: originalEndDate ?? undefined },
                     after: { start: startDate, end: endDate },
                   });
                   onTaskUpdate(row.id, { start_not_before: startDate, due_date: endDate });
@@ -1701,7 +1761,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                   type: 'task-date',
                   timestamp: Date.now(),
                   itemId: row.id,
-                  before: { start: originalStartDate, end: originalEndDate },
+                  before: { start: originalStartDate ?? undefined, end: originalEndDate ?? undefined },
                   after: { start: startDate, end: endDate },
                 });
                 onTaskUpdate(row.id, { start_not_before: startDate, due_date: endDate });
@@ -1782,23 +1842,18 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
     };
   }, []);
 
-  // Close delete confirmation when clicking outside
+  // Close delete confirmation with Escape key
   useEffect(() => {
     if (!pendingDeleteArrow) return;
 
-    const handleClickOutside = () => {
-      setPendingDeleteArrow(null);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPendingDeleteArrow(null);
+      }
     };
 
-    // Delay to avoid immediate close
-    const timeoutId = setTimeout(() => {
-      document.addEventListener('click', handleClickOutside);
-    }, 100);
-
-    return () => {
-      clearTimeout(timeoutId);
-      document.removeEventListener('click', handleClickOutside);
-    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, [pendingDeleteArrow]);
 
   // バーのクラス名
@@ -1844,6 +1899,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   }
 
   return (
+    <>
     <div
       ref={containerRef}
       className={`pgantt-container ${className || ''} ${isLinkMode ? 'link-mode' : ''} ${linkSourceTask ? 'has-source' : ''}`}
@@ -1957,6 +2013,9 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                         onLinkModeClick={handleLinkModeClick}
                         onTaskClick={onTaskClick}
                         onTaskCreate={onTaskCreate}
+                        onSubtaskCreate={onSubtaskCreate}
+                        onGenerateSubtasks={onGenerateSubtasks}
+                        onDeleteTask={onDeleteTask}
                         isDragDisabled={false}
                         isDropTarget={false}
                       />
@@ -2033,11 +2092,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
             {/* 依存関係の矢印 */}
             <svg
               className="pgantt-arrows"
-              style={{
-                width: `${dateRange.length * dayWidth}px`,
-                height: `${rows.length * 44}px`,
-                zIndex: pendingDeleteArrow ? 100 : 5
-              }}
+              style={{ width: `${dateRange.length * dayWidth}px`, height: `${rows.length * 44}px` }}
             >
               <defs>
                 <marker id="arrowhead" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
@@ -2113,48 +2168,6 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                   />
                 );
               })}
-              {/* Delete confirmation popup */}
-              {pendingDeleteArrow && (
-                <foreignObject
-                  x={pendingDeleteArrow.x - 100}
-                  y={pendingDeleteArrow.y - 50}
-                  width="200"
-                  height="80"
-                >
-                  <div className="pgantt-delete-confirm">
-                    <p>この依存関係を削除しますか？</p>
-                    <div className="pgantt-delete-confirm-buttons">
-                      <button
-                        className="cancel"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setPendingDeleteArrow(null);
-                        }}
-                      >
-                        キャンセル
-                      </button>
-                      <button
-                        className="delete"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (onDependencyUpdate) {
-                            const targetTask = tasks.find(t => t.id === pendingDeleteArrow.toId);
-                            if (targetTask) {
-                              const newDependencies = (targetTask.dependency_ids || []).filter(
-                                id => id !== pendingDeleteArrow.fromId
-                              );
-                              onDependencyUpdate(pendingDeleteArrow.toId, newDependencies);
-                            }
-                          }
-                          setPendingDeleteArrow(null);
-                        }}
-                      >
-                        削除
-                      </button>
-                    </div>
-                  </div>
-                </foreignObject>
-              )}
             </svg>
 
             {/* バー */}
@@ -2251,5 +2264,40 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
         </div>
       </div>
     </div>
+
+    {/* 依存関係削除確認モーダル */}
+    {pendingDeleteArrow && (
+      <div className="pgantt-modal-overlay" onClick={() => setPendingDeleteArrow(null)}>
+        <div className="pgantt-modal" onClick={(e) => e.stopPropagation()}>
+          <p>この依存関係を削除しますか？</p>
+          <div className="pgantt-modal-buttons">
+            <button
+              className="cancel"
+              onClick={() => setPendingDeleteArrow(null)}
+            >
+              キャンセル
+            </button>
+            <button
+              className="delete"
+              onClick={() => {
+                if (onDependencyUpdate) {
+                  const targetTask = tasks.find(t => t.id === pendingDeleteArrow.toId);
+                  if (targetTask) {
+                    const newDependencies = (targetTask.dependency_ids || []).filter(
+                      id => id !== pendingDeleteArrow.fromId
+                    );
+                    onDependencyUpdate(pendingDeleteArrow.toId, newDependencies);
+                  }
+                }
+                setPendingDeleteArrow(null);
+              }}
+            >
+              削除
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   );
 };
