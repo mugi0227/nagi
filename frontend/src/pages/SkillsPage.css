@@ -125,10 +125,64 @@
   color: var(--text-main);
 }
 
-.skill-snippet {
-  margin: 0.5rem 0 0;
-  color: var(--text-muted);
-  font-size: 0.95rem;
+.skill-body {
+  margin: 0.75rem 0 0;
+  color: var(--text-main);
+  font-size: 0.9rem;
+  line-height: 1.6;
+  max-height: 200px;
+  overflow: hidden;
+  position: relative;
+}
+
+.skill-body::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 40px;
+  background: linear-gradient(transparent, var(--bg-card));
+  pointer-events: none;
+}
+
+.skill-body.markdown-content p {
+  margin: 0 0 0.5rem 0;
+}
+
+.skill-body.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.skill-body.markdown-content ul,
+.skill-body.markdown-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+
+.skill-body.markdown-content li {
+  margin: 0.25rem 0;
+}
+
+.skill-body.markdown-content code {
+  background: rgba(148, 163, 184, 0.15);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.85rem;
+}
+
+.skill-body.markdown-content pre {
+  background: rgba(15, 23, 42, 0.8);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.skill-body.markdown-content pre code {
+  background: transparent;
+  padding: 0;
+  color: #e2e8f0;
 }
 
 .skill-actions {

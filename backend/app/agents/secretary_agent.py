@@ -67,6 +67,7 @@ from app.tools import (
     create_milestone_tool,
     update_milestone_tool,
     delete_milestone_tool,
+    list_milestones_tool,
     add_agenda_item_tool,
     update_agenda_item_tool,
     delete_agenda_item_tool,
@@ -367,6 +368,10 @@ async def create_secretary_agent(
             proposal_repo=proposal_repo,
             session_id=session_id,
             auto_approve=auto_approve,
+        ),
+        list_milestones_tool(
+            milestone_repo,
+            user_id,
         ),
         add_agenda_item_tool(
             meeting_agenda_repo,

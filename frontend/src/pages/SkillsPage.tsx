@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FaPlus, FaPen, FaTrash } from 'react-icons/fa6';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { memoriesApi } from '../api/memories';
 import type { Memory, MemoryCreate, MemoryUpdate } from '../api/types';
 import './SkillsPage.css';
@@ -41,16 +43,20 @@ const buildContent = (title: string, body: string) => {
 const summarizeContent = (content: string) => {
   const lines = content.split(/\r?\n/).filter((line) => line.trim());
   if (!lines.length) {
-    return { title: 'Untitled', snippet: '' };
+    return { title: 'Untitled', body: '' };
   }
   let title = lines[0];
+  let body = '';
   if (title.startsWith('# ')) {
     title = title.slice(2).trim();
+    // タイトル行を除いた残りをbodyとして保持
+    body = content.split(/\r?\n/).slice(1).join('\n').trim();
+  } else {
+    body = content;
   }
-  const snippet = lines.slice(1).join(' ').trim() || lines[0].trim();
   return {
     title: title || 'Untitled',
-    snippet: snippet.slice(0, 160),
+    body,
   };
 };
 
@@ -229,7 +235,13 @@ export function SkillsPage() {
               <div className="skill-header">
                 <div>
                   <h3 className="skill-title">{skill.summary.title}</h3>
-                  <p className="skill-snippet">{skill.summary.snippet}</p>
+                  {skill.summary.body && (
+                    <div className="skill-body markdown-content">
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                        {skill.summary.body}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                 </div>
                 <div className="skill-actions">
                   <button

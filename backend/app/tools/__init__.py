@@ -51,6 +51,7 @@ from app.tools.phase_tools import (
     create_milestone_tool,
     update_milestone_tool,
     delete_milestone_tool,
+    list_milestones_tool,
 )
 from app.tools.meeting_agenda_tools import (
     add_agenda_item_tool,
@@ -108,6 +109,7 @@ __all__ = [
     "create_milestone_tool",
     "update_milestone_tool",
     "delete_milestone_tool",
+    "list_milestones_tool",
     "add_agenda_item_tool",
     "update_agenda_item_tool",
     "delete_agenda_item_tool",

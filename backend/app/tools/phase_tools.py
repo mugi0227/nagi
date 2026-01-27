@@ -708,6 +708,77 @@ class DeleteMilestoneInput(BaseModel):
     milestone_id: str = Field(..., description="マイルストーンID")
 
 
+class ListMilestonesInput(BaseModel):
+    """Input for list_milestones tool."""
+
+    project_id: Optional[str] = Field(None, description="プロジェクトID（project_idまたはphase_idのいずれか必須）")
+    phase_id: Optional[str] = Field(None, description="フェーズID（project_idまたはphase_idのいずれか必須）")
+
+
+def list_milestones_tool(
+    milestone_repo: IMilestoneRepository,
+    user_id: str,
+) -> FunctionTool:
+    """Create ADK tool for listing milestones."""
+
+    async def _tool(input_data: dict) -> dict:
+        """list_milestones: マイルストーン一覧を取得します。
+
+        プロジェクトまたはフェーズに属するマイルストーンの一覧を取得します。
+        各マイルストーンのタイトル、説明、期限、ステータスなどの情報を確認できます。
+
+        Parameters:
+            project_id (str, optional): プロジェクトID（UUID形式）
+            phase_id (str, optional): フェーズID（UUID形式）
+            ※ project_id または phase_id のいずれかを指定してください
+
+        Returns:
+            dict: {
+                "milestones": [
+                    {
+                        "id": "マイルストーンID",
+                        "title": "マイルストーンタイトル",
+                        "description": "説明",
+                        "project_id": "プロジェクトID",
+                        "phase_id": "フェーズID",
+                        "order_in_phase": フェーズ内の順序,
+                        "status": "ACTIVE/COMPLETED",
+                        "due_date": "期限日（ISO形式）",
+                        "created_at": "作成日時",
+                        "updated_at": "更新日時"
+                    }
+                ],
+                "count": マイルストーン数
+            }
+        """
+        payload = ListMilestonesInput(**input_data)
+
+        if not payload.project_id and not payload.phase_id:
+            return {"error": "project_id または phase_id のいずれかを指定してください"}
+
+        milestones = []
+        if payload.phase_id:
+            try:
+                phase_id = UUID(payload.phase_id)
+            except ValueError:
+                return {"error": f"Invalid phase ID format: {payload.phase_id}"}
+            milestones = await milestone_repo.list_by_phase(user_id, phase_id)
+        elif payload.project_id:
+            try:
+                project_id = UUID(payload.project_id)
+            except ValueError:
+                return {"error": f"Invalid project ID format: {payload.project_id}"}
+            milestones = await milestone_repo.list_by_project(user_id, project_id)
+
+        return {
+            "milestones": [m.model_dump(mode="json") for m in milestones],
+            "count": len(milestones),
+        }
+
+    _tool.__name__ = "list_milestones"
+    return FunctionTool(func=_tool)
+
+
 def create_phase_tool(
     phase_repo: IPhaseRepository,
     user_id: str,
