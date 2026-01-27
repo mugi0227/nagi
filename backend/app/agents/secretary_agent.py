@@ -6,6 +6,8 @@ This is the primary agent that handles user interactions and orchestrates tasks.
 
 from __future__ import annotations
 
+from datetime import datetime, timezone, timedelta
+
 from google.adk import Agent
 
 from app.agents.prompts.secretary_prompt import SECRETARY_SYSTEM_PROMPT
@@ -76,6 +78,27 @@ from app.tools import (
 )
 
 
+def get_current_datetime_section() -> str:
+    """
+    Get the current datetime section for the system prompt.
+
+    Returns:
+        Formatted datetime section in JST
+    """
+    # JST (UTC+9)
+    jst = timezone(timedelta(hours=9))
+    now = datetime.now(jst)
+
+    # Format: 2025年1月27日（月）15:30
+    weekday_names = ["月", "火", "水", "木", "金", "土", "日"]
+    weekday = weekday_names[now.weekday()]
+
+    return f"""## 現在の日時
+
+{now.year}年{now.month}月{now.day}日（{weekday}）{now.hour:02d}:{now.minute:02d} (JST)
+"""
+
+
 async def build_system_prompt_with_skills(
     user_id: str,
     memory_repo: IMemoryRepository,
@@ -90,14 +113,18 @@ async def build_system_prompt_with_skills(
     Returns:
         Complete system prompt with skills index appended
     """
+    # Get current datetime section
+    datetime_section = get_current_datetime_section()
+
     # Get skills index
     skills = await get_skills_index(user_id, memory_repo)
     skills_section = format_skills_index_for_prompt(skills)
 
-    # Combine base prompt with skills index
+    # Combine base prompt with datetime and skills index
+    prompt = f"{datetime_section}\n{SECRETARY_SYSTEM_PROMPT}"
     if skills_section:
-        return f"{SECRETARY_SYSTEM_PROMPT}\n\n{skills_section}"
-    return SECRETARY_SYSTEM_PROMPT
+        return f"{prompt}\n\n{skills_section}"
+    return prompt
 
 
 async def create_secretary_agent(
