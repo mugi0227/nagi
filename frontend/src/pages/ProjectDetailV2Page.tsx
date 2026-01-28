@@ -1170,18 +1170,8 @@ export function ProjectDetailV2Page() {
               {project?.name || 'プロジェクト'}
               <span className="project-v2-badge">V2</span>
             </h1>
-            <div className="project-v2-meta">
-              <span>全タスク {project?.total_tasks ?? 0}</span>
-              <span>完了 {project?.completed_tasks ?? 0}</span>
-              <span>進捗 {completionRate}%</span>
-            </div>
           </div>
           <div className="project-v2-header-actions">
-            {currentPhase && (
-              <div className="project-v2-phase-indicator">
-                現在フェーズ: {currentPhase.name}
-              </div>
-            )}
             <button
               className="project-v2-icon-btn"
               onClick={handleOpenProjectModal}
@@ -1201,18 +1191,18 @@ export function ProjectDetailV2Page() {
           </div>
         </div>
         <div className="project-v2-progress">
-          <div className="project-v2-progress-stats">
-            <div className="project-v2-progress-stat">
-              <div className="project-v2-progress-value">{project?.completed_tasks ?? 0}</div>
-              <div className="project-v2-progress-label">完了</div>
+          <div className="project-v2-progress-stats-row">
+            <div className="project-v2-progress-chip">
+              <span className="project-v2-progress-chip-value">{project?.completed_tasks ?? 0}/{project?.total_tasks ?? 0}</span>
+              <span className="project-v2-progress-chip-label">完了 ({completionRate}%)</span>
             </div>
-            <div className="project-v2-progress-stat">
-              <div className="project-v2-progress-value">{inProgressCount}</div>
-              <div className="project-v2-progress-label">進行中</div>
+            <div className="project-v2-progress-chip">
+              <span className="project-v2-progress-chip-value">{inProgressCount}</span>
+              <span className="project-v2-progress-chip-label">進行中</span>
             </div>
-            <div className="project-v2-progress-stat">
-              <div className="project-v2-progress-value">{waitingCount}</div>
-              <div className="project-v2-progress-label">待機</div>
+            <div className="project-v2-progress-chip">
+              <span className="project-v2-progress-chip-value">{waitingCount}</span>
+              <span className="project-v2-progress-chip-label">待機</span>
             </div>
           </div>
           <div className="project-v2-progress-bar">
@@ -1222,6 +1212,12 @@ export function ProjectDetailV2Page() {
             />
           </div>
         </div>
+        {currentPhase && (
+          <div className="project-v2-current-phase">
+            <span className="project-v2-current-phase-icon">📍</span>
+            現在フェーズ: {currentPhase.name}
+          </div>
+        )}
       </header>
 
       {(overdueTasks.length > 0 || blockedDependencyCount > 0) && (
