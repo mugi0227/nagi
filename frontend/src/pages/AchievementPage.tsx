@@ -20,6 +20,7 @@ import { achievementsApi } from '../api/achievements';
 import type { Achievement, AchievementUpdate, SkillExperience } from '../api/types';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDate, nowInTimezone, toDateTime } from '../utils/dateTime';
+import { WeeklyProgress } from '../components/dashboard/WeeklyProgress';
 import './AchievementPage.css';
 
 function SkillBar({ skill, maxCount }: { skill: SkillExperience; maxCount: number }) {
@@ -957,6 +958,10 @@ export function AchievementPage() {
           {errorMessage}
         </div>
       )}
+
+      <div className="achievement-weekly-progress">
+        <WeeklyProgress />
+      </div>
 
       <div className="weekly-generator">
         <div className="weekly-generator-header">

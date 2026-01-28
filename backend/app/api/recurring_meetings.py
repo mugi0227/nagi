@@ -6,13 +6,21 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, HTTPException, Query, status, Depends
+from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.deps import CheckinRepo, CurrentUser, RecurringMeetingRepo, TaskRepo, ProjectRepo
-from app.api.deps import get_project_repository
+from app.api.deps import (
+    CheckinRepo,
+    CurrentUser,
+    ProjectMemberRepo,
+    ProjectRepo,
+    RecurringMeetingRepo,
+    TaskRepo,
+)
+from app.api.permissions import require_project_action
 from app.core.exceptions import NotFoundError
 from app.models.recurring_meeting import RecurringMeeting, RecurringMeetingCreate, RecurringMeetingUpdate
 from app.services.recurring_meeting_service import RecurringMeetingService
+from app.services.project_permissions import ProjectAction
 
 router = APIRouter()
 
@@ -30,14 +38,43 @@ def _compute_anchor_date(start_time, weekday: int, now: datetime):
     return candidate_date
 
 
-async def _get_or_404(user: CurrentUser, repo: RecurringMeetingRepo, meeting_id: UUID) -> RecurringMeeting:
+async def _resolve_meeting_access(
+    user: CurrentUser,
+    repo: RecurringMeetingRepo,
+    meeting_id: UUID,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
+) -> tuple[RecurringMeeting, str]:
     meeting = await repo.get(user.id, meeting_id)
-    if not meeting:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"RecurringMeeting {meeting_id} not found",
-        )
-    return meeting
+    if meeting:
+        if meeting.project_id:
+            access = await require_project_action(
+                user,
+                meeting.project_id,
+                project_repo,
+                member_repo,
+                ProjectAction.MEETING_AGENDA_MANAGE,
+            )
+            return meeting, access.owner_id
+        return meeting, user.id
+
+    projects = await project_repo.list(user.id, limit=1000)
+    for project in projects:
+        meeting = await repo.get(user.id, meeting_id, project_id=project.id)
+        if meeting:
+            access = await require_project_action(
+                user,
+                project.id,
+                project_repo,
+                member_repo,
+                ProjectAction.MEETING_AGENDA_MANAGE,
+            )
+            return meeting, access.owner_id
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail=f"RecurringMeeting {meeting_id} not found",
+    )
 
 
 @router.post("", response_model=RecurringMeeting, status_code=status.HTTP_201_CREATED)
@@ -47,6 +84,8 @@ async def create_recurring_meeting(
     repo: RecurringMeetingRepo,
     task_repo: TaskRepo,
     checkin_repo: CheckinRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Create a new recurring meeting series."""
     anchor_date = payload.anchor_date or _compute_anchor_date(
@@ -59,9 +98,19 @@ async def create_recurring_meeting(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
             detail="anchor_date weekday must match weekday",
         )
-    created = await repo.create(user.id, payload.model_copy(update={"anchor_date": anchor_date}))
+    owner_id = user.id
+    if payload.project_id:
+        access = await require_project_action(
+            user,
+            payload.project_id,
+            project_repo,
+            member_repo,
+            ProjectAction.MEETING_AGENDA_MANAGE,
+        )
+        owner_id = access.owner_id
+    created = await repo.create(owner_id, payload.model_copy(update={"anchor_date": anchor_date}))
     service = RecurringMeetingService(repo, task_repo, checkin_repo)
-    await service.ensure_upcoming_meetings(user.id)
+    await service.ensure_upcoming_meetings(owner_id)
     return created
 
 
@@ -69,14 +118,26 @@ async def create_recurring_meeting(
 async def list_recurring_meetings(
     user: CurrentUser,
     repo: RecurringMeetingRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
     project_id: Optional[UUID] = Query(None, description="Filter by project ID"),
     include_inactive: bool = Query(False, description="Include inactive recurring meetings"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
 ) -> list[RecurringMeeting]:
     """List recurring meetings."""
+    owner_id = user.id
+    if project_id:
+        access = await require_project_action(
+            user,
+            project_id,
+            project_repo,
+            member_repo,
+            ProjectAction.MEETING_AGENDA_MANAGE,
+        )
+        owner_id = access.owner_id
     return await repo.list(
-        user.id,
+        owner_id,
         project_id=project_id,
         include_inactive=include_inactive,
         limit=limit,
@@ -89,14 +150,11 @@ async def get_recurring_meeting(
     meeting_id: UUID,
     user: CurrentUser,
     repo: RecurringMeetingRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ) -> RecurringMeeting:
     """Get a recurring meeting by ID."""
-    meeting = await repo.get(user.id, meeting_id)
-    if not meeting:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"RecurringMeeting {meeting_id} not found",
-        )
+    meeting, _ = await _resolve_meeting_access(user, repo, meeting_id, project_repo, member_repo)
     return meeting
 
 
@@ -109,11 +167,12 @@ async def update_recurring_meeting(
     task_repo: TaskRepo,
     checkin_repo: CheckinRepo,
     project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ) -> RecurringMeeting:
     """Update a recurring meeting."""
-    await _get_or_404(user, repo, meeting_id)
+    meeting, owner_id = await _resolve_meeting_access(user, repo, meeting_id, project_repo, member_repo)
     try:
-        return await repo.update(user.id, meeting_id, update, None)
+        return await repo.update(owner_id, meeting_id, update, meeting.project_id)
     except NotFoundError as exc:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -127,10 +186,11 @@ async def delete_recurring_meeting(
     user: CurrentUser,
     repo: RecurringMeetingRepo,
     project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Delete a recurring meeting."""
-    await _get_or_404(user, repo, meeting_id)
-    deleted = await repo.delete(user.id, meeting_id, None)
+    meeting, owner_id = await _resolve_meeting_access(user, repo, meeting_id, project_repo, member_repo)
+    deleted = await repo.delete(owner_id, meeting_id, meeting.project_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -145,6 +205,8 @@ async def generate_meeting_tasks(
     repo: RecurringMeetingRepo,
     task_repo: TaskRepo,
     checkin_repo: CheckinRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
     lookahead_days: int = Query(30, ge=1, le=180, description="Generate tasks for the next N days"),
 ):
     """
@@ -157,7 +219,7 @@ async def generate_meeting_tasks(
     Returns:
         Dictionary with created task count and task details
     """
-    await _get_or_404(user, repo, meeting_id)
+    _, owner_id = await _resolve_meeting_access(user, repo, meeting_id, project_repo, member_repo)
 
     service = RecurringMeetingService(
         recurring_repo=repo,
@@ -166,5 +228,5 @@ async def generate_meeting_tasks(
         lookahead_days=lookahead_days,
     )
 
-    result = await service.ensure_upcoming_meetings(user.id)
+    result = await service.ensure_upcoming_meetings(owner_id)
     return result

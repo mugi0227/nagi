@@ -7,6 +7,7 @@ import { SettingsModal } from '../settings/SettingsModal';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { projectsApi } from '../../api/projects';
 import { NotificationDropdown } from '../notifications/NotificationDropdown';
+import { resolveDisplayName } from '../../utils/displayName';
 import nagiIcon from '../../assets/nagi_icon.png';
 import './Sidebar.css';
 
@@ -24,10 +25,14 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [totalUnassigned, setTotalUnassigned] = useState(0);
   const isAuthLocked = source === 'env' || source === 'mock';
-  const displayName = currentUser?.username
-    || currentUser?.display_name
-    || currentUser?.email
-    || (token ? 'User' : 'Guest');
+  const displayName = currentUser
+    ? resolveDisplayName({
+        firstName: currentUser.first_name,
+        lastName: currentUser.last_name,
+        displayName: currentUser.display_name,
+        userId: currentUser.id,
+      })
+    : (token ? 'User' : 'Guest');
   const avatarLabel = displayName ? displayName[0]?.toUpperCase() : '?';
 
   useEffect(() => {

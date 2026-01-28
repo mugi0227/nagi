@@ -8,14 +8,12 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.api.deps import (
-    CurrentUser,
-    PhaseRepo,
-    ProjectRepo,
-)
+from app.api.deps import CurrentUser, PhaseRepo, ProjectRepo, ProjectMemberRepo
+from app.api.permissions import require_project_action, require_project_member
 from app.models.phase import Phase, PhaseCreate, PhaseUpdate, PhaseWithTaskCount
 from app.models.enums import PhaseStatus
 from app.core.exceptions import NotFoundError
+from app.services.project_permissions import ProjectAction
 
 router = APIRouter(prefix="/phases", tags=["phases"])
 
@@ -25,8 +23,17 @@ async def create_phase(
     phase: PhaseCreate,
     user: CurrentUser,
     repo: PhaseRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ) -> Phase:
     """Create a new phase."""
+    await require_project_action(
+        user,
+        phase.project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.PHASE_MANAGE,
+    )
     return await repo.create(user.id, phase)
 
 
@@ -35,9 +42,18 @@ async def get_phase(
     phase_id: UUID,
     user: CurrentUser,
     repo: PhaseRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ) -> Phase:
     """Get a phase by ID."""
-    phase = await repo.get_by_id(user.id, phase_id)
+    project_id = await repo.get_project_id(phase_id)
+    if not project_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Phase {phase_id} not found",
+        )
+    access = await require_project_member(user, project_id, project_repo, member_repo)
+    phase = await repo.get_by_id(access.owner_id, phase_id, project_id=project_id)
     if not phase:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -52,10 +68,17 @@ async def list_phases_by_project(
     user: CurrentUser,
     repo: PhaseRepo,
     project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ) -> list[PhaseWithTaskCount]:
     """List all phases for a project with task counts."""
-    project = await _get_project_or_404(user, project_repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.PHASE_MANAGE,
+    )
+    owner_id = access.owner_id
     return await repo.list_by_project(owner_id, project_id)
 
 
@@ -66,13 +89,20 @@ async def update_phase(
     user: CurrentUser,
     repo: PhaseRepo,
     project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ) -> Phase:
     """Update a phase."""
     project_id = await repo.get_project_id(phase_id)
     owner_id = user.id
     if project_id:
-        project = await _get_project_or_404(user, project_repo, project_id)
-        owner_id = project.user_id
+        access = await require_project_action(
+            user,
+            project_id,
+            project_repo,
+            member_repo,
+            ProjectAction.PHASE_MANAGE,
+        )
+        owner_id = access.owner_id
 
     try:
         return await repo.update(owner_id, phase_id, phase, project_id=project_id)
@@ -89,6 +119,7 @@ async def set_current_phase(
     user: CurrentUser,
     repo: PhaseRepo,
     project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ) -> list[Phase]:
     """
     Set the specified phase as the current phase.
@@ -99,17 +130,27 @@ async def set_current_phase(
     - Later phases (higher order_in_project): PLANNED
     """
     # Get the target phase (try with user.id first for personal access)
-    phase = await repo.get_by_id(user.id, phase_id)
+    project_id = await repo.get_project_id(phase_id)
+    if not project_id:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Phase {phase_id} not found",
+        )
+    access = await require_project_action(
+        user,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.PHASE_MANAGE,
+    )
+    phase = await repo.get_by_id(access.owner_id, phase_id, project_id=project_id)
     if not phase:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Phase {phase_id} not found",
         )
 
-    # Verify project access and get owner_id
-    project_id = phase.project_id
-    project = await _get_project_or_404(user, project_repo, project_id)
-    owner_id = project.user_id
+    owner_id = access.owner_id
 
     # Get all phases in the project
     all_phases = await repo.list_by_project(owner_id, project_id)
@@ -152,13 +193,20 @@ async def delete_phase(
     user: CurrentUser,
     repo: PhaseRepo,
     project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ) -> None:
     """Delete a phase."""
     project_id = await repo.get_project_id(phase_id)
     owner_id = user.id
     if project_id:
-        project = await _get_project_or_404(user, project_repo, project_id)
-        owner_id = project.user_id
+        access = await require_project_action(
+            user,
+            project_id,
+            project_repo,
+            member_repo,
+            ProjectAction.PHASE_MANAGE,
+        )
+        owner_id = access.owner_id
 
     deleted = await repo.delete(owner_id, phase_id, project_id=project_id)
     if not deleted:
@@ -167,12 +215,3 @@ async def delete_phase(
             detail=f"Phase {phase_id} not found",
         )
 
-
-async def _get_project_or_404(user: CurrentUser, repo: ProjectRepo, project_id: UUID):
-    project = await repo.get(user.id, project_id)
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found",
-        )
-    return project

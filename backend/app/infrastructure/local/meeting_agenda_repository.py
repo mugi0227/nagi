@@ -75,6 +75,14 @@ class SqliteMeetingAgendaRepository(IMeetingAgendaRepository):
             orm = result.scalar_one_or_none()
             return self._orm_to_model(orm) if orm else None
 
+    async def get_by_id(self, agenda_item_id: UUID) -> Optional[MeetingAgendaItem]:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(MeetingAgendaItemORM).where(MeetingAgendaItemORM.id == str(agenda_item_id))
+            )
+            orm = result.scalar_one_or_none()
+            return self._orm_to_model(orm) if orm else None
+
     async def list_by_meeting(
         self,
         user_id: str,

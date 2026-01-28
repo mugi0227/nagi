@@ -11,15 +11,18 @@ from fastapi import APIRouter, Depends, HTTPException
 from app.api.deps import (
     CurrentUser,
     MeetingAgendaRepo,
+    ProjectMemberRepo,
     ProjectRepo,
     RecurringMeetingRepo,
     TaskRepo,
 )
+from app.api.permissions import require_project_action
 from app.models.meeting_agenda import (
     MeetingAgendaItem,
     MeetingAgendaItemCreate,
     MeetingAgendaItemUpdate,
 )
+from app.services.project_permissions import ProjectAction
 
 router = APIRouter(prefix="/meeting-agendas", tags=["meeting-agendas"])
 
@@ -29,23 +32,30 @@ async def _get_owner_id_from_meeting(
     meeting_id: UUID,
     meeting_repo: RecurringMeetingRepo,
     project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ) -> str:
     """Get owner_user_id from meeting's project."""
     meeting = await meeting_repo.get(user.id, meeting_id)
     if not meeting:
-        # Try to find meeting via project membership
-        meetings = await meeting_repo.list(user.id, limit=1000)
-        for m in meetings:
-            if str(m.id) == str(meeting_id):
-                meeting = m
+        projects = await project_repo.list(user.id, limit=1000)
+        for project in projects:
+            meeting = await meeting_repo.get(user.id, meeting_id, project_id=project.id)
+            if meeting:
                 break
     if not meeting:
         raise HTTPException(status_code=404, detail="Meeting not found")
 
-    project = await project_repo.get(user.id, meeting.project_id)
-    if not project:
-        raise HTTPException(status_code=404, detail="Project not found")
-    return project.user_id
+    if not meeting.project_id:
+        return user.id
+
+    access = await require_project_action(
+        user,
+        meeting.project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.MEETING_AGENDA_MANAGE,
+    )
+    return access.owner_id
 
 
 async def _get_owner_id_from_task(
@@ -53,6 +63,7 @@ async def _get_owner_id_from_task(
     task_id: UUID,
     task_repo: TaskRepo,
     project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ) -> str:
     """Get owner_user_id from task's project."""
     task = await task_repo.get(user.id, task_id)
@@ -62,13 +73,25 @@ async def _get_owner_id_from_task(
         for project in projects:
             task = await task_repo.get(user.id, task_id, project_id=project.id)
             if task:
-                return project.user_id
+                access = await require_project_action(
+                    user,
+                    project.id,
+                    project_repo,
+                    member_repo,
+                    ProjectAction.MEETING_AGENDA_MANAGE,
+                )
+                return access.owner_id
         raise HTTPException(status_code=404, detail="Task not found")
 
     if task.project_id:
-        project = await project_repo.get(user.id, task.project_id)
-        if project:
-            return project.user_id
+        access = await require_project_action(
+            user,
+            task.project_id,
+            project_repo,
+            member_repo,
+            ProjectAction.MEETING_AGENDA_MANAGE,
+        )
+        return access.owner_id
     return user.id
 
 
@@ -80,9 +103,16 @@ async def create_agenda_item(
     repo: MeetingAgendaRepo,
     meeting_repo: RecurringMeetingRepo,
     project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Create a new agenda item for a meeting."""
-    owner_id = await _get_owner_id_from_meeting(user, meeting_id, meeting_repo, project_repo)
+    owner_id = await _get_owner_id_from_meeting(
+        user,
+        meeting_id,
+        meeting_repo,
+        project_repo,
+        member_repo,
+    )
     return await repo.create(owner_id, meeting_id, data)
 
 
@@ -93,10 +123,17 @@ async def list_agenda_items(
     repo: MeetingAgendaRepo,
     meeting_repo: RecurringMeetingRepo,
     project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
     event_date: Optional[date] = None,
 ):
     """List all agenda items for a meeting."""
-    owner_id = await _get_owner_id_from_meeting(user, meeting_id, meeting_repo, project_repo)
+    owner_id = await _get_owner_id_from_meeting(
+        user,
+        meeting_id,
+        meeting_repo,
+        project_repo,
+        member_repo,
+    )
     return await repo.list_by_meeting(owner_id, meeting_id, event_date)
 
 
@@ -151,9 +188,16 @@ async def reorder_agenda_items(
     repo: MeetingAgendaRepo,
     meeting_repo: RecurringMeetingRepo,
     project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Reorder agenda items."""
-    owner_id = await _get_owner_id_from_meeting(user, meeting_id, meeting_repo, project_repo)
+    owner_id = await _get_owner_id_from_meeting(
+        user,
+        meeting_id,
+        meeting_repo,
+        project_repo,
+        member_repo,
+    )
     return await repo.reorder(owner_id, ordered_ids, meeting_id=meeting_id)
 
 
@@ -168,9 +212,16 @@ async def create_task_agenda_item(
     repo: MeetingAgendaRepo,
     task_repo: TaskRepo,
     project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Create a new agenda item for a standalone meeting task."""
-    owner_id = await _get_owner_id_from_task(user, task_id, task_repo, project_repo)
+    owner_id = await _get_owner_id_from_task(
+        user,
+        task_id,
+        task_repo,
+        project_repo,
+        member_repo,
+    )
     # Set task_id in data
     data.task_id = task_id
     return await repo.create(owner_id, None, data)
@@ -183,7 +234,14 @@ async def list_task_agenda_items(
     repo: MeetingAgendaRepo,
     task_repo: TaskRepo,
     project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """List all agenda items for a standalone meeting task."""
-    owner_id = await _get_owner_id_from_task(user, task_id, task_repo, project_repo)
+    owner_id = await _get_owner_id_from_task(
+        user,
+        task_id,
+        task_repo,
+        project_repo,
+        member_repo,
+    )
     return await repo.list_by_task(owner_id, task_id)

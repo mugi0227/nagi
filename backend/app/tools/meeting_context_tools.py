@@ -16,9 +16,12 @@ from pydantic import BaseModel, Field
 
 from app.interfaces.checkin_repository import ICheckinRepository
 from app.interfaces.meeting_agenda_repository import IMeetingAgendaRepository
+from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
 from app.interfaces.task_repository import ITaskRepository
+from app.services.project_permissions import ProjectAction
+from app.tools.permissions import require_project_action
 
 
 class ListRecurringMeetingsInput(BaseModel):
@@ -43,6 +46,7 @@ async def fetch_meeting_context(
     meeting_agenda_repo: IMeetingAgendaRepository,
     project_repo: IProjectRepository,
     recurring_meeting_repo: IRecurringMeetingRepository,
+    member_repo: IProjectMemberRepository,
     input_data: FetchMeetingContextInput,
 ) -> dict:
     """Fetch context for meeting agenda generation."""
@@ -50,9 +54,18 @@ async def fetch_meeting_context(
         project_id = UUID(input_data.project_id)
     except ValueError:
         return {"error": f"Invalid project ID: {input_data.project_id}"}
+    access = await require_project_action(
+        user_id,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.CHECKIN_READ,
+    )
+    if isinstance(access, dict):
+        return access
 
     # 1. Fetch Project info
-    project = await project_repo.get(user_id, project_id)
+    project = await project_repo.get(access.owner_id, project_id)
     project_info = None
     if project:
         project_info = {
@@ -68,7 +81,11 @@ async def fetch_meeting_context(
     if input_data.meeting_id:
         try:
             meeting_id = UUID(input_data.meeting_id)
-            meeting = await recurring_meeting_repo.get(user_id, meeting_id)
+            meeting = await recurring_meeting_repo.get(
+                access.owner_id,
+                meeting_id,
+                project_id=project_id,
+            )
             if meeting:
                 meeting_info = {
                     "title": meeting.title,
@@ -82,7 +99,7 @@ async def fetch_meeting_context(
 
     # 3. Fetch Check-ins (V1 for backward compatibility)
     checkins = await checkin_repo.list(
-        user_id=user_id,
+        user_id=access.owner_id,
         project_id=project_id,
         start_date=input_data.start_date,
         end_date=input_data.end_date,
@@ -100,14 +117,14 @@ async def fetch_meeting_context(
 
     # 3b. Fetch structured check-in data (V2)
     agenda_items = await checkin_repo.get_agenda_items(
-        user_id=user_id,
+        user_id=access.owner_id,
         project_id=project_id,
         start_date=input_data.start_date,
         end_date=input_data.end_date,
     )
 
     # 4. Fetch Tasks (Active ones)
-    all_tasks = await task_repo.list(user_id, project_id=project_id)
+    all_tasks = await task_repo.list(access.owner_id, project_id=project_id)
     
     active_tasks = [
         t for t in all_tasks 
@@ -158,6 +175,7 @@ def fetch_meeting_context_tool(
     meeting_agenda_repo: IMeetingAgendaRepository,
     project_repo: IProjectRepository,
     recurring_meeting_repo: IRecurringMeetingRepository,
+    member_repo: IProjectMemberRepository,
     user_id: str,
 ) -> FunctionTool:
     """Create ADK tool for fetching meeting context."""
@@ -181,6 +199,7 @@ def fetch_meeting_context_tool(
             meeting_agenda_repo, 
             project_repo,
             recurring_meeting_repo,
+            member_repo,
             FetchMeetingContextInput(**input_data)
         )
 
@@ -212,6 +231,7 @@ async def list_recurring_meetings(
     user_id: str,
     recurring_meeting_repo: IRecurringMeetingRepository,
     project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     input_data: ListRecurringMeetingsInput,
 ) -> dict:
     """List recurring meetings, optionally filtered by project."""
@@ -222,7 +242,21 @@ async def list_recurring_meetings(
         except ValueError:
             return {"error": f"Invalid project ID: {input_data.project_id}"}
 
-    meetings = await recurring_meeting_repo.list(user_id, project_id=project_id)
+    if project_id:
+        access = await require_project_action(
+            user_id,
+            project_id,
+            project_repo,
+            member_repo,
+            ProjectAction.MEETING_AGENDA_MANAGE,
+        )
+        if isinstance(access, dict):
+            return access
+        meetings = await recurring_meeting_repo.list(access.owner_id, project_id=project_id)
+        owner_id = access.owner_id
+    else:
+        meetings = await recurring_meeting_repo.list(user_id, project_id=None)
+        owner_id = user_id
 
     today = date.today()
     result = []
@@ -230,7 +264,7 @@ async def list_recurring_meetings(
         # Get project name if project_id exists
         project_name = None
         if meeting.project_id:
-            project = await project_repo.get(user_id, meeting.project_id)
+            project = await project_repo.get(owner_id, meeting.project_id)
             if project:
                 project_name = project.name
 
@@ -262,6 +296,7 @@ async def list_recurring_meetings(
 def list_recurring_meetings_tool(
     recurring_meeting_repo: IRecurringMeetingRepository,
     project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     user_id: str,
 ) -> FunctionTool:
     """Create ADK tool for listing recurring meetings."""
@@ -288,6 +323,7 @@ def list_recurring_meetings_tool(
             user_id,
             recurring_meeting_repo,
             project_repo,
+            member_repo,
             ListRecurringMeetingsInput(**input_data)
         )
 

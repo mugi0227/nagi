@@ -24,6 +24,11 @@ class IMilestoneRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_project_id(self, milestone_id: UUID) -> UUID | None:
+        """Get project ID for a milestone."""
+        pass
+
+    @abstractmethod
     async def list_by_phase(self, user_id: str, phase_id: UUID) -> list[Milestone]:
         """List milestones for a phase."""
         pass

@@ -58,6 +58,7 @@ export function CheckinForm({
   const [requestContent, setRequestContent] = useState('');
   const [mood, setMood] = useState<CheckinMood | undefined>();
   const [freeComment, setFreeComment] = useState('');
+  const [formError, setFormError] = useState<string | null>(null);
 
   const getTaskTitle = (taskId: string | undefined): string | undefined => {
     if (!taskId || taskId === 'other') return undefined;
@@ -98,13 +99,20 @@ export function CheckinForm({
 
   const handleSubmit = async () => {
     const items = buildItems();
+    const trimmedComment = freeComment.trim();
+    const hasContent = items.length > 0 || Boolean(mood) || Boolean(trimmedComment);
+    if (!hasContent) {
+      setFormError('どれか1つは入力してください。');
+      return;
+    }
+    setFormError(null);
     const today = toDateKey(todayInTimezone(timezone).toJSDate(), timezone);
     const data: CheckinCreateV2 = {
       member_user_id: memberUserId,
       checkin_date: today,
       items,
       mood,
-      free_comment: freeComment.trim() || undefined,
+      free_comment: trimmedComment || undefined,
     };
     await onSubmit(data);
   };
@@ -403,6 +411,11 @@ export function CheckinForm({
           paddingTop: compact ? '12px' : '16px',
           borderTop: '1px solid #e5e7eb',
         }}>
+          {formError && (
+            <p style={{ color: '#dc2626', fontSize: compact ? '11px' : '12px', marginRight: 'auto' }}>
+              {formError}
+            </p>
+          )}
           {!hideCancel && (
             <button
               type="button"

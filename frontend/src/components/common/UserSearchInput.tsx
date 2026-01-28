@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usersApi, UserSearchResult } from '../../api/users';
+import { resolveDisplayName } from '../../utils/displayName';
 import './UserSearchInput.css';
 
 interface UserSearchInputProps {
@@ -92,10 +93,11 @@ export function UserSearchInput({
         }
     };
 
-    const displayName = (user: UserSearchResult) => {
-        if (user.display_name) return user.display_name;
-        if (user.username) return user.username;
-        return user.email || user.id;
+    const getDisplayNameForUser = (user: UserSearchResult) => {
+        return resolveDisplayName({
+            displayName: user.display_name,
+            userId: user.id,
+        });
     };
 
     return (
@@ -123,7 +125,7 @@ export function UserSearchInput({
                             onMouseEnter={() => setHighlightIndex(index)}
                         >
                             <div className="user-search-item-main">
-                                <span className="user-search-name">{displayName(user)}</span>
+                                <span className="user-search-name">{getDisplayNameForUser(user)}</span>
                                 {user.username && user.display_name && (
                                     <span className="user-search-username">@{user.username}</span>
                                 )}

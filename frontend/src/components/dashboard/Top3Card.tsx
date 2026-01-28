@@ -1,13 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTop3 } from "../../hooks/useTop3";
-import { useTasks } from "../../hooks/useTasks";
-import { AnimatePresence } from "framer-motion";
+import { useTaskModal } from "../../hooks/useTaskModal";
 import { TaskItem } from "./TaskItem";
-import { TaskDetailModal } from "../tasks/TaskDetailModal";
-import { TaskFormModal } from "../tasks/TaskFormModal";
 import { tasksApi } from "../../api/tasks";
-import type { Task, TaskCreate, TaskUpdate } from "../../api/types";
+import type { Task, TaskUpdate } from "../../api/types";
 import "./Top3Card.css";
 
 const TEXT = {
@@ -23,12 +20,8 @@ const TEXT = {
 };
 
 export function Top3Card() {
-  const { data: top3Response, isLoading, error } = useTop3();
-  const { updateTask, createTask, isCreating, isUpdating } = useTasks();
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [openedParentTask, setOpenedParentTask] = useState<Task | null>(null);
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [taskToEdit, setTaskToEdit] = useState<Task | undefined>(undefined);
+  const { data: top3Response, isLoading, error, refetch } = useTop3();
+  const queryClient = useQueryClient();
   const [removingTaskIds, setRemovingTaskIds] = useState<Set<string>>(new Set());
   const [pendingDoneTasks, setPendingDoneTasks] = useState<Map<string, Task>>(new Map());
   const [dependencyCache, setDependencyCache] = useState<Record<string, Task>>({});
@@ -44,13 +37,23 @@ export function Top3Card() {
     return merged;
   }, [tasks, pendingDoneTasks]);
 
-  const { data: subtasks = [] } = useQuery({
-    queryKey: ["subtasks", selectedTask?.id || openedParentTask?.id],
-    queryFn: () => {
-      const targetId = openedParentTask?.id || selectedTask?.id;
-      return targetId ? tasksApi.getSubtasks(targetId) : Promise.resolve([]);
+  // Update mutation for task check
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: TaskUpdate }) => {
+      await tasksApi.update(id, data);
     },
-    enabled: !!(selectedTask || openedParentTask),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
+      queryClient.invalidateQueries({ queryKey: ['top3'] });
+      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
+    },
+  });
+
+  // useTaskModal for modal management
+  const taskModal = useTaskModal({
+    tasks: allTasks,
+    onRefetch: () => refetch(),
   });
 
   useEffect(() => {
@@ -112,46 +115,6 @@ export function Top3Card() {
     return map;
   }, [allTasks, dependencyCache]);
 
-  const handleTaskClick = (task: Task) => {
-    if (task.parent_id) {
-      const parent = allTasks.find(t => t.id === task.parent_id);
-      if (parent) {
-        setOpenedParentTask(parent);
-        setSelectedTask(task);
-      } else {
-        tasksApi.getById(task.parent_id).then(parentTask => {
-          setOpenedParentTask(parentTask);
-          setSelectedTask(task);
-        }).catch(err => {
-          console.error("Failed to fetch parent task:", err);
-          setSelectedTask(task);
-        });
-      }
-    } else {
-      setSelectedTask(task);
-      setOpenedParentTask(null);
-    }
-  };
-
-  const handleCloseModal = () => {
-    setSelectedTask(null);
-    setOpenedParentTask(null);
-  };
-
-  const handleCloseForm = () => {
-    setIsFormOpen(false);
-    setTaskToEdit(undefined);
-  };
-
-  const handleSubmitForm = (data: TaskCreate | TaskUpdate) => {
-    if (taskToEdit) {
-      updateTask(taskToEdit.id, data as TaskUpdate);
-    } else {
-      createTask(data as TaskCreate);
-    }
-    handleCloseForm();
-  };
-
   const handleTaskCheck = (taskId: string) => {
     const blockedStatus = dependencyStatusByTaskId.get(taskId);
     if (blockedStatus?.blocked) {
@@ -164,7 +127,7 @@ export function Top3Card() {
       setPendingDoneTasks(prev => new Map(prev).set(taskId, { ...taskToKeep, status: "DONE" }));
     }
 
-    updateTask(taskId, { status: "DONE" });
+    updateMutation.mutate({ id: taskId, data: { status: "DONE" } });
 
     setTimeout(() => {
       setRemovingTaskIds(prev => new Set(prev).add(taskId));
@@ -234,7 +197,7 @@ export function Top3Card() {
               <TaskItem
                 key={task.id}
                 task={task}
-                onClick={handleTaskClick}
+                onClick={taskModal.openTaskDetail}
                 onCheck={handleTaskCheck}
                 isRemoving={removingTaskIds.has(task.id)}
                 isBlocked={dependencyStatus?.blocked}
@@ -245,38 +208,7 @@ export function Top3Card() {
         )}
       </div>
 
-      <AnimatePresence>
-        {selectedTask && (
-          <TaskDetailModal
-            task={openedParentTask || selectedTask}
-            subtasks={subtasks}
-            allTasks={allTasks}
-            initialSubtask={openedParentTask ? selectedTask : null}
-            onClose={handleCloseModal}
-            onEdit={(task) => {
-              setTaskToEdit(task);
-              setIsFormOpen(true);
-              handleCloseModal();
-            }}
-            onProgressChange={(taskId, progress) => {
-              updateTask(taskId, { progress });
-            }}
-            onTaskCheck={handleTaskCheck}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {isFormOpen && (
-          <TaskFormModal
-            task={taskToEdit}
-            allTasks={allTasks}
-            onClose={handleCloseForm}
-            onSubmit={handleSubmitForm}
-            isSubmitting={isCreating || isUpdating}
-          />
-        )}
-      </AnimatePresence>
+      {taskModal.renderModals()}
     </div>
   );
 }

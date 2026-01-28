@@ -26,6 +26,18 @@
   color: var(--accent-orange);
 }
 
+/* Weekly Progress */
+.achievement-weekly-progress {
+  margin-bottom: 1.5rem;
+}
+
+.achievement-weekly-progress .stats-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 1.5rem;
+}
+
 /* Weekly Generator */
 .weekly-generator {
   background: var(--bg-card);

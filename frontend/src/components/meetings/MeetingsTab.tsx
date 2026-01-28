@@ -10,6 +10,7 @@ import { MeetingMainContent } from './MeetingMainContent';
 import { MeetingSidebar } from './MeetingSidebar';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/dateTime';
+import { getMemberDisplayName } from '../../utils/displayName';
 import './MeetingsTab.css';
 import './MeetingCalendarView.css';
 
@@ -20,9 +21,10 @@ interface MeetingsTabProps {
     members: ProjectMember[];
     tasks: Task[];
     currentUserId: string;
+    canDeleteAnyCheckin: boolean;
 }
 
-export function MeetingsTab({ projectId, members, tasks, currentUserId }: MeetingsTabProps) {
+export function MeetingsTab({ projectId, members, tasks, currentUserId, canDeleteAnyCheckin }: MeetingsTabProps) {
     const timezone = useTimezone();
     const [viewMode, setViewMode] = useState<ViewMode>('list');
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -39,7 +41,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId }: Meetin
 
     const getMemberName = (memberUserId: string) => {
         const member = members.find(m => m.member_user_id === memberUserId);
-        return member?.member_display_name || memberUserId;
+        return member ? getMemberDisplayName(member) : memberUserId;
     };
 
     useEffect(() => {
@@ -234,7 +236,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId }: Meetin
                                                                 {checkin.mood === 'good' ? '😊' : checkin.mood === 'okay' ? '😐' : '😰'}
                                                             </span>
                                                         )}
-                                                        {checkin.user_id === currentUserId && (
+                                                        {(canDeleteAnyCheckin || checkin.member_user_id === currentUserId) && (
                                                             <button
                                                                 className="checkin-item-delete-btn"
                                                                 onClick={(e) => handleDeleteCheckin(checkin.id, e)}
@@ -362,7 +364,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId }: Meetin
                                                                 {checkin.mood === 'good' ? '😊' : checkin.mood === 'okay' ? '😐' : '😰'}
                                                             </span>
                                                         )}
-                                                        {checkin.user_id === currentUserId && (
+                                                        {(canDeleteAnyCheckin || checkin.member_user_id === currentUserId) && (
                                                             <button
                                                                 className="checkin-item-delete-btn"
                                                                 onClick={(e) => handleDeleteCheckin(checkin.id, e)}

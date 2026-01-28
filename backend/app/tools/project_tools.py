@@ -23,8 +23,10 @@ from app.models.project_kpi import ProjectKpiConfig, ProjectKpiMetric
 from app.models.proposal import Proposal, ProposalResponse, ProposalType
 from app.services.assignee_utils import make_invitation_assignee_id
 from app.services.kpi_templates import get_kpi_templates
+from app.services.project_permissions import ProjectAction
 from app.tools.approval_tools import create_tool_action_proposal
 from app.services.llm_utils import generate_text
+from app.tools.permissions import require_project_action
 
 
 class ProjectKpiMetricInput(BaseModel):
@@ -496,6 +498,7 @@ def create_project_tool(
 async def update_project(
     user_id: str,
     repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     input_data: UpdateProjectInput,
 ) -> dict:
     """Update a project."""
@@ -505,6 +508,15 @@ async def update_project(
         project_id = UUID(input_data.project_id)
     except ValueError:
         return {"error": f"Invalid project ID format: {input_data.project_id}"}
+    access = await require_project_action(
+        user_id,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.PROJECT_UPDATE,
+    )
+    if isinstance(access, dict):
+        return access
     update_fields: dict = {}
 
     if input_data.name is not None:
@@ -550,12 +562,13 @@ async def update_project(
         update_fields["kpi_config"] = kpi_config
 
     update_model = ProjectUpdate(**update_fields)
-    project = await repo.update(user_id, project_id, update_model)
+    project = await repo.update(access.owner_id, project_id, update_model)
     return project.model_dump(mode="json")
 
 
 def update_project_tool(
     repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -600,7 +613,7 @@ def update_project_tool(
                 payload,
                 proposal_desc,
             )
-        return await update_project(user_id, repo, UpdateProjectInput(**payload))
+        return await update_project(user_id, repo, member_repo, UpdateProjectInput(**payload))
 
     _tool.__name__ = "update_project"
     return FunctionTool(func=_tool)
@@ -677,6 +690,7 @@ class ListProjectMembersInput(BaseModel):
 
 async def list_project_members(
     user_id: str,
+    project_repo: IProjectRepository,
     member_repo: IProjectMemberRepository,
     input_data: ListProjectMembersInput,
 ) -> dict:
@@ -687,7 +701,16 @@ async def list_project_members(
         project_id = UUID(input_data.project_id)
     except ValueError:
         return {"error": f"Invalid project ID format: {input_data.project_id}"}
-    members = await member_repo.list(user_id, project_id)
+    access = await require_project_action(
+        user_id,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.MEMBER_READ,
+    )
+    if isinstance(access, dict):
+        return access
+    members = await member_repo.list(access.owner_id, project_id)
     return {
         "members": [member.model_dump(mode="json") for member in members],
         "count": len(members),
@@ -695,6 +718,7 @@ async def list_project_members(
 
 
 def list_project_members_tool(
+    project_repo: IProjectRepository,
     member_repo: IProjectMemberRepository,
     user_id: str,
 ) -> FunctionTool:
@@ -710,6 +734,7 @@ def list_project_members_tool(
 
         return await list_project_members(
             user_id,
+            project_repo,
             member_repo,
             ListProjectMembersInput(**input_data),
         )
@@ -727,6 +752,8 @@ class ListProjectInvitationsInput(BaseModel):
 
 async def list_project_invitations(
     user_id: str,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     invitation_repo: IProjectInvitationRepository,
     input_data: ListProjectInvitationsInput,
 ) -> dict:
@@ -738,7 +765,17 @@ async def list_project_invitations(
     except ValueError:
         return {"error": f"Invalid project ID format: {input_data.project_id}"}
 
-    invitations = await invitation_repo.list_by_project(user_id, project_id)
+    access = await require_project_action(
+        user_id,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.INVITATION_READ,
+    )
+    if isinstance(access, dict):
+        return access
+
+    invitations = await invitation_repo.list_by_project(access.owner_id, project_id)
     result = []
     for invitation in invitations:
         data = invitation.model_dump(mode="json")
@@ -756,6 +793,8 @@ async def list_project_invitations(
 
 
 def list_project_invitations_tool(
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     invitation_repo: IProjectInvitationRepository,
     user_id: str,
 ) -> FunctionTool:
@@ -771,6 +810,8 @@ def list_project_invitations_tool(
 
         return await list_project_invitations(
             user_id,
+            project_repo,
+            member_repo,
             invitation_repo,
             ListProjectInvitationsInput(**input_data),
         )
@@ -788,6 +829,7 @@ class LoadProjectContextInput(BaseModel):
 async def load_project_context(
     user_id: str,
     repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     input_data: LoadProjectContextInput,
 ) -> dict:
     """Load detailed project context."""
@@ -798,7 +840,16 @@ async def load_project_context(
     except ValueError:
         return {"error": f"Invalid project ID format: {input_data.project_id}"}
 
-    project = await repo.get(user_id, project_uuid)
+    access = await require_project_action(
+        user_id,
+        project_uuid,
+        repo,
+        member_repo,
+        ProjectAction.PROJECT_READ,
+    )
+    if isinstance(access, dict):
+        return access
+    project = await repo.get(access.owner_id, project_uuid)
 
     if not project:
         return {"error": f"Project not found: {input_data.project_id}"}
@@ -822,7 +873,11 @@ async def load_project_context(
     }
 
 
-def load_project_context_tool(repo: IProjectRepository, user_id: str) -> FunctionTool:
+def load_project_context_tool(
+    repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
+    user_id: str,
+) -> FunctionTool:
     """Create ADK tool for loading project context."""
     async def _tool(input_data: dict) -> dict:
         """load_project_context: プロジェクトの詳細コンテキストを読み込みます。
@@ -843,7 +898,7 @@ def load_project_context_tool(repo: IProjectRepository, user_id: str) -> Functio
             logger.error(f"load_project_context: Expected dict but got {type(input_data)}: {input_data}")
             return {"error": f"input_data must be dict, got {type(input_data)}: {input_data}"}
 
-        return await load_project_context(user_id, repo, LoadProjectContextInput(**input_data))
+        return await load_project_context(user_id, repo, member_repo, LoadProjectContextInput(**input_data))
 
     _tool.__name__ = "load_project_context"
     return FunctionTool(func=_tool)
@@ -861,6 +916,7 @@ async def invite_project_member(
     user_id: str,
     invitation_repo: IProjectInvitationRepository,
     member_repo: IProjectMemberRepository,
+    project_repo: IProjectRepository,
     input_data: InviteProjectMemberInput,
 ) -> dict:
     """Invite a member to a project."""
@@ -873,13 +929,15 @@ async def invite_project_member(
     except ValueError:
         return {"error": f"Invalid project ID format: {input_data.project_id}"}
 
-    # Check if user has permission to invite (must be OWNER or ADMIN)
-    members = await member_repo.list(user_id, project_id)
-    user_member = next((m for m in members if m.member_user_id == user_id), None)
-    if not user_member:
-        return {"error": "You are not a member of this project"}
-    if user_member.role not in (ProjectRole.OWNER, ProjectRole.ADMIN):
-        return {"error": "You must be an OWNER or ADMIN to invite members"}
+    access = await require_project_action(
+        user_id,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.INVITATION_MANAGE,
+    )
+    if isinstance(access, dict):
+        return access
 
     # Validate role
     try:
@@ -898,13 +956,14 @@ async def invite_project_member(
         role=role,
     )
 
-    invitation = await invitation_repo.create(user_id, project_id, user_id, invitation_data)
+    invitation = await invitation_repo.create(access.owner_id, project_id, user_id, invitation_data)
     return invitation.model_dump(mode="json")
 
 
 def invite_project_member_tool(
     invitation_repo: IProjectInvitationRepository,
     member_repo: IProjectMemberRepository,
+    project_repo: IProjectRepository,
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -977,6 +1036,7 @@ def invite_project_member_tool(
             user_id,
             invitation_repo,
             member_repo,
+            project_repo,
             InviteProjectMemberInput(**payload),
         )
 

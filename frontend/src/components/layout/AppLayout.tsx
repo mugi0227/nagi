@@ -1,6 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { userStorage } from '../../utils/userStorage';
 import { ChatWidget } from '../chat/ChatWidget';
 import { ChatWindow } from '../chat/ChatWindow';
@@ -18,6 +19,7 @@ interface ChatState {
 
 export function AppLayout() {
   const location = useLocation();
+  useRealtimeSync();
   const loadChatState = () => userStorage.getJson<ChatState>(CHAT_STORAGE_KEY, {
     isOpen: false,
     width: 400,

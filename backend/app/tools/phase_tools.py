@@ -15,10 +15,14 @@ from pydantic import BaseModel, Field
 
 from app.interfaces.milestone_repository import IMilestoneRepository
 from app.interfaces.phase_repository import IPhaseRepository
+from app.interfaces.project_member_repository import IProjectMemberRepository
+from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
 from app.models.milestone import MilestoneCreate
 from app.models.phase import PhaseCreate
+from app.services.project_permissions import ProjectAction
 from app.tools.approval_tools import create_tool_action_proposal
+from app.tools.permissions import require_project_action, require_project_member
 
 
 def _parse_optional_datetime(value: Optional[str]) -> Optional[datetime]:
@@ -35,13 +39,25 @@ async def apply_phase_plan(
     project_id: UUID,
     phase_repo: IPhaseRepository,
     milestone_repo: IMilestoneRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     phases: list[dict],
     create_milestones: bool = True,
 ) -> dict:
     created_phase_ids: list[str] = []
     created_milestone_ids: list[str] = []
 
-    existing_phases = await phase_repo.list_by_project(user_id, project_id)
+    access = await require_project_action(
+        user_id,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.PHASE_MANAGE,
+    )
+    if isinstance(access, dict):
+        return access
+
+    existing_phases = await phase_repo.list_by_project(access.owner_id, project_id)
     next_order = len(existing_phases) + 1
 
     for phase in phases:
@@ -63,7 +79,7 @@ async def apply_phase_plan(
             start_date=start_date,
             end_date=end_date,
         )
-        created_phase = await phase_repo.create(user_id, phase_create)
+        created_phase = await phase_repo.create(access.owner_id, phase_create)
         created_phase_ids.append(str(created_phase.id))
         next_order += 1
 
@@ -92,7 +108,7 @@ async def apply_phase_plan(
                 order_in_phase=index,
                 due_date=due_date,
             )
-            created_milestone = await milestone_repo.create(user_id, milestone_create)
+            created_milestone = await milestone_repo.create(access.owner_id, milestone_create)
             created_milestone_ids.append(str(created_milestone.id))
 
     return {
@@ -128,6 +144,8 @@ class UpdatePhaseInput(BaseModel):
 async def list_phases(
     user_id: str,
     phase_repo: IPhaseRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     input_data: ListPhasesInput,
 ) -> dict:
     """List phases for a project."""
@@ -136,14 +154,29 @@ async def list_phases(
     except ValueError:
         return {"error": f"Invalid project ID format: {input_data.project_id}"}
 
-    phases = await phase_repo.list_by_project(user_id, project_id)
+    access = await require_project_action(
+        user_id,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.PHASE_MANAGE,
+    )
+    if isinstance(access, dict):
+        return access
+
+    phases = await phase_repo.list_by_project(access.owner_id, project_id)
     return {
         "phases": [phase.model_dump(mode="json") for phase in phases],
         "count": len(phases),
     }
 
 
-def list_phases_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionTool:
+def list_phases_tool(
+    phase_repo: IPhaseRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
+    user_id: str,
+) -> FunctionTool:
     """Create ADK tool for listing phases."""
 
     async def _tool(input_data: dict) -> dict:
@@ -178,7 +211,13 @@ def list_phases_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionTool
                 "count": フェーズ数
             }
         """
-        return await list_phases(user_id, phase_repo, ListPhasesInput(**input_data))
+        return await list_phases(
+            user_id,
+            phase_repo,
+            project_repo,
+            member_repo,
+            ListPhasesInput(**input_data),
+        )
 
     _tool.__name__ = "list_phases"
     return FunctionTool(func=_tool)
@@ -187,6 +226,8 @@ def list_phases_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionTool
 async def get_phase(
     user_id: str,
     phase_repo: IPhaseRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     input_data: GetPhaseInput,
 ) -> dict:
     """Get detailed phase information."""
@@ -195,14 +236,27 @@ async def get_phase(
     except ValueError:
         return {"error": f"Invalid phase ID format: {input_data.phase_id}"}
 
-    phase = await phase_repo.get_by_id(user_id, phase_id)
+    project_id = await phase_repo.get_project_id(phase_id)
+    owner_id = user_id
+    if project_id:
+        access = await require_project_member(user_id, project_id, project_repo, member_repo)
+        if isinstance(access, dict):
+            return access
+        owner_id = access.owner_id
+
+    phase = await phase_repo.get_by_id(owner_id, phase_id, project_id=project_id)
     if not phase:
         return {"error": f"Phase not found: {input_data.phase_id}"}
 
     return phase.model_dump(mode="json")
 
 
-def get_phase_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionTool:
+def get_phase_tool(
+    phase_repo: IPhaseRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
+    user_id: str,
+) -> FunctionTool:
     """Create ADK tool for getting phase details."""
 
     async def _tool(input_data: dict) -> dict:
@@ -232,7 +286,13 @@ def get_phase_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionTool:
 
             エラー時: {"error": "エラーメッセージ"}
         """
-        return await get_phase(user_id, phase_repo, GetPhaseInput(**input_data))
+        return await get_phase(
+            user_id,
+            phase_repo,
+            project_repo,
+            member_repo,
+            GetPhaseInput(**input_data),
+        )
 
     _tool.__name__ = "get_phase"
     return FunctionTool(func=_tool)
@@ -241,6 +301,8 @@ def get_phase_tool(phase_repo: IPhaseRepository, user_id: str) -> FunctionTool:
 async def update_phase(
     user_id: str,
     phase_repo: IPhaseRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     input_data: UpdatePhaseInput,
 ) -> dict:
     """Update phase information."""
@@ -251,6 +313,20 @@ async def update_phase(
         phase_id = UUID(input_data.phase_id)
     except ValueError:
         return {"error": f"Invalid phase ID format: {input_data.phase_id}"}
+
+    project_id = await phase_repo.get_project_id(phase_id)
+    owner_id = user_id
+    if project_id:
+        access = await require_project_action(
+            user_id,
+            project_id,
+            project_repo,
+            member_repo,
+            ProjectAction.PHASE_MANAGE,
+        )
+        if isinstance(access, dict):
+            return access
+        owner_id = access.owner_id
 
     update_fields: dict = {}
 
@@ -274,12 +350,14 @@ async def update_phase(
         return {"error": "No fields to update"}
 
     update_model = PhaseUpdate(**update_fields)
-    phase = await phase_repo.update(user_id, phase_id, update_model)
+    phase = await phase_repo.update(owner_id, phase_id, update_model, project_id=project_id)
     return phase.model_dump(mode="json")
 
 
 def update_phase_tool(
     phase_repo: IPhaseRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -333,7 +411,13 @@ def update_phase_tool(
                 payload,
                 proposal_desc,
             )
-        return await update_phase(user_id, phase_repo, UpdatePhaseInput(**payload))
+        return await update_phase(
+            user_id,
+            phase_repo,
+            project_repo,
+            member_repo,
+            UpdatePhaseInput(**payload),
+        )
 
     _tool.__name__ = "update_phase"
     return FunctionTool(func=_tool)
@@ -398,6 +482,9 @@ class ListMilestonesInput(BaseModel):
 
 def list_milestones_tool(
     milestone_repo: IMilestoneRepository,
+    phase_repo: IPhaseRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     user_id: str,
 ) -> FunctionTool:
     """Create ADK tool for listing milestones."""
@@ -443,13 +530,34 @@ def list_milestones_tool(
                 phase_id = UUID(payload.phase_id)
             except ValueError:
                 return {"error": f"Invalid phase ID format: {payload.phase_id}"}
-            milestones = await milestone_repo.list_by_phase(user_id, phase_id)
+            project_id = await phase_repo.get_project_id(phase_id)
+            if not project_id:
+                return {"error": f"Phase not found: {payload.phase_id}"}
+            access = await require_project_action(
+                user_id,
+                project_id,
+                project_repo,
+                member_repo,
+                ProjectAction.MILESTONE_MANAGE,
+            )
+            if isinstance(access, dict):
+                return access
+            milestones = await milestone_repo.list_by_phase(access.owner_id, phase_id)
         elif payload.project_id:
             try:
                 project_id = UUID(payload.project_id)
             except ValueError:
                 return {"error": f"Invalid project ID format: {payload.project_id}"}
-            milestones = await milestone_repo.list_by_project(user_id, project_id)
+            access = await require_project_action(
+                user_id,
+                project_id,
+                project_repo,
+                member_repo,
+                ProjectAction.MILESTONE_MANAGE,
+            )
+            if isinstance(access, dict):
+                return access
+            milestones = await milestone_repo.list_by_project(access.owner_id, project_id)
 
         return {
             "milestones": [m.model_dump(mode="json") for m in milestones],
@@ -462,6 +570,8 @@ def list_milestones_tool(
 
 def create_phase_tool(
     phase_repo: IPhaseRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -504,10 +614,20 @@ def create_phase_tool(
         except ValueError:
             return {"error": f"Invalid project ID format: {payload.project_id}"}
 
+        access = await require_project_action(
+            user_id,
+            project_id,
+            project_repo,
+            member_repo,
+            ProjectAction.PHASE_MANAGE,
+        )
+        if isinstance(access, dict):
+            return access
+
         # Get max order if not specified
         order = payload.order_in_project
         if order is None:
-            existing_phases = await phase_repo.list_by_project(user_id, project_id)
+            existing_phases = await phase_repo.list_by_project(access.owner_id, project_id)
             order = len(existing_phases) + 1
 
         phase_create = PhaseCreate(
@@ -519,7 +639,7 @@ def create_phase_tool(
             end_date=_parse_optional_datetime(payload.end_date),
         )
 
-        created_phase = await phase_repo.create(user_id, phase_create)
+        created_phase = await phase_repo.create(access.owner_id, phase_create)
         return created_phase.model_dump(mode="json")
 
     _tool.__name__ = "create_phase"
@@ -528,6 +648,8 @@ def create_phase_tool(
 
 def delete_phase_tool(
     phase_repo: IPhaseRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -565,7 +687,21 @@ def delete_phase_tool(
         except ValueError:
             return {"error": f"Invalid phase ID format: {payload.phase_id}"}
 
-        success = await phase_repo.delete(user_id, phase_id)
+        project_id = await phase_repo.get_project_id(phase_id)
+        owner_id = user_id
+        if project_id:
+            access = await require_project_action(
+                user_id,
+                project_id,
+                project_repo,
+                member_repo,
+                ProjectAction.PHASE_MANAGE,
+            )
+            if isinstance(access, dict):
+                return access
+            owner_id = access.owner_id
+
+        success = await phase_repo.delete(owner_id, phase_id, project_id=project_id)
         if success:
             return {"success": True, "deleted_phase_id": payload.phase_id}
         return {"error": f"Phase not found or could not be deleted: {payload.phase_id}"}
@@ -576,6 +712,8 @@ def delete_phase_tool(
 
 def create_milestone_tool(
     milestone_repo: IMilestoneRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -618,10 +756,20 @@ def create_milestone_tool(
         except ValueError as e:
             return {"error": f"Invalid ID format: {e}"}
 
+        access = await require_project_action(
+            user_id,
+            project_id,
+            project_repo,
+            member_repo,
+            ProjectAction.MILESTONE_MANAGE,
+        )
+        if isinstance(access, dict):
+            return access
+
         # Get max order if not specified
         order = payload.order_in_phase
         if order is None:
-            existing_milestones = await milestone_repo.list_by_phase(user_id, phase_id)
+            existing_milestones = await milestone_repo.list_by_phase(access.owner_id, phase_id)
             order = len(existing_milestones) + 1
 
         milestone_create = MilestoneCreate(
@@ -633,7 +781,7 @@ def create_milestone_tool(
             due_date=_parse_optional_datetime(payload.due_date),
         )
 
-        created_milestone = await milestone_repo.create(user_id, milestone_create)
+        created_milestone = await milestone_repo.create(access.owner_id, milestone_create)
         return created_milestone.model_dump(mode="json")
 
     _tool.__name__ = "create_milestone"
@@ -642,6 +790,8 @@ def create_milestone_tool(
 
 def update_milestone_tool(
     milestone_repo: IMilestoneRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -685,6 +835,20 @@ def update_milestone_tool(
         except ValueError:
             return {"error": f"Invalid milestone ID format: {payload.milestone_id}"}
 
+        project_id = await milestone_repo.get_project_id(milestone_id)
+        owner_id = user_id
+        if project_id:
+            access = await require_project_action(
+                user_id,
+                project_id,
+                project_repo,
+                member_repo,
+                ProjectAction.MILESTONE_MANAGE,
+            )
+            if isinstance(access, dict):
+                return access
+            owner_id = access.owner_id
+
         update_fields: dict = {}
         if payload.title is not None:
             update_fields["title"] = payload.title
@@ -701,7 +865,7 @@ def update_milestone_tool(
             return {"error": "No fields to update"}
 
         update_model = MilestoneUpdate(**update_fields)
-        updated_milestone = await milestone_repo.update(user_id, milestone_id, update_model)
+        updated_milestone = await milestone_repo.update(owner_id, milestone_id, project_id, update_model)
         if not updated_milestone:
             return {"error": f"Milestone not found: {payload.milestone_id}"}
         return updated_milestone.model_dump(mode="json")
@@ -712,6 +876,8 @@ def update_milestone_tool(
 
 def delete_milestone_tool(
     milestone_repo: IMilestoneRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -748,7 +914,21 @@ def delete_milestone_tool(
         except ValueError:
             return {"error": f"Invalid milestone ID format: {payload.milestone_id}"}
 
-        success = await milestone_repo.delete(user_id, milestone_id)
+        project_id = await milestone_repo.get_project_id(milestone_id)
+        owner_id = user_id
+        if project_id:
+            access = await require_project_action(
+                user_id,
+                project_id,
+                project_repo,
+                member_repo,
+                ProjectAction.MILESTONE_MANAGE,
+            )
+            if isinstance(access, dict):
+                return access
+            owner_id = access.owner_id
+
+        success = await milestone_repo.delete(owner_id, milestone_id, project_id)
         if success:
             return {"success": True, "deleted_milestone_id": payload.milestone_id}
         return {"error": f"Milestone not found or could not be deleted: {payload.milestone_id}"}

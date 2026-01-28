@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useTop3 } from '../../hooks/useTop3';
 import { useTodayTasks } from '../../hooks/useTodayTasks';
 import { useTasks } from '../../hooks/useTasks';
 import { useCapacitySettings } from '../../hooks/useCapacitySettings';
@@ -13,21 +12,21 @@ import './DailyBriefingCard.css';
 
 const TEXT = {
   title: 'Daily Briefing',
-  reviewTag: 'Review',
-  conditionTag: 'Condition',
-  focusTag: 'The One Thing',
-  ignitionTag: 'Ignition',
-  reviewTitle: '昨日のあなたを、静かに整える',
-  reviewBody: '結果は波のように揺れます。揺れた分だけ、今日は滑らかになります。',
-  conditionTitle: '今日のキャパを、軽く知る',
-  focusTitle: '一点だけを、冷たく光らせる',
-  ignitionTitle: '最初の3分で、流れを作る',
-  yesterdayEmpty: '昨日完了したタスクはまだありません。',
-  focusEmpty: '今日のTop3がまだありません。',
-  startAction: '着火する',
-  next: 'NEXT',
-  back: 'BACK',
-  done: 'DONE',
+  reviewTag: 'ふりかえり',
+  conditionTag: 'コンディション',
+  focusTag: 'フォーカス',
+  ignitionTag: 'スタート',
+  reviewTitle: '昨日を振り返る',
+  reviewBody: '完了したタスクを確認して、今日に活かしましょう。',
+  conditionTitle: '今日のキャパシティ',
+  focusTitle: '今日の最優先',
+  ignitionTitle: 'まず3分、始めてみよう',
+  yesterdayEmpty: '昨日完了したタスクはありませんでした。今日は新しいスタートです。',
+  focusEmpty: '今日の優先タスクがまだ設定されていません。',
+  startAction: 'はじめる',
+  next: '次へ',
+  back: '戻る',
+  done: '完了',
 };
 
 const formatMinutes = (minutes: number) => {
@@ -62,7 +61,6 @@ type DailyBriefingCardProps = {
 export function DailyBriefingCard({ onFocusTaskClick, onFinish }: DailyBriefingCardProps) {
   const timezone = useTimezone();
   const [step, setStep] = useState(0);
-  const { data: top3Response, isLoading: top3Loading } = useTop3();
   const { data: todayResponse, isLoading: todayLoading } = useTodayTasks();
   const { tasks, isLoading: tasksLoading } = useTasks();
   const { capacityHours, bufferHours, capacityByWeekday } = useCapacitySettings();
@@ -84,7 +82,13 @@ export function DailyBriefingCard({ onFocusTaskClick, onFinish }: DailyBriefingC
     staleTime: 30_000,
   });
 
-  const focusTask = top3Response?.tasks?.[0] ?? null;
+  // top3_idsの最初のタスクをフォーカスタスクとして取得
+  const focusTask = useMemo(() => {
+    const top3Ids = todayResponse?.top3_ids ?? [];
+    if (top3Ids.length === 0) return null;
+    const todayTasks = todayResponse?.today_tasks ?? [];
+    return todayTasks.find(task => task.id === top3Ids[0]) ?? null;
+  }, [todayResponse]);
 
   const yesterdayStats = useMemo(() => {
     if (!tasks.length) {
@@ -118,14 +122,17 @@ export function DailyBriefingCard({ onFocusTaskClick, onFinish }: DailyBriefingC
     ?? Math.max(capacityMinutes - allocatedMinutes, 0);
 
   const conditionMessage = useMemo(() => {
-    if (todayLoading) return '状態を読み取り中です。';
+    if (todayLoading) return '状態を確認中...';
     if (capacityPercent >= 90) {
-      return '予定が密です。波を穏やかにするため、余白を少し確保しましょう。';
+      return '今日は予定がいっぱいです。優先度の高いものから、無理せず進めましょう。';
     }
     if (capacityPercent >= 60) {
-      return '良い密度です。集中ゾーンを守って、丁寧に進めましょう。';
+      return 'ちょうどいいペースです。集中タイムを確保して取り組みましょう。';
     }
-    return '余白が多めです。深呼吸とともに、軽いタスクから滑り出せます。';
+    if (capacityPercent >= 30) {
+      return '余裕のある一日です。じっくり取り組めそうですね。';
+    }
+    return 'タスクが少なめの日です。ゆったりスタートしましょう。';
   }, [capacityPercent, todayLoading]);
 
   const goPrev = () => setStep(prev => Math.max(0, prev - 1));
@@ -191,30 +198,32 @@ export function DailyBriefingCard({ onFocusTaskClick, onFinish }: DailyBriefingC
           <span className="briefing-tag">{TEXT.conditionTag}</span>
           <h2 className="briefing-hero">{TEXT.conditionTitle}</h2>
 
-          <div
-            className="capacity-ring"
-            style={{ '--brief-ring': `${capacityPercent}%` } as CSSProperties}
-          >
-            <div className="capacity-ring-inner">
-              <div className="capacity-ring-value">{todayLoading ? '--' : `${capacityPercent}%`}</div>
-              <div className="capacity-ring-label">CAPACITY</div>
+          <div className="capacity-row">
+            <div
+              className="capacity-ring"
+              style={{ '--brief-ring': `${capacityPercent}%` } as CSSProperties}
+            >
+              <div className="capacity-ring-inner">
+                <div className="capacity-ring-value">{todayLoading ? '--' : `${capacityPercent}%`}</div>
+                <div className="capacity-ring-label">CAPACITY</div>
+              </div>
+            </div>
+
+            <div className="capacity-stats">
+              <div className="briefing-stat-card">
+                <div className="briefing-stat-label">会議</div>
+                <div className="briefing-stat-value">{formatMinutes(meetingMinutes)}</div>
+              </div>
+              <div className="briefing-stat-card">
+                <div className="briefing-stat-label">作業余白</div>
+                <div className="briefing-stat-value">{formatMinutes(availableMinutes)}</div>
+              </div>
             </div>
           </div>
 
           <div className="briefing-card">
             <div className="briefing-card-title">今日の状態</div>
             <p className="briefing-description">{conditionMessage}</p>
-          </div>
-
-          <div className="briefing-stats">
-            <div className="briefing-stat-card">
-              <div className="briefing-stat-label">会議</div>
-              <div className="briefing-stat-value">{formatMinutes(meetingMinutes)}</div>
-            </div>
-            <div className="briefing-stat-card">
-              <div className="briefing-stat-label">作業余白</div>
-              <div className="briefing-stat-value">{formatMinutes(availableMinutes)}</div>
-            </div>
           </div>
         </section>
 
@@ -223,7 +232,7 @@ export function DailyBriefingCard({ onFocusTaskClick, onFinish }: DailyBriefingC
           <h2 className="briefing-hero">{TEXT.focusTitle}</h2>
 
           <div className="briefing-focus-card">
-            {top3Loading ? (
+            {todayLoading ? (
               <div className="briefing-muted">読み込み中...</div>
             ) : focusTask ? (
               <>
@@ -252,7 +261,9 @@ export function DailyBriefingCard({ onFocusTaskClick, onFinish }: DailyBriefingC
           </div>
 
           <p className="briefing-description briefing-center">
-            今日のあなたは、ひとつの深さで十分です。
+            {focusTask
+              ? 'これが今日の最優先。まずはこれに集中しましょう。'
+              : '優先タスクを設定すると、ここに表示されます。'}
           </p>
         </section>
 
@@ -266,7 +277,7 @@ export function DailyBriefingCard({ onFocusTaskClick, onFinish }: DailyBriefingC
               {focusTask ? `${focusTask.title}を開く` : 'タスク一覧を開く'}
             </div>
             <p className="briefing-description">
-              手を動かした瞬間に、脳の重さはほどけ始めます。
+              まず3分だけ。始めてしまえば、続きは自然とできます。
             </p>
           </div>
 

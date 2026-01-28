@@ -122,7 +122,7 @@ async def test_reorder_agenda_items(session_factory, test_user_id):
 
     # Reorder: 3, 1, 2
     new_order = [item3.id, item1.id, item2.id]
-    items = await agenda_repo.reorder(test_user_id, meeting_id, new_order)
+    items = await agenda_repo.reorder(test_user_id, new_order, meeting_id=meeting_id)
 
     assert len(items) == 3
     assert items[0].title == "Item 3"

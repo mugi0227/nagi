@@ -196,8 +196,8 @@ export function MeetingTimerProvider({ children }: { children: ReactNode }) {
             projectId,
             elapsedSeconds: 0,
             isPaused: false,
-            isWidgetVisible: true,
-            isModalVisible: false,
+            isWidgetVisible: false,
+            isModalVisible: true,
         });
     }, []);
 

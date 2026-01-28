@@ -21,6 +21,7 @@ from app.api.deps import (
     TaskRepo,
     UserRepo,
 )
+from app.api.permissions import require_project_action
 from app.core.exceptions import NotFoundError
 from app.models.achievement import ProjectAchievement
 from app.models.enums import GenerationType
@@ -28,6 +29,7 @@ from app.services.project_achievement_service import (
     generate_project_achievement,
     summarize_project_achievement_with_edits,
 )
+from app.services.project_permissions import ProjectAction
 
 router = APIRouter()
 
@@ -153,14 +155,13 @@ async def create_project_achievement(
 
     User must be a member of the project.
     """
-    # Check if user is a member
-    members = await project_member_repo.list_by_project(project_id)
-    member_ids = [str(m.user_id) for m in members]
-    if user.id not in member_ids:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not a member of this project",
-        )
+    await require_project_action(
+        user,
+        project_id,
+        project_repo,
+        project_member_repo,
+        ProjectAction.ACHIEVEMENT_WRITE,
+    )
 
     # Validate period
     if request.period_end <= request.period_start:
@@ -199,6 +200,7 @@ async def list_project_achievements(
     user: CurrentUser,
     project_member_repo: ProjectMemberRepo,
     project_achievement_repo: ProjectAchievementRepo,
+    project_repo: ProjectRepo,
     period_start: Optional[datetime] = Query(None, description="Filter by period start"),
     period_end: Optional[datetime] = Query(None, description="Filter by period end"),
     limit: int = Query(20, ge=1, le=100),
@@ -209,14 +211,13 @@ async def list_project_achievements(
 
     User must be a member of the project.
     """
-    # Check if user is a member
-    members = await project_member_repo.list_by_project(project_id)
-    member_ids = [str(m.user_id) for m in members]
-    if user.id not in member_ids:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not a member of this project",
-        )
+    await require_project_action(
+        user,
+        project_id,
+        project_repo,
+        project_member_repo,
+        ProjectAction.ACHIEVEMENT_READ,
+    )
 
     achievements = await project_achievement_repo.list(
         project_id=project_id,
@@ -238,20 +239,20 @@ async def get_latest_project_achievement(
     user: CurrentUser,
     project_member_repo: ProjectMemberRepo,
     project_achievement_repo: ProjectAchievementRepo,
+    project_repo: ProjectRepo,
 ):
     """
     Get the most recent project achievement.
 
     User must be a member of the project.
     """
-    # Check if user is a member
-    members = await project_member_repo.list_by_project(project_id)
-    member_ids = [str(m.user_id) for m in members]
-    if user.id not in member_ids:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not a member of this project",
-        )
+    await require_project_action(
+        user,
+        project_id,
+        project_repo,
+        project_member_repo,
+        ProjectAction.ACHIEVEMENT_READ,
+    )
 
     achievement = await project_achievement_repo.get_latest(project_id)
     if not achievement:
@@ -266,20 +267,20 @@ async def get_project_achievement(
     user: CurrentUser,
     project_member_repo: ProjectMemberRepo,
     project_achievement_repo: ProjectAchievementRepo,
+    project_repo: ProjectRepo,
 ):
     """
     Get a specific project achievement by ID.
 
     User must be a member of the project.
     """
-    # Check if user is a member
-    members = await project_member_repo.list_by_project(project_id)
-    member_ids = [str(m.user_id) for m in members]
-    if user.id not in member_ids:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not a member of this project",
-        )
+    await require_project_action(
+        user,
+        project_id,
+        project_repo,
+        project_member_repo,
+        ProjectAction.ACHIEVEMENT_READ,
+    )
 
     achievement = await project_achievement_repo.get(project_id, achievement_id)
     if not achievement:
@@ -297,20 +298,20 @@ async def delete_project_achievement(
     user: CurrentUser,
     project_member_repo: ProjectMemberRepo,
     project_achievement_repo: ProjectAchievementRepo,
+    project_repo: ProjectRepo,
 ):
     """
     Delete a project achievement.
 
     User must be a member of the project.
     """
-    # Check if user is a member
-    members = await project_member_repo.list_by_project(project_id)
-    member_ids = [str(m.user_id) for m in members]
-    if user.id not in member_ids:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not a member of this project",
-        )
+    await require_project_action(
+        user,
+        project_id,
+        project_repo,
+        project_member_repo,
+        ProjectAction.ACHIEVEMENT_WRITE,
+    )
 
     deleted = await project_achievement_repo.delete(project_id, achievement_id)
     if not deleted:
@@ -331,19 +332,20 @@ async def update_project_achievement(
     user: CurrentUser,
     project_member_repo: ProjectMemberRepo,
     project_achievement_repo: ProjectAchievementRepo,
+    project_repo: ProjectRepo,
 ):
     """
     Update a project achievement (partial update).
 
     User must be a member of the project.
     """
-    members = await project_member_repo.list_by_project(project_id)
-    member_ids = [str(m.user_id) for m in members]
-    if user.id not in member_ids:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not a member of this project",
-        )
+    await require_project_action(
+        user,
+        project_id,
+        project_repo,
+        project_member_repo,
+        ProjectAction.ACHIEVEMENT_WRITE,
+    )
 
     try:
         achievement = await project_achievement_repo.update(
@@ -376,19 +378,20 @@ async def summarize_project_achievement(
     llm_provider: LLMProvider,
     project_member_repo: ProjectMemberRepo,
     project_achievement_repo: ProjectAchievementRepo,
+    project_repo: ProjectRepo,
 ):
     """
     Summarize a project achievement using current edits.
 
     User must be a member of the project.
     """
-    members = await project_member_repo.list_by_project(project_id)
-    member_ids = [str(m.user_id) for m in members]
-    if user.id not in member_ids:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="You are not a member of this project",
-        )
+    await require_project_action(
+        user,
+        project_id,
+        project_repo,
+        project_member_repo,
+        ProjectAction.ACHIEVEMENT_WRITE,
+    )
 
     achievement = await project_achievement_repo.get(project_id, achievement_id)
     if not achievement:

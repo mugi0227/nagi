@@ -14,12 +14,15 @@ from google.adk.tools import FunctionTool
 from pydantic import BaseModel, Field
 
 from app.interfaces.meeting_agenda_repository import IMeetingAgendaRepository
+from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
 from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.models.meeting_agenda import MeetingAgendaItemCreate, MeetingAgendaItemUpdate
+from app.services.project_permissions import ProjectAction
 from app.tools.approval_tools import create_tool_action_proposal
+from app.tools.permissions import require_project_action
 
 
 class AddAgendaItemInput(BaseModel):
@@ -73,45 +76,76 @@ async def _resolve_owner_id(
     meeting_id: Optional[UUID],
     task_id: Optional[UUID],
     project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
     recurring_meeting_repo: Optional[IRecurringMeetingRepository] = None,
     task_repo: Optional[ITaskRepository] = None,
 ) -> tuple[Optional[str], Optional[str]]:
     if meeting_id:
-        if not project_repo or not recurring_meeting_repo:
+        if not project_repo or not recurring_meeting_repo or not member_repo:
             return user_id, None
         meeting = await recurring_meeting_repo.get(user_id, meeting_id)
         if meeting:
             if meeting.project_id:
-                project = await project_repo.get(user_id, meeting.project_id)
-                if project:
-                    return project.user_id, None
-                return None, "Project not found"
+                access = await require_project_action(
+                    user_id,
+                    meeting.project_id,
+                    project_repo,
+                    member_repo,
+                    ProjectAction.MEETING_AGENDA_MANAGE,
+                )
+                if isinstance(access, dict):
+                    return None, access["error"]
+                return access.owner_id, None
             return user_id, None
 
         projects = await project_repo.list(user_id, limit=1000)
         for project in projects:
             meeting = await recurring_meeting_repo.get(user_id, meeting_id, project_id=project.id)
             if meeting:
-                return project.user_id, None
+                access = await require_project_action(
+                    user_id,
+                    project.id,
+                    project_repo,
+                    member_repo,
+                    ProjectAction.MEETING_AGENDA_MANAGE,
+                )
+                if isinstance(access, dict):
+                    return None, access["error"]
+                return access.owner_id, None
         return None, "Meeting not found"
 
     if task_id:
-        if not project_repo or not task_repo:
+        if not project_repo or not task_repo or not member_repo:
             return user_id, None
         task = await task_repo.get(user_id, task_id)
         if task:
             if task.project_id:
-                project = await project_repo.get(user_id, task.project_id)
-                if project:
-                    return project.user_id, None
-                return None, "Project not found"
+                access = await require_project_action(
+                    user_id,
+                    task.project_id,
+                    project_repo,
+                    member_repo,
+                    ProjectAction.MEETING_AGENDA_MANAGE,
+                )
+                if isinstance(access, dict):
+                    return None, access["error"]
+                return access.owner_id, None
             return user_id, None
 
         projects = await project_repo.list(user_id, limit=1000)
         for project in projects:
             task = await task_repo.get(user_id, task_id, project_id=project.id)
             if task:
-                return project.user_id, None
+                access = await require_project_action(
+                    user_id,
+                    project.id,
+                    project_repo,
+                    member_repo,
+                    ProjectAction.MEETING_AGENDA_MANAGE,
+                )
+                if isinstance(access, dict):
+                    return None, access["error"]
+                return access.owner_id, None
         return None, "Task not found"
 
     return user_id, None
@@ -122,6 +156,7 @@ async def add_agenda_item(
     repo: IMeetingAgendaRepository,
     input_data: AddAgendaItemInput,
     project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
     recurring_meeting_repo: Optional[IRecurringMeetingRepository] = None,
     task_repo: Optional[ITaskRepository] = None,
 ) -> dict:
@@ -159,6 +194,7 @@ async def add_agenda_item(
         meeting_id,
         task_id,
         project_repo=project_repo,
+        member_repo=member_repo,
         recurring_meeting_repo=recurring_meeting_repo,
         task_repo=task_repo,
     )
@@ -171,6 +207,7 @@ async def add_agenda_item(
 def add_agenda_item_tool(
     repo: IMeetingAgendaRepository,
     project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
     recurring_meeting_repo: Optional[IRecurringMeetingRepository],
     task_repo: Optional[ITaskRepository],
     user_id: str,
@@ -218,6 +255,7 @@ def add_agenda_item_tool(
             repo,
             AddAgendaItemInput(**payload),
             project_repo=project_repo,
+            member_repo=member_repo,
             recurring_meeting_repo=recurring_meeting_repo,
             task_repo=task_repo,
         )
@@ -230,12 +268,34 @@ async def update_agenda_item(
     user_id: str,
     repo: IMeetingAgendaRepository,
     input_data: UpdateAgendaItemInput,
+    project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
+    recurring_meeting_repo: Optional[IRecurringMeetingRepository] = None,
+    task_repo: Optional[ITaskRepository] = None,
 ) -> dict:
     """Update an existing agenda item."""
     try:
         agenda_item_id = UUID(input_data.agenda_item_id)
     except ValueError:
         return {"error": f"Invalid agenda item ID format: {input_data.agenda_item_id}"}
+
+    agenda_item = await repo.get_by_id(agenda_item_id)
+    if not agenda_item:
+        return {"error": f"Agenda item not found: {input_data.agenda_item_id}"}
+
+    owner_id = user_id
+    if agenda_item.meeting_id or agenda_item.task_id:
+        owner_id, error = await _resolve_owner_id(
+            user_id,
+            agenda_item.meeting_id,
+            agenda_item.task_id,
+            project_repo=project_repo,
+            member_repo=member_repo,
+            recurring_meeting_repo=recurring_meeting_repo,
+            task_repo=task_repo,
+        )
+        if error:
+            return {"error": error}
 
     update_data = MeetingAgendaItemUpdate(
         title=input_data.title,
@@ -246,12 +306,16 @@ async def update_agenda_item(
         event_date=input_data.event_date,
     )
 
-    agenda_item = await repo.update(user_id, agenda_item_id, update_data)
+    agenda_item = await repo.update(owner_id, agenda_item_id, update_data)
     return agenda_item.model_dump(mode="json")
 
 
 def update_agenda_item_tool(
     repo: IMeetingAgendaRepository,
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
+    recurring_meeting_repo: Optional[IRecurringMeetingRepository],
+    task_repo: Optional[ITaskRepository],
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -285,7 +349,15 @@ def update_agenda_item_tool(
                 payload,
                 proposal_desc,
             )
-        return await update_agenda_item(user_id, repo, UpdateAgendaItemInput(**payload))
+        return await update_agenda_item(
+            user_id,
+            repo,
+            UpdateAgendaItemInput(**payload),
+            project_repo=project_repo,
+            member_repo=member_repo,
+            recurring_meeting_repo=recurring_meeting_repo,
+            task_repo=task_repo,
+        )
 
     _tool.__name__ = "update_agenda_item"
     return FunctionTool(func=_tool)
@@ -295,6 +367,10 @@ async def delete_agenda_item(
     user_id: str,
     repo: IMeetingAgendaRepository,
     input_data: DeleteAgendaItemInput,
+    project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
+    recurring_meeting_repo: Optional[IRecurringMeetingRepository] = None,
+    task_repo: Optional[ITaskRepository] = None,
 ) -> dict:
     """Delete an agenda item."""
     try:
@@ -302,12 +378,34 @@ async def delete_agenda_item(
     except ValueError:
         return {"error": f"Invalid agenda item ID format: {input_data.agenda_item_id}"}
 
-    success = await repo.delete(user_id, agenda_item_id)
+    agenda_item = await repo.get_by_id(agenda_item_id)
+    if not agenda_item:
+        return {"error": f"Agenda item not found: {input_data.agenda_item_id}"}
+
+    owner_id = user_id
+    if agenda_item.meeting_id or agenda_item.task_id:
+        owner_id, error = await _resolve_owner_id(
+            user_id,
+            agenda_item.meeting_id,
+            agenda_item.task_id,
+            project_repo=project_repo,
+            member_repo=member_repo,
+            recurring_meeting_repo=recurring_meeting_repo,
+            task_repo=task_repo,
+        )
+        if error:
+            return {"error": error}
+
+    success = await repo.delete(owner_id, agenda_item_id)
     return {"success": success, "deleted_id": input_data.agenda_item_id}
 
 
 def delete_agenda_item_tool(
     repo: IMeetingAgendaRepository,
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
+    recurring_meeting_repo: Optional[IRecurringMeetingRepository],
+    task_repo: Optional[ITaskRepository],
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -335,7 +433,15 @@ def delete_agenda_item_tool(
                 payload,
                 proposal_desc,
             )
-        return await delete_agenda_item(user_id, repo, DeleteAgendaItemInput(**payload))
+        return await delete_agenda_item(
+            user_id,
+            repo,
+            DeleteAgendaItemInput(**payload),
+            project_repo=project_repo,
+            member_repo=member_repo,
+            recurring_meeting_repo=recurring_meeting_repo,
+            task_repo=task_repo,
+        )
 
     _tool.__name__ = "delete_agenda_item"
     return FunctionTool(func=_tool)
@@ -346,6 +452,7 @@ async def list_agenda_items(
     repo: IMeetingAgendaRepository,
     input_data: ListAgendaItemsInput,
     project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
     recurring_meeting_repo: Optional[IRecurringMeetingRepository] = None,
     task_repo: Optional[ITaskRepository] = None,
 ) -> dict:
@@ -366,6 +473,7 @@ async def list_agenda_items(
             meeting_id,
             None,
             project_repo=project_repo,
+            member_repo=member_repo,
             recurring_meeting_repo=recurring_meeting_repo,
         )
         if error:
@@ -381,6 +489,7 @@ async def list_agenda_items(
             None,
             task_id,
             project_repo=project_repo,
+            member_repo=member_repo,
             task_repo=task_repo,
         )
         if error:
@@ -396,6 +505,7 @@ async def list_agenda_items(
 def list_agenda_items_tool(
     repo: IMeetingAgendaRepository,
     project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
     recurring_meeting_repo: Optional[IRecurringMeetingRepository],
     task_repo: Optional[ITaskRepository],
     user_id: str,
@@ -420,6 +530,7 @@ def list_agenda_items_tool(
             repo,
             ListAgendaItemsInput(**input_data),
             project_repo=project_repo,
+            member_repo=member_repo,
             recurring_meeting_repo=recurring_meeting_repo,
             task_repo=task_repo,
         )
@@ -433,6 +544,7 @@ async def reorder_agenda_items(
     repo: IMeetingAgendaRepository,
     input_data: ReorderAgendaItemsInput,
     project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
     recurring_meeting_repo: Optional[IRecurringMeetingRepository] = None,
     task_repo: Optional[ITaskRepository] = None,
 ) -> dict:
@@ -457,6 +569,7 @@ async def reorder_agenda_items(
         meeting_id,
         task_id,
         project_repo=project_repo,
+        member_repo=member_repo,
         recurring_meeting_repo=recurring_meeting_repo,
         task_repo=task_repo,
     )
@@ -472,6 +585,7 @@ async def reorder_agenda_items(
 def reorder_agenda_items_tool(
     repo: IMeetingAgendaRepository,
     project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
     recurring_meeting_repo: Optional[IRecurringMeetingRepository],
     task_repo: Optional[ITaskRepository],
     user_id: str,
@@ -510,6 +624,7 @@ def reorder_agenda_items_tool(
             repo,
             ReorderAgendaItemsInput(**payload),
             project_repo=project_repo,
+            member_repo=member_repo,
             recurring_meeting_repo=recurring_meeting_repo,
             task_repo=task_repo,
         )

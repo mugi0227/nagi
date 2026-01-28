@@ -1,10 +1,9 @@
 import { useMemo, useState } from 'react';
 import type { CSSProperties } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { tasksApi } from '../../api/tasks';
-import type { Task, TaskUpdate } from '../../api/types';
-import { TaskDetailModal } from '../tasks/TaskDetailModal';
-import { TaskFormModal } from '../tasks/TaskFormModal';
+import type { Task } from '../../api/types';
+import { useTaskModal } from '../../hooks/useTaskModal';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, toDateKey, toDateTime, todayInTimezone } from '../../utils/dateTime';
 import './WeeklyMeetingsCard.css';
@@ -64,8 +63,6 @@ const formatTime = (date: Date, timezone: string) => (
 export function WeeklyMeetingsCard() {
   const queryClient = useQueryClient();
   const timezone = useTimezone();
-  const [selectedMeetingId, setSelectedMeetingId] = useState<string | null>(null);
-  const [editingMeeting, setEditingMeeting] = useState<Task | null>(null);
   const [weekOffset, setWeekOffset] = useState(0);
 
   const today = todayInTimezone(timezone);
@@ -89,7 +86,7 @@ export function WeeklyMeetingsCard() {
     })
   ), [weekStartKey]);
 
-  const { data: meetingTasks = [], isLoading, error } = useQuery({
+  const { data: meetingTasks = [], isLoading, error, refetch } = useQuery({
     queryKey: ['meetings', 'week', weekStartKey],
     queryFn: () => tasksApi.getAll({ includeDone: true, onlyMeetings: true }),
     staleTime: 30_000,
@@ -102,26 +99,14 @@ export function WeeklyMeetingsCard() {
     queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
   };
 
-  const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: TaskUpdate }) =>
-      tasksApi.update(id, data),
-    onSuccess: () => {
+  // useTaskModal for modal management
+  const taskModal = useTaskModal({
+    tasks: meetingTasks,
+    onRefetch: () => {
+      refetch();
       invalidateAfterChange();
     },
   });
-
-  const deleteMutation = useMutation({
-    mutationFn: (taskId: string) => tasksApi.delete(taskId),
-    onSuccess: () => {
-      invalidateAfterChange();
-    },
-  });
-
-  const selectedMeeting = useMemo(() => (
-    selectedMeetingId
-      ? meetingTasks.find(task => task.id === selectedMeetingId) ?? null
-      : null
-  ), [meetingTasks, selectedMeetingId]);
 
   const meetings = useMemo(() => {
     const weekStartDate = weekStart.startOf('day');
@@ -301,11 +286,11 @@ export function WeeklyMeetingsCard() {
                         title={`${meeting.title} (${timeLabel})`}
                         role="button"
                         tabIndex={0}
-                        onClick={() => setSelectedMeetingId(meeting.id)}
+                        onClick={() => taskModal.openTaskDetailById(meeting.id)}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
-                            setSelectedMeetingId(meeting.id);
+                            taskModal.openTaskDetailById(meeting.id);
                           }
                         }}
                       >
@@ -322,37 +307,7 @@ export function WeeklyMeetingsCard() {
         </div>
       )}
 
-      {selectedMeeting && (
-        <TaskDetailModal
-          task={selectedMeeting}
-          allTasks={meetingTasks}
-          onClose={() => setSelectedMeetingId(null)}
-          onEdit={(task) => {
-            setEditingMeeting(task);
-            setSelectedMeetingId(null);
-          }}
-          onDelete={(task) => {
-            if (deleteMutation.isPending) return;
-            const confirmed = window.confirm(`Delete meeting \"${task.title}\"?`);
-            if (!confirmed) return;
-            setSelectedMeetingId(null);
-            deleteMutation.mutate(task.id);
-          }}
-        />
-      )}
-
-      {editingMeeting && (
-        <TaskFormModal
-          task={editingMeeting}
-          allTasks={meetingTasks}
-          onClose={() => setEditingMeeting(null)}
-          onSubmit={(data) => {
-            updateMutation.mutate({ id: editingMeeting.id, data: data as TaskUpdate });
-            setEditingMeeting(null);
-          }}
-          isSubmitting={updateMutation.isPending}
-        />
-      )}
+      {taskModal.renderModals()}
     </div>
   );
 }

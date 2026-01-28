@@ -13,7 +13,7 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import type { CSSProperties } from 'react';
 import { DateTime } from 'luxon';
-import { FaChevronDown, FaChevronRight, FaExpand, FaCompress, FaPlus, FaLink, FaSort, FaTrash, FaMagic } from 'react-icons/fa';
+import { FaChevronDown, FaChevronRight, FaExpand, FaCompress, FaPlus, FaLink, FaUnlink, FaSort, FaTrash, FaMagic } from 'react-icons/fa';
 import {
   DndContext,
   closestCenter,
@@ -58,6 +58,7 @@ interface ProjectGanttChartProps {
   onPhaseUpdate?: (phaseId: string, updates: { start_date?: string; end_date?: string }) => void;
   onMilestoneUpdate?: (milestoneId: string, updates: { due_date?: string }) => void;
   onTaskClick?: (taskId: string) => void;
+  onMilestoneClick?: (milestoneId: string) => void;
   onTaskCreate?: (phaseId?: string) => void;
   onSubtaskCreate?: (parentTaskId: string) => void;
   onGenerateSubtasks?: (parentTaskId: string, taskTitle: string) => void;
@@ -65,6 +66,8 @@ interface ProjectGanttChartProps {
   onBatchTaskUpdate?: (updates: Array<{ taskId: string; updates: Partial<TaskUpdate> }>) => void;
   onDependencyUpdate?: (taskId: string, newDependencyIds: string[]) => void;
   onMilestoneLink?: (taskId: string, milestoneId: string | null) => void;
+  onDeleteMilestone?: (milestoneId: string) => void;
+  onGenerateMilestoneTasks?: (milestoneId: string, milestoneTitle: string) => void;
   className?: string;
 }
 
@@ -167,12 +170,32 @@ const generateDateRange = (startDate: DateTime, days: number): DateTime[] => {
 interface DroppableMilestoneRowProps {
   row: GanttRow;
   isDropTarget: boolean;
+  onMilestoneClick?: (milestoneId: string) => void;
+  onRequestDeleteMilestone?: (milestoneId: string, milestoneTitle: string) => void;
+  onGenerateMilestoneTasks?: (milestoneId: string, milestoneTitle: string) => void;
 }
 
 const DroppableMilestoneRow: React.FC<DroppableMilestoneRowProps> = ({
   row,
   isDropTarget,
+  onMilestoneClick,
+  onRequestDeleteMilestone,
+  onGenerateMilestoneTasks,
 }) => {
+  // Popover positioning state
+  const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({});
+  const titleRef = useRef<HTMLSpanElement>(null);
+
+  const handleTitleMouseEnter = () => {
+    if (titleRef.current) {
+      const rect = titleRef.current.getBoundingClientRect();
+      setPopoverStyle({
+        left: `${rect.left}px`,
+        top: `${rect.bottom + 6}px`,
+      });
+    }
+  };
+
   // Use droppable for accepting tasks
   const { setNodeRef: setDroppableRef, isOver } = useDroppable({
     id: `milestone-drop-${row.id}`,
@@ -209,25 +232,63 @@ const DroppableMilestoneRow: React.FC<DroppableMilestoneRowProps> = ({
     'milestone',
     `depth-${row.depth}`,
     'draggable',
+    'clickable',
     isOver || isDropTarget ? 'drop-target' : '',
     isDragging ? 'dragging' : '',
     row.hasNoDate ? 'no-date' : '',
   ].filter(Boolean).join(' ');
+
+  const handleClick = () => {
+    if (!isDragging && onMilestoneClick) {
+      onMilestoneClick(row.id);
+    }
+  };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={classNames}
+      onClick={handleClick}
       {...attributes}
       {...listeners}
     >
       <span className="pgantt-milestone-icon">◆</span>
       {row.hasNoDate && <span className="pgantt-no-date-icon" title="期限未設定">⚠</span>}
-      <span className="pgantt-row-title">
+      <span
+        ref={titleRef}
+        className="pgantt-row-title"
+        onMouseEnter={handleTitleMouseEnter}
+      >
         {row.title}
-        <span className="pgantt-row-title-popover">{row.title}</span>
+        <span className="pgantt-row-title-popover" style={popoverStyle}>{row.title}</span>
       </span>
+      <div className="pgantt-milestone-actions">
+        {onGenerateMilestoneTasks && (
+          <button
+            className="pgantt-action-btn pgantt-generate-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onGenerateMilestoneTasks(row.id, row.title);
+            }}
+            title="タスクをAI生成"
+          >
+            <FaMagic size={10} />
+          </button>
+        )}
+        {onRequestDeleteMilestone && (
+          <button
+            className="pgantt-action-btn pgantt-delete-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRequestDeleteMilestone(row.id, row.title);
+            }}
+            title="マイルストーンを削除"
+          >
+            <FaTrash size={10} />
+          </button>
+        )}
+      </div>
     </div>
   );
 };
@@ -248,6 +309,7 @@ interface SortableSidebarRowProps {
   onSubtaskCreate?: (parentTaskId: string) => void;
   onGenerateSubtasks?: (parentTaskId: string, taskTitle: string) => void;
   onRequestDeleteTask?: (taskId: string, taskTitle: string) => void;
+  onMilestoneUnlink?: (taskId: string) => void;
   isDragDisabled: boolean;
   isDropTarget?: boolean;  // For milestone drop target highlighting
 }
@@ -264,6 +326,7 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
   onSubtaskCreate,
   onGenerateSubtasks,
   onRequestDeleteTask,
+  onMilestoneUnlink,
   isDragDisabled,
   isDropTarget,
 }) => {
@@ -412,6 +475,18 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
               <FaMagic size={10} />
             </button>
           )}
+          {row.linkedMilestoneId && onMilestoneUnlink && (
+            <button
+              className="pgantt-action-btn pgantt-unlink-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onMilestoneUnlink(row.id);
+              }}
+              title="マイルストーンから外す"
+            >
+              <FaUnlink size={10} />
+            </button>
+          )}
           {onRequestDeleteTask && (
             <button
               className="pgantt-action-btn pgantt-delete-btn"
@@ -442,6 +517,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   onPhaseUpdate,
   onMilestoneUpdate,
   onTaskClick,
+  onMilestoneClick,
   onTaskCreate,
   onSubtaskCreate,
   onGenerateSubtasks,
@@ -449,6 +525,8 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   onBatchTaskUpdate,
   onDependencyUpdate,
   onMilestoneLink,
+  onDeleteMilestone,
+  onGenerateMilestoneTasks,
   className,
 }) => {
   const timezone = useTimezone();
@@ -477,6 +555,9 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
 
   // Task deletion confirmation state
   const [pendingDeleteTask, setPendingDeleteTask] = useState<{ id: string; title: string } | null>(null);
+
+  // Milestone deletion confirmation state
+  const [pendingDeleteMilestone, setPendingDeleteMilestone] = useState<{ id: string; title: string } | null>(null);
 
   // Scroll position management - prevent unwanted scrolls on state changes
   const initialScrollDoneRef = useRef(false);
@@ -2033,6 +2114,9 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                         key={`sidebar-milestone-${row.id}`}
                         row={row}
                         isDropTarget={dropTargetMilestone === row.id}
+                        onMilestoneClick={onMilestoneClick}
+                        onRequestDeleteMilestone={onDeleteMilestone ? (id, title) => setPendingDeleteMilestone({ id, title }) : undefined}
+                        onGenerateMilestoneTasks={onGenerateMilestoneTasks}
                       />
                     ) : (
                       <SortableSidebarRow
@@ -2048,6 +2132,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                         onSubtaskCreate={onSubtaskCreate}
                         onGenerateSubtasks={onGenerateSubtasks}
                         onRequestDeleteTask={onDeleteTask ? (id, title) => setPendingDeleteTask({ id, title }) : undefined}
+                        onMilestoneUnlink={onMilestoneLink ? (taskId) => onMilestoneLink(taskId, null) : undefined}
                         isDragDisabled={false}
                         isDropTarget={false}
                       />
@@ -2355,6 +2440,38 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                   onDeleteTask(pendingDeleteTask.id);
                 }
                 setPendingDeleteTask(null);
+              }}
+            >
+              削除する
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* Milestone delete confirmation modal */}
+    {pendingDeleteMilestone && (
+      <div className="pgantt-modal-overlay" onClick={() => setPendingDeleteMilestone(null)}>
+        <div className="pgantt-modal" onClick={(e) => e.stopPropagation()}>
+          <div className="pgantt-modal-header">
+            <h3>マイルストーンの削除</h3>
+          </div>
+          <p className="pgantt-modal-message">「{pendingDeleteMilestone.title}」を削除しますか？</p>
+          <p className="pgantt-modal-warning">紐づいているタスクはマイルストーンから外れます。</p>
+          <div className="pgantt-modal-actions">
+            <button
+              className="cancel"
+              onClick={() => setPendingDeleteMilestone(null)}
+            >
+              キャンセル
+            </button>
+            <button
+              className="delete"
+              onClick={() => {
+                if (onDeleteMilestone) {
+                  onDeleteMilestone(pendingDeleteMilestone.id);
+                }
+                setPendingDeleteMilestone(null);
               }}
             >
               削除する

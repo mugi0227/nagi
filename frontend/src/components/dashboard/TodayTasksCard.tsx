@@ -1,14 +1,11 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { AnimatePresence } from 'framer-motion';
 import { useTodayTasks } from '../../hooks/useTodayTasks';
 import { useTasks } from '../../hooks/useTasks';
+import { useProjects } from '../../hooks/useProjects';
 import { useCapacitySettings } from '../../hooks/useCapacitySettings';
-import { TaskDetailModal } from '../tasks/TaskDetailModal';
-import { TaskFormModal } from '../tasks/TaskFormModal';
 import { StepNumber } from '../common/StepNumber';
 import { tasksApi } from '../../api/tasks';
-import type { Task, TaskCreate, TaskUpdate } from '../../api/types';
+import type { Task } from '../../api/types';
 import { sortTasksByStepNumber } from '../../utils/taskSort';
 import { userStorage } from '../../utils/userStorage';
 import { useTimezone } from '../../hooks/useTimezone';
@@ -64,15 +61,17 @@ type TodayTaskSnapshot = {
   parent_title?: string | null;
 };
 
-export function TodayTasksCard() {
+interface TodayTasksCardProps {
+  /** タスククリック時のコールバック（モーダル表示は親に委譲） */
+  onTaskClick?: (task: Task) => void;
+}
+
+export function TodayTasksCard({ onTaskClick }: TodayTasksCardProps) {
   const timezone = useTimezone();
   const { data, isLoading, error } = useTodayTasks();
-  const { tasks: allTasks, updateTask, createTask, isCreating, isUpdating, refetch } = useTasks();
+  const { tasks: allTasks, updateTask } = useTasks();
+  const { projects } = useProjects();
   const { getCapacityForDate } = useCapacitySettings();
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [openedParentTask, setOpenedParentTask] = useState<Task | null>(null);
-  const [isFormOpen, setIsFormOpen] = useState(false);
-  const [taskToEdit, setTaskToEdit] = useState<Task | undefined>(undefined);
   const [lockInfoState, setLockInfoState] = useState<TodayTasksLock | null>(() => {
     const raw = userStorage.get(LOCK_STORAGE_KEY);
     if (!raw) return null;
@@ -83,6 +82,8 @@ export function TodayTasksCard() {
     }
   });
   const [dependencyCache, setDependencyCache] = useState<Record<string, Task>>({});
+  // Track if user manually unlocked to prevent auto-relock
+  const [manuallyUnlocked, setManuallyUnlocked] = useState(false);
 
   const parentMap = useMemo(() => {
     const map = new Map<string, Task>();
@@ -90,20 +91,21 @@ export function TodayTasksCard() {
     return map;
   }, [allTasks]);
 
-  const { data: subtasks = [] } = useQuery({
-    queryKey: ['subtasks', selectedTask?.id || openedParentTask?.id],
-    queryFn: () => {
-      const targetId = openedParentTask?.id || selectedTask?.id;
-      return targetId ? tasksApi.getSubtasks(targetId) : Promise.resolve([]);
-    },
-    enabled: !!(selectedTask || openedParentTask),
-  });
+  const projectMap = useMemo(() => {
+    const map = new Map<string, string>();
+    projects.forEach(project => map.set(project.id, project.name));
+    return map;
+  }, [projects]);
 
   const dateLabel = data?.today || toDateKey(todayInTimezone(timezone).toJSDate(), timezone);
   const lockInfo = lockInfoState?.date === dateLabel && Array.isArray(lockInfoState.taskIds)
     ? lockInfoState
     : null;
 
+  const todayTasks = useMemo(() => data?.today_tasks ?? [], [data?.today_tasks]);
+  const todayAllocations = useMemo(() => data?.today_allocations ?? [], [data?.today_allocations]);
+
+  // Clean up stale lock info
   useEffect(() => {
     if (lockInfo) return;
     const raw = userStorage.get(LOCK_STORAGE_KEY);
@@ -118,46 +120,42 @@ export function TodayTasksCard() {
     }
   }, [lockInfo, dateLabel]);
 
+  // Auto-lock when today's tasks are loaded and no lock exists yet
+  useEffect(() => {
+    // Skip if user manually unlocked this session
+    if (isLoading || lockInfo || todayTasks.length === 0 || manuallyUnlocked) return;
+
+    const taskIds = todayTasks.map(task => task.id);
+    const allocationSnapshot: Record<string, TodayTaskAllocationSnapshot> = {};
+    todayAllocations.forEach(allocation => {
+      allocationSnapshot[allocation.task_id] = {
+        allocated_minutes: allocation.allocated_minutes,
+        total_minutes: allocation.total_minutes,
+        ratio: allocation.ratio,
+      };
+    });
+    const taskSnapshot: Record<string, TodayTaskSnapshot> = {};
+    todayTasks.forEach(task => {
+      taskSnapshot[task.id] = {
+        title: task.title,
+        parent_id: task.parent_id,
+        parent_title: task.parent_id
+          ? (parentMap.get(task.parent_id)?.title || TEXT.parentUnknown)
+          : null,
+      };
+    });
+    const payload: TodayTasksLock = {
+      date: dateLabel,
+      taskIds,
+      allocations: allocationSnapshot,
+      taskSnapshots: taskSnapshot,
+    };
+    userStorage.set(LOCK_STORAGE_KEY, JSON.stringify(payload));
+    setLockInfoState(payload);
+  }, [isLoading, lockInfo, todayTasks, todayAllocations, dateLabel, parentMap, manuallyUnlocked]);
+
   const handleTaskClick = (task: Task) => {
-    if (task.parent_id) {
-      const parent = allTasks.find(t => t.id === task.parent_id);
-      if (parent) {
-        setOpenedParentTask(parent);
-        setSelectedTask(task);
-      } else {
-        tasksApi.getById(task.parent_id)
-          .then(parentTask => {
-            setOpenedParentTask(parentTask);
-            setSelectedTask(task);
-          })
-          .catch(err => {
-            console.error('Failed to fetch parent task:', err);
-            setSelectedTask(task);
-          });
-      }
-    } else {
-      setSelectedTask(task);
-      setOpenedParentTask(null);
-    }
-  };
-
-  const handleCloseModal = () => {
-    setSelectedTask(null);
-    setOpenedParentTask(null);
-  };
-
-  const handleCloseForm = () => {
-    setIsFormOpen(false);
-    setTaskToEdit(undefined);
-  };
-
-  const handleSubmitForm = (taskData: TaskCreate | TaskUpdate) => {
-    if (taskToEdit) {
-      updateTask(taskToEdit.id, taskData as TaskUpdate);
-    } else {
-      createTask(taskData as TaskCreate);
-    }
-    handleCloseForm();
+    onTaskClick?.(task);
   };
 
   const handleTaskCheck = async (taskId: string, e?: React.MouseEvent) => {
@@ -203,8 +201,6 @@ export function TodayTasksCard() {
     updateTask(taskId, { status: 'DONE' });
   };
 
-  const todayTasks = useMemo(() => data?.today_tasks ?? [], [data?.today_tasks]);
-  const todayAllocations = useMemo(() => data?.today_allocations ?? [], [data?.today_allocations]);
   const allocatedMinutes = data?.total_estimated_minutes ?? 0;
   const displayCapacityMinutes = Math.max(
     0,
@@ -410,6 +406,7 @@ export function TodayTasksCard() {
     if (isLocked) {
       userStorage.remove(LOCK_STORAGE_KEY);
       setLockInfoState(null);
+      setManuallyUnlocked(true);
       return;
     }
 
@@ -440,6 +437,7 @@ export function TodayTasksCard() {
     };
     userStorage.set(LOCK_STORAGE_KEY, JSON.stringify(payload));
     setLockInfoState(payload);
+    setManuallyUnlocked(false);
   };
 
   // Helper to get progress values (placeholder until progress field is added)
@@ -519,6 +517,9 @@ export function TodayTasksCard() {
             const parentTitle = focusTask.parent_id
               ? parentMap.get(focusTask.parent_id)?.title
               : null;
+            const projectName = focusTask.project_id
+              ? projectMap.get(focusTask.project_id)
+              : null;
             const allocation = allocationSource?.get(focusTask.id);
 
             return (
@@ -546,8 +547,12 @@ export function TodayTasksCard() {
                     {focusTask.title}
                     {isBlocked && <span className="lock-icon">🔒</span>}
                   </div>
-                  {parentTitle && (
-                    <div className="focus-parent">{parentTitle}</div>
+                  {(projectName || parentTitle) && (
+                    <div className="focus-context">
+                      {projectName && <span className="focus-project">{projectName}</span>}
+                      {projectName && parentTitle && <span className="context-separator">/</span>}
+                      {parentTitle && <span className="focus-parent-text">{parentTitle}</span>}
+                    </div>
                   )}
                   <div className="focus-meta">
                     {formatMinutes(focusTask.estimated_minutes || 0)}
@@ -573,7 +578,13 @@ export function TodayTasksCard() {
               if (group.parentId && group.tasks.length > 1) {
                 return (
                   <div key={group.key} className="task-group">
-                    <div className="group-header">{group.parentTitle}</div>
+                    <div className="group-header">
+                      {(() => {
+                        const firstTask = group.tasks[0];
+                        const projName = firstTask?.project_id ? projectMap.get(firstTask.project_id) : null;
+                        return projName ? `${projName} / ${group.parentTitle}` : group.parentTitle;
+                      })()}
+                    </div>
                     {group.tasks.map(task => (
                       <TaskItemRow
                         key={task.id}
@@ -595,6 +606,9 @@ export function TodayTasksCard() {
                 const parentTitle = task.parent_id
                   ? parentMap.get(task.parent_id)?.title
                   : null;
+                const projName = task.project_id
+                  ? projectMap.get(task.project_id)
+                  : null;
                 return (
                   <TaskItemRow
                     key={task.id}
@@ -602,6 +616,7 @@ export function TodayTasksCard() {
                     dependencyStatus={dependencyStatusByTaskId.get(task.id)}
                     stepNumber={stepNumberByTaskId.get(task.id)}
                     parentTitle={parentTitle ?? undefined}
+                    projectName={projName ?? undefined}
                     onCheck={handleTaskCheck}
                     onClick={handleTaskClick}
                     getProgressValues={getProgressValues}
@@ -612,42 +627,6 @@ export function TodayTasksCard() {
           )}
         </div>
       </div>
-
-      <AnimatePresence>
-        {selectedTask && (
-          <TaskDetailModal
-            task={openedParentTask || selectedTask}
-            subtasks={subtasks}
-            allTasks={allTasks}
-            initialSubtask={openedParentTask ? selectedTask : null}
-            onClose={handleCloseModal}
-            onEdit={(task) => {
-              setTaskToEdit(task);
-              setIsFormOpen(true);
-              handleCloseModal();
-            }}
-            onProgressChange={(taskId, progress) => {
-              updateTask(taskId, { progress });
-            }}
-            onTaskCheck={handleTaskCheck}
-            onActionItemsCreated={() => {
-              refetch();
-            }}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {isFormOpen && (
-          <TaskFormModal
-            task={taskToEdit}
-            allTasks={allTasks}
-            onClose={handleCloseForm}
-            onSubmit={handleSubmitForm}
-            isSubmitting={isCreating || isUpdating}
-          />
-        )}
-      </AnimatePresence>
     </div>
   );
 }
@@ -657,6 +636,7 @@ type TaskItemRowProps = {
   task: Task;
   dependencyStatus?: { blocked: boolean; reason?: string };
   parentTitle?: string;
+  projectName?: string;
   hideParent?: boolean;
   stepNumber?: number;
   onCheck: (taskId: string, e?: React.MouseEvent) => void;
@@ -668,6 +648,7 @@ function TaskItemRow({
   task,
   dependencyStatus,
   parentTitle,
+  projectName,
   hideParent,
   stepNumber,
   onCheck,
@@ -703,8 +684,12 @@ function TaskItemRow({
           <span>{task.title}</span>
           {isBlocked && <span className="lock-icon">🔒</span>}
         </div>
-        {!hideParent && parentTitle && (
-          <div className="task-parent">{parentTitle}</div>
+        {!hideParent && (projectName || parentTitle) && (
+          <div className="task-context">
+            {projectName && <span className="task-project">{projectName}</span>}
+            {projectName && parentTitle && <span className="context-separator">/</span>}
+            {parentTitle && <span className="task-parent-text">{parentTitle}</span>}
+          </div>
         )}
       </div>
       <div className="task-meta">

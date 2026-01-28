@@ -109,6 +109,8 @@ async def approve_proposal(
             repo=task_repo,
             input_data=input_data,
             assignment_repo=assignment_repo,  # 担当者割り当てを有効にする
+            project_repo=project_repo,
+            member_repo=member_repo,
         )
         result.task_id = created_task.get("id")
         assignments = created_task.get("assignments")
@@ -150,7 +152,10 @@ async def approve_proposal(
         assignment_result = await assign_task(
             user_id=user.id,
             assignment_repo=assignment_repo,
+            task_repo=task_repo,
             input_data=input_data,
+            project_repo=project_repo,
+            member_repo=member_repo,
         )
         result.assignment_ids = []
         if isinstance(assignment_result, dict):
@@ -185,6 +190,8 @@ async def approve_proposal(
             project_id=project_id,
             phase_repo=phase_repo,
             milestone_repo=milestone_repo,
+            project_repo=project_repo,
+            member_repo=member_repo,
             phases=phases,
             create_milestones=bool(create_milestones),
         )
@@ -252,16 +259,34 @@ async def approve_proposal(
         tool_result = None
 
         if tool_name == "update_task":
-            tool_result = await update_task(user.id, task_repo, UpdateTaskInput(**args))
+            tool_result = await update_task(
+                user.id,
+                task_repo,
+                UpdateTaskInput(**args),
+                project_repo,
+                member_repo,
+            )
         elif tool_name == "delete_task":
-            tool_result = await delete_task(user.id, task_repo, DeleteTaskInput(**args))
+            tool_result = await delete_task(
+                user.id,
+                task_repo,
+                DeleteTaskInput(**args),
+                project_repo,
+                member_repo,
+            )
         elif tool_name == "update_project":
-            tool_result = await update_project(user.id, project_repo, UpdateProjectInput(**args))
+            tool_result = await update_project(
+                user.id,
+                project_repo,
+                member_repo,
+                UpdateProjectInput(**args),
+            )
         elif tool_name == "invite_project_member":
             tool_result = await invite_project_member(
                 user.id,
                 invitation_repo,
                 member_repo,
+                project_repo,
                 InviteProjectMemberInput(**args),
             )
         elif tool_name == "create_project_summary":
@@ -271,6 +296,7 @@ async def approve_proposal(
                 task_repo,
                 memory_repo,
                 llm_provider,
+                member_repo,
                 CreateProjectSummaryInput(**args),
             )
         elif tool_name == "add_to_memory":
@@ -294,6 +320,7 @@ async def approve_proposal(
                 meeting_agenda_repo,
                 AddAgendaItemInput(**args),
                 project_repo=project_repo,
+                member_repo=member_repo,
                 recurring_meeting_repo=recurring_meeting_repo,
                 task_repo=task_repo,
             )
@@ -302,12 +329,20 @@ async def approve_proposal(
                 user.id,
                 meeting_agenda_repo,
                 UpdateAgendaItemInput(**args),
+                project_repo=project_repo,
+                member_repo=member_repo,
+                recurring_meeting_repo=recurring_meeting_repo,
+                task_repo=task_repo,
             )
         elif tool_name == "delete_agenda_item":
             tool_result = await delete_agenda_item(
                 user.id,
                 meeting_agenda_repo,
                 DeleteAgendaItemInput(**args),
+                project_repo=project_repo,
+                member_repo=member_repo,
+                recurring_meeting_repo=recurring_meeting_repo,
+                task_repo=task_repo,
             )
         elif tool_name == "reorder_agenda_items":
             tool_result = await reorder_agenda_items(
@@ -315,25 +350,32 @@ async def approve_proposal(
                 meeting_agenda_repo,
                 ReorderAgendaItemsInput(**args),
                 project_repo=project_repo,
+                member_repo=member_repo,
                 recurring_meeting_repo=recurring_meeting_repo,
                 task_repo=task_repo,
             )
         elif tool_name == "update_phase":
-            tool_result = await update_phase(user.id, phase_repo, UpdatePhaseInput(**args))
+            tool_result = await update_phase(
+                user.id,
+                phase_repo,
+                project_repo,
+                member_repo,
+                UpdatePhaseInput(**args),
+            )
         elif tool_name == "create_phase":
-            tool_func = create_phase_tool(phase_repo, user.id).func
+            tool_func = create_phase_tool(phase_repo, project_repo, member_repo, user.id).func
             tool_result = await tool_func(args)
         elif tool_name == "delete_phase":
-            tool_func = delete_phase_tool(phase_repo, user.id).func
+            tool_func = delete_phase_tool(phase_repo, project_repo, member_repo, user.id).func
             tool_result = await tool_func(args)
         elif tool_name == "create_milestone":
-            tool_func = create_milestone_tool(milestone_repo, user.id).func
+            tool_func = create_milestone_tool(milestone_repo, project_repo, member_repo, user.id).func
             tool_result = await tool_func(args)
         elif tool_name == "update_milestone":
-            tool_func = update_milestone_tool(milestone_repo, user.id).func
+            tool_func = update_milestone_tool(milestone_repo, project_repo, member_repo, user.id).func
             tool_result = await tool_func(args)
         elif tool_name == "delete_milestone":
-            tool_func = delete_milestone_tool(milestone_repo, user.id).func
+            tool_func = delete_milestone_tool(milestone_repo, project_repo, member_repo, user.id).func
             tool_result = await tool_func(args)
         else:
             raise HTTPException(status_code=400, detail=f"Unknown tool_action: {tool_name}")

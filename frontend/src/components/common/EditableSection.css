@@ -1,0 +1,174 @@
+.editable-section {
+  position: relative;
+  width: 100%;
+}
+
+.editable-section.disabled {
+  pointer-events: none;
+}
+
+/* View Mode */
+.editable-view-mode {
+  position: relative;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background-color 0.2s;
+}
+
+.editable-view-mode:hover {
+  background-color: rgba(0, 0, 0, 0.02);
+}
+
+[data-theme="dark"] .editable-view-mode:hover {
+  background-color: rgba(255, 255, 255, 0.03);
+}
+
+.editable-content {
+  padding: 0.5rem;
+  min-height: 1.5em;
+}
+
+.editable-content.empty {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.editable-placeholder {
+  opacity: 0.6;
+}
+
+/* Edit Button */
+.editable-edit-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  background: #f1f5f9;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  z-index: 10;
+}
+
+.editable-view-mode:hover .editable-edit-btn,
+.editable-section:hover .editable-edit-btn {
+  opacity: 1;
+}
+
+.editable-edit-btn:hover {
+  background: var(--primary);
+  color: white;
+}
+
+[data-theme="dark"] .editable-edit-btn {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .editable-edit-btn:hover {
+  background: var(--primary);
+}
+
+/* Edit Mode */
+.editable-edit-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.editable-input,
+.editable-textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px solid var(--primary);
+  border-radius: 8px;
+  font-size: inherit;
+  font-family: inherit;
+  background: #ffffff;
+  color: var(--text-main);
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.editable-input:focus,
+.editable-textarea:focus {
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+}
+
+[data-theme="dark"] .editable-input,
+[data-theme="dark"] .editable-textarea {
+  background: #0f172a;
+  border-color: var(--primary);
+}
+
+.editable-textarea {
+  resize: vertical;
+  min-height: 100px;
+  line-height: 1.6;
+}
+
+/* Actions */
+.editable-actions {
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.editable-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 0.875rem;
+}
+
+.editable-btn.save {
+  background: var(--primary);
+  color: white;
+}
+
+.editable-btn.save:hover {
+  background: #0369a1;
+}
+
+.editable-btn.cancel {
+  background: #f1f5f9;
+  color: var(--text-muted);
+}
+
+.editable-btn.cancel:hover {
+  background: #e2e8f0;
+  color: var(--text-main);
+}
+
+[data-theme="dark"] .editable-btn.cancel {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .editable-btn.cancel:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.editable-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Hint */
+.editable-hint {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  text-align: right;
+}

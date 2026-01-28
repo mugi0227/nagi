@@ -402,27 +402,13 @@ export function MeetingMainContent({
                                 会議中
                             </span>
                             <span className="meeting-minimized-agenda">
-                                議題 {(session.current_agenda_index ?? 0) + 1} / {agendaItems.length}:
-                                {agendaItems[session.current_agenda_index ?? 0]?.title || '---'}
+                                議題 {(session.current_agenda_index ?? 0) + 1}/{agendaItems.length}
+                                <span className="meeting-minimized-agenda-title">
+                                    {agendaItems[session.current_agenda_index ?? 0]?.title || '---'}
+                                </span>
                             </span>
                         </div>
                         <div className="meeting-minimized-actions">
-                            <button
-                                className="btn-minimized reset-to-prep"
-                                onClick={handleResetToPreparation}
-                                disabled={resetToPreparationMutation.isPending}
-                                title="開始前に戻す"
-                            >
-                                <FaHistory /> 開始前に戻す
-                            </button>
-                            <button
-                                className="btn-minimized reset"
-                                onClick={handleResetSession}
-                                disabled={resetSessionMutation.isPending}
-                                title="リセット"
-                            >
-                                <FaUndo /> リセット
-                            </button>
                             <button
                                 className="btn-minimized resume"
                                 onClick={handleResumeModal}

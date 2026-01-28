@@ -14,6 +14,7 @@ from google.adk.tools import FunctionTool
 from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import get_settings
+from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
 from app.utils.datetime_utils import parse_iso_to_utc, ensure_utc
@@ -24,6 +25,8 @@ from app.models.enums import CreatedBy, EnergyLevel, Priority
 from app.models.proposal import Proposal, ProposalResponse, ProposalType
 from app.models.task import Task, TaskCreate, TaskUpdate
 from app.tools.approval_tools import create_tool_action_proposal
+from app.services.project_permissions import ProjectAction
+from app.tools.permissions import require_project_action, require_project_member
 
 
 # ===========================================
@@ -263,11 +266,23 @@ class ListProjectAssignmentsInput(BaseModel):
 async def list_task_assignments(
     user_id: str,
     assignment_repo: ITaskAssignmentRepository,
+    task_repo: ITaskRepository,
     input_data: ListTaskAssignmentsInput,
+    project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
 ) -> dict:
     # List assignments for a task.
     task_id = UUID(input_data.task_id)
-    assignments = await assignment_repo.list_by_task(user_id, task_id)
+    _, owner_id, _, error = await _resolve_task_access(
+        user_id,
+        task_id,
+        task_repo,
+        project_repo,
+        member_repo,
+    )
+    if error:
+        return error
+    assignments = await assignment_repo.list_by_task(owner_id or user_id, task_id)
     return {
         "assignments": [assignment.model_dump(mode="json") for assignment in assignments],
         "count": len(assignments),
@@ -277,6 +292,8 @@ async def list_task_assignments(
 async def list_project_assignments(
     user_id: str,
     assignment_repo: ITaskAssignmentRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     input_data: ListProjectAssignmentsInput,
 ) -> dict:
     # List assignments for a project.
@@ -285,7 +302,17 @@ async def list_project_assignments(
     except ValueError:
         return {"error": f"Invalid project ID format: {input_data.project_id}"}
 
-    assignments = await assignment_repo.list_by_project(user_id, project_id)
+    access = await require_project_action(
+        user_id,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.ASSIGNMENT_READ,
+    )
+    if isinstance(access, dict):
+        return access
+
+    assignments = await assignment_repo.list_by_project(access.owner_id, project_id)
     return {
         "assignments": [assignment.model_dump(mode="json") for assignment in assignments],
         "count": len(assignments),
@@ -307,6 +334,69 @@ def _within_minutes(left: datetime, right: datetime, minutes: int) -> bool:
     right_norm = _normalize_datetime(right)
     delta_seconds = abs((left_norm - right_norm).total_seconds())
     return delta_seconds <= minutes * 60
+
+
+async def _resolve_task_access(
+    user_id: str,
+    task_id: UUID,
+    task_repo: ITaskRepository,
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
+) -> tuple[Optional[Task], Optional[str], Optional[UUID], Optional[dict]]:
+    task = await task_repo.get(user_id, task_id)
+    if task:
+        if task.project_id:
+            if not project_repo or not member_repo:
+                return None, None, None, {"error": "Project access check unavailable"}
+            access = await require_project_member(
+                user_id,
+                task.project_id,
+                project_repo,
+                member_repo,
+            )
+            if isinstance(access, dict):
+                return None, None, None, access
+            return task, access.owner_id, task.project_id, None
+        return task, user_id, task.project_id, None
+
+    if not project_repo or not member_repo:
+        return None, None, None, {"error": "Project access check unavailable"}
+
+    projects = await project_repo.list(user_id, limit=1000)
+    for project in projects:
+        task = await task_repo.get(user_id, task_id, project_id=project.id)
+        if task:
+            access = await require_project_member(
+                user_id,
+                project.id,
+                project_repo,
+                member_repo,
+            )
+            if isinstance(access, dict):
+                return None, None, None, access
+            return task, access.owner_id, project.id, None
+
+    return None, None, None, {"error": "Task not found"}
+
+
+async def _resolve_project_access(
+    user_id: str,
+    project_id_raw: Optional[str],
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
+) -> tuple[Optional[UUID], Optional[str], Optional[dict]]:
+    if not project_id_raw or not project_id_raw.strip():
+        return None, user_id, None
+    try:
+        project_id = UUID(project_id_raw)
+    except (ValueError, AttributeError):
+        return None, None, {"error": f"Invalid project ID format: {project_id_raw}"}
+    if not project_repo or not member_repo:
+        return None, None, {"error": "Project access check unavailable"}
+    access = await require_project_member(user_id, project_id, project_repo, member_repo)
+    if isinstance(access, dict):
+        return None, None, access
+    return project_id, access.owner_id, None
 
 
 async def _find_existing_meeting(
@@ -340,6 +430,8 @@ async def propose_task(
     description: str = "",
     auto_approve: bool = False,
     assignment_repo: Optional[ITaskAssignmentRepository] = None,
+    project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
 ) -> dict:
     """
     Propose a task for user approval, or auto-approve if configured.
@@ -362,6 +454,17 @@ async def propose_task(
     if not description:
         description = f"タスク「{input_data.title}」を作成します。"
 
+    if input_data.project_id:
+        _, _, access_error = await _resolve_project_access(
+            user_id,
+            input_data.project_id,
+            project_repo,
+            member_repo,
+        )
+        if access_error:
+            return access_error
+
+
     # Auto-approve mode: create task immediately
     if auto_approve:
         created_task = await create_task(
@@ -369,6 +472,8 @@ async def propose_task(
             repo=task_repo,
             input_data=input_data,
             assignment_repo=assignment_repo,
+            project_repo=project_repo,
+            member_repo=member_repo,
         )
         return {
             "auto_approved": True,
@@ -414,6 +519,8 @@ async def create_task(
     repo: ITaskRepository,
     input_data: CreateTaskInput,
     assignment_repo: Optional[ITaskAssignmentRepository] = None,
+    project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
 ) -> dict:
     """
     Create a new task.
@@ -427,8 +534,14 @@ async def create_task(
     Returns:
         Created task as dict
     """
-    # Parse project_id if provided
-    project_id = UUID(input_data.project_id) if input_data.project_id else None
+    project_id, owner_id, access_error = await _resolve_project_access(
+        user_id,
+        input_data.project_id,
+        project_repo,
+        member_repo,
+    )
+    if access_error:
+        return access_error
 
     # Parse parent_id if provided
     parent_id = None
@@ -468,7 +581,7 @@ async def create_task(
     siblings = []
     if parent_id:
         try:
-            siblings = await repo.get_subtasks(user_id, parent_id, project_id=project_id)
+            siblings = await repo.get_subtasks(owner_id, parent_id, project_id=project_id)
         except Exception:
             siblings = []
 
@@ -507,7 +620,7 @@ async def create_task(
     if input_data.is_fixed_time and start_time and end_time:
         existing = await _find_existing_meeting(
             repo,
-            user_id,
+            owner_id,
             start_time,
             end_time,
             input_data.title,
@@ -520,7 +633,7 @@ async def create_task(
         title=input_data.title,
         description=input_data.description,
         purpose=input_data.purpose,
-        project_id=project_id,
+        project_id=target_project_id,
         importance=input_data.importance,
         urgency=input_data.urgency,
         energy_level=input_data.energy_level,
@@ -543,7 +656,7 @@ async def create_task(
         meeting_notes=input_data.meeting_notes,
     )
 
-    task = await repo.create(user_id, task_data)
+    task = await repo.create(owner_id, task_data)
     result = task.model_dump(mode="json")  # Serialize UUIDs to strings
 
     assigned = []
@@ -552,23 +665,23 @@ async def create_task(
         for assignee_id in input_data.assignee_ids:
             if assignee_id and assignee_id.strip():
                 assignment = await assignment_repo.assign(
-                    user_id,
+                    owner_id,
                     task.id,
                     TaskAssignmentCreate(assignee_id=assignee_id),
                 )
                 assigned.append(assignment.model_dump(mode="json"))
 
     if not assigned and assignment_repo and parent_id and not input_data.assignee_ids:
-        parent_assignments = await assignment_repo.list_by_task(user_id, parent_id)
+        parent_assignments = await assignment_repo.list_by_task(owner_id, parent_id)
         if not parent_assignments and project_id:
-            project_assignments = await assignment_repo.list_by_project(user_id, project_id)
+            project_assignments = await assignment_repo.list_by_project(owner_id, project_id)
             parent_assignments = [
                 assignment for assignment in project_assignments if assignment.task_id == parent_id
             ]
         for assignment in parent_assignments:
             if assignment.assignee_id:
                 created = await assignment_repo.assign(
-                    user_id,
+                    owner_id,
                     task.id,
                     TaskAssignmentCreate(assignee_id=assignment.assignee_id),
                 )
@@ -584,6 +697,8 @@ async def update_task(
     user_id: str,
     repo: ITaskRepository,
     input_data: UpdateTaskInput,
+    project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
 ) -> dict:
     """
     Update an existing task.
@@ -598,13 +713,35 @@ async def update_task(
     """
     task_id = UUID(input_data.task_id)
 
+    _, owner_id, current_project_id, access_error = await _resolve_task_access(
+        user_id,
+        task_id,
+        repo,
+        project_repo,
+        member_repo,
+    )
+    if access_error:
+        return access_error
+
     # Parse project_id if provided
-    project_id = None
+    target_project_id = None
     if input_data.project_id:
         try:
-            project_id = UUID(input_data.project_id)
+            target_project_id = UUID(input_data.project_id)
         except ValueError:
-            pass  # Invalid UUID format, ignore
+            return {"error": f"Invalid project ID format: {input_data.project_id}"}
+
+    if target_project_id and target_project_id != current_project_id:
+        if not project_repo or not member_repo:
+            return {"error": "Project access check unavailable"}
+        access = await require_project_member(
+            user_id,
+            target_project_id,
+            project_repo,
+            member_repo,
+        )
+        if isinstance(access, dict):
+            return access
 
     # Parse phase_id if provided
     phase_id = None
@@ -700,7 +837,7 @@ async def update_task(
         meeting_notes=input_data.meeting_notes,
     )
 
-    task = await repo.update(user_id, task_id, update_data)
+    task = await repo.update(owner_id, task_id, update_data, project_id=current_project_id)
     return task.model_dump(mode="json")  # Serialize UUIDs to strings
 
 
@@ -708,6 +845,8 @@ async def delete_task(
     user_id: str,
     repo: ITaskRepository,
     input_data: DeleteTaskInput,
+    project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
 ) -> dict:
     """
     Delete a task.
@@ -721,7 +860,17 @@ async def delete_task(
         Deletion result
     """
     task_id = UUID(input_data.task_id)
-    deleted = await repo.delete(user_id, task_id)
+    _, owner_id, project_id, access_error = await _resolve_task_access(
+        user_id,
+        task_id,
+        repo,
+        project_repo,
+        member_repo,
+    )
+    if access_error:
+        return access_error
+
+    deleted = await repo.delete(owner_id, task_id, project_id=project_id)
 
     return {
         "success": deleted,
@@ -734,6 +883,8 @@ async def get_task(
     user_id: str,
     repo: ITaskRepository,
     input_data: GetTaskInput,
+    project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
 ) -> dict:
     """
     Get a single task by ID.
@@ -747,13 +898,18 @@ async def get_task(
         Task details including meeting_notes
     """
     task_id = UUID(input_data.task_id)
-    task = await repo.get(user_id, task_id)
+    task, _, _, access_error = await _resolve_task_access(
+        user_id,
+        task_id,
+        repo,
+        project_repo,
+        member_repo,
+    )
+    if access_error:
+        return access_error
 
     if not task:
-        return {
-            "error": "Task not found",
-            "task_id": input_data.task_id,
-        }
+        return {"error": "Task not found", "task_id": input_data.task_id}
 
     return {
         "task": task.model_dump(mode="json"),
@@ -764,6 +920,8 @@ async def list_tasks(
     user_id: str,
     repo: ITaskRepository,
     input_data: ListTasksInput,
+    project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
 ) -> dict:
     """
     List tasks with optional filters.
@@ -776,18 +934,18 @@ async def list_tasks(
     Returns:
         List of tasks matching the filters
     """
-    # Parse project_id if provided
-    project_id = None
-    if input_data.project_id and input_data.project_id.strip():
-        try:
-            project_id = UUID(input_data.project_id)
-        except (ValueError, AttributeError):
-            # Invalid UUID format, ignore
-            pass
+    project_id, owner_id, access_error = await _resolve_project_access(
+        user_id,
+        input_data.project_id,
+        project_repo,
+        member_repo,
+    )
+    if access_error:
+        return access_error
 
     # Get tasks - we'll filter by status in Python since repo.list doesn't support multiple statuses
     all_tasks = await repo.list(
-        user_id,
+        owner_id,
         project_id=project_id,
         parent_id=None,  # Only root tasks (not subtasks)
     )
@@ -841,24 +999,36 @@ def _extract_assignment_ids(result: dict) -> list[str]:
 async def assign_task(
     user_id: str,
     assignment_repo: ITaskAssignmentRepository,
+    task_repo: ITaskRepository,
     input_data: AssignTaskInput,
+    project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
 ) -> dict:
     # Assign a task to one or more members.
     task_id = UUID(input_data.task_id)
+    _, owner_id, _, access_error = await _resolve_task_access(
+        user_id,
+        task_id,
+        task_repo,
+        project_repo,
+        member_repo,
+    )
+    if access_error:
+        return access_error
     assignee_ids = _normalize_assignee_ids(input_data)
     if not assignee_ids:
         raise ValueError("assignee_id or assignee_ids is required")
 
     if len(assignee_ids) == 1:
         assignment = await assignment_repo.assign(
-            user_id,
+            owner_id,
             task_id,
             TaskAssignmentCreate(assignee_id=assignee_ids[0]),
         )
         return assignment.model_dump(mode="json")
 
     assignments = await assignment_repo.assign_multiple(
-        user_id,
+        owner_id,
         task_id,
         TaskAssignmentsCreate(assignee_ids=assignee_ids),
     )
@@ -873,13 +1043,27 @@ async def propose_task_assignment(
     session_id: str,
     proposal_repo: IProposalRepository,
     assignment_repo: ITaskAssignmentRepository,
+    task_repo: ITaskRepository,
     input_data: AssignTaskInput,
     description: str = "",
     auto_approve: bool = False,
+    project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
 ) -> dict:
     # Propose a task assignment for user approval, or auto-approve if configured.
     if not description:
         description = "Assign task owners."
+
+    task_id = UUID(input_data.task_id)
+    _, _, _, access_error = await _resolve_task_access(
+        user_id,
+        task_id,
+        task_repo,
+        project_repo,
+        member_repo,
+    )
+    if access_error:
+        return access_error
 
     assignee_ids = _normalize_assignee_ids(input_data)
     if not assignee_ids:
@@ -893,7 +1077,10 @@ async def propose_task_assignment(
         result = await assign_task(
             user_id=user_id,
             assignment_repo=assignment_repo,
+            task_repo=task_repo,
             input_data=input_data,
+            project_repo=project_repo,
+            member_repo=member_repo,
         )
         return {
             "auto_approved": True,
@@ -935,6 +1122,8 @@ async def create_meeting(
     user_id: str,
     repo: ITaskRepository,
     input_data: CreateMeetingInput,
+    project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
 ) -> dict:
     """
     Create a meeting task with fixed time.
@@ -958,12 +1147,18 @@ async def create_meeting(
     # Calculate duration
     duration_minutes = int((end_dt - start_dt).total_seconds() / 60)
 
-    # Parse project_id if provided
-    project_id = UUID(input_data.project_id) if input_data.project_id else None
+    project_id, owner_id, access_error = await _resolve_project_access(
+        user_id,
+        input_data.project_id,
+        project_repo,
+        member_repo,
+    )
+    if access_error:
+        return access_error
 
     existing = await _find_existing_meeting(
         repo,
-        user_id,
+        owner_id,
         start_dt,
         end_dt,
         input_data.title,
@@ -993,7 +1188,7 @@ async def create_meeting(
         created_by=CreatedBy.AGENT,
     )
 
-    task = await repo.create(user_id, task_data)
+    task = await repo.create(owner_id, task_data)
     return task.model_dump(mode="json")
 
 
@@ -1001,6 +1196,8 @@ async def search_similar_tasks(
     user_id: str,
     repo: ITaskRepository,
     input_data: SearchSimilarTasksInput,
+    project_repo: Optional[IProjectRepository] = None,
+    member_repo: Optional[IProjectMemberRepository] = None,
 ) -> dict:
     """
     Search for similar tasks to avoid duplicates.
@@ -1015,17 +1212,17 @@ async def search_similar_tasks(
     """
     settings = get_settings()
 
-    # Parse project_id safely - only if it's a valid UUID string
-    project_id = None
-    if input_data.project_id and input_data.project_id.strip():
-        try:
-            project_id = UUID(input_data.project_id)
-        except (ValueError, AttributeError):
-            # Invalid UUID format, ignore and search all projects
-            pass
+    project_id, owner_id, access_error = await _resolve_project_access(
+        user_id,
+        input_data.project_id,
+        project_repo,
+        member_repo,
+    )
+    if access_error:
+        return access_error
 
     similar = await repo.find_similar(
-        user_id,
+        owner_id,
         title=input_data.task_title,
         project_id=project_id,
         threshold=settings.SIMILARITY_THRESHOLD,
@@ -1052,6 +1249,8 @@ async def search_similar_tasks(
 def propose_task_tool(
     proposal_repo: IProposalRepository,
     task_repo: ITaskRepository,
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
     user_id: str,
     session_id: str,
     auto_approve: bool = False,
@@ -1091,7 +1290,7 @@ def propose_task_tool(
         return await propose_task(
             user_id, session_id, proposal_repo, task_repo,
             CreateTaskInput(**input_data), proposal_desc, auto_approve,
-            assignment_repo
+            assignment_repo, project_repo, member_repo
         )
 
     _tool.__name__ = "propose_task"
@@ -1103,6 +1302,9 @@ def propose_task_tool(
 def propose_task_assignment_tool(
     proposal_repo: IProposalRepository,
     assignment_repo: ITaskAssignmentRepository,
+    task_repo: ITaskRepository,
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
     user_id: str,
     session_id: str,
     auto_approve: bool = False,
@@ -1116,9 +1318,12 @@ def propose_task_assignment_tool(
             session_id,
             proposal_repo,
             assignment_repo,
+            task_repo,
             AssignTaskInput(**input_data),
             proposal_desc,
             auto_approve,
+            project_repo,
+            member_repo,
         )
 
     _tool.__name__ = "propose_task_assignment"
@@ -1127,6 +1332,9 @@ def propose_task_assignment_tool(
 
 def assign_task_tool(
     assignment_repo: ITaskAssignmentRepository,
+    task_repo: ITaskRepository,
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -1153,11 +1361,21 @@ def assign_task_tool(
                 session_id,
                 proposal_repo,
                 assignment_repo,
+                task_repo,
                 AssignTaskInput(**payload),
                 proposal_desc,
                 False,
+                project_repo,
+                member_repo,
             )
-        return await assign_task(user_id, assignment_repo, AssignTaskInput(**payload))
+        return await assign_task(
+            user_id,
+            assignment_repo,
+            task_repo,
+            AssignTaskInput(**payload),
+            project_repo,
+            member_repo,
+        )
 
     _tool.__name__ = "assign_task"
     return FunctionTool(func=_tool)
@@ -1165,6 +1383,8 @@ def assign_task_tool(
 
 def create_task_tool(
     repo: ITaskRepository,
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -1220,8 +1440,17 @@ def create_task_tool(
                 proposal_desc,
                 False,
                 assignment_repo,
+                project_repo,
+                member_repo,
             )
-        return await create_task(user_id, repo, CreateTaskInput(**payload), assignment_repo)
+        return await create_task(
+            user_id,
+            repo,
+            CreateTaskInput(**payload),
+            assignment_repo,
+            project_repo,
+            member_repo,
+        )
 
     _tool.__name__ = "create_task"
     return FunctionTool(func=_tool)
@@ -1229,6 +1458,8 @@ def create_task_tool(
 
 def update_task_tool(
     repo: ITaskRepository,
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -1280,7 +1511,13 @@ def update_task_tool(
                 payload,
                 proposal_desc,
             )
-        return await update_task(user_id, repo, UpdateTaskInput(**payload))
+        return await update_task(
+            user_id,
+            repo,
+            UpdateTaskInput(**payload),
+            project_repo,
+            member_repo,
+        )
 
     _tool.__name__ = "update_task"
     return FunctionTool(func=_tool)
@@ -1288,6 +1525,8 @@ def update_task_tool(
 
 def delete_task_tool(
     repo: ITaskRepository,
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -1314,13 +1553,24 @@ def delete_task_tool(
                 payload,
                 proposal_desc,
             )
-        return await delete_task(user_id, repo, DeleteTaskInput(**payload))
+        return await delete_task(
+            user_id,
+            repo,
+            DeleteTaskInput(**payload),
+            project_repo,
+            member_repo,
+        )
 
     _tool.__name__ = "delete_task"
     return FunctionTool(func=_tool)
 
 
-def search_similar_tasks_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
+def search_similar_tasks_tool(
+    repo: ITaskRepository,
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
+    user_id: str,
+) -> FunctionTool:
     """Create ADK tool for searching similar tasks."""
     async def _tool(input_data: dict) -> dict:
         """search_similar_tasks: 類似タスクを検索して重複をチェックします。
@@ -1332,13 +1582,24 @@ def search_similar_tasks_tool(repo: ITaskRepository, user_id: str) -> FunctionTo
         Returns:
             dict: 類似タスクのリストとスコア
         """
-        return await search_similar_tasks(user_id, repo, SearchSimilarTasksInput(**input_data))
+        return await search_similar_tasks(
+            user_id,
+            repo,
+            SearchSimilarTasksInput(**input_data),
+            project_repo,
+            member_repo,
+        )
 
     _tool.__name__ = "search_similar_tasks"
     return FunctionTool(func=_tool)
 
 
-def list_tasks_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
+def list_tasks_tool(
+    repo: ITaskRepository,
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
+    user_id: str,
+) -> FunctionTool:
     """Create ADK tool for listing tasks."""
     async def _tool(input_data: dict) -> dict:
         """list_tasks: タスク一覧を取得します（依存関係判断に利用）。
@@ -1351,13 +1612,24 @@ def list_tasks_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
         Returns:
             dict: タスク一覧（各タスクにはid, title, description, status, dependency_ids等を含む）
         """
-        return await list_tasks(user_id, repo, ListTasksInput(**input_data))
+        return await list_tasks(
+            user_id,
+            repo,
+            ListTasksInput(**input_data),
+            project_repo,
+            member_repo,
+        )
 
     _tool.__name__ = "list_tasks"
     return FunctionTool(func=_tool)
 
 
-def get_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
+def get_task_tool(
+    repo: ITaskRepository,
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
+    user_id: str,
+) -> FunctionTool:
     """Create ADK tool for getting a single task."""
     async def _tool(input_data: dict) -> dict:
         """get_task: タスクの詳細を取得します（meeting_notesを含む）。
@@ -1368,7 +1640,13 @@ def get_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
         Returns:
             dict: タスクの詳細情報（id, title, description, status, meeting_notes等を含む）
         """
-        return await get_task(user_id, repo, GetTaskInput(**input_data))
+        return await get_task(
+            user_id,
+            repo,
+            GetTaskInput(**input_data),
+            project_repo,
+            member_repo,
+        )
 
     _tool.__name__ = "get_task"
     return FunctionTool(func=_tool)
@@ -1376,6 +1654,9 @@ def get_task_tool(repo: ITaskRepository, user_id: str) -> FunctionTool:
 
 def list_task_assignments_tool(
     assignment_repo: ITaskAssignmentRepository,
+    task_repo: ITaskRepository,
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
     user_id: str,
 ) -> FunctionTool:
     # Create ADK tool for listing task assignments.
@@ -1384,7 +1665,10 @@ def list_task_assignments_tool(
         return await list_task_assignments(
             user_id,
             assignment_repo,
+            task_repo,
             ListTaskAssignmentsInput(**input_data),
+            project_repo,
+            member_repo,
         )
 
     _tool.__name__ = "list_task_assignments"
@@ -1393,6 +1677,8 @@ def list_task_assignments_tool(
 
 def list_project_assignments_tool(
     assignment_repo: ITaskAssignmentRepository,
+    project_repo: IProjectRepository,
+    member_repo: IProjectMemberRepository,
     user_id: str,
 ) -> FunctionTool:
     # Create ADK tool for listing project assignments.
@@ -1401,6 +1687,8 @@ def list_project_assignments_tool(
         return await list_project_assignments(
             user_id,
             assignment_repo,
+            project_repo,
+            member_repo,
             ListProjectAssignmentsInput(**input_data),
         )
 
@@ -1411,6 +1699,8 @@ def list_project_assignments_tool(
 def create_meeting_tool(
     repo: ITaskRepository,
     proposal_repo: IProposalRepository,
+    project_repo: Optional[IProjectRepository],
+    member_repo: Optional[IProjectMemberRepository],
     user_id: str,
     session_id: str,
     auto_approve: bool = True,
@@ -1442,11 +1732,18 @@ def create_meeting_tool(
             raise ValueError("End time must be after start time.")
 
         duration_minutes = int((end_dt - start_dt).total_seconds() / 60)
-        project_id = UUID(meeting_input.project_id) if meeting_input.project_id else None
+        project_id, owner_id, access_error = await _resolve_project_access(
+            user_id,
+            meeting_input.project_id,
+            project_repo,
+            member_repo,
+        )
+        if access_error:
+            return access_error
 
         existing = await _find_existing_meeting(
             repo,
-            user_id,
+            owner_id,
             start_dt,
             end_dt,
             meeting_input.title,
@@ -1472,7 +1769,14 @@ def create_meeting_tool(
         )
         proposal_desc = f'Meeting "{meeting_input.title}" will be added to your schedule.'
         if auto_approve:
-            return await create_task(user_id, repo, task_input)
+            return await create_task(
+                user_id,
+                repo,
+                task_input,
+                None,
+                project_repo,
+                member_repo,
+            )
         return await propose_task(
             user_id,
             session_id,
@@ -1481,6 +1785,9 @@ def create_meeting_tool(
             task_input,
             proposal_desc,
             False,
+            None,
+            project_repo,
+            member_repo,
         )
 
     _tool.__name__ = "create_meeting"

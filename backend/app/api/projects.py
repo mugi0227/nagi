@@ -8,8 +8,9 @@ from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 
+from app.api.permissions import require_project_action, require_project_member
 from app.api.deps import (
     BlockerRepo,
     CheckinRepo,
@@ -54,43 +55,9 @@ from app.models.memory import Memory, MemoryCreate
 from app.services.kpi_calculator import apply_project_kpis
 from app.services.kpi_templates import get_kpi_templates
 from app.services.llm_utils import generate_text, generate_text_with_status
+from app.services.project_permissions import ProjectAction
 
 router = APIRouter()
-
-
-async def _get_project_or_404(user: CurrentUser, repo: ProjectRepo, project_id: UUID) -> Project:
-    project = await repo.get(user.id, project_id)
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found",
-        )
-    return project
-
-
-async def _get_project_owner_id(
-    user: CurrentUser,
-    repo: ProjectRepo,
-    project_id: UUID,
-) -> str:
-    """
-    Get the project owner's user_id after verifying the current user has access.
-    
-    This function checks if the user is either:
-    - The project owner
-    - A member of the project
-    
-    Returns the owner's user_id, which should be used for repository queries.
-    Raises 404 if the user doesn't have access to the project.
-    """
-    project = await repo.get(user.id, project_id)
-    if not project:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Project {project_id} not found",
-        )
-    # project.user_id is the owner's ID
-    return project.user_id
 
 
 def _compact_text(value: str) -> str:
@@ -357,10 +324,17 @@ async def update_project(
     update: ProjectUpdate,
     user: CurrentUser,
     repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Update a project."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.PROJECT_UPDATE,
+    )
+    owner_id = access.owner_id
     try:
         return await repo.update(owner_id, project_id, update)
     except NotFoundError as e:
@@ -378,18 +352,14 @@ async def delete_project(
     member_repo: ProjectMemberRepo,
 ):
     """Delete a project. Only OWNER or ADMIN can delete."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
-
-    # Check if user has OWNER or ADMIN role
-    members = await member_repo.list(owner_id, project_id)
-    user_member = next((m for m in members if m.member_user_id == user.id), None)
-
-    if not user_member or user_member.role not in (ProjectRole.OWNER, ProjectRole.ADMIN):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Only project owner or admin can delete the project",
-        )
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.PROJECT_DELETE,
+    )
+    owner_id = access.owner_id
 
     deleted = await repo.delete(owner_id, project_id)
     if not deleted:
@@ -408,8 +378,14 @@ async def list_project_members(
     user_repo: UserRepo,
 ):
     """List members for a project."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id  # Use owner's user_id for queries
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.MEMBER_READ,
+    )
+    owner_id = access.owner_id
     
     members = await member_repo.list(owner_id, project_id)
     if owner_id == user.id and not any(m.member_user_id == user.id for m in members):
@@ -420,13 +396,25 @@ async def list_project_members(
         )
         members = await member_repo.list(owner_id, project_id)
     for member in members:
+        user_account = None
         try:
             member_uuid = UUID(member.member_user_id)
             user_account = await user_repo.get(member_uuid)
         except Exception:
-            user_account = None
-        if user_account and user_account.display_name:
-            setattr(member, "member_display_name", user_account.display_name)
+            if "@" in member.member_user_id:
+                user_account = await user_repo.get_by_email(member.member_user_id)
+            if not user_account:
+                user_account = await user_repo.get_by_username(member.member_user_id)
+
+        # 表示名の優先順: display_name(姓名から構築) → username
+        # email は使わない（プライバシー配慮）、フロントエンドで member_user_id がフォールバック
+        display_name = None
+        if user_account:
+            display_name = user_account.display_name or user_account.username
+        if not display_name and member.member_user_id == user.id:
+            display_name = user.display_name
+        if display_name:
+            setattr(member, "member_display_name", display_name)
     return members
 
 
@@ -440,8 +428,14 @@ async def add_project_member(
     user_repo: UserRepo,
 ):
     """Add a member to a project."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.MEMBER_MANAGE,
+    )
+    owner_id = access.owner_id
 
     # Validate that the member user exists
     try:
@@ -469,8 +463,14 @@ async def update_project_member(
     member_repo: ProjectMemberRepo,
 ):
     """Update a project member."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.MEMBER_MANAGE,
+    )
+    owner_id = access.owner_id
     existing = await member_repo.get(owner_id, member_id)
     if not existing or existing.project_id != project_id:
         raise HTTPException(
@@ -489,8 +489,14 @@ async def delete_project_member(
     member_repo: ProjectMemberRepo,
 ):
     """Remove a member from a project."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.MEMBER_MANAGE,
+    )
+    owner_id = access.owner_id
     existing = await member_repo.get(owner_id, member_id)
     if not existing or existing.project_id != project_id:
         raise HTTPException(
@@ -511,10 +517,17 @@ async def list_project_invitations(
     user: CurrentUser,
     repo: ProjectRepo,
     invitation_repo: ProjectInvitationRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """List invitations for a project."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.INVITATION_READ,
+    )
+    owner_id = access.owner_id
     return await invitation_repo.list_by_project(owner_id, project_id)
 
 
@@ -529,7 +542,14 @@ async def create_project_invitation(
     user_repo: UserRepo,
 ):
     """Create a project invitation (or add member if user exists)."""
-    project = await _get_project_or_404(user, repo, project_id)
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.INVITATION_MANAGE,
+    )
+    project = access.project
     normalized_email = _normalize_email(invitation.email)
     existing_invitation = await invitation_repo.get_by_email(project_id, normalized_email)
 
@@ -598,10 +618,17 @@ async def update_project_invitation(
     user: CurrentUser,
     repo: ProjectRepo,
     invitation_repo: ProjectInvitationRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Update invitation status."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.INVITATION_MANAGE,
+    )
+    owner_id = access.owner_id
     if update.status not in {InvitationStatus.REVOKED, InvitationStatus.EXPIRED}:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -679,10 +706,17 @@ async def list_project_assignments(
     user: CurrentUser,
     repo: ProjectRepo,
     assignment_repo: TaskAssignmentRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """List task assignments for a project."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.ASSIGNMENT_READ,
+    )
+    owner_id = access.owner_id
     return await assignment_repo.list_by_project(owner_id, project_id)
 
 
@@ -692,10 +726,17 @@ async def list_project_blockers(
     user: CurrentUser,
     repo: ProjectRepo,
     blocker_repo: BlockerRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """List blockers for a project."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.BLOCKER_READ,
+    )
+    owner_id = access.owner_id
     return await blocker_repo.list_by_project(owner_id, project_id)
 
 
@@ -705,13 +746,20 @@ async def list_project_checkins(
     user: CurrentUser,
     repo: ProjectRepo,
     checkin_repo: CheckinRepo,
+    member_repo: ProjectMemberRepo,
     member_user_id: Optional[str] = Query(None, description="Filter by member user ID"),
     start_date: Optional[date] = Query(None, description="Start date (inclusive)"),
     end_date: Optional[date] = Query(None, description="End date (inclusive)"),
 ):
     """List check-ins for a project."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.CHECKIN_READ,
+    )
+    owner_id = access.owner_id
     return await checkin_repo.list(
         owner_id,
         project_id,
@@ -728,14 +776,21 @@ async def summarize_project_checkins(
     repo: ProjectRepo,
     checkin_repo: CheckinRepo,
     llm_provider: LLMProvider,
+    member_repo: ProjectMemberRepo,
     member_user_id: Optional[str] = Query(None, description="Filter by member user ID"),
     start_date: Optional[date] = Query(None, description="Start date (inclusive)"),
     end_date: Optional[date] = Query(None, description="End date (inclusive)"),
     checkin_type: Optional[CheckinType] = Query(None, description="Filter by check-in type"),
 ):
     """Summarize check-ins for a project within a date range."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.CHECKIN_READ,
+    )
+    owner_id = access.owner_id
     checkins = await checkin_repo.list(
         owner_id,
         project_id,
@@ -763,10 +818,17 @@ async def summarize_project_checkins_post(
     repo: ProjectRepo,
     checkin_repo: CheckinRepo,
     llm_provider: LLMProvider,
+    member_repo: ProjectMemberRepo,
 ):
     """Summarize check-ins with optional weekly context."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.CHECKIN_READ,
+    )
+    owner_id = access.owner_id
     checkins = await checkin_repo.list(
         owner_id,
         project_id,
@@ -793,9 +855,16 @@ async def save_project_checkin_summary(
     user: CurrentUser,
     repo: ProjectRepo,
     memory_repo: MemoryRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Save a check-in summary as project memory."""
-    await _get_project_or_404(user, repo, project_id)
+    await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.CHECKIN_WRITE,
+    )
     tags = [
         "checkin_summary",
         f"count:{payload.checkin_count}",
@@ -823,10 +892,22 @@ async def create_project_checkin(
     user: CurrentUser,
     repo: ProjectRepo,
     checkin_repo: CheckinRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Create a new check-in for a project."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.CHECKIN_WRITE,
+    )
+    if access.role == ProjectRole.MEMBER and checkin.member_user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Members can only create check-ins for themselves",
+        )
+    owner_id = access.owner_id
     return await checkin_repo.create(owner_id, project_id, checkin)
 
 
@@ -846,10 +927,22 @@ async def create_project_checkin_v2(
     user: CurrentUser,
     repo: ProjectRepo,
     checkin_repo: CheckinRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Create a structured check-in (V2)."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.CHECKIN_WRITE,
+    )
+    if access.role == ProjectRole.MEMBER and checkin.member_user_id != user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Members can only create check-ins for themselves",
+        )
+    owner_id = access.owner_id
     return await checkin_repo.create_v2(owner_id, project_id, checkin)
 
 
@@ -859,13 +952,20 @@ async def list_project_checkins_v2(
     user: CurrentUser,
     repo: ProjectRepo,
     checkin_repo: CheckinRepo,
+    member_repo: ProjectMemberRepo,
     member_user_id: Optional[str] = Query(None),
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
 ):
     """List structured check-ins (V2)."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.CHECKIN_READ,
+    )
+    owner_id = access.owner_id
     return await checkin_repo.list_v2(
         owner_id,
         project_id,
@@ -883,9 +983,16 @@ async def update_project_checkin_v2(
     user: CurrentUser,
     repo: ProjectRepo,
     checkin_repo: CheckinRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Update a structured check-in (V2). Only the creator can update."""
-    await _get_project_or_404(user, repo, project_id)
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.CHECKIN_WRITE,
+    )
 
     # Get existing checkin to verify ownership
     existing = await checkin_repo.get_v2(checkin_id)
@@ -899,10 +1006,10 @@ async def update_project_checkin_v2(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Check-in {checkin_id} not found in project {project_id}",
         )
-    if existing.user_id != user.id:
+    if access.role == ProjectRole.MEMBER and existing.member_user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only update your own check-ins",
+            detail="Members can only update their own check-ins",
         )
 
     result = await checkin_repo.update_v2(checkin_id, checkin_update)
@@ -921,9 +1028,16 @@ async def delete_project_checkin_v2(
     user: CurrentUser,
     repo: ProjectRepo,
     checkin_repo: CheckinRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Delete a structured check-in (V2). Only the creator can delete."""
-    await _get_project_or_404(user, repo, project_id)
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.CHECKIN_WRITE,
+    )
 
     # Get existing checkin to verify ownership
     existing = await checkin_repo.get_v2(checkin_id)
@@ -937,10 +1051,10 @@ async def delete_project_checkin_v2(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Check-in {checkin_id} not found in project {project_id}",
         )
-    if existing.user_id != user.id:
+    if access.role == ProjectRole.MEMBER and existing.member_user_id != user.id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="You can only delete your own check-ins",
+            detail="Members can only delete their own check-ins",
         )
 
     deleted = await checkin_repo.delete_v2(checkin_id)
@@ -957,17 +1071,22 @@ async def get_project_checkin_agenda_items(
     user: CurrentUser,
     repo: ProjectRepo,
     checkin_repo: CheckinRepo,
+    member_repo: ProjectMemberRepo,
     start_date: Optional[date] = Query(None),
     end_date: Optional[date] = Query(None),
 ):
     """Get check-in items grouped by category for meeting agenda generation."""
-    project = await _get_project_or_404(user, repo, project_id)
-    owner_id = project.user_id
+    access = await require_project_action(
+        user,
+        project_id,
+        repo,
+        member_repo,
+        ProjectAction.CHECKIN_READ,
+    )
+    owner_id = access.owner_id
     return await checkin_repo.get_agenda_items(
         owner_id,
         project_id,
         start_date=start_date,
         end_date=end_date,
     )
-
-

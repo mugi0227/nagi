@@ -1,67 +1,43 @@
 import { useState } from 'react';
 import { useCaptures } from '../../hooks/useCaptures';
-import { useTasks } from '../../hooks/useTasks';
+import { useTaskModal } from '../../hooks/useTaskModal';
 import { useTimezone } from '../../hooks/useTimezone';
-import { TaskFormModal } from '../tasks/TaskFormModal';
 import './InboxWidget.css';
-import type { Capture, TaskCreate, TaskUpdate } from '../../api/types';
+import type { Capture } from '../../api/types';
 import { formatDate } from '../../utils/dateTime';
 
 export function InboxWidget() {
     const { unprocessedCaptures: allCaptures, isLoading, error, deleteCapture, processCapture, analyzeCapture, isAnalyzing } = useCaptures();
-    const { createTask } = useTasks();
     const timezone = useTimezone();
 
-    const [isFormOpen, setIsFormOpen] = useState(false);
-    const [analyzedTask, setAnalyzedTask] = useState<TaskCreate | undefined>(undefined);
     const [analyzingId, setAnalyzingId] = useState<string | null>(null);
-    const [processedSourceId, setProcessedSourceId] = useState<string | null>(null);
+
+    // useTaskModal for task creation and detail modal
+    const taskModal = useTaskModal({
+        tasks: [],
+        onCreateTask: async (data) => {
+            // Mark capture as processed after task creation
+            if (data.source_capture_id) {
+                processCapture(data.source_capture_id);
+            }
+        },
+    });
 
     const handleAnalyze = async (captureId: string) => {
         setAnalyzingId(captureId);
         try {
             const result = await analyzeCapture(captureId);
-            setAnalyzedTask(result);
-            setProcessedSourceId(captureId);
-            setIsFormOpen(true);
+            // Create task with analyzed data and open detail modal for inline editing
+            await taskModal.openCreateForm({
+                ...result,
+                source_capture_id: captureId,
+            });
         } catch (e) {
             console.error(e);
             alert('解析に失敗しました');
         } finally {
             setAnalyzingId(null);
         }
-    };
-
-    const handleSubmit = async (data: TaskCreate | TaskUpdate) => {
-        if (!data.title) {
-            alert('タイトルを入力してください');
-            return;
-        }
-        const payload: TaskCreate = {
-            title: data.title,
-            description: data.description,
-            project_id: data.project_id,
-            importance: data.importance,
-            urgency: data.urgency,
-            energy_level: data.energy_level,
-            estimated_minutes: data.estimated_minutes,
-            due_date: data.due_date,
-            parent_id: data.parent_id,
-            order_in_parent: data.order_in_parent,
-            dependency_ids: data.dependency_ids,
-            source_capture_id: processedSourceId || ('source_capture_id' in data ? data.source_capture_id : undefined),
-        };
-
-        await createTask(payload);
-
-        // Mark capture as processed after successful task creation
-        if (processedSourceId && typeof processedSourceId === 'string') {
-            processCapture(processedSourceId);
-        }
-
-        setIsFormOpen(false);
-        setAnalyzedTask(undefined);
-        setProcessedSourceId(null);
     };
 
     // Filter out regular chat messages, only show Extension captures
@@ -139,16 +115,7 @@ export function InboxWidget() {
                 ))}
             </div>
 
-            {isFormOpen && (
-                <TaskFormModal
-                    task={undefined} // Creating new task
-                    initialData={analyzedTask} // Pass analyzed data as initial values (requires modifying Modal to accept this)
-                    allTasks={[]} // Context for dependency selection (optional)
-                    onClose={() => setIsFormOpen(false)}
-                    onSubmit={handleSubmit}
-                    isSubmitting={false}
-                />
-            )}
+            {taskModal.renderModals()}
         </div>
     );
 }

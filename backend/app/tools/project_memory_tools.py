@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from app.core.logger import logger
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.memory_repository import IMemoryRepository
+from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
 from app.interfaces.task_repository import ITaskRepository
@@ -24,7 +25,9 @@ from app.models.enums import MemoryScope, MemoryType, TaskStatus
 from app.models.memory import MemoryCreate
 from app.services.kpi_calculator import apply_project_kpis
 from app.services.llm_utils import generate_text
+from app.services.project_permissions import ProjectAction
 from app.tools.approval_tools import create_tool_action_proposal
+from app.tools.permissions import require_project_action
 
 
 class CreateProjectSummaryInput(BaseModel):
@@ -111,17 +114,32 @@ async def create_project_summary(
     task_repo: ITaskRepository,
     memory_repo: IMemoryRepository,
     llm_provider: ILLMProvider,
+    member_repo: IProjectMemberRepository,
     input_data: CreateProjectSummaryInput,
 ) -> dict:
     """Create and save a project summary as ProjectMemory."""
-    project_id = UUID(input_data.project_id)
-    project = await project_repo.get(user_id, project_id)
+    try:
+        project_id = UUID(input_data.project_id)
+    except ValueError:
+        return {"error": f"Invalid project ID format: {input_data.project_id}"}
+
+    access = await require_project_action(
+        user_id,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.PROJECT_READ,
+    )
+    if isinstance(access, dict):
+        return access
+
+    project = await project_repo.get(access.owner_id, project_id)
     if not project:
-        raise ValueError("Project not found")
+        return {"error": "Project not found"}
 
     window = _get_week_window(input_data.week_start, input_data.week_end)
     tasks = await task_repo.list(
-        user_id,
+        access.owner_id,
         project_id=project_id,
         include_done=True,
         limit=1000,
@@ -152,7 +170,7 @@ async def create_project_summary(
             elif due_date < now + timedelta(days=7):
                 upcoming_tasks.append(task)
 
-    project_with_kpis = await apply_project_kpis(user_id, project, task_repo)
+    project_with_kpis = await apply_project_kpis(access.owner_id, project, task_repo)
 
     prompt_parts = [
         "You are summarizing a project's weekly status for the owner.",
@@ -261,6 +279,7 @@ def create_project_summary_tool(
     task_repo: ITaskRepository,
     memory_repo: IMemoryRepository,
     llm_provider: ILLMProvider,
+    member_repo: IProjectMemberRepository,
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
@@ -298,6 +317,7 @@ def create_project_summary_tool(
             task_repo,
             memory_repo,
             llm_provider,
+            member_repo,
             CreateProjectSummaryInput(**payload),
         )
 

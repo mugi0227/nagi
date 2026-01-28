@@ -43,6 +43,11 @@ class IMeetingAgendaRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_by_id(self, agenda_item_id: UUID) -> Optional[MeetingAgendaItem]:
+        """Get an agenda item by ID without user check."""
+        pass
+
+    @abstractmethod
     async def list_by_meeting(
         self,
         user_id: str,

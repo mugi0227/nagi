@@ -71,6 +71,29 @@
   color: var(--text-main);
 }
 
+/* Editable Title */
+.editable-title {
+  flex: 1;
+}
+
+.editable-title .editable-content {
+  font-size: 1.375rem;
+  font-weight: 800;
+  color: var(--text-main);
+  padding: 0.25rem 0.5rem;
+}
+
+.editable-title .editable-input {
+  font-size: 1.375rem;
+  font-weight: 800;
+  padding: 0.25rem 0.5rem;
+}
+
+.editable-title .editable-edit-btn {
+  top: 50%;
+  transform: translateY(-50%);
+}
+
 .modal-header-actions {
   display: flex;
   gap: 0.75rem;
@@ -169,6 +192,33 @@
   color: var(--text-main);
 }
 
+/* Completion Note Section */
+.completion-note-section {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.05) 0%, rgba(34, 197, 94, 0.02) 100%);
+  padding: 1.25rem 1.5rem;
+  border-radius: 14px;
+  border: 1px solid rgba(34, 197, 94, 0.15);
+}
+
+.completion-note-section .section-label {
+  color: #22c55e;
+}
+
+.completion-note-section .section-icon {
+  font-size: 1rem;
+  vertical-align: middle;
+}
+
+.completion-note-container {
+  line-height: 1.8;
+  color: var(--text-main);
+}
+
+[data-theme="dark"] .completion-note-section {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.1) 0%, rgba(34, 197, 94, 0.05) 100%);
+  border-color: rgba(34, 197, 94, 0.2);
+}
+
 /* Meeting Section */
 .meeting-section {
   background: rgba(14, 165, 233, 0.03);
@@ -210,6 +260,30 @@
 
 [data-theme="dark"] .meeting-notes-content {
   background: rgba(0, 0, 0, 0.1);
+}
+
+.meeting-notes-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0.75rem 0 0.5rem;
+}
+
+.meeting-time-edit {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.meeting-time-edit .time-separator {
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.editable-location,
+.editable-attendees {
+  flex: 1;
 }
 
 /* Premium Action Button */
@@ -268,6 +342,11 @@
 .status-badge-lg.clickable:hover {
   transform: scale(1.02);
   filter: brightness(1.05);
+}
+
+.status-badge-lg.disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
 }
 
 .status-badge-lg.status-todo {
@@ -461,6 +540,52 @@
   color: white;
 }
 
+/* Inline subtask creation */
+.subtask-create-inline {
+  background: transparent !important;
+  border: 1px dashed rgba(148, 163, 184, 0.3) !important;
+  cursor: text !important;
+}
+
+.subtask-create-inline:hover {
+  border-color: rgba(14, 165, 233, 0.4) !important;
+  background: rgba(14, 165, 233, 0.02) !important;
+}
+
+.subtask-check-wrapper.placeholder {
+  border-style: dashed;
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+.subtask-inline-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+  outline: none;
+  padding: 0;
+}
+
+.subtask-inline-input::placeholder {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.subtask-inline-input:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+[data-theme="dark"] .subtask-create-inline {
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+[data-theme="dark"] .subtask-create-inline:hover {
+  border-color: rgba(14, 165, 233, 0.4) !important;
+  background: rgba(14, 165, 233, 0.05) !important;
+}
+
 /* ===== Guide Panel (サブタスク詳細) ===== */
 .guide-panel {
   background: #ffffff;
@@ -550,6 +675,64 @@
   font-size: 1.25rem;
   font-weight: 800;
   color: var(--text-main);
+}
+
+/* Editable subtask title */
+.guide-title-row .editable-subtask-title {
+  flex: 1;
+}
+
+.guide-title-row .editable-subtask-title .editable-section-view {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text-main);
+}
+
+.guide-title-row .editable-subtask-title input {
+  font-size: 1.25rem;
+  font-weight: 800;
+}
+
+/* Guide delete button */
+.guide-delete-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f1f5f9;
+  color: var(--text-muted);
+  transition: all 0.2s;
+  font-size: 0.875rem;
+  border: none;
+  cursor: pointer;
+}
+
+.guide-delete-btn:hover {
+  background: #fee2e2;
+  color: #ef4444;
+}
+
+[data-theme="dark"] .guide-delete-btn {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+[data-theme="dark"] .guide-delete-btn:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+/* Clickable status badge in subtask panel */
+.guide-meta-box .status-badge.clickable {
+  cursor: pointer;
+  border: none;
+  transition: all 0.2s;
+}
+
+.guide-meta-box .status-badge.clickable:hover {
+  transform: scale(1.05);
+  filter: brightness(0.95);
 }
 
 /* Guide Meta Box */
@@ -733,4 +916,33 @@
 
 [data-theme="dark"] .subtask-assignee-inline {
   background: rgba(79, 70, 229, 0.2);
+}
+
+/* Editable Number (見積時間など) */
+.editable-number {
+  display: inline-block;
+}
+
+.editable-number .editable-input {
+  width: 80px;
+  text-align: right;
+}
+
+.editable-number .editable-content {
+  padding: 0.25rem;
+}
+
+.editable-number .editable-edit-btn {
+  position: static;
+  opacity: 0;
+  margin-left: 0.25rem;
+}
+
+.editable-number .editable-view-mode:hover .editable-edit-btn {
+  opacity: 1;
+}
+
+.editable-number .editable-view-mode {
+  display: inline-flex;
+  align-items: center;
 }

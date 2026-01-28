@@ -14,10 +14,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.api.deps import (
     CurrentUser,
     PhaseRepo,
-    TaskRepo,
     ProjectMemberRepo,
+    ProjectRepo,
+    TaskRepo,
     TaskAssignmentRepo,
 )
+from app.api.permissions import require_project_action
 from app.interfaces.schedule_snapshot_repository import IScheduleSnapshotRepository
 from app.models.schedule_snapshot import (
     ScheduleDiff,
@@ -28,6 +30,7 @@ from app.models.schedule_snapshot import (
 from app.services.ccpm_service import CCPMService
 from app.services.schedule_diff_service import ScheduleDiffService
 from app.services.scheduler_service import SchedulerService
+from app.services.project_permissions import ProjectAction
 
 router = APIRouter()
 
@@ -58,6 +61,7 @@ async def create_snapshot(
     phase_repo: PhaseRepo,
     member_repo: ProjectMemberRepo,
     assignment_repo: TaskAssignmentRepo,
+    project_repo: ProjectRepo,
     snapshot_repo: IScheduleSnapshotRepository = Depends(get_schedule_snapshot_repository),
 ):
     """
@@ -66,9 +70,18 @@ async def create_snapshot(
     Generates a schedule from current tasks and saves it as a baseline.
     The new snapshot is automatically activated.
     """
+    access = await require_project_action(
+        current_user,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.SNAPSHOT_MANAGE,
+    )
+    owner_id = access.owner_id
+
     # Get all tasks for the project
     tasks = await task_repo.list(
-        user_id=current_user.id,
+        user_id=owner_id,
         project_id=project_id,
         include_done=False,
     )
@@ -80,15 +93,15 @@ async def create_snapshot(
         )
 
     # Get phases for buffer calculation
-    phases = await phase_repo.list_by_project(current_user.id, project_id)
+    phases = await phase_repo.list_by_project(owner_id, project_id)
     phase_dicts = [
         {"id": p.id, "name": p.name, "fixed_buffer_minutes": p.fixed_buffer_minutes}
         for p in phases
     ]
 
     # Get members and assignments for capacity calculation
-    members = await member_repo.list(current_user.id, project_id)
-    assignments = await assignment_repo.list_by_project(current_user.id, project_id)
+    members = await member_repo.list(owner_id, project_id)
+    assignments = await assignment_repo.list_by_project(owner_id, project_id)
 
     # Build schedule
     scheduler = SchedulerService()
@@ -155,7 +168,7 @@ async def create_snapshot(
 
     # Create snapshot
     snapshot = await snapshot_repo.create(
-        user_id=current_user.id,
+        user_id=owner_id,
         project_id=project_id,
         snapshot=snapshot_data,
         schedule_data=schedule_data,
@@ -171,13 +184,22 @@ async def create_snapshot(
 async def list_snapshots(
     project_id: UUID,
     current_user: CurrentUser,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
     limit: int = 20,
     offset: int = 0,
     snapshot_repo: IScheduleSnapshotRepository = Depends(get_schedule_snapshot_repository),
 ):
     """List all snapshots for a project."""
+    access = await require_project_action(
+        current_user,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.SNAPSHOT_MANAGE,
+    )
     return await snapshot_repo.list_by_project(
-        user_id=current_user.id,
+        user_id=access.owner_id,
         project_id=project_id,
         limit=limit,
         offset=offset,
@@ -191,11 +213,20 @@ async def list_snapshots(
 async def get_active_snapshot(
     project_id: UUID,
     current_user: CurrentUser,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
     snapshot_repo: IScheduleSnapshotRepository = Depends(get_schedule_snapshot_repository),
 ):
     """Get the currently active snapshot for a project."""
+    access = await require_project_action(
+        current_user,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.SNAPSHOT_MANAGE,
+    )
     return await snapshot_repo.get_active(
-        user_id=current_user.id,
+        user_id=access.owner_id,
         project_id=project_id,
     )
 
@@ -212,6 +243,7 @@ async def get_snapshot_diff(
     phase_repo: PhaseRepo,
     member_repo: ProjectMemberRepo,
     assignment_repo: TaskAssignmentRepo,
+    project_repo: ProjectRepo,
     snapshot_id: Optional[UUID] = None,
     snapshot_repo: IScheduleSnapshotRepository = Depends(get_schedule_snapshot_repository),
 ):
@@ -220,15 +252,24 @@ async def get_snapshot_diff(
 
     If snapshot_id is not provided, uses the active snapshot.
     """
+    access = await require_project_action(
+        current_user,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.SNAPSHOT_MANAGE,
+    )
+    owner_id = access.owner_id
+
     # Get the snapshot to compare against
     if snapshot_id:
         snapshot = await snapshot_repo.get(
-            user_id=current_user.id,
+            user_id=owner_id,
             snapshot_id=snapshot_id,
         )
     else:
         snapshot = await snapshot_repo.get_active(
-            user_id=current_user.id,
+            user_id=owner_id,
             project_id=project_id,
         )
 
@@ -240,14 +281,14 @@ async def get_snapshot_diff(
 
     # Get current tasks and schedule
     tasks = await task_repo.list(
-        user_id=current_user.id,
+        user_id=owner_id,
         project_id=project_id,
         include_done=True,
     )
 
     # Get members and assignments for capacity calculation
-    members = await member_repo.list(current_user.id, project_id)
-    assignments = await assignment_repo.list_by_project(current_user.id, project_id)
+    members = await member_repo.list(owner_id, project_id)
+    assignments = await assignment_repo.list_by_project(owner_id, project_id)
 
     scheduler = SchedulerService()
     current_schedule = scheduler.build_schedule(
@@ -265,7 +306,7 @@ async def get_snapshot_diff(
     completed_task_ids = {t.id for t in tasks if t.status == "DONE"}
 
     # Get phases
-    phases = await phase_repo.list_by_project(current_user.id, project_id)
+    phases = await phase_repo.list_by_project(owner_id, project_id)
     phase_dicts = [{"id": p.id, "name": p.name} for p in phases]
 
     # Calculate diff
@@ -285,7 +326,7 @@ async def get_snapshot_diff(
 
     if total_consumed != snapshot.consumed_buffer_minutes:
         await snapshot_repo.update_consumed_buffer(
-            user_id=current_user.id,
+            user_id=owner_id,
             snapshot_id=snapshot.id,
             consumed_buffer_minutes=total_consumed,
         )
@@ -301,11 +342,20 @@ async def get_snapshot(
     project_id: UUID,
     snapshot_id: UUID,
     current_user: CurrentUser,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
     snapshot_repo: IScheduleSnapshotRepository = Depends(get_schedule_snapshot_repository),
 ):
     """Get a specific snapshot by ID."""
+    access = await require_project_action(
+        current_user,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.SNAPSHOT_MANAGE,
+    )
     snapshot = await snapshot_repo.get(
-        user_id=current_user.id,
+        user_id=access.owner_id,
         snapshot_id=snapshot_id,
     )
     if not snapshot:
@@ -329,12 +379,21 @@ async def activate_snapshot(
     project_id: UUID,
     snapshot_id: UUID,
     current_user: CurrentUser,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
     snapshot_repo: IScheduleSnapshotRepository = Depends(get_schedule_snapshot_repository),
 ):
     """Activate a snapshot as the current baseline."""
     try:
+        access = await require_project_action(
+            current_user,
+            project_id,
+            project_repo,
+            member_repo,
+            ProjectAction.SNAPSHOT_MANAGE,
+        )
         snapshot = await snapshot_repo.activate(
-            user_id=current_user.id,
+            user_id=access.owner_id,
             snapshot_id=snapshot_id,
         )
         if snapshot.project_id != project_id:
@@ -358,12 +417,21 @@ async def delete_snapshot(
     project_id: UUID,
     snapshot_id: UUID,
     current_user: CurrentUser,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
     snapshot_repo: IScheduleSnapshotRepository = Depends(get_schedule_snapshot_repository),
 ):
     """Delete a snapshot."""
+    access = await require_project_action(
+        current_user,
+        project_id,
+        project_repo,
+        member_repo,
+        ProjectAction.SNAPSHOT_MANAGE,
+    )
     # First verify it belongs to this project
     snapshot = await snapshot_repo.get(
-        user_id=current_user.id,
+        user_id=access.owner_id,
         snapshot_id=snapshot_id,
     )
     if not snapshot:
@@ -378,6 +446,6 @@ async def delete_snapshot(
         )
 
     await snapshot_repo.delete(
-        user_id=current_user.id,
+        user_id=access.owner_id,
         snapshot_id=snapshot_id,
     )

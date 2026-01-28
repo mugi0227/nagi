@@ -22,8 +22,10 @@ class IRecurringMeetingRepository(ABC):
         pass
 
     @abstractmethod
-    async def get(self, user_id: str, meeting_id: UUID) -> Optional[RecurringMeeting]:
-        """Get a recurring meeting by ID."""
+    async def get(
+        self, user_id: str, meeting_id: UUID, project_id: UUID | None = None
+    ) -> Optional[RecurringMeeting]:
+        """Get a recurring meeting by ID. If project_id is given, uses project-based access."""
         pass
 
     @abstractmethod

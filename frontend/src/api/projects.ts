@@ -1,4 +1,4 @@
-import { api } from './client';
+import { api, ApiError } from './client';
 import type {
   Project,
   ProjectWithTaskCount,
@@ -51,8 +51,16 @@ export const projectsApi = {
   removeMember: (projectId: string, memberId: string) =>
     api.delete<void>(`/projects/${projectId}/members/${memberId}`),
 
-  listInvitations: (projectId: string) =>
-    api.get<ProjectInvitation[]>(`/projects/${projectId}/invitations`),
+  listInvitations: async (projectId: string) => {
+    try {
+      return await api.get<ProjectInvitation[]>(`/projects/${projectId}/invitations`);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 403) {
+        return [];
+      }
+      throw error;
+    }
+  },
 
   createInvitation: (projectId: string, data: ProjectInvitationCreate) =>
     api.post<ProjectInvitation>(`/projects/${projectId}/invitations`, data),

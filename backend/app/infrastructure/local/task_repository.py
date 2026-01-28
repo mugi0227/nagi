@@ -182,6 +182,16 @@ class SqliteTaskRepository(ITaskRepository):
             if not orm:
                 raise NotFoundError(f"Task {task_id} not found")
 
+            # Check if parent task is DONE - if so, force this subtask to stay DONE
+            if orm.parent_id:
+                parent_result = await session.execute(
+                    select(TaskORM).where(TaskORM.id == orm.parent_id)
+                )
+                parent_task = parent_result.scalar_one_or_none()
+                if parent_task and parent_task.status == TaskStatus.DONE.value:
+                    # Parent is completed, force subtask to be DONE
+                    update.status = TaskStatus.DONE
+
             update_data = update.model_dump(exclude_unset=True)
             status_value = None
             for field, value in update_data.items():

@@ -8,7 +8,7 @@ infrastructure implementations based on environment configuration.
 from functools import lru_cache
 from typing import Annotated
 
-from fastapi import Depends, Header, HTTPException, status
+from fastapi import Depends, Header, HTTPException, Request, status
 
 from app.core.config import Settings, get_settings
 from app.interfaces.auth_provider import IAuthProvider, User
@@ -384,6 +384,7 @@ def get_speech_provider() -> ISpeechToTextProvider:
 
 
 async def get_current_user(
+    request: Request,
     authorization: Annotated[str | None, Header()] = None,
     auth_provider: IAuthProvider = Depends(get_auth_provider),
 ) -> User:
@@ -395,7 +396,9 @@ async def get_current_user(
     """
     if not auth_provider.is_enabled():
         # Mock user for development
-        return User(id="dev_user", email="dev@example.com", display_name="Developer")
+        user = User(id="dev_user", email="dev@example.com", display_name="Developer")
+        request.state.user = user
+        return user
 
     if not authorization:
         raise HTTPException(
@@ -415,7 +418,9 @@ async def get_current_user(
         )
 
     try:
-        return await auth_provider.verify_token(token)
+        user = await auth_provider.verify_token(token)
+        request.state.user = user
+        return user
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

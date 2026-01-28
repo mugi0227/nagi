@@ -500,58 +500,77 @@
     background: linear-gradient(135deg, #fef2f2, #fee2e2);
     border: 2px solid #fca5a5;
     border-radius: 12px;
-    padding: 16px 24px;
+    padding: 12px 20px;
     margin-bottom: 20px;
+    gap: 16px;
 }
 
 .meeting-minimized-info {
     display: flex;
     align-items: center;
-    gap: 16px;
+    gap: 12px;
+    flex: 1;
+    min-width: 0;
 }
 
 .meeting-minimized-status {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
     background-color: #dc2626;
     color: white;
-    padding: 6px 14px;
+    padding: 5px 12px;
     border-radius: 9999px;
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     font-weight: 600;
+    white-space: nowrap;
+    flex-shrink: 0;
 }
 
 .meeting-minimized-status .pulse-dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     background-color: white;
     border-radius: 50%;
     animation: pulse-animation 1.5s ease-in-out infinite;
 }
 
 .meeting-minimized-agenda {
-    font-size: 0.95rem;
-    color: #1e293b;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.875rem;
+    color: #64748b;
     font-weight: 500;
+    min-width: 0;
+}
+
+.meeting-minimized-agenda-title {
+    color: #1e293b;
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .meeting-minimized-actions {
     display: flex;
-    gap: 12px;
+    gap: 8px;
+    flex-shrink: 0;
 }
 
 .btn-minimized {
     display: flex;
     align-items: center;
     gap: 6px;
-    padding: 10px 16px;
+    padding: 8px 14px;
     border-radius: 8px;
     font-weight: 600;
-    font-size: 0.875rem;
+    font-size: 0.8rem;
     cursor: pointer;
     transition: all 0.2s ease;
     border: none;
+    white-space: nowrap;
 }
 
 .btn-minimized.reset-to-prep {

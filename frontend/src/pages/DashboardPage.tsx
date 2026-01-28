@@ -1,15 +1,11 @@
 import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { tasksApi } from '../api/tasks';
-import type { Task, TaskUpdate } from '../api/types';
+import { motion } from 'framer-motion';
 import { AgentCard } from '../components/dashboard/AgentCard';
 import { DailyBriefingCard } from '../components/dashboard/DailyBriefingCard';
 import { TodayTasksCard } from '../components/dashboard/TodayTasksCard';
 import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
 import { WeeklyMeetingsCard } from '../components/dashboard/WeeklyMeetingsCard';
-import { WeeklyProgress } from '../components/dashboard/WeeklyProgress';
-import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
-import { TaskFormModal } from '../components/tasks/TaskFormModal';
+import { useTaskModal } from '../hooks/useTaskModal';
 import { useTasks } from '../hooks/useTasks';
 import './DashboardPage.css';
 
@@ -38,97 +34,21 @@ const itemVariants = {
 
 export function DashboardPage() {
   const [isBriefingOpen, setIsBriefingOpen] = useState(false);
-  const { tasks, updateTask, deleteTask, refetch: refetchTasks } = useTasks();
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [openedParentTask, setOpenedParentTask] = useState<Task | null>(null);
-  const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
+  const [isClosing, setIsClosing] = useState(false);
+  const { tasks, refetch: refetchTasks } = useTasks();
 
-  const handleTaskClick = (task: Task) => {
-    if (task.parent_id) {
-      const parent = tasks.find(t => t.id === task.parent_id);
-      if (parent) {
-        setOpenedParentTask(parent);
-        setSelectedTask(task);
-      } else {
-        setSelectedTask(task);
-        setOpenedParentTask(null);
-      }
-    } else {
-      setSelectedTask(task);
-      setOpenedParentTask(null);
-    }
-  };
+  // Use the unified task modal hook
+  const taskModal = useTaskModal({
+    tasks,
+    onRefetch: refetchTasks,
+  });
 
-  const handleScheduleTaskClick = async (taskId: string) => {
-    const task = tasks.find(item => item.id === taskId);
-    if (task) {
-      handleTaskClick(task);
-      return;
-    }
-    const fetched = await tasksApi.getById(taskId).catch(() => null);
-    if (fetched) {
-      handleTaskClick(fetched);
-    }
-  };
-
-  const handleEditTask = (task: Task) => {
-    setSelectedTask(null);
-    setOpenedParentTask(null);
-    setTaskToEdit(task);
-  };
-
-  const handleDeleteTask = async (task: Task) => {
-    if (window.confirm(`${task.title} を削除してもよろしいですか？`)) {
-      await deleteTask(task.id);
-      setSelectedTask(null);
-      setOpenedParentTask(null);
-      refetchTasks();
-    }
-  };
-
-  const handleCloseForm = () => {
-    setTaskToEdit(null);
-  };
-
-  const handleSubmitForm = async (data: TaskUpdate) => {
-    if (taskToEdit) {
-      await updateTask(taskToEdit.id, data);
-      refetchTasks();
-    }
-    handleCloseForm();
-  };
-
-  const handleTaskCheck = async (taskId: string) => {
-    const task = tasks.find(t => t.id === taskId);
-    if (!task) return;
-
-    const newStatus = task.status === 'DONE' ? 'TODO' : 'DONE';
-
-    // If marking as done, check dependencies
-    if (newStatus === 'DONE' && task.dependency_ids && task.dependency_ids.length > 0) {
-      const allDeps = await Promise.all(
-        task.dependency_ids.map(depId =>
-          tasks.find(t => t.id === depId) || tasksApi.getById(depId).catch(() => null)
-        )
-      );
-
-      const hasPendingDependencies = allDeps.some(depTask => depTask && depTask.status !== 'DONE');
-
-      if (hasPendingDependencies) {
-        alert('このタスクを完了するには、先に依存しているタスクを完了してください。');
-        return;
-      }
-    }
-
-    // Optimistic update for modal display
-    if (selectedTask?.id === taskId) {
-      setSelectedTask(prev => prev ? { ...prev, status: newStatus } : null);
-    } else if (openedParentTask?.id === taskId) {
-      setOpenedParentTask(prev => prev ? { ...prev, status: newStatus } : null);
-    }
-
-    await updateTask(taskId, { status: newStatus });
-    refetchTasks();
+  const handleCloseBriefing = () => {
+    setIsClosing(true);
+    setTimeout(() => {
+      setIsBriefingOpen(false);
+      setIsClosing(false);
+    }, 300);
   };
 
   return (
@@ -144,81 +64,43 @@ export function DashboardPage() {
         <AgentCard onOpenDailyBriefing={() => setIsBriefingOpen(true)} />
       </motion.div>
 
-      <div className="dashboard-grid">
-        <motion.div
-          variants={itemVariants}
-          className="grid-main"
-        >
-          <TodayTasksCard />
-        </motion.div>
-
-        <motion.div
-          variants={itemVariants}
-          className="grid-side"
-        >
-          <WeeklyProgress />
-        </motion.div>
-      </div>
+      <motion.div variants={itemVariants}>
+        <TodayTasksCard onTaskClick={taskModal.openTaskDetail} />
+      </motion.div>
 
       <motion.div
         variants={itemVariants}
         className="dashboard-bottom-section"
       >
-        <ScheduleOverviewCard onTaskClick={handleScheduleTaskClick} />
+        <ScheduleOverviewCard onTaskClick={taskModal.openTaskDetailById} />
         <WeeklyMeetingsCard />
       </motion.div>
 
       {isBriefingOpen && (
-        <div className="daily-briefing-modal" role="dialog" aria-modal="true">
+        <div
+          className={`daily-briefing-modal ${isClosing ? 'closing' : ''}`}
+          role="dialog"
+          aria-modal="true"
+        >
           <div
             className="daily-briefing-backdrop"
-            onClick={() => setIsBriefingOpen(false)}
+            onClick={handleCloseBriefing}
           />
           <div className="daily-briefing-panel">
             <button
               type="button"
               className="daily-briefing-close"
-              onClick={() => setIsBriefingOpen(false)}
+              onClick={handleCloseBriefing}
               aria-label="Close"
             >
               X
             </button>
-            <DailyBriefingCard onFinish={() => setIsBriefingOpen(false)} />
+            <DailyBriefingCard onFinish={handleCloseBriefing} />
           </div>
         </div>
       )}
 
-      {selectedTask && (
-        <TaskDetailModal
-          task={openedParentTask || selectedTask}
-          subtasks={tasks.filter(t => t.parent_id === (openedParentTask?.id || selectedTask.id))}
-          allTasks={tasks}
-          initialSubtask={openedParentTask ? selectedTask : null}
-          onClose={() => {
-            setSelectedTask(null);
-            setOpenedParentTask(null);
-          }}
-          onEdit={handleEditTask}
-          onDelete={handleDeleteTask}
-          onTaskCheck={handleTaskCheck}
-          onProgressChange={(taskId, progress) => {
-            updateTask(taskId, { progress });
-          }}
-          onActionItemsCreated={refetchTasks}
-        />
-      )}
-
-      <AnimatePresence>
-        {taskToEdit && (
-          <TaskFormModal
-            task={taskToEdit}
-            allTasks={tasks}
-            onClose={handleCloseForm}
-            onSubmit={handleSubmitForm}
-            isSubmitting={false}
-          />
-        )}
-      </AnimatePresence>
+      {taskModal.renderModals()}
     </motion.div>
   );
 }

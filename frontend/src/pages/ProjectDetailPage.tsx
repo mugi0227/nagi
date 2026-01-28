@@ -9,7 +9,7 @@ import { memoriesApi } from '../api/memories';
 import { phasesApi } from '../api/phases';
 import { getProject, projectsApi } from '../api/projects';
 import { tasksApi } from '../api/tasks';
-import type { Blocker, Checkin, CheckinCreateV2, CheckinSummary, CheckinV2, Memory, PhaseWithTaskCount, ProjectInvitation, ProjectKpiMetric, ProjectMember, ProjectWithTaskCount, Task, TaskAssignment, TaskStatus, TaskUpdate } from '../api/types';
+import type { Blocker, Checkin, CheckinCreateV2, CheckinSummary, CheckinV2, Memory, PhaseWithTaskCount, ProjectInvitation, ProjectKpiMetric, ProjectMember, ProjectWithTaskCount, Task, TaskAssignment, TaskStatus } from '../api/types';
 import { CheckinForm } from '../components/projects/CheckinForm';
 import type { UserSearchResult } from '../api/users';
 import { UserSearchInput } from '../components/common/UserSearchInput';
@@ -18,8 +18,7 @@ import { ProjectDetailModal } from '../components/projects/ProjectDetailModal';
 import { ProjectTasksView } from '../components/projects/ProjectTasksView';
 import { ProjectAchievementsSection } from '../components/projects/ProjectAchievementsSection';
 import { RecurringMeetingsPanel } from '../components/projects/RecurringMeetingsPanel';
-import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
-import { TaskFormModal } from '../components/tasks/TaskFormModal';
+import { useTaskModal } from '../hooks/useTaskModal';
 import { useTasks } from '../hooks/useTasks';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDate, toDateTime, todayInTimezone } from '../utils/dateTime';
@@ -33,9 +32,6 @@ export function ProjectDetailPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [openedParentTask, setOpenedParentTask] = useState<Task | null>(null);
-  const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [assignments, setAssignments] = useState<TaskAssignment[]>([]);
   const [blockers, setBlockers] = useState<Blocker[]>([]);
@@ -77,6 +73,15 @@ export function ProjectDetailPage() {
 
   // Fetch tasks for this project
   const { tasks, isLoading: tasksLoading, refetch: refetchTasks, updateTask, deleteTask } = useTasks(projectId);
+
+  // Use unified task modal hook
+  const taskModal = useTaskModal({
+    tasks,
+    onRefetch: refetchTasks,
+    projectName: project?.name,
+    getPhaseName: (phaseId) => phases.find(p => p.id === phaseId)?.name,
+    defaultTaskData: { project_id: projectId },
+  });
 
   // Fetch project details
   useEffect(() => {
@@ -200,69 +205,6 @@ export function ProjectDetailPage() {
     const owner = members.find(member => member.role === 'OWNER');
     setSelectedCheckinMemberId(owner?.member_user_id || members[0].member_user_id);
   }, [members, selectedCheckinMemberId]);
-
-  const handleTaskClick = (task: Task) => {
-    if (task.parent_id) {
-      const parent = tasks.find(t => t.id === task.parent_id);
-      if (parent) {
-        setOpenedParentTask(parent);
-        setSelectedTask(task);
-      } else {
-        setSelectedTask(task);
-        setOpenedParentTask(null);
-      }
-    } else {
-      setSelectedTask(task);
-      setOpenedParentTask(null);
-    }
-  };
-
-  const handleTaskCheck = async (taskId: string) => {
-    const localTask = tasks.find(item => item.id === taskId);
-    if (localTask?.status === 'DONE') {
-      updateTask(taskId, { status: 'TODO' });
-      refetchTasks();
-      return;
-    }
-
-    const task = localTask ?? await tasksApi.getById(taskId).catch(() => null);
-    if (!task) return;
-
-    if (task.dependency_ids && task.dependency_ids.length > 0) {
-      const missingDeps = task.dependency_ids.filter(depId => !tasks.find(t => t.id === depId));
-      const fetchedDeps = missingDeps.length
-        ? await Promise.all(missingDeps.map(depId => tasksApi.getById(depId).catch(() => null)))
-        : [];
-      const allDeps = [
-        ...task.dependency_ids
-          .map(depId => tasks.find(t => t.id === depId))
-          .filter(Boolean),
-        ...fetchedDeps.filter(Boolean),
-      ] as Task[];
-      const hasMissingDependencies = fetchedDeps.some(depTask => !depTask);
-      const hasPendingDependencies = hasMissingDependencies
-        || allDeps.some(depTask => depTask.status !== 'DONE');
-      if (hasPendingDependencies) {
-        alert('依存タスクが完了していないためチェックできません。');
-        return;
-      }
-    }
-
-    updateTask(taskId, { status: 'DONE' });
-    refetchTasks();
-  };
-
-  const handleScheduleTaskClick = async (taskId: string) => {
-    const task = tasks.find(item => item.id === taskId);
-    if (task) {
-      handleTaskClick(task);
-      return;
-    }
-    const fetched = await tasksApi.getById(taskId).catch(() => null);
-    if (fetched) {
-      handleTaskClick(fetched);
-    }
-  };
 
   const handleRetry = () => {
     setReloadToken((prev) => prev + 1);
@@ -1225,13 +1167,13 @@ export function ProjectDetailPage() {
                     <div
                       key={meeting.id}
                       className="meeting-item"
-                      onClick={() => handleTaskClick(meeting)}
+                      onClick={() => taskModal.openTaskDetail(meeting)}
                       role="button"
                       tabIndex={0}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter' || event.key === ' ') {
                           event.preventDefault();
-                          handleTaskClick(meeting);
+                          taskModal.openTaskDetail(meeting);
                         }
                       }}
                     >
@@ -1251,7 +1193,7 @@ export function ProjectDetailPage() {
                           className="meeting-note-btn"
                           onClick={(event) => {
                             event.stopPropagation();
-                            setTaskToEdit(meeting);
+                            taskModal.openEditForm(meeting);
                           }}
                         >
                           議事録を入力
@@ -1466,7 +1408,7 @@ export function ProjectDetailPage() {
           projectTasks={tasks}
           title={`${project.name}\u306e\u30b9\u30b1\u30b8\u30e5\u30fc\u30eb`}
           tag="\u30d7\u30ed\u30b8\u30a7\u30af\u30c8"
-          onTaskClick={handleScheduleTaskClick}
+          onTaskClick={taskModal.openTaskDetailById}
         />
       </div>
 
@@ -1488,7 +1430,7 @@ export function ProjectDetailPage() {
               updateTask(id, { status });
               refetchTasks();
             }}
-            onTaskClick={handleTaskClick}
+            onTaskClick={taskModal.openTaskDetail}
             assigneeByTaskId={assigneeByTaskId}
             assignedMemberIdsByTaskId={assignedMemberIdsByTaskId}
             memberOptions={memberOptions}
@@ -1511,52 +1453,8 @@ export function ProjectDetailPage() {
         />
       )}
 
-      {/* Task Detail Modal */}
-      {selectedTask && (
-        <TaskDetailModal
-          task={openedParentTask || selectedTask}
-          subtasks={tasks.filter(t => t.parent_id === (openedParentTask?.id || selectedTask.id))}
-          allTasks={tasks}
-          initialSubtask={openedParentTask ? selectedTask : null}
-          projectName={project.name}
-          phaseName={phases.find(p => p.id === (openedParentTask || selectedTask).phase_id)?.name}
-          onClose={() => {
-            setSelectedTask(null);
-            setOpenedParentTask(null);
-          }}
-          onEdit={(task) => {
-            // Open task edit modal
-            setTaskToEdit(task);
-          }}
-          onProgressChange={(taskId, progress) => {
-            updateTask(taskId, { progress });
-          }}
-          onTaskCheck={handleTaskCheck}
-          onActionItemsCreated={refetchTasks}
-        />
-      )}
-
-      {/* Task Edit Modal */}
-      {taskToEdit && (
-        <TaskFormModal
-          task={taskToEdit}
-          initialData={{ project_id: projectId }}
-          onClose={() => setTaskToEdit(null)}
-          onSubmit={async (data) => {
-            await updateTask(taskToEdit.id, data as TaskUpdate);
-            // Update selectedTask if it matches the edited task
-            if (selectedTask?.id === taskToEdit.id) {
-              setSelectedTask({ ...selectedTask, ...data } as Task);
-            }
-            // Update openedParentTask if it matches
-            if (openedParentTask?.id === taskToEdit.id) {
-              setOpenedParentTask({ ...openedParentTask, ...data } as Task);
-            }
-            setTaskToEdit(null);
-            refetchTasks();
-          }}
-        />
-      )}
+      {/* Task Modals (via unified hook) */}
+      {taskModal.renderModals()}
     </motion.div>
   );
 }

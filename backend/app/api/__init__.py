@@ -12,6 +12,7 @@ from app.api import (
     memories,
     heartbeat,
     today,
+    realtime,
     recurring_meetings,
     users,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "memories",
     "heartbeat",
     "today",
+    "realtime",
     "recurring_meetings",
     "users",
 ]

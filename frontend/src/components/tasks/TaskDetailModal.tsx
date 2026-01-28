@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -28,13 +29,19 @@ import ReactMarkdown from 'react-markdown';
 import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { phasesApi } from '../../api/phases';
-import { getProject } from '../../api/projects';
+import { projectsApi, getProject } from '../../api/projects';
 import type { Phase, Project, Task, TaskAssignment } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/dateTime';
 import type { DraftCardData } from '../chat/DraftCard';
+import type { TaskUpdate } from '../../api/types';
 import { AgendaList } from '../agenda';
 import { AssigneeSelect } from '../common/AssigneeSelect';
+import { EditableDateTime } from '../common/EditableDateTime';
+import { EditableDependencies } from '../common/EditableDependencies';
+import { EditableSection } from '../common/EditableSection';
+import { EditableSegment } from '../common/EditableSegment';
+import { EditableSelect } from '../common/EditableSelect';
 import { StepNumber } from '../common/StepNumber';
 import './TaskDetailModal.css';
 
@@ -57,7 +64,8 @@ interface TaskDetailModalProps {
   onTaskCheck?: (taskId: string) => void;
   onActionItemsCreated?: () => void;
   onStatusChange?: (taskId: string, status: string) => void;
-  onCreateSubtask?: (parentTaskId: string) => void;
+  onCreateSubtask?: (parentTaskId: string, title?: string, openModal?: boolean) => void;
+  onUpdateTask?: (taskId: string, updates: TaskUpdate) => Promise<void>;
   // Assignee props (optional for backward compatibility)
   memberOptions?: MemberOption[];
   taskAssignments?: TaskAssignment[];
@@ -107,6 +115,7 @@ export function TaskDetailModal({
   onActionItemsCreated: _onActionItemsCreated,
   onStatusChange,
   onCreateSubtask,
+  onUpdateTask,
   memberOptions = [],
   taskAssignments = [],
   onAssigneeChange,
@@ -118,6 +127,52 @@ export function TaskDetailModal({
   const [localSubtasks, setLocalSubtasks] = useState<Task[]>(subtasks);
   const [fetchedProject, setFetchedProject] = useState<Project | null>(null);
   const [fetchedPhase, setFetchedPhase] = useState<Phase | null>(null);
+
+  // Inline subtask creation state
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [isCreatingSubtask, setIsCreatingSubtask] = useState(false);
+
+  // Local task state for optimistic updates
+  const [localTask, setLocalTask] = useState<Task>(task);
+
+  // Sync local task with prop changes
+  useEffect(() => {
+    setLocalTask(task);
+  }, [task]);
+
+  // Handler for inline field updates
+  const handleFieldUpdate = async (field: keyof TaskUpdate, value: unknown) => {
+    if (!onUpdateTask) return;
+    // Optimistic update
+    setLocalTask(prev => ({ ...prev, [field]: value }));
+    try {
+      await onUpdateTask(task.id, { [field]: value } as TaskUpdate);
+    } catch (error) {
+      // Revert on error
+      setLocalTask(task);
+      console.error('Failed to update task:', error);
+    }
+  };
+
+  // Handler for subtask inline field updates
+  const handleSubtaskFieldUpdate = async (subtaskId: string, field: keyof TaskUpdate, value: unknown) => {
+    if (!onUpdateTask) return;
+    // Optimistic update for selectedSubtask
+    setSelectedSubtask(prev => prev ? { ...prev, [field]: value } : prev);
+    // Also update localSubtasks
+    setLocalSubtasks(prev => prev.map(st => st.id === subtaskId ? { ...st, [field]: value } : st));
+    try {
+      await onUpdateTask(subtaskId, { [field]: value } as TaskUpdate);
+    } catch (error) {
+      // Revert on error
+      const original = subtasks.find(st => st.id === subtaskId);
+      if (original) {
+        setSelectedSubtask(original);
+        setLocalSubtasks(subtasks);
+      }
+      console.error('Failed to update subtask:', error);
+    }
+  };
 
   // Fetch project and phase info if not provided via props
   useEffect(() => {
@@ -154,6 +209,38 @@ export function TaskDetailModal({
   const effectiveProjectName = projectName || fetchedProject?.name;
   const effectivePhaseName = phaseName || fetchedPhase?.name;
 
+  // Fetch projects list for inline editing
+  const { data: projectsList = [] } = useQuery({
+    queryKey: ['projects'],
+    queryFn: () => projectsApi.getAll(),
+    enabled: !!onUpdateTask, // Only fetch when inline editing is enabled
+    staleTime: 5 * 60 * 1000, // 5 minutes cache
+  });
+
+  // Fetch phases for selected project
+  const { data: phasesList = [] } = useQuery({
+    queryKey: ['phases', localTask.project_id],
+    queryFn: () => localTask.project_id ? phasesApi.listByProject(localTask.project_id) : Promise.resolve([]),
+    enabled: !!onUpdateTask && !!localTask.project_id,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Project options for EditableSelect
+  const projectOptions = useMemo(() => {
+    return projectsList.map(p => ({
+      value: p.id,
+      label: p.name,
+    }));
+  }, [projectsList]);
+
+  // Phase options for EditableSelect
+  const phaseOptions = useMemo(() => {
+    return phasesList.map(p => ({
+      value: p.id,
+      label: p.name,
+    }));
+  }, [phasesList]);
+
   useEffect(() => {
     setLocalProgress(task.progress ?? 0);
     setLocalStatus(task.status);
@@ -162,6 +249,10 @@ export function TaskDetailModal({
   useEffect(() => {
     setLocalSubtasks(subtasks);
   }, [subtasks]);
+
+  // Check if parent task is completed (subtasks of completed tasks should stay DONE)
+  const parentTask = task.parent_id ? allTasks.find(t => t.id === task.parent_id) : null;
+  const isParentCompleted = parentTask?.status === 'DONE';
 
   const sortedSubtasks = useMemo(() => {
     return [...localSubtasks].sort((a, b) => {
@@ -249,10 +340,10 @@ export function TaskDetailModal({
   const selectedGuide = selectedSubtask
     ? extractGuide(selectedSubtask.description, selectedSubtask.guide)
     : null;
-  const taskDescription = extractGuide(task.description, task.guide);
+  const taskDescription = extractGuide(localTask.description, localTask.guide);
   const selectedSubtaskStepNumber = selectedSubtask ? stepNumberBySubtaskId.get(selectedSubtask.id) : undefined;
-  const isMeeting = task.is_fixed_time && task.start_time && task.end_time;
-  const meetingTimeLabel = formatMeetingTime(task.start_time, task.end_time);
+  const isMeeting = localTask.is_fixed_time && localTask.start_time && localTask.end_time;
+  const meetingTimeLabel = formatMeetingTime(localTask.start_time, localTask.end_time);
 
   // Helper to check if a subtask is locked (dependencies not complete)
   const isSubtaskLocked = (subtask: Task): boolean => {
@@ -355,10 +446,20 @@ export function TaskDetailModal({
           <div className="modal-header">
             <div className="title-area">
               {isMeeting && <span className="meeting-tag">MEETING</span>}
-              <h2>{task.title}</h2>
+              {onUpdateTask ? (
+                <EditableSection
+                  value={localTask.title}
+                  onSave={async (newValue) => handleFieldUpdate('title', newValue)}
+                  placeholder="タスク名を入力"
+                  className="editable-title"
+                />
+              ) : (
+                <h2>{localTask.title}</h2>
+              )}
             </div>
             <div className="modal-header-actions">
-              {onEdit && (
+              {/* 編集ボタンはインライン編集が無い場合のみ表示 */}
+              {onEdit && !onUpdateTask && (
                 <button className="edit-btn" onClick={() => onEdit(task)} title="編集">
                   <FaEdit />
                 </button>
@@ -377,35 +478,110 @@ export function TaskDetailModal({
           <div className="modal-body-wrapper">
             {/* Main Area */}
             <div className="modal-main-area">
-              {(taskDescription.mainDescription || taskDescription.guide) && (
+              {/* 説明セクション */}
+              {(taskDescription.mainDescription || onUpdateTask) && (
                 <div className="detail-section">
                   <h3 className="section-label">説明</h3>
-                  <div className="description-container">
-                    {taskDescription.mainDescription && (
+                  {onUpdateTask ? (
+                    <EditableSection
+                      value={localTask.description}
+                      onSave={async (newValue) => handleFieldUpdate('description', newValue)}
+                      placeholder="説明を入力（Markdown対応）"
+                      multiline
+                      markdown
+                      renderView={(value) => (
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                          {value}
+                        </ReactMarkdown>
+                      )}
+                    />
+                  ) : (
+                    <div className="description-container">
                       <div className="description-text markdown-content">
                         <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
                           {taskDescription.mainDescription}
                         </ReactMarkdown>
                       </div>
-                    )}
-                    {taskDescription.guide && (
-                      <div className="task-guide markdown-content">
-                        <h4><HiOutlineBookOpen /> 進め方ガイド</h4>
-                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                          {taskDescription.guide}
-                        </ReactMarkdown>
-                      </div>
-                    )}
-                  </div>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {task.purpose && (
+              {/* 進め方ガイドセクション */}
+              {(taskDescription.guide || onUpdateTask) && (
+                <div className="detail-section">
+                  <h3 className="section-label"><HiOutlineBookOpen /> 進め方ガイド</h3>
+                  {onUpdateTask ? (
+                    <EditableSection
+                      value={localTask.guide}
+                      onSave={async (newValue) => handleFieldUpdate('guide', newValue)}
+                      placeholder="進め方ガイドを入力（Markdown対応）"
+                      multiline
+                      markdown
+                      renderView={(value) => (
+                        <div className="task-guide markdown-content">
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                            {value}
+                          </ReactMarkdown>
+                        </div>
+                      )}
+                    />
+                  ) : taskDescription.guide ? (
+                    <div className="task-guide markdown-content">
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                        {taskDescription.guide}
+                      </ReactMarkdown>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {/* 目的セクション */}
+              {(localTask.purpose || onUpdateTask) && (
                 <div className="detail-section">
                   <h3 className="section-label">なぜやるか（目的）</h3>
-                  <div className="purpose-container">
-                    <p className="purpose-text">{task.purpose}</p>
-                  </div>
+                  {onUpdateTask ? (
+                    <EditableSection
+                      value={localTask.purpose}
+                      onSave={async (newValue) => handleFieldUpdate('purpose', newValue)}
+                      placeholder="目的を入力"
+                      multiline
+                      minRows={2}
+                    />
+                  ) : (
+                    <div className="purpose-container">
+                      <p className="purpose-text">{localTask.purpose}</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* 達成メモセクション */}
+              {(localTask.completion_note || (onUpdateTask && localTask.status === 'DONE')) && (
+                <div className="detail-section completion-note-section">
+                  <h3 className="section-label">
+                    <HiOutlineCheckCircle className="section-icon" /> 達成メモ
+                  </h3>
+                  {onUpdateTask ? (
+                    <EditableSection
+                      value={localTask.completion_note}
+                      onSave={async (newValue) => handleFieldUpdate('completion_note', newValue)}
+                      placeholder="達成メモを入力（どのように達成したか、学んだこと等）"
+                      multiline
+                      markdown
+                      renderView={(value) => (
+                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                          {value}
+                        </ReactMarkdown>
+                      )}
+                    />
+                  ) : (
+                    <div className="completion-note-container markdown-content">
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                        {localTask.completion_note || ''}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -420,25 +596,86 @@ export function TaskDetailModal({
                       <div className="meeting-meta-grid">
                         <div className="meta-info-item">
                           <HiOutlineClock />
-                          <span>{meetingTimeLabel}</span>
+                          {onUpdateTask ? (
+                            <div className="meeting-time-edit">
+                              <EditableDateTime
+                                value={localTask.start_time}
+                                onSave={async (newValue) => handleFieldUpdate('start_time', newValue)}
+                                placeholder="開始時刻"
+                                timezone={timezone}
+                                showTime
+                              />
+                              <span className="time-separator">〜</span>
+                              <EditableDateTime
+                                value={localTask.end_time}
+                                onSave={async (newValue) => handleFieldUpdate('end_time', newValue)}
+                                placeholder="終了時刻"
+                                timezone={timezone}
+                                showTime
+                              />
+                            </div>
+                          ) : (
+                            <span>{meetingTimeLabel}</span>
+                          )}
                         </div>
-                        {task.location && (
+                        {(localTask.location || onUpdateTask) && (
                           <div className="meta-info-item">
                             <HiOutlineLocationMarker />
-                            <span>{task.location}</span>
+                            {onUpdateTask ? (
+                              <EditableSection
+                                value={localTask.location}
+                                onSave={async (newValue) => handleFieldUpdate('location', newValue)}
+                                placeholder="場所を入力"
+                                className="editable-location"
+                              />
+                            ) : (
+                              <span>{localTask.location}</span>
+                            )}
                           </div>
                         )}
-                        {task.attendees?.length > 0 && (
+                        {(localTask.attendees?.length > 0 || onUpdateTask) && (
                           <div className="meta-info-item">
                             <HiOutlineUserGroup />
-                            <span>{task.attendees.join(', ')}</span>
+                            {onUpdateTask ? (
+                              <EditableSection
+                                value={localTask.attendees?.join(', ') || ''}
+                                onSave={async (newValue) => {
+                                  const attendees = newValue
+                                    .split(',')
+                                    .map(s => s.trim())
+                                    .filter(s => s.length > 0);
+                                  await handleFieldUpdate('attendees', attendees);
+                                }}
+                                placeholder="参加者（カンマ区切り）"
+                                className="editable-attendees"
+                              />
+                            ) : (
+                              <span>{localTask.attendees?.join(', ')}</span>
+                            )}
                           </div>
                         )}
                       </div>
-                      {task.meeting_notes ? (
+                      <h4 className="meeting-notes-label">議事録</h4>
+                      {onUpdateTask ? (
+                        <EditableSection
+                          value={localTask.meeting_notes}
+                          onSave={async (newValue) => handleFieldUpdate('meeting_notes', newValue)}
+                          placeholder="議事録を入力（Markdown対応）"
+                          multiline
+                          markdown
+                          minRows={5}
+                          renderView={(value) => (
+                            <div className="meeting-notes-content markdown-content">
+                              <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                                {value}
+                              </ReactMarkdown>
+                            </div>
+                          )}
+                        />
+                      ) : localTask.meeting_notes ? (
                         <div className="meeting-notes-content markdown-content">
                           <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                            {task.meeting_notes}
+                            {localTask.meeting_notes}
                           </ReactMarkdown>
                         </div>
                       ) : (
@@ -449,7 +686,7 @@ export function TaskDetailModal({
                           type="button"
                           className="premium-action-btn"
                           onClick={handleCreateActionItems}
-                          disabled={!task.meeting_notes}
+                          disabled={!localTask.meeting_notes}
                         >
                           アクションアイテムを生成
                         </button>
@@ -460,9 +697,9 @@ export function TaskDetailModal({
                   {/* Agenda Section */}
                   <div className="detail-section agenda-section">
                     <AgendaList
-                      meetingId={task.recurring_meeting_id || undefined}
-                      taskId={task.recurring_meeting_id ? undefined : task.id}
-                      eventDate={task.start_time ? task.start_time.split('T')[0] : undefined}
+                      meetingId={localTask.recurring_meeting_id || undefined}
+                      taskId={localTask.recurring_meeting_id ? undefined : task.id}
+                      eventDate={localTask.start_time ? localTask.start_time.split('T')[0] : undefined}
                     />
                   </div>
                 </>
@@ -472,73 +709,94 @@ export function TaskDetailModal({
               <div className="detail-section subtasks-section">
                 <div className="section-header-row">
                   <h3 className="section-label">サブタスク ({sortedSubtasks.length})</h3>
-                  {onCreateSubtask && (
-                    <button
-                      type="button"
-                      className="add-subtask-btn"
-                      onClick={() => onCreateSubtask(task.id)}
-                    >
-                      ＋ 追加
-                    </button>
-                  )}
                 </div>
-                {sortedSubtasks.length > 0 ? (
-                  <ul className="subtasks-list">
-                    {sortedSubtasks.map((subtask) => {
+                <ul className="subtasks-list">
+                  {sortedSubtasks.map((subtask) => {
 
-                      const { guide } = extractGuide(subtask.description, subtask.guide);
-                      const hasGuide = guide.length > 0;
-                      const stepNumber = stepNumberBySubtaskId.get(subtask.id);
-                      const isLocked = isSubtaskLocked(subtask);
+                    const { guide } = extractGuide(subtask.description, subtask.guide);
+                    const hasGuide = guide.length > 0;
+                    const stepNumber = stepNumberBySubtaskId.get(subtask.id);
+                    const isLocked = isSubtaskLocked(subtask);
 
-                      // Get assignee names for this subtask
-                      const subtaskAssigneeIds = taskAssignments
-                        .filter(a => a.task_id === subtask.id)
-                        .map(a => a.assignee_id);
-                      const subtaskAssigneeNames = subtaskAssigneeIds
-                        .map(id => memberOptions.find(m => m.id === id)?.label)
-                        .filter(Boolean) as string[];
+                    // Get assignee names for this subtask
+                    const subtaskAssigneeIds = taskAssignments
+                      .filter(a => a.task_id === subtask.id)
+                      .map(a => a.assignee_id);
+                    const subtaskAssigneeNames = subtaskAssigneeIds
+                      .map(id => memberOptions.find(m => m.id === id)?.label)
+                      .filter(Boolean) as string[];
 
-                      return (
-                        <li
-                          key={subtask.id}
-                          className={`subtask-item ${hasGuide ? 'has-guide' : ''} ${selectedSubtask?.id === subtask.id ? 'selected' : ''}`}
-                          onClick={() => setSelectedSubtask(subtask)}
+                    return (
+                      <li
+                        key={subtask.id}
+                        className={`subtask-item ${hasGuide ? 'has-guide' : ''} ${selectedSubtask?.id === subtask.id ? 'selected' : ''}`}
+                        onClick={() => setSelectedSubtask(subtask)}
+                      >
+                        <div
+                          className={`subtask-check-wrapper ${subtask.status === 'DONE' ? 'checked' : ''}`}
+                          onClick={(e) => handleSubtaskCheck(subtask.id, e)}
                         >
-                          <div
-                            className={`subtask-check-wrapper ${subtask.status === 'DONE' ? 'checked' : ''}`}
-                            onClick={(e) => handleSubtaskCheck(subtask.id, e)}
-                          >
-                            {subtask.status === 'DONE' && <HiOutlineCheckCircle />}
-                          </div>
-                          {isLocked && <FaLock className="subtask-lock" />}
-                          {stepNumber != null && <StepNumber stepNumber={stepNumber} className="small" />}
-                          <span className={`subtask-title ${subtask.status === 'DONE' ? 'done' : ''}`}>
-                            {subtask.title}
+                          {subtask.status === 'DONE' && <HiOutlineCheckCircle />}
+                        </div>
+                        {isLocked && <FaLock className="subtask-lock" />}
+                        {stepNumber != null && <StepNumber stepNumber={stepNumber} className="small" />}
+                        <span className={`subtask-title ${subtask.status === 'DONE' ? 'done' : ''}`}>
+                          {subtask.title}
+                        </span>
+                        {hasGuide && <HiOutlineBookOpen className="guide-indicator" />}
+                        {subtaskAssigneeNames.length > 0 && (
+                          <span className="subtask-assignee-inline" title={subtaskAssigneeNames.join(', ')}>
+                            <FaUser />
+                            {subtaskAssigneeNames.length <= 2
+                              ? subtaskAssigneeNames.join(', ')
+                              : `${subtaskAssigneeNames[0]} +${subtaskAssigneeNames.length - 1}`}
                           </span>
-                          {hasGuide && <HiOutlineBookOpen className="guide-indicator" />}
-                          {subtaskAssigneeNames.length > 0 && (
-                            <span className="subtask-assignee-inline" title={subtaskAssigneeNames.join(', ')}>
-                              <FaUser />
-                              {subtaskAssigneeNames.length <= 2
-                                ? subtaskAssigneeNames.join(', ')
-                                : `${subtaskAssigneeNames[0]} +${subtaskAssigneeNames.length - 1}`}
-                            </span>
-                          )}
-                          {subtask.estimated_minutes && <span className="subtask-duration">{subtask.estimated_minutes}分</span>}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                ) : (
+                        )}
+                        {subtask.estimated_minutes && <span className="subtask-duration">{subtask.estimated_minutes}分</span>}
+                      </li>
+                    );
+                  })}
+                  {/* Inline subtask creation */}
+                  {onCreateSubtask && (
+                    <li className="subtask-item subtask-create-inline">
+                      <div className="subtask-check-wrapper placeholder" />
+                      <input
+                        type="text"
+                        className="subtask-inline-input"
+                        placeholder="＋ 新しいサブタスクを追加..."
+                        value={newSubtaskTitle}
+                        onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                        onKeyDown={async (e) => {
+                          if (e.key === 'Enter' && newSubtaskTitle.trim() && !isCreatingSubtask) {
+                            e.preventDefault();
+                            setIsCreatingSubtask(true);
+                            try {
+                              // Pass false for openModal since modal is already open
+                              await onCreateSubtask(task.id, newSubtaskTitle.trim(), false);
+                              setNewSubtaskTitle('');
+                            } finally {
+                              setIsCreatingSubtask(false);
+                            }
+                          }
+                          if (e.key === 'Escape') {
+                            setNewSubtaskTitle('');
+                            (e.target as HTMLInputElement).blur();
+                          }
+                        }}
+                        disabled={isCreatingSubtask}
+                      />
+                    </li>
+                  )}
+                </ul>
+                {sortedSubtasks.length === 0 && !onCreateSubtask && (
                   <p className="empty-hint">サブタスクはまだありません</p>
                 )}
               </div>
 
               <div className="detail-section footer-meta">
 
-                <p>作成: {task.created_by === 'AGENT' ? 'AI秘書' : '自分'} • {formatDateValue(task.created_at)}</p>
-                <p>更新: {formatDateValue(task.updated_at)}</p>
+                <p>作成: {localTask.created_by === 'AGENT' ? 'AI秘書' : '自分'} • {formatDateValue(localTask.created_at)}</p>
+                <p>更新: {formatDateValue(localTask.updated_at)}</p>
               </div>
             </div>
 
@@ -548,8 +806,9 @@ export function TaskDetailModal({
                 <h3 className="sidebar-label">状況</h3>
                 <button
                   type="button"
-                  className={`status-badge-lg status-${localStatus.toLowerCase()} clickable`}
+                  className={`status-badge-lg status-${localStatus.toLowerCase()} ${isParentCompleted ? 'disabled' : 'clickable'}`}
                   onClick={() => {
+                    if (isParentCompleted) return; // Parent is completed, subtask must stay DONE
                     const statusOrder = ['TODO', 'IN_PROGRESS', 'WAITING', 'DONE'];
                     const currentIndex = statusOrder.indexOf(localStatus);
                     const nextIndex = (currentIndex + 1) % statusOrder.length;
@@ -559,7 +818,8 @@ export function TaskDetailModal({
                     setLocalStatus(nextStatus);
                     onStatusChange?.(task.id, nextStatus);
                   }}
-                  title="クリックでステータス変更"
+                  disabled={isParentCompleted}
+                  title={isParentCompleted ? '親タスクが完了しているため変更できません' : 'クリックでステータス変更'}
                 >
                   {getStatusLabel(localStatus)}
                 </button>
@@ -608,96 +868,218 @@ export function TaskDetailModal({
                 <div className="sidebar-meta-list">
                   <div className="sidebar-meta-item">
                     <span className="label">重要度</span>
-                    <span className={`meta-badge-sm importance-${task.importance.toLowerCase()}`}>
-                      {getPriorityIcon(task.importance)}
-                      {task.importance}
-                    </span>
+                    {onUpdateTask ? (
+                      <EditableSegment
+                        value={localTask.importance}
+                        options={[
+                          { value: 'HIGH', label: 'HIGH', icon: <HiFire className="priority-icon-high" /> },
+                          { value: 'MEDIUM', label: 'MEDIUM', icon: <HiOutlineFire className="priority-icon-medium" /> },
+                          { value: 'LOW', label: 'LOW', icon: <HiOutlineClock className="priority-icon-low" /> },
+                        ]}
+                        onSave={async (newValue) => handleFieldUpdate('importance', newValue)}
+                        renderValue={(val) => (
+                          <span className={`meta-badge-sm importance-${val.toLowerCase()}`}>
+                            {getPriorityIcon(val)}
+                            {val}
+                          </span>
+                        )}
+                      />
+                    ) : (
+                      <span className={`meta-badge-sm importance-${localTask.importance.toLowerCase()}`}>
+                        {getPriorityIcon(localTask.importance)}
+                        {localTask.importance}
+                      </span>
+                    )}
                   </div>
                   <div className="sidebar-meta-item">
                     <span className="label">緊急度</span>
-                    <span className={`meta-badge-sm urgency-${task.urgency.toLowerCase()}`}>
-                      {getPriorityIcon(task.urgency)}
-                      {task.urgency}
-                    </span>
+                    {onUpdateTask ? (
+                      <EditableSegment
+                        value={localTask.urgency}
+                        options={[
+                          { value: 'HIGH', label: 'HIGH', icon: <HiFire className="priority-icon-high" /> },
+                          { value: 'MEDIUM', label: 'MEDIUM', icon: <HiOutlineFire className="priority-icon-medium" /> },
+                          { value: 'LOW', label: 'LOW', icon: <HiOutlineClock className="priority-icon-low" /> },
+                        ]}
+                        onSave={async (newValue) => handleFieldUpdate('urgency', newValue)}
+                        renderValue={(val) => (
+                          <span className={`meta-badge-sm urgency-${val.toLowerCase()}`}>
+                            {getPriorityIcon(val)}
+                            {val}
+                          </span>
+                        )}
+                      />
+                    ) : (
+                      <span className={`meta-badge-sm urgency-${localTask.urgency.toLowerCase()}`}>
+                        {getPriorityIcon(localTask.urgency)}
+                        {localTask.urgency}
+                      </span>
+                    )}
                   </div>
                   <div className="sidebar-meta-item">
                     <span className="label">エネルギー</span>
-                    <span className={`meta-badge-sm energy-${task.energy_level.toLowerCase()}`}>
-                      {getEnergyIcon(task.energy_level)}
-                      {task.energy_level}
-                    </span>
+                    {onUpdateTask ? (
+                      <EditableSegment
+                        value={localTask.energy_level}
+                        options={[
+                          { value: 'HIGH', label: 'HIGH', icon: <HiOutlineLightningBolt className="energy-icon-high" /> },
+                          { value: 'LOW', label: 'LOW', icon: <HiOutlineClock className="energy-icon-low" /> },
+                        ]}
+                        onSave={async (newValue) => handleFieldUpdate('energy_level', newValue)}
+                        renderValue={(val) => (
+                          <span className={`meta-badge-sm energy-${val.toLowerCase()}`}>
+                            {getEnergyIcon(val)}
+                            {val}
+                          </span>
+                        )}
+                      />
+                    ) : (
+                      <span className={`meta-badge-sm energy-${localTask.energy_level.toLowerCase()}`}>
+                        {getEnergyIcon(localTask.energy_level)}
+                        {localTask.energy_level}
+                      </span>
+                    )}
                   </div>
-                  {effectiveEstimatedMinutes > 0 && (
+                  {(effectiveEstimatedMinutes > 0 || onUpdateTask) && (
                     <div className="sidebar-meta-item">
                       <span className="label">見積時間</span>
-                      <span className="value"><HiOutlineClock /> {effectiveEstimatedMinutes}分</span>
+                      {onUpdateTask ? (
+                        <EditableSection
+                          value={localTask.estimated_minutes?.toString() || ''}
+                          onSave={async (newValue) => {
+                            const minutes = newValue ? parseInt(newValue, 10) : null;
+                            await handleFieldUpdate('estimated_minutes', minutes);
+                          }}
+                          placeholder="分"
+                          className="editable-number"
+                          renderView={(val) => (
+                            <span className="value"><HiOutlineClock /> {val}分</span>
+                          )}
+                        />
+                      ) : (
+                        <span className="value"><HiOutlineClock /> {effectiveEstimatedMinutes}分</span>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
 
-              {(task.project_id || task.phase_id) && (
+              {(localTask.project_id || localTask.phase_id || onUpdateTask) && (
                 <div className="sidebar-group">
                   <h3 className="sidebar-label">プロジェクト</h3>
                   <div className="sidebar-meta-list">
-                    {task.project_id && (
-                      <div className="sidebar-meta-item">
-                        <span className="label">プロジェクト</span>
+                    <div className="sidebar-meta-item">
+                      <span className="label">プロジェクト</span>
+                      {onUpdateTask ? (
+                        <EditableSelect
+                          value={localTask.project_id}
+                          options={projectOptions}
+                          onSave={async (newValue) => {
+                            // When project changes, clear phase
+                            if (newValue !== localTask.project_id) {
+                              await handleFieldUpdate('phase_id', null);
+                            }
+                            await handleFieldUpdate('project_id', newValue);
+                          }}
+                          placeholder="未設定"
+                          icon={<FaProjectDiagram />}
+                        />
+                      ) : (
                         <span className="value"><FaProjectDiagram /> {effectiveProjectName || '読み込み中...'}</span>
-                      </div>
-                    )}
-                    {task.phase_id && (
+                      )}
+                    </div>
+                    {(localTask.project_id || localTask.phase_id) && (
                       <div className="sidebar-meta-item">
                         <span className="label">フェーズ</span>
-                        <span className="value"><FaLayerGroup /> {effectivePhaseName || '読み込み中...'}</span>
+                        {onUpdateTask ? (
+                          <EditableSelect
+                            value={localTask.phase_id}
+                            options={phaseOptions}
+                            onSave={async (newValue) => handleFieldUpdate('phase_id', newValue)}
+                            placeholder="未設定"
+                            icon={<FaLayerGroup />}
+                            disabled={!localTask.project_id}
+                          />
+                        ) : (
+                          <span className="value"><FaLayerGroup /> {effectivePhaseName || '読み込み中...'}</span>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
               )}
 
-              {(task.due_date || task.start_not_before) && (
+              {(localTask.due_date || localTask.start_not_before || onUpdateTask) && (
                 <div className="sidebar-group">
                   <h3 className="sidebar-label">スケジュール</h3>
                   <div className="sidebar-meta-list">
-                    {task.due_date && (
+                    {(localTask.due_date || onUpdateTask) && (
                       <div className="sidebar-meta-item">
                         <span className="label">期限</span>
-                        <span className="value"><HiOutlineCalendar /> {formatDateValue(task.due_date)}</span>
+                        {onUpdateTask ? (
+                          <EditableDateTime
+                            value={localTask.due_date}
+                            onSave={async (newValue) => handleFieldUpdate('due_date', newValue)}
+                            placeholder="未設定"
+                            timezone={timezone}
+                            icon={<HiOutlineCalendar />}
+                          />
+                        ) : (
+                          <span className="value"><HiOutlineCalendar /> {localTask.due_date ? formatDateValue(localTask.due_date) : '未設定'}</span>
+                        )}
                       </div>
                     )}
-                    {task.start_not_before && (
+                    {(localTask.start_not_before || onUpdateTask) && (
                       <div className="sidebar-meta-item">
                         <span className="label">着手可能日</span>
-                        <span className="value"><HiOutlineCalendar /> {formatDateValue(task.start_not_before)}</span>
+                        {onUpdateTask ? (
+                          <EditableDateTime
+                            value={localTask.start_not_before}
+                            onSave={async (newValue) => handleFieldUpdate('start_not_before', newValue)}
+                            placeholder="未設定"
+                            timezone={timezone}
+                            icon={<HiOutlineCalendar />}
+                          />
+                        ) : (
+                          <span className="value"><HiOutlineCalendar /> {localTask.start_not_before ? formatDateValue(localTask.start_not_before) : '未設定'}</span>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
               )}
 
-              {dependencies.length > 0 && (
+              {(dependencies.length > 0 || onUpdateTask) && (
                 <div className="sidebar-group">
                   <h3 className="sidebar-label">依存関係</h3>
-                  <ul className="sidebar-dependencies">
-                    {dependencies.map((dep) => (
-                      <li
-                        key={dep.id}
-                        className={`sidebar-dep-item ${dep.status === 'DONE' ? 'completed' : ''}`}
-                        title={dep.title}
-                        onClick={() => {
-                          onClose();
-                          setTimeout(() => {
-                            const taskCard = document.querySelector(`[data-task-id="${dep.id}"]`);
-                            if (taskCard) (taskCard as HTMLElement).click();
-                          }, 300);
-                        }}
-                      >
-                        {dep.status === 'DONE' ? <FaLockOpen /> : <FaLock />}
-                        <span>{dep.title}</span>
-                      </li>
-                    ))}
-                  </ul>
+                  {onUpdateTask ? (
+                    <EditableDependencies
+                      value={localTask.dependency_ids}
+                      allTasks={allTasks}
+                      currentTaskId={task.id}
+                      onSave={async (newValue) => handleFieldUpdate('dependency_ids', newValue)}
+                    />
+                  ) : (
+                    <ul className="sidebar-dependencies">
+                      {dependencies.map((dep) => (
+                        <li
+                          key={dep.id}
+                          className={`sidebar-dep-item ${dep.status === 'DONE' ? 'completed' : ''}`}
+                          title={dep.title}
+                          onClick={() => {
+                            onClose();
+                            setTimeout(() => {
+                              const taskCard = document.querySelector(`[data-task-id="${dep.id}"]`);
+                              if (taskCard) (taskCard as HTMLElement).click();
+                            }, 300);
+                          }}
+                        >
+                          {dep.status === 'DONE' ? <FaLockOpen /> : <FaLock />}
+                          <span>{dep.title}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
                 </div>
               )}
             </div>
@@ -725,16 +1107,16 @@ export function TaskDetailModal({
               <h3>サブタスク詳細</h3>
 
               <div className="guide-header-actions">
-                {onEdit && (
+                {onDelete && (
                   <button
-                    className="guide-edit-btn"
+                    className="guide-delete-btn"
                     onClick={(e) => {
                       e.stopPropagation();
-                      onEdit(selectedSubtask);
+                      onDelete(selectedSubtask);
                     }}
-                    title="サブタスクを編集"
+                    title="サブタスクを削除"
                   >
-                    <FaEdit />
+                    <FaTrash />
                   </button>
                 )}
               </div>
@@ -743,23 +1125,63 @@ export function TaskDetailModal({
             <div className="guide-body">
               <div className="guide-title-row">
                 {selectedSubtaskStepNumber != null && <StepNumber stepNumber={selectedSubtaskStepNumber} />}
-                <h4>{selectedSubtask.title}</h4>
+                {onUpdateTask ? (
+                  <EditableSection
+                    value={selectedSubtask.title}
+                    onSave={async (newValue) => handleSubtaskFieldUpdate(selectedSubtask.id, 'title', newValue)}
+                    placeholder="サブタスク名を入力"
+                    className="editable-subtask-title"
+                  />
+                ) : (
+                  <h4>{selectedSubtask.title}</h4>
+                )}
               </div>
 
               <div className="guide-meta-box">
                 <div className="metadata-grid">
                   <div className="metadata-item">
                     <span className="metadata-label">状況</span>
-                    <span className={`status-badge status-${selectedSubtask.status.toLowerCase()}`}>
-                      {getStatusLabel(selectedSubtask.status)}
-                    </span>
+                    {onUpdateTask ? (
+                      <button
+                        type="button"
+                        className={`status-badge status-${selectedSubtask.status.toLowerCase()} clickable`}
+                        onClick={() => {
+                          const statusOrder = ['TODO', 'IN_PROGRESS', 'WAITING', 'DONE'];
+                          const currentIndex = statusOrder.indexOf(selectedSubtask.status);
+                          const nextIndex = (currentIndex + 1) % statusOrder.length;
+                          handleSubtaskFieldUpdate(selectedSubtask.id, 'status', statusOrder[nextIndex]);
+                        }}
+                        title="クリックでステータス変更"
+                      >
+                        {getStatusLabel(selectedSubtask.status)}
+                      </button>
+                    ) : (
+                      <span className={`status-badge status-${selectedSubtask.status.toLowerCase()}`}>
+                        {getStatusLabel(selectedSubtask.status)}
+                      </span>
+                    )}
                   </div>
-                  {selectedSubtask.estimated_minutes && (
-                    <div className="metadata-item">
-                      <span className="metadata-label">時間</span>
+                  <div className="metadata-item">
+                    <span className="metadata-label">時間</span>
+                    {onUpdateTask ? (
+                      <EditableSection
+                        value={selectedSubtask.estimated_minutes?.toString() || ''}
+                        onSave={async (newValue) => {
+                          const minutes = newValue ? parseInt(newValue, 10) : null;
+                          await handleSubtaskFieldUpdate(selectedSubtask.id, 'estimated_minutes', minutes);
+                        }}
+                        placeholder="分"
+                        className="editable-number"
+                        renderView={(val) => (
+                          <span className="metadata-value"><HiOutlineClock /> {val}分</span>
+                        )}
+                      />
+                    ) : selectedSubtask.estimated_minutes ? (
                       <span className="metadata-value">{selectedSubtask.estimated_minutes}分</span>
-                    </div>
-                  )}
+                    ) : (
+                      <span className="metadata-value empty">未設定</span>
+                    )}
+                  </div>
                 </div>
                 {memberOptions.length > 0 && onAssigneeChange && (
                   <div className="subtask-assignee-section">
@@ -777,28 +1199,93 @@ export function TaskDetailModal({
                 )}
               </div>
 
-              {selectedGuide?.mainDescription && (
+              {(selectedGuide?.mainDescription || onUpdateTask) && (
                 <div className="guide-section">
                   <h4>説明</h4>
-                  <div className="markdown-content">
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                      {selectedGuide.mainDescription}
-                    </ReactMarkdown>
-                  </div>
+                  {onUpdateTask ? (
+                    <EditableSection
+                      value={selectedSubtask.description}
+                      onSave={async (newValue) => handleSubtaskFieldUpdate(selectedSubtask.id, 'description', newValue)}
+                      placeholder="説明を入力（Markdown対応）"
+                      multiline
+                      markdown
+                      renderView={(value) => (
+                        <div className="markdown-content">
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                            {value}
+                          </ReactMarkdown>
+                        </div>
+                      )}
+                    />
+                  ) : (
+                    <div className="markdown-content">
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                        {selectedGuide?.mainDescription || ''}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {selectedGuide?.guide && (
+              {(selectedGuide?.guide || onUpdateTask) && (
                 <div className="guide-section">
                   <div className="section-header-with-icon">
                     <HiOutlineBookOpen />
                     <h4>進め方ガイド</h4>
                   </div>
-                  <div className="guide-steps-box markdown-content">
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                      {selectedGuide.guide}
-                    </ReactMarkdown>
+                  {onUpdateTask ? (
+                    <EditableSection
+                      value={selectedSubtask.guide}
+                      onSave={async (newValue) => handleSubtaskFieldUpdate(selectedSubtask.id, 'guide', newValue)}
+                      placeholder="進め方ガイドを入力（Markdown対応）"
+                      multiline
+                      markdown
+                      renderView={(value) => (
+                        <div className="guide-steps-box markdown-content">
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                            {value}
+                          </ReactMarkdown>
+                        </div>
+                      )}
+                    />
+                  ) : (
+                    <div className="guide-steps-box markdown-content">
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                        {selectedGuide?.guide || ''}
+                      </ReactMarkdown>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(selectedSubtask.completion_note || (onUpdateTask && selectedSubtask.status === 'DONE')) && (
+                <div className="guide-section completion-note-section">
+                  <div className="section-header-with-icon">
+                    <HiOutlineCheckCircle />
+                    <h4>達成メモ</h4>
                   </div>
+                  {onUpdateTask ? (
+                    <EditableSection
+                      value={selectedSubtask.completion_note}
+                      onSave={async (newValue) => handleSubtaskFieldUpdate(selectedSubtask.id, 'completion_note', newValue)}
+                      placeholder="達成メモを入力（どのように達成したか、学んだこと等）"
+                      multiline
+                      markdown
+                      renderView={(value) => (
+                        <div className="completion-note-container markdown-content">
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                            {value}
+                          </ReactMarkdown>
+                        </div>
+                      )}
+                    />
+                  ) : (
+                    <div className="completion-note-container markdown-content">
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                        {selectedSubtask.completion_note || ''}
+                      </ReactMarkdown>
+                    </div>
+                  )}
                 </div>
               )}
             </div>

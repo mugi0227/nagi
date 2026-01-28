@@ -25,6 +25,7 @@ import type {
   Blocker,
   CheckinV2,
   Milestone,
+  MilestoneUpdate,
   PhaseWithTaskCount,
   ProjectInvitation,
   ProjectKpiMetric,
@@ -32,21 +33,19 @@ import type {
   ProjectWithTaskCount,
   Task,
   TaskAssignment,
-  TaskCreate,
   TaskStatus,
-  TaskUpdate,
 } from '../api/types';
 import type { UserSearchResult } from '../api/users';
 import type { DraftCardData } from '../components/chat/DraftCard';
 import { UserSearchInput } from '../components/common/UserSearchInput';
+import { MilestoneEditModal } from '../components/gantt/MilestoneEditModal';
 import { ProjectGanttChart } from '../components/gantt/ProjectGanttChart';
 import { MeetingsTab } from '../components/meetings/MeetingsTab';
 import { ProjectAchievementsSection } from '../components/projects/ProjectAchievementsSection';
 import { ProjectDetailModal } from '../components/projects/ProjectDetailModal';
 import { ProjectTasksView } from '../components/projects/ProjectTasksView';
-import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
-import { TaskFormModal } from '../components/tasks/TaskFormModal';
 import { useCurrentUser } from '../hooks/useCurrentUser';
+import { useTaskModal } from '../hooks/useTaskModal';
 import { useTasks } from '../hooks/useTasks';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDate, toDateKey, toDateTime, todayInTimezone } from '../utils/dateTime';
@@ -159,11 +158,6 @@ export function ProjectDetailV2Page() {
   const [isInviting, setIsInviting] = useState(false);
   const [memberActionId, setMemberActionId] = useState<string | null>(null);
   const [invitationActionId, setInvitationActionId] = useState<string | null>(null);
-  const [selectedTask, setSelectedTask] = useState<Task | null>(null);
-  const [openedParentTask, setOpenedParentTask] = useState<Task | null>(null);
-  const [taskToEdit, setTaskToEdit] = useState<Task | null>(null);
-  const [isCreatingTask, setIsCreatingTask] = useState(false);
-  const [newTaskInitialData, setNewTaskInitialData] = useState<Partial<TaskCreate> | null>(null);
   const [assignments, setAssignments] = useState<TaskAssignment[]>([]);
   const [phases, setPhases] = useState<PhaseWithTaskCount[]>([]);
   const [milestones, setMilestones] = useState<Milestone[]>([]);
@@ -190,6 +184,16 @@ export function ProjectDetailV2Page() {
   const [newMilestoneDescription, setNewMilestoneDescription] = useState('');
   const [newMilestoneDueDate, setNewMilestoneDueDate] = useState('');
 
+  // Gantt milestone edit modal state
+  const [ganttEditingMilestone, setGanttEditingMilestone] = useState<Milestone | null>(null);
+  const [ganttMilestoneSubmitting, setGanttMilestoneSubmitting] = useState(false);
+  const [pendingDeleteMilestone, setPendingDeleteMilestone] = useState<{
+    id: string;
+    title: string;
+    linkedTaskCount: number;
+  } | null>(null);
+  const [isDeletingMilestone, setIsDeletingMilestone] = useState(false);
+
   // Project edit/delete state
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -204,6 +208,15 @@ export function ProjectDetailV2Page() {
     deleteTask,
   } = useTasks(projectId);
   const { data: currentUser } = useCurrentUser();
+
+  // Unified task modal hook
+  const taskModal = useTaskModal({
+    tasks,
+    onRefetch: refetchTasks,
+    projectName: project?.name,
+    getPhaseName: (phaseId) => phases.find(p => p.id === phaseId)?.name,
+    defaultTaskData: { project_id: projectId },
+  });
 
   // Update tab when URL query param changes
   useEffect(() => {
@@ -652,22 +665,6 @@ export function ProjectDetailV2Page() {
     }
   };
 
-  const handleTaskClick = (task: Task) => {
-    if (task.parent_id) {
-      const parent = tasks.find(item => item.id === task.parent_id);
-      if (parent) {
-        setOpenedParentTask(parent);
-        setSelectedTask(task);
-      } else {
-        setSelectedTask(task);
-        setOpenedParentTask(null);
-      }
-    } else {
-      setSelectedTask(task);
-      setOpenedParentTask(null);
-    }
-  };
-
   const handleSetCurrentPhase = async (phaseId: string) => {
     if (!projectId) return;
     try {
@@ -699,41 +696,6 @@ export function ProjectDetailV2Page() {
     };
     const event = new CustomEvent('secretary:chat-open', { detail: { draftCard } });
     window.dispatchEvent(event);
-  };
-
-  const handleTaskCheck = async (taskId: string) => {
-    const localTask = tasks.find(item => item.id === taskId);
-    if (localTask?.status === 'DONE') {
-      updateTask(taskId, { status: 'TODO' });
-      refetchTasks();
-      return;
-    }
-
-    const task = localTask ?? await tasksApi.getById(taskId).catch(() => null);
-    if (!task) return;
-
-    if (task.dependency_ids && task.dependency_ids.length > 0) {
-      const missingDeps = task.dependency_ids.filter(depId => !tasks.find(item => item.id === depId));
-      const fetchedDeps = missingDeps.length
-        ? await Promise.all(missingDeps.map(depId => tasksApi.getById(depId).catch(() => null)))
-        : [];
-      const allDeps = [
-        ...task.dependency_ids
-          .map(depId => tasks.find(item => item.id === depId))
-          .filter(Boolean),
-        ...fetchedDeps.filter(Boolean),
-      ] as Task[];
-      const hasMissingDependencies = fetchedDeps.some(depTask => !depTask);
-      const hasPendingDependencies = hasMissingDependencies
-        || allDeps.some(depTask => depTask.status !== 'DONE');
-      if (hasPendingDependencies) {
-        alert('依存タスクが完了していないため完了できません。');
-        return;
-      }
-    }
-
-    updateTask(taskId, { status: 'DONE' });
-    refetchTasks();
   };
 
   const getPhaseRangeLabel = (phase: {
@@ -1080,37 +1042,17 @@ export function ProjectDetailV2Page() {
     }
   };
 
-  const handleSubmitTaskForm = (data: TaskUpdate) => {
-    if (taskToEdit) {
-      updateTask(taskToEdit.id, data);
-      refetchTasks();
-    }
-    setTaskToEdit(null);
-  };
-
   const handleOpenCreateTask = (phaseId: string | null) => {
-    setNewTaskInitialData({
+    taskModal.openCreateForm({
       project_id: projectId,
       phase_id: phaseId ?? undefined,
     });
-    setIsCreatingTask(true);
-  };
-
-  const handleSubmitNewTask = async (data: TaskCreate | TaskUpdate) => {
-    try {
-      await tasksApi.create(data as TaskCreate);
-      refetchTasks();
-      setIsCreatingTask(false);
-      setNewTaskInitialData(null);
-    } catch (err) {
-      console.error('Failed to create task:', err);
-      alert('タスクの作成に失敗しました。');
-    }
   };
 
   // Current user's role in this project
   const currentUserMember = members.find((m) => m.member_user_id === currentUser?.id);
   const canDeleteProject = currentUserMember?.role === 'OWNER' || currentUserMember?.role === 'ADMIN';
+  const canDeleteAnyCheckin = canDeleteProject;
 
   const handleOpenProjectModal = () => {
     setIsProjectModalOpen(true);
@@ -1382,14 +1324,7 @@ export function ProjectDetailV2Page() {
                             <div className="project-v2-focus-label">NEXT ACTION</div>
                             <div
                               className="project-v2-focus-item"
-                              onClick={() => {
-                                if (focusTask.parent_id) {
-                                  setOpenedParentTask(parentTask || null);
-                                } else {
-                                  setOpenedParentTask(null);
-                                }
-                                setSelectedTask(focusTask);
-                              }}
+                              onClick={() => taskModal.openTaskDetail(focusTask)}
                             >
                               {/* 進捗バー背景 */}
                               <div
@@ -1449,14 +1384,7 @@ export function ProjectDetailV2Page() {
                               <div
                                 key={task.id}
                                 className={`project-v2-task-item ${isDone ? 'done' : ''}`}
-                                onClick={() => {
-                                  if (task.parent_id) {
-                                    setOpenedParentTask(parentTask || null);
-                                  } else {
-                                    setOpenedParentTask(null);
-                                  }
-                                  setSelectedTask(task);
-                                }}
+                                onClick={() => taskModal.openTaskDetail(task)}
                               >
                                 {/* 進捗バー */}
                                 <div
@@ -1540,7 +1468,7 @@ export function ProjectDetailV2Page() {
                             <span className="project-v2-muted">
                               {formatShortDate(item.timestamp)}
                             </span>
-                            {item.checkin && item.checkin.user_id === currentUser?.id && (
+                            {item.checkin && (canDeleteAnyCheckin || item.checkin.member_user_id === currentUser?.id) && (
                               <button
                                 className="project-v2-activity-delete-btn"
                                 onClick={() => handleDeleteCheckin(item.checkin!.id)}
@@ -2160,7 +2088,7 @@ export function ProjectDetailV2Page() {
                     updateTask(id, { status });
                     refetchTasks();
                   }}
-                  onTaskClick={handleTaskClick}
+                  onTaskClick={taskModal.openTaskDetail}
                   assigneeByTaskId={assigneeByTaskId}
                   assignedMemberIdsByTaskId={assignedMemberIdsByTaskId}
                   memberOptions={memberOptions}
@@ -2201,25 +2129,17 @@ export function ProjectDetailV2Page() {
                       console.error('Failed to update phase:', err);
                     }
                   }}
-                  onTaskClick={(taskId) => {
-                    const task = tasks.find(t => t.id === taskId);
-                    if (task) {
-                      if (task.parent_id) {
-                        const parent = tasks.find(t => t.id === task.parent_id);
-                        setOpenedParentTask(parent || null);
-                      } else {
-                        setOpenedParentTask(null);
-                      }
-                      setSelectedTask(task);
+                  onTaskClick={(taskId) => taskModal.openTaskDetailById(taskId)}
+                  onMilestoneClick={(milestoneId) => {
+                    const milestone = milestones.find(m => m.id === milestoneId);
+                    if (milestone) {
+                      setGanttEditingMilestone(milestone);
                     }
                   }}
-                  onTaskCreate={(phaseId) => {
-                    setNewTaskInitialData({
-                      project_id: projectId,
-                      phase_id: phaseId,
-                    });
-                    setIsCreatingTask(true);
-                  }}
+                  onTaskCreate={(phaseId) => taskModal.openCreateForm({
+                    project_id: projectId,
+                    phase_id: phaseId,
+                  })}
                   onBatchTaskUpdate={async (updates) => {
                     try {
                       // Update all tasks in sequence
@@ -2255,15 +2175,7 @@ export function ProjectDetailV2Page() {
                       console.error('Failed to update milestone:', err);
                     }
                   }}
-                  onSubtaskCreate={(parentTaskId) => {
-                    const parentTask = tasks.find(t => t.id === parentTaskId);
-                    setNewTaskInitialData({
-                      project_id: projectId,
-                      phase_id: parentTask?.phase_id,
-                      parent_id: parentTaskId,
-                    });
-                    setIsCreatingTask(true);
-                  }}
+                  onSubtaskCreate={(parentTaskId) => taskModal.openCreateSubtaskForm(parentTaskId)}
                   onGenerateSubtasks={(parentTaskId, taskTitle) => {
                     const draftCard: DraftCardData = {
                       type: 'subtask',
@@ -2290,6 +2202,33 @@ export function ProjectDetailV2Page() {
                       console.error('Failed to delete task:', err);
                     }
                   }}
+                  onDeleteMilestone={async (milestoneId) => {
+                    try {
+                      await milestonesApi.delete(milestoneId);
+                      await refreshMilestones();
+                      refetchTasks(); // タスクのマイルストーン紐づけも更新
+                    } catch (err) {
+                      console.error('Failed to delete milestone:', err);
+                    }
+                  }}
+                  onGenerateMilestoneTasks={(milestoneId, milestoneTitle) => {
+                    const draftCard: DraftCardData = {
+                      type: 'task',
+                      title: 'タスク生成',
+                      info: [
+                        { label: 'マイルストーン', value: milestoneTitle },
+                        { label: 'マイルストーンID', value: milestoneId },
+                      ],
+                      placeholder: '例: 3つのタスクに分解して',
+                      promptTemplate: `マイルストーン「${milestoneTitle}」(ID: ${milestoneId}) のタスクを作成して。
+
+追加の指示があれば以下に記入:
+{instruction}`,
+                    };
+                    window.dispatchEvent(new CustomEvent('secretary:chat-open', {
+                      detail: { draftCard }
+                    }));
+                  }}
                 />
               </div>
             </div>
@@ -2302,6 +2241,7 @@ export function ProjectDetailV2Page() {
             members={members}
             tasks={tasks}
             currentUserId={currentUser?.id || members[0]?.member_user_id || ''}
+            canDeleteAnyCheckin={canDeleteAnyCheckin}
           />
         )}
 
@@ -2310,54 +2250,8 @@ export function ProjectDetailV2Page() {
         )}
       </section>
 
-      {selectedTask && (
-        <TaskDetailModal
-          task={openedParentTask || selectedTask}
-          subtasks={tasks.filter(task => task.parent_id === (openedParentTask?.id || selectedTask.id))}
-          allTasks={tasks}
-          initialSubtask={openedParentTask ? selectedTask : null}
-          onClose={() => {
-            setSelectedTask(null);
-            setOpenedParentTask(null);
-          }}
-          onEdit={(task) => setTaskToEdit(task)}
-          onProgressChange={(taskId, progress) => {
-            updateTask(taskId, { progress });
-          }}
-          onTaskCheck={handleTaskCheck}
-          onActionItemsCreated={refetchTasks}
-          onStatusChange={(taskId, status) => {
-            updateTask(taskId, { status: status as TaskStatus });
-            refetchTasks();
-          }}
-          memberOptions={memberOptions}
-          taskAssignments={assignments}
-          onAssigneeChange={handleAssignMultiple}
-        />
-      )}
-
-      {taskToEdit && (
-        <TaskFormModal
-          task={taskToEdit}
-          allTasks={tasks}
-          onClose={() => setTaskToEdit(null)}
-          onSubmit={handleSubmitTaskForm}
-          isSubmitting={false}
-        />
-      )}
-
-      {isCreatingTask && (
-        <TaskFormModal
-          initialData={newTaskInitialData ?? undefined}
-          allTasks={tasks}
-          onClose={() => {
-            setIsCreatingTask(false);
-            setNewTaskInitialData(null);
-          }}
-          onSubmit={handleSubmitNewTask}
-          isSubmitting={false}
-        />
-      )}
+      {/* Task Modals (via unified hook) */}
+      {taskModal.renderModals()}
 
       {/* Project Edit Modal (v1 reuse) */}
       {isProjectModalOpen && project && (
@@ -2407,6 +2301,91 @@ export function ProjectDetailV2Page() {
                 disabled={isDeletingProject || deleteConfirmText !== project?.name}
               >
                 {isDeletingProject ? '削除中...' : '削除する'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Gantt Milestone Edit Modal */}
+      {ganttEditingMilestone && (
+        <MilestoneEditModal
+          milestone={ganttEditingMilestone}
+          linkedTaskCount={tasks.filter(t => t.milestone_id === ganttEditingMilestone.id).length}
+          phaseName={phases.find(p => p.id === ganttEditingMilestone.phase_id)?.name}
+          phaseId={ganttEditingMilestone.phase_id}
+          onClose={() => setGanttEditingMilestone(null)}
+          onUpdate={async (data: MilestoneUpdate) => {
+            setGanttMilestoneSubmitting(true);
+            try {
+              await milestonesApi.update(ganttEditingMilestone.id, data);
+              await refreshMilestones();
+              setGanttEditingMilestone(null);
+            } catch (err) {
+              console.error('Failed to update milestone:', err);
+            } finally {
+              setGanttMilestoneSubmitting(false);
+            }
+          }}
+          onDelete={() => {
+            setPendingDeleteMilestone({
+              id: ganttEditingMilestone.id,
+              title: ganttEditingMilestone.title,
+              linkedTaskCount: tasks.filter(t => t.milestone_id === ganttEditingMilestone.id).length,
+            });
+          }}
+          isSubmitting={ganttMilestoneSubmitting}
+        />
+      )}
+
+      {/* Milestone Delete Confirmation Dialog */}
+      {pendingDeleteMilestone && (
+        <div className="project-v2-modal-overlay" onClick={() => setPendingDeleteMilestone(null)}>
+          <div className="project-v2-modal project-v2-modal-danger" onClick={(e) => e.stopPropagation()}>
+            <div className="project-v2-modal-header">
+              <h2>マイルストーンを削除</h2>
+              <button className="project-v2-icon-btn" onClick={() => setPendingDeleteMilestone(null)}>
+                <FaTimes />
+              </button>
+            </div>
+            <div className="project-v2-modal-body">
+              <p className="project-v2-modal-warning">
+                「{pendingDeleteMilestone.title}」を削除しますか？
+              </p>
+              {pendingDeleteMilestone.linkedTaskCount > 0 && (
+                <p className="project-v2-modal-warning" style={{ background: '#fef3c7', color: '#92400e', padding: '8px 12px', borderRadius: '6px', fontWeight: 500 }}>
+                  {pendingDeleteMilestone.linkedTaskCount}件のタスクが紐づいています。タスクの紐づけは解除されます。
+                </p>
+              )}
+              <p className="project-v2-modal-warning">この操作は取り消せません。</p>
+            </div>
+            <div className="project-v2-modal-actions">
+              <button
+                className="project-v2-button ghost"
+                onClick={() => setPendingDeleteMilestone(null)}
+                disabled={isDeletingMilestone}
+              >
+                キャンセル
+              </button>
+              <button
+                className="project-v2-button danger"
+                onClick={async () => {
+                  setIsDeletingMilestone(true);
+                  try {
+                    await milestonesApi.delete(pendingDeleteMilestone.id);
+                    await refreshMilestones();
+                    refetchTasks();
+                    setPendingDeleteMilestone(null);
+                    setGanttEditingMilestone(null);
+                  } catch (err) {
+                    console.error('Failed to delete milestone:', err);
+                  } finally {
+                    setIsDeletingMilestone(false);
+                  }
+                }}
+                disabled={isDeletingMilestone}
+              >
+                {isDeletingMilestone ? '削除中...' : '削除する'}
               </button>
             </div>
           </div>

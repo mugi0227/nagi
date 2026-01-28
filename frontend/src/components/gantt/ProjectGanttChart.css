@@ -1396,6 +1396,20 @@
   opacity: 1;
 }
 
+/* Milestone actions (similar to task actions) */
+.pgantt-milestone-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.pgantt-sidebar-row.milestone:hover .pgantt-milestone-actions {
+  opacity: 1;
+}
+
 .pgantt-action-btn {
   display: flex;
   align-items: center;
@@ -1427,6 +1441,13 @@
 .pgantt-generate-btn:hover {
   background: linear-gradient(135deg, #8b5cf6, #6366f1);
   border-color: #8b5cf6;
+  color: white;
+}
+
+/* Unlink from milestone button */
+.pgantt-unlink-btn:hover {
+  background: #f97316;
+  border-color: #f97316;
   color: white;
 }
 

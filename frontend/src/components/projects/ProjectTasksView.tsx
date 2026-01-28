@@ -55,15 +55,28 @@ export function ProjectTasksView({
     try {
       const data = await phasesApi.listByProject(projectId);
       setPhases(data);
+      return data;
     } catch (error) {
       console.error('Failed to fetch phases:', error);
+      return [];
     } finally {
       setIsPhasesLoading(false);
     }
   }, [projectId]);
 
+  // On initial load, select the current (ACTIVE) phase if available
   useEffect(() => {
-    fetchPhases();
+    const initPhases = async () => {
+      const phasesData = await fetchPhases();
+      // Find the first ACTIVE phase (sorted by order_in_project)
+      const activePhases = phasesData
+        .filter(p => p.status === 'ACTIVE')
+        .sort((a, b) => a.order_in_project - b.order_in_project);
+      if (activePhases.length > 0) {
+        setSelectedPhaseId(activePhases[0].id);
+      }
+    };
+    initPhases();
   }, [fetchPhases]);
 
   // Filter tasks by selected phase

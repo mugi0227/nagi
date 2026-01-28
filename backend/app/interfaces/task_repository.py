@@ -33,13 +33,19 @@ class ITaskRepository(ABC):
         pass
 
     @abstractmethod
-    async def get(self, user_id: str, task_id: UUID) -> Optional[Task]:
+    async def get(
+        self,
+        user_id: str,
+        task_id: UUID,
+        project_id: Optional[UUID] = None,
+    ) -> Optional[Task]:
         """
         Get a task by ID.
 
         Args:
             user_id: Owner user ID
             task_id: Task ID
+            project_id: Optional project scope (no user_id check)
 
         Returns:
             Task if found, None otherwise
@@ -75,7 +81,13 @@ class ITaskRepository(ABC):
         pass
 
     @abstractmethod
-    async def update(self, user_id: str, task_id: UUID, update: TaskUpdate) -> Task:
+    async def update(
+        self,
+        user_id: str,
+        task_id: UUID,
+        update: TaskUpdate,
+        project_id: Optional[UUID] = None,
+    ) -> Task:
         """
         Update an existing task.
 
@@ -83,6 +95,7 @@ class ITaskRepository(ABC):
             user_id: Owner user ID
             task_id: Task ID to update
             update: Fields to update
+            project_id: Optional project scope (no user_id check)
 
         Returns:
             Updated task
@@ -93,13 +106,19 @@ class ITaskRepository(ABC):
         pass
 
     @abstractmethod
-    async def delete(self, user_id: str, task_id: UUID) -> bool:
+    async def delete(
+        self,
+        user_id: str,
+        task_id: UUID,
+        project_id: Optional[UUID] = None,
+    ) -> bool:
         """
         Delete a task.
 
         Args:
             user_id: Owner user ID
             task_id: Task ID to delete
+            project_id: Optional project scope (no user_id check)
 
         Returns:
             True if deleted, False if not found
@@ -145,13 +164,19 @@ class ITaskRepository(ABC):
         pass
 
     @abstractmethod
-    async def get_subtasks(self, user_id: str, parent_id: UUID) -> list[Task]:
+    async def get_subtasks(
+        self,
+        user_id: str,
+        parent_id: UUID,
+        project_id: Optional[UUID] = None,
+    ) -> list[Task]:
         """
         Get all subtasks of a parent task.
 
         Args:
             user_id: Owner user ID
             parent_id: Parent task ID
+            project_id: Optional project scope (no user_id check)
 
         Returns:
             List of subtasks

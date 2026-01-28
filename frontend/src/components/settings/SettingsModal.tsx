@@ -308,9 +308,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   };
 
   return (
-    <div className="settings-modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
+    <div className="modal-overlay settings-modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
       <motion.div
-        className="settings-modal"
+        className="base-modal settings-modal"
         onClick={(event) => event.stopPropagation()}
         initial={{ opacity: 0, scale: 0.9 }}
         animate={{ opacity: 1, scale: 1 }}

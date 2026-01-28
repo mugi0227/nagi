@@ -1,0 +1,420 @@
+.editable-dependencies {
+  position: relative;
+  width: 100%;
+}
+
+.editable-dependencies.disabled {
+  pointer-events: none;
+  opacity: 0.6;
+}
+
+/* View Mode */
+.editable-deps-view-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.editable-deps-view-mode .sidebar-dependencies {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.editable-deps-view-mode .sidebar-dep-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+  border-radius: 12px;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  transition: all 0.2s ease;
+  cursor: default;
+}
+
+.editable-deps-view-mode .sidebar-dep-item:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+[data-theme="dark"] .editable-deps-view-mode .sidebar-dep-item {
+  background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="dark"] .editable-deps-view-mode .sidebar-dep-item:hover {
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* Status Icon Container */
+.sidebar-dep-item .dep-status-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  flex-shrink: 0;
+  font-size: 0.75rem;
+}
+
+.sidebar-dep-item .dep-status-badge.pending {
+  background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%);
+  color: #b45309;
+  border: 1px solid rgba(180, 83, 9, 0.2);
+}
+
+.sidebar-dep-item .dep-status-badge.completed {
+  background: linear-gradient(135deg, #d1fae5 0%, #a7f3d0 100%);
+  color: #059669;
+  border: 1px solid rgba(5, 150, 105, 0.2);
+}
+
+[data-theme="dark"] .sidebar-dep-item .dep-status-badge.pending {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.2) 0%, rgba(245, 158, 11, 0.15) 100%);
+  color: #fbbf24;
+  border-color: rgba(251, 191, 36, 0.3);
+}
+
+[data-theme="dark"] .sidebar-dep-item .dep-status-badge.completed {
+  background: linear-gradient(135deg, rgba(34, 197, 94, 0.2) 0%, rgba(16, 185, 129, 0.15) 100%);
+  color: #22c55e;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+/* Dependency Content */
+.sidebar-dep-item .dep-content {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.sidebar-dep-item .dep-title {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.sidebar-dep-item.completed .dep-title {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+.sidebar-dep-item .dep-status-label {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 500;
+}
+
+.sidebar-dep-item.completed .dep-status-label {
+  color: #059669;
+}
+
+[data-theme="dark"] .sidebar-dep-item.completed .dep-status-label {
+  color: #22c55e;
+}
+
+/* Empty State */
+.editable-deps-view-mode .empty-hint {
+  color: var(--text-muted);
+  font-size: 0.875rem;
+  font-style: italic;
+  margin: 0;
+  padding: 0.5rem 0;
+}
+
+/* Add Button */
+.editable-deps-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  border: 2px dashed rgba(14, 165, 233, 0.3);
+  border-radius: 12px;
+  background: transparent;
+  color: var(--primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  width: 100%;
+  justify-content: center;
+}
+
+.editable-deps-add-btn:hover {
+  background: rgba(14, 165, 233, 0.08);
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+
+.editable-deps-add-btn svg {
+  font-size: 0.75rem;
+}
+
+[data-theme="dark"] .editable-deps-add-btn {
+  border-color: rgba(14, 165, 233, 0.4);
+}
+
+[data-theme="dark"] .editable-deps-add-btn:hover {
+  background: rgba(14, 165, 233, 0.15);
+}
+
+/* Edit Mode */
+.editable-deps-edit-mode {
+  background: #ffffff;
+  border: 2px solid var(--primary);
+  border-radius: 16px;
+  padding: 1rem;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+}
+
+[data-theme="dark"] .editable-deps-edit-mode {
+  background: #1e293b;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+/* Search Input */
+.deps-search-input {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  border-radius: 10px;
+  font-size: 0.875rem;
+  background: #f8fafc;
+  color: var(--text-main);
+  margin-bottom: 0.75rem;
+  transition: all 0.2s ease;
+}
+
+.deps-search-input::placeholder {
+  color: var(--text-muted);
+}
+
+.deps-search-input:focus {
+  outline: none;
+  border-color: var(--primary);
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.1);
+}
+
+[data-theme="dark"] .deps-search-input {
+  background: #0f172a;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .deps-search-input:focus {
+  background: #1e293b;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.2);
+}
+
+/* Task List */
+.deps-task-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 240px;
+  overflow-y: auto;
+  border-radius: 10px;
+  background: #f8fafc;
+  border: 1px solid rgba(0, 0, 0, 0.05);
+}
+
+[data-theme="dark"] .deps-task-list {
+  background: #0f172a;
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+.deps-task-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.deps-task-item:last-child {
+  border-bottom: none;
+}
+
+.deps-task-item:hover {
+  background: rgba(14, 165, 233, 0.06);
+}
+
+.deps-task-item.selected {
+  background: rgba(14, 165, 233, 0.12);
+}
+
+[data-theme="dark"] .deps-task-item {
+  border-bottom-color: rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="dark"] .deps-task-item:hover {
+  background: rgba(14, 165, 233, 0.1);
+}
+
+[data-theme="dark"] .deps-task-item.selected {
+  background: rgba(14, 165, 233, 0.2);
+}
+
+/* Checkbox */
+.deps-checkbox {
+  width: 20px;
+  height: 20px;
+  border: 2px solid rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all 0.2s ease;
+  font-size: 0.625rem;
+  color: white;
+  background: white;
+}
+
+.deps-task-item.selected .deps-checkbox {
+  background: linear-gradient(135deg, var(--primary) 0%, #0284c7 100%);
+  border-color: transparent;
+  box-shadow: 0 2px 4px rgba(14, 165, 233, 0.3);
+}
+
+[data-theme="dark"] .deps-checkbox {
+  border-color: rgba(255, 255, 255, 0.2);
+  background: #1e293b;
+}
+
+[data-theme="dark"] .deps-task-item.selected .deps-checkbox {
+  background: linear-gradient(135deg, var(--primary) 0%, #0284c7 100%);
+}
+
+/* Task Title */
+.deps-task-title {
+  flex: 1;
+  font-size: 0.875rem;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-main);
+}
+
+.deps-task-title.done {
+  color: var(--text-muted);
+  text-decoration: line-through;
+  font-weight: 400;
+}
+
+/* Status Badge in Edit Mode */
+.deps-status-badge-small {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.deps-status-badge-small.pending {
+  background: rgba(251, 191, 36, 0.15);
+  color: #b45309;
+}
+
+.deps-status-badge-small.completed {
+  background: rgba(34, 197, 94, 0.15);
+  color: #059669;
+}
+
+[data-theme="dark"] .deps-status-badge-small.pending {
+  background: rgba(251, 191, 36, 0.2);
+  color: #fbbf24;
+}
+
+[data-theme="dark"] .deps-status-badge-small.completed {
+  background: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+/* Empty State */
+.deps-empty {
+  padding: 1.5rem 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.875rem;
+}
+
+/* Actions */
+.editable-deps-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.editable-deps-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.625rem 1rem;
+  border-radius: 10px;
+  border: none;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.editable-deps-btn.save {
+  background: linear-gradient(135deg, var(--primary) 0%, #0284c7 100%);
+  color: white;
+  box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
+}
+
+.editable-deps-btn.save:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(14, 165, 233, 0.4);
+}
+
+.editable-deps-btn.cancel {
+  background: #f1f5f9;
+  color: var(--text-main);
+}
+
+.editable-deps-btn.cancel:hover {
+  background: #e2e8f0;
+  transform: translateY(-1px);
+}
+
+[data-theme="dark"] .editable-deps-btn.cancel {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+[data-theme="dark"] .editable-deps-btn.cancel:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.editable-deps-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.editable-deps-btn svg {
+  font-size: 0.75rem;
+}

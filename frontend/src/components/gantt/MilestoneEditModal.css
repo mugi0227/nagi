@@ -1,0 +1,299 @@
+/* Milestone Edit Modal - Specific Styles */
+/* Inherits from: BaseModal.css, FormControls.css */
+
+.base-modal.milestone-edit-modal {
+  max-width: 600px;
+}
+
+/* Milestone color theme override */
+.milestone-edit-modal .modal-header h2 {
+  color: var(--c-milestone, #a855f7);
+}
+
+.milestone-edit-modal .header-icon {
+  font-size: 1rem;
+}
+
+/* Form */
+.milestone-form {
+  padding: 1.5rem 2rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Title Input - Milestone themed */
+.milestone-edit-modal .form-input-title,
+.milestone-edit-modal .title-input {
+  font-size: 1.125rem !important;
+  font-weight: 700 !important;
+  border-color: var(--c-milestone, #a855f7) !important;
+  background: rgba(168, 85, 247, 0.03) !important;
+}
+
+/* Segment Button - Milestone themed */
+.milestone-edit-modal .segment-btn:hover:not(.active) {
+  background: rgba(168, 85, 247, 0.1);
+  color: var(--c-milestone, #a855f7);
+}
+
+.milestone-edit-modal .segment-btn.active {
+  background: var(--c-milestone, #a855f7);
+  color: white;
+  box-shadow: 0 2px 4px rgba(168, 85, 247, 0.3);
+}
+
+/* Focus states - Milestone themed */
+.milestone-edit-modal input:focus,
+.milestone-edit-modal textarea:focus {
+  border-color: var(--c-milestone, #a855f7);
+  box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.1);
+}
+
+/* Date Input - Modern Style */
+.milestone-edit-modal input[type="date"] {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.05) 0%, rgba(168, 85, 247, 0.02) 100%);
+  border: 2px solid rgba(168, 85, 247, 0.2);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.milestone-edit-modal input[type="date"]:hover {
+  border-color: var(--c-milestone, #a855f7);
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.08) 0%, rgba(168, 85, 247, 0.04) 100%);
+}
+
+.milestone-edit-modal input[type="date"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  padding: 6px;
+  margin-right: -4px;
+  border-radius: 6px;
+  background-color: rgba(168, 85, 247, 0.1);
+  transition: all 0.2s;
+}
+
+.milestone-edit-modal input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  background-color: rgba(168, 85, 247, 0.2);
+  transform: scale(1.1);
+}
+
+[data-theme="dark"] .milestone-edit-modal input[type="date"] {
+  background: linear-gradient(135deg, rgba(168, 85, 247, 0.1) 0%, rgba(168, 85, 247, 0.05) 100%);
+}
+
+[data-theme="dark"] .milestone-edit-modal input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(0.8);
+}
+
+/* AI Section */
+.milestone-edit-modal .ai-section {
+  background: rgba(168, 85, 247, 0.03);
+  border-radius: 12px;
+  padding: 1rem;
+  border: 1px solid rgba(168, 85, 247, 0.1);
+}
+
+[data-theme="dark"] .milestone-edit-modal .ai-section {
+  background: rgba(168, 85, 247, 0.05);
+}
+
+.milestone-edit-modal .ai-action-buttons {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.milestone-edit-modal .ai-action-btn {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border-radius: 10px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+}
+
+.milestone-edit-modal .ai-action-btn.primary {
+  background: var(--c-milestone, #a855f7);
+  color: white;
+}
+
+.milestone-edit-modal .ai-action-btn.primary:hover {
+  background: #9333ea;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+}
+
+.milestone-edit-modal .ai-action-btn.secondary {
+  background: white;
+  color: var(--c-milestone, #a855f7);
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+[data-theme="dark"] .milestone-edit-modal .ai-action-btn.secondary {
+  background: #1e293b;
+}
+
+.milestone-edit-modal .ai-action-btn.secondary:hover {
+  background: rgba(168, 85, 247, 0.05);
+  border-color: var(--c-milestone, #a855f7);
+}
+
+/* Linked Tasks Info */
+.milestone-edit-modal .linked-tasks-info {
+  background: rgba(14, 165, 233, 0.05);
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  border-radius: 10px;
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: var(--text-main);
+}
+
+.milestone-edit-modal .linked-count {
+  font-weight: 700;
+  color: var(--primary);
+}
+
+/* Footer */
+.milestone-edit-modal .modal-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1.5rem 2rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  background: #f8fafc;
+  margin-top: 0;
+}
+
+[data-theme="dark"] .milestone-edit-modal .modal-footer {
+  border-top-color: rgba(255, 255, 255, 0.05);
+  background: #0f172a;
+}
+
+.milestone-edit-modal .footer-right {
+  display: flex;
+  gap: 0.75rem;
+}
+
+/* Delete Button - Danger style */
+.milestone-edit-modal .delete-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.milestone-edit-modal .delete-btn:hover:not(:disabled) {
+  background: #dc2626;
+  color: white;
+}
+
+/* Cancel Button */
+.milestone-edit-modal .cancel-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #f1f5f9;
+  color: var(--text-main);
+  border: 2px solid #e2e8f0;
+}
+
+[data-theme="dark"] .milestone-edit-modal .cancel-btn {
+  background: #1e293b;
+  border-color: #334155;
+}
+
+.milestone-edit-modal .cancel-btn:hover:not(:disabled) {
+  background: #e2e8f0;
+  border-color: #cbd5e1;
+}
+
+/* Submit Button - Milestone themed */
+.milestone-edit-modal .submit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.5rem;
+  border-radius: 10px;
+  font-weight: 700;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
+  background: var(--c-milestone, #a855f7);
+  color: white;
+}
+
+.milestone-edit-modal .submit-btn:hover:not(:disabled) {
+  background: #9333ea;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(168, 85, 247, 0.3);
+}
+
+.milestone-edit-modal .submit-btn:disabled,
+.milestone-edit-modal .cancel-btn:disabled,
+.milestone-edit-modal .delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+}
+
+/* Responsive */
+@media (max-width: 480px) {
+  .milestone-form {
+    padding: 1rem 1.5rem 1.5rem;
+  }
+
+  .milestone-edit-modal .ai-action-buttons {
+    flex-direction: column;
+  }
+
+  .milestone-edit-modal .modal-footer {
+    flex-direction: column-reverse;
+    gap: 1rem;
+  }
+
+  .milestone-edit-modal .footer-right {
+    width: 100%;
+  }
+
+  .milestone-edit-modal .cancel-btn,
+  .milestone-edit-modal .submit-btn {
+    flex: 1;
+  }
+
+  .milestone-edit-modal .delete-btn {
+    width: 100%;
+    justify-content: center;
+  }
+}

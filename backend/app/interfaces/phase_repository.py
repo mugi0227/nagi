@@ -24,6 +24,11 @@ class IPhaseRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_project_id(self, phase_id: UUID) -> UUID | None:
+        """Get project ID for a phase."""
+        pass
+
+    @abstractmethod
     async def list_by_project(
         self, user_id: str, project_id: UUID
     ) -> list[PhaseWithTaskCount]:

@@ -37,6 +37,13 @@ class IProjectMemberRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_by_project_and_member_user_id(
+        self, project_id: UUID, member_user_id: str
+    ) -> Optional[ProjectMember]:
+        """Get a member by project ID and member user ID."""
+        pass
+
+    @abstractmethod
     async def update(
         self, user_id: str, member_id: UUID, update: ProjectMemberUpdate
     ) -> ProjectMember:

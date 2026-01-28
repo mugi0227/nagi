@@ -7,10 +7,10 @@ from __future__ import annotations
 from datetime import datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import and_, select
+from sqlalchemy import and_, select, update
 
 from app.core.exceptions import NotFoundError
-from app.infrastructure.local.database import MilestoneORM, get_session_factory
+from app.infrastructure.local.database import MilestoneORM, TaskORM, get_session_factory
 from app.interfaces.milestone_repository import IMilestoneRepository
 from app.models.enums import MilestoneStatus
 from app.models.milestone import Milestone, MilestoneCreate, MilestoneUpdate
@@ -129,7 +129,9 @@ class SqliteMilestoneRepository(IMilestoneRepository):
             return self._orm_to_model(orm)
 
     async def delete(self, user_id: str, milestone_id: UUID, project_id: UUID | None) -> bool:
-        """Delete a milestone. If project_id is given, uses project-based access. Returns True if deleted, False if not found."""
+        """Delete a milestone. If project_id is given, uses project-based access. Returns True if deleted, False if not found.
+        Also nullifies milestone_id on related tasks.
+        """
         async with self._session_factory() as session:
             if project_id:
                 result = await session.execute(
@@ -146,7 +148,14 @@ class SqliteMilestoneRepository(IMilestoneRepository):
             orm = result.scalar_one_or_none()
             if not orm:
                 return False
-            
+
+            # Nullify milestone_id on related tasks before deleting
+            await session.execute(
+                update(TaskORM)
+                .where(TaskORM.milestone_id == str(milestone_id))
+                .values(milestone_id=None)
+            )
+
             await session.delete(orm)
             await session.commit()
             return True

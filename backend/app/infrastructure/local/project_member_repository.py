@@ -86,6 +86,21 @@ class SqliteProjectMemberRepository(IProjectMemberRepository):
             )
             return [self._orm_to_model(orm) for orm in result.scalars().all()]
 
+    async def get_by_project_and_member_user_id(
+        self, project_id: UUID, member_user_id: str
+    ) -> Optional[ProjectMember]:
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ProjectMemberORM).where(
+                    and_(
+                        ProjectMemberORM.project_id == str(project_id),
+                        ProjectMemberORM.member_user_id == member_user_id,
+                    )
+                )
+            )
+            orm = result.scalar_one_or_none()
+            return self._orm_to_model(orm) if orm else None
+
     async def update(
         self, user_id: str, member_id: UUID, update: ProjectMemberUpdate
     ) -> ProjectMember:
