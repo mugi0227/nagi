@@ -584,6 +584,20 @@ export function TaskDetailModal({
                 </div>
               </div>
 
+              {memberOptions.length > 0 && onAssigneeChange && (
+                <div className="sidebar-group">
+                  <h3 className="sidebar-label">担当者</h3>
+                  <AssigneeSelect
+                    taskId={task.id}
+                    selectedIds={taskAssignments
+                      .filter(a => a.task_id === task.id)
+                      .map(a => a.assignee_id)}
+                    options={memberOptions}
+                    onChange={onAssigneeChange}
+                  />
+                </div>
+              )}
+
               <div className="sidebar-group">
                 <h3 className="sidebar-label">メタデータ</h3>
                 <div className="sidebar-meta-list">

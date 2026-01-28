@@ -247,7 +247,7 @@ interface SortableSidebarRowProps {
   onTaskCreate?: (phaseId?: string) => void;
   onSubtaskCreate?: (parentTaskId: string) => void;
   onGenerateSubtasks?: (parentTaskId: string, taskTitle: string) => void;
-  onDeleteTask?: (taskId: string) => void;
+  onRequestDeleteTask?: (taskId: string, taskTitle: string) => void;
   isDragDisabled: boolean;
   isDropTarget?: boolean;  // For milestone drop target highlighting
 }
@@ -263,10 +263,24 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
   onTaskCreate,
   onSubtaskCreate,
   onGenerateSubtasks,
-  onDeleteTask,
+  onRequestDeleteTask,
   isDragDisabled,
   isDropTarget,
 }) => {
+  // Popover positioning state
+  const [popoverStyle, setPopoverStyle] = useState<React.CSSProperties>({});
+  const titleRef = useRef<HTMLSpanElement>(null);
+
+  const handleTitleMouseEnter = () => {
+    if (titleRef.current) {
+      const rect = titleRef.current.getBoundingClientRect();
+      setPopoverStyle({
+        left: `${rect.left}px`,
+        top: `${rect.bottom + 6}px`,
+      });
+    }
+  };
+
   // Tasks, subtasks, and milestones are draggable for reordering
   const isDraggableType = row.type === 'task' || row.type === 'subtask' || row.type === 'milestone';
   const {
@@ -346,9 +360,13 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
       {row.type === 'milestone' && <span className="pgantt-milestone-icon">◆</span>}
       {row.linkedMilestoneId && <span className="pgantt-linked-icon">└</span>}
       {row.hasNoDate && <span className="pgantt-no-date-icon" title="期限未設定">⚠</span>}
-      <span className="pgantt-row-title">
+      <span
+        ref={titleRef}
+        className="pgantt-row-title"
+        onMouseEnter={handleTitleMouseEnter}
+      >
         {row.title}
-        <span className="pgantt-row-title-popover">{row.title}</span>
+        <span className="pgantt-row-title-popover" style={popoverStyle}>{row.title}</span>
       </span>
       {hasSubtasks && (
         <span className="pgantt-subtask-count">{row.subtaskCount}</span>
@@ -394,14 +412,12 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
               <FaMagic size={10} />
             </button>
           )}
-          {onDeleteTask && (
+          {onRequestDeleteTask && (
             <button
               className="pgantt-action-btn pgantt-delete-btn"
               onClick={(e) => {
                 e.stopPropagation();
-                if (window.confirm(`「${row.title}」を削除しますか？`)) {
-                  onDeleteTask(row.id);
-                }
+                onRequestDeleteTask(row.id, row.title);
               }}
               title={row.type === 'subtask' ? 'サブタスクを削除' : 'タスクを削除'}
             >
@@ -458,6 +474,9 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
 
   // Dependency deletion confirmation state
   const [pendingDeleteArrow, setPendingDeleteArrow] = useState<{ fromId: string; toId: string; x: number; y: number } | null>(null);
+
+  // Task deletion confirmation state
+  const [pendingDeleteTask, setPendingDeleteTask] = useState<{ id: string; title: string } | null>(null);
 
   // Scroll position management - prevent unwanted scrolls on state changes
   const initialScrollDoneRef = useRef(false);
@@ -1855,6 +1874,20 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [pendingDeleteArrow]);
 
+  // Close task delete confirmation with Escape key
+  useEffect(() => {
+    if (!pendingDeleteTask) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPendingDeleteTask(null);
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [pendingDeleteTask]);
+
   // バーのクラス名
   const getBarClass = (row: GanttRow, bar: GanttBar): string => {
     const classes = ['pgantt-bar'];
@@ -2014,7 +2047,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                         onTaskCreate={onTaskCreate}
                         onSubtaskCreate={onSubtaskCreate}
                         onGenerateSubtasks={onGenerateSubtasks}
-                        onDeleteTask={onDeleteTask}
+                        onRequestDeleteTask={onDeleteTask ? (id, title) => setPendingDeleteTask({ id, title }) : undefined}
                         isDragDisabled={false}
                         isDropTarget={false}
                       />
@@ -2292,6 +2325,39 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
               }}
             >
               削除
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
+    {/* タスク削除確認モーダル */}
+    {pendingDeleteTask && (
+      <div className="pgantt-modal-overlay" onClick={() => setPendingDeleteTask(null)}>
+        <div className="pgantt-modal pgantt-modal-delete-task" onClick={(e) => e.stopPropagation()}>
+          <div className="pgantt-modal-icon">
+            <FaTrash />
+          </div>
+          <p className="pgantt-modal-title">タスクを削除</p>
+          <p className="pgantt-modal-message">「{pendingDeleteTask.title}」を削除しますか？</p>
+          <p className="pgantt-modal-warning">この操作は取り消せません</p>
+          <div className="pgantt-modal-buttons">
+            <button
+              className="cancel"
+              onClick={() => setPendingDeleteTask(null)}
+            >
+              キャンセル
+            </button>
+            <button
+              className="delete"
+              onClick={() => {
+                if (onDeleteTask) {
+                  onDeleteTask(pendingDeleteTask.id);
+                }
+                setPendingDeleteTask(null);
+              }}
+            >
+              削除する
             </button>
           </div>
         </div>

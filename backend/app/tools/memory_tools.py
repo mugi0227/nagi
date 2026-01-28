@@ -280,12 +280,15 @@ async def propose_skill(
     )
 
     created_proposal = await proposal_repo.create(proposal)
-    return ProposalResponse(
-        proposal_id=str(created_proposal.id),
-        proposal_type=ProposalType.CREATE_SKILL,
-        description=description,
-        payload=proposal.payload,
-    ).model_dump(mode="json")
+
+    # Return pending_approval status to signal AI to wait for user approval
+    return {
+        "status": "pending_approval",
+        "proposal_id": str(created_proposal.id),
+        "proposal_type": ProposalType.CREATE_SKILL.value,
+        "description": description,
+        "message": "ユーザーの承諾待ちです。承諾されるまで「完了しました」とは言わないでください。",
+    }
 
 
 async def load_skill(

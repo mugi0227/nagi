@@ -373,13 +373,10 @@
   min-width: 0; /* Allow flex item to shrink below content size */
 }
 
-/* Popover on hover */
+/* Popover on hover - using fixed positioning to escape overflow containers */
 .pgantt-row-title-popover {
   display: none;
-  position: absolute;
-  left: 0;
-  top: 100%;
-  margin-top: 6px;
+  position: fixed;
   padding: 8px 12px;
   background: var(--c-text);
   color: var(--c-bg);
@@ -394,22 +391,7 @@
   min-width: 150px;
   z-index: 10000;
   pointer-events: none;
-}
-
-.pgantt-row-title-popover::before {
-  content: '';
-  position: absolute;
-  left: 16px;
-  top: -4px;
-  width: 8px;
-  height: 8px;
-  background: var(--c-text);
-  transform: rotate(45deg);
-}
-
-/* Allow popover to overflow */
-.pgantt-sidebar-body:has(.pgantt-sidebar-row:hover) {
-  overflow: visible;
+  /* Will be positioned via JavaScript */
 }
 
 .pgantt-row-title:hover .pgantt-row-title-popover {
@@ -1519,4 +1501,44 @@
 
 .pgantt-modal-buttons button.delete:hover {
   background: #dc2626;
+}
+
+/* Task Delete Modal - More modern styling */
+.pgantt-modal-delete-task {
+  min-width: 320px;
+  padding: 28px 32px;
+}
+
+.pgantt-modal-icon {
+  width: 56px;
+  height: 56px;
+  margin: 0 auto 16px;
+  background: linear-gradient(135deg, #fef2f2, #fee2e2);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ef4444;
+  font-size: 20px;
+}
+
+.pgantt-modal-title {
+  font-size: 1.1rem !important;
+  font-weight: 600 !important;
+  color: #1e293b !important;
+  margin-bottom: 8px !important;
+}
+
+.pgantt-modal-message {
+  font-size: 0.9rem !important;
+  font-weight: 400 !important;
+  color: #475569 !important;
+  margin-bottom: 8px !important;
+  word-break: break-word;
+}
+
+.pgantt-modal-warning {
+  font-size: 0.8rem !important;
+  color: #94a3b8 !important;
+  margin-bottom: 24px !important;
 }

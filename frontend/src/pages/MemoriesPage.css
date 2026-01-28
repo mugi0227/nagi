@@ -292,7 +292,45 @@
   color: var(--text-main);
   font-size: 1rem;
   line-height: 1.6;
-  white-space: pre-wrap;
+}
+
+.memory-content.markdown-content p {
+  margin: 0 0 0.5rem 0;
+}
+
+.memory-content.markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.memory-content.markdown-content ul,
+.memory-content.markdown-content ol {
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+
+.memory-content.markdown-content li {
+  margin: 0.25rem 0;
+}
+
+.memory-content.markdown-content code {
+  background: rgba(148, 163, 184, 0.15);
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+  font-size: 0.9rem;
+}
+
+.memory-content.markdown-content pre {
+  background: rgba(15, 23, 42, 0.8);
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+  margin: 0.5rem 0;
+}
+
+.memory-content.markdown-content pre code {
+  background: transparent;
+  padding: 0;
+  color: #e2e8f0;
 }
 
 .memory-meta {

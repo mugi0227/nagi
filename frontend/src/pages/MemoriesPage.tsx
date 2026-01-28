@@ -523,7 +523,11 @@ export function MemoriesPage() {
                     </button>
                   </div>
                 </div>
-                <p className="memory-content">{memory.content}</p>
+                <div className="memory-content markdown-content">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                    {memory.content}
+                  </ReactMarkdown>
+                </div>
                 <div className="memory-meta">
                   {memory.project_id && (
                     <span className="memory-project">

@@ -15,9 +15,9 @@ import './ProposalPanel.css';
 
 interface ProposalPanelProps {
   proposals: ProposalInfo[];
-  onApproved: (proposalId: string) => void;
+  onApproved: (proposalId: string, proposal: ProposalInfo) => void;
   onRejected: (proposalId: string) => void;
-  onAllApproved: () => void;
+  onAllApproved: (approvedProposals: ProposalInfo[]) => void;
   onAllRejected: () => void;
 }
 
@@ -72,7 +72,7 @@ export function ProposalPanel({
     setError(null);
     try {
       await proposalsApi.approve(currentProposal.proposalId);
-      onApproved(currentProposal.proposalId);
+      onApproved(currentProposal.proposalId, currentProposal);
       // Move to next or adjust index
       if (currentIndex >= proposals.length - 1 && currentIndex > 0) {
         setCurrentIndex(currentIndex - 1);
@@ -110,7 +110,7 @@ export function ProposalPanel({
       for (const proposal of proposals) {
         await proposalsApi.approve(proposal.proposalId);
       }
-      onAllApproved();
+      onAllApproved(proposals);
     } catch (err) {
       setError('一部の承諾に失敗しました');
       console.error('Failed to approve all proposals:', err);

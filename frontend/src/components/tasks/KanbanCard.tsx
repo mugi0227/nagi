@@ -172,9 +172,6 @@ export function KanbanCard({
     };
   }, [task.dependency_ids, taskLookup]);
 
-  const authorName = useMemo(() => {
-    return memberOptions?.find(m => m.id === task.user_id)?.label;
-  }, [memberOptions, task.user_id]);
 
   // Done tasks show a compact view
   if (isDone) {
@@ -303,12 +300,6 @@ export function KanbanCard({
           <span className="meta-badge assignee" title="担当者">
             <FaUser />
             <span>{assigneeName}</span>
-          </span>
-        )}
-        {authorName && authorName !== assigneeName && (
-          <span className="meta-badge author" title="作成者">
-            <FaPen style={{ fontSize: '0.8em' }} />
-            <span>{authorName}</span>
           </span>
         )}
         {task.due_date && (

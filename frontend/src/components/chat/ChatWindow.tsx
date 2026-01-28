@@ -71,12 +71,39 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     queryClient.invalidateQueries({ queryKey: ['meeting-agendas'] });
   };
 
-  const handleProposalProcessed = (proposalId: string) => {
+  // Generate approval confirmation message for AI
+  const generateApprovalMessage = (proposals: { description: string }[]) => {
+    if (proposals.length === 1) {
+      return `（承諾しました: ${proposals[0].description}）`;
+    }
+    const descriptions = proposals.map((p) => `・${p.description}`).join('\n');
+    return `（以下を承諾しました:\n${descriptions}）`;
+  };
+
+  const handleProposalApproved = (proposalId: string, proposal: { description: string }) => {
+    setProcessedProposalIds((prev) => new Set([...prev, proposalId]));
+    invalidateAfterProposal();
+    // Only send confirmation if this was the last pending proposal
+    const remainingCount = pendingProposals.filter((p) => p.proposalId !== proposalId).length;
+    if (remainingCount === 0) {
+      sendMessageStream(generateApprovalMessage([proposal]));
+    }
+  };
+
+  const handleProposalRejected = (proposalId: string) => {
     setProcessedProposalIds((prev) => new Set([...prev, proposalId]));
     invalidateAfterProposal();
   };
 
-  const handleAllProposalsProcessed = () => {
+  const handleAllProposalsApproved = (approvedProposals: { description: string }[]) => {
+    const allIds = pendingProposals.map((p) => p.proposalId);
+    setProcessedProposalIds((prev) => new Set([...prev, ...allIds]));
+    invalidateAfterProposal();
+    // Send confirmation to AI for all approved proposals
+    sendMessageStream(generateApprovalMessage(approvedProposals));
+  };
+
+  const handleAllProposalsRejected = () => {
     const allIds = pendingProposals.map((p) => p.proposalId);
     setProcessedProposalIds((prev) => new Set([...prev, ...allIds]));
     invalidateAfterProposal();
@@ -346,10 +373,10 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
       ) : pendingProposals.length > 0 ? (
         <ProposalPanel
           proposals={pendingProposals}
-          onApproved={handleProposalProcessed}
-          onRejected={handleProposalProcessed}
-          onAllApproved={handleAllProposalsProcessed}
-          onAllRejected={handleAllProposalsProcessed}
+          onApproved={handleProposalApproved}
+          onRejected={handleProposalRejected}
+          onAllApproved={handleAllProposalsApproved}
+          onAllRejected={handleAllProposalsRejected}
         />
       ) : pendingQuestionsData ? (
         <QuestionsPanel

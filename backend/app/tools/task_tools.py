@@ -345,12 +345,14 @@ async def propose_task(
 
     created_proposal = await proposal_repo.create(proposal)
 
-    return ProposalResponse(
-        proposal_id=str(created_proposal.id),
-        proposal_type=ProposalType.CREATE_TASK,
-        description=description,
-        payload=input_data.model_dump(mode="json"),
-    ).model_dump(mode="json")
+    # Return pending_approval status to signal AI to wait for user approval
+    return {
+        "status": "pending_approval",
+        "proposal_id": str(created_proposal.id),
+        "proposal_type": ProposalType.CREATE_TASK.value,
+        "description": description,
+        "message": "ユーザーの承諾待ちです。承諾されるまで「完了しました」とは言わないでください。",
+    }
 
 
 async def create_task(
@@ -815,12 +817,14 @@ async def propose_task_assignment(
 
     created_proposal = await proposal_repo.create(proposal)
 
-    return ProposalResponse(
-        proposal_id=str(created_proposal.id),
-        proposal_type=ProposalType.ASSIGN_TASK,
-        description=description,
-        payload=payload,
-    ).model_dump(mode="json")
+    # Return pending_approval status to signal AI to wait for user approval
+    return {
+        "status": "pending_approval",
+        "proposal_id": str(created_proposal.id),
+        "proposal_type": ProposalType.ASSIGN_TASK.value,
+        "description": description,
+        "message": "ユーザーの承諾待ちです。承諾されるまで「完了しました」とは言わないでください。",
+    }
 
 
 async def create_meeting(
