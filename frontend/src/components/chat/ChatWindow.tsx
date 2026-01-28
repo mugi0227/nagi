@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { FaClock, FaComments, FaImage, FaPlus, FaRobot, FaXmark } from 'react-icons/fa6';
 import { tasksApi } from '../../api/tasks';
 import type { Task } from '../../api/types';
-import { useChat } from '../../hooks/useChat';
+import { useChat, type ProposalInfo } from '../../hooks/useChat';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/dateTime';
 import { ChatInput } from './ChatInput';
@@ -43,6 +43,7 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
   const [activeDraftCard, setActiveDraftCard] = useState<DraftCardData | null>(null);
   const [processedProposalIds, setProcessedProposalIds] = useState<Set<string>>(new Set());
   const [processedQuestionMessageIds, setProcessedQuestionMessageIds] = useState<Set<string>>(new Set());
+  const approvedProposalsRef = useRef<ProposalInfo[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const shouldAutoScroll = useRef(true);
   const [isDragging, setIsDragging] = useState(false);
@@ -80,19 +81,32 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     return `（以下を承諾しました:\n${descriptions}）`;
   };
 
-  const handleProposalApproved = (proposalId: string, proposal: { description: string }) => {
+  const handleProposalApproved = (proposalId: string, proposal: ProposalInfo) => {
     setProcessedProposalIds((prev) => new Set([...prev, proposalId]));
     invalidateAfterProposal();
+    approvedProposalsRef.current = [
+      ...approvedProposalsRef.current,
+      proposal,
+    ];
     // Only send confirmation if this was the last pending proposal
     const remainingCount = pendingProposals.filter((p) => p.proposalId !== proposalId).length;
     if (remainingCount === 0) {
-      sendMessageStream(generateApprovalMessage([proposal]));
+      const approvedBatch = approvedProposalsRef.current;
+      if (approvedBatch.length > 0) {
+        sendMessageStream(generateApprovalMessage(approvedBatch));
+      }
+      approvedProposalsRef.current = [];
     }
   };
 
   const handleProposalRejected = (proposalId: string) => {
     setProcessedProposalIds((prev) => new Set([...prev, proposalId]));
     invalidateAfterProposal();
+    const remainingCount = pendingProposals.filter((p) => p.proposalId !== proposalId).length;
+    if (remainingCount === 0 && approvedProposalsRef.current.length > 0) {
+      sendMessageStream(generateApprovalMessage(approvedProposalsRef.current));
+      approvedProposalsRef.current = [];
+    }
   };
 
   const handleAllProposalsApproved = (approvedProposals: { description: string }[]) => {
@@ -101,12 +115,14 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     invalidateAfterProposal();
     // Send confirmation to AI for all approved proposals
     sendMessageStream(generateApprovalMessage(approvedProposals));
+    approvedProposalsRef.current = [];
   };
 
   const handleAllProposalsRejected = () => {
     const allIds = pendingProposals.map((p) => p.proposalId);
     setProcessedProposalIds((prev) => new Set([...prev, ...allIds]));
     invalidateAfterProposal();
+    approvedProposalsRef.current = [];
   };
 
   // Extract pending questions from messages
@@ -355,6 +371,8 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
             meetingTasks={meetingTasks}
             isStreaming={message.isStreaming}
             imageUrl={message.imageUrl}
+            toolPlacement={message.toolPlacement}
+            timeline={message.timeline}
           />
         ))}
         <div ref={messagesEndRef} />

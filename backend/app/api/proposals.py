@@ -108,8 +108,16 @@ async def approve_proposal(
             user_id=user.id,
             repo=task_repo,
             input_data=input_data,
+            assignment_repo=assignment_repo,  # 担当者割り当てを有効にする
         )
         result.task_id = created_task.get("id")
+        assignments = created_task.get("assignments")
+        if isinstance(assignments, list):
+            result.assignment_ids = [
+                str(item.get("id"))
+                for item in assignments
+                if isinstance(item, dict) and item.get("id")
+            ]
 
     elif proposal.proposal_type.value == "create_project":
         input_data = CreateProjectInput(**proposal.payload)

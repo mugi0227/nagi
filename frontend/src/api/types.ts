@@ -88,6 +88,9 @@ export interface Task {
   meeting_notes?: string;
   recurring_meeting_id?: string;
   milestone_id?: string;
+
+  // Subtask guide field
+  guide?: string;
 }
 
 export interface TaskCreate {
@@ -115,6 +118,9 @@ export interface TaskCreate {
   attendees?: string[];
   meeting_notes?: string;
   milestone_id?: string;
+
+  // Subtask guide field
+  guide?: string;
 }
 
 export interface TaskUpdate {
@@ -143,6 +149,9 @@ export interface TaskUpdate {
   attendees?: string[];
   meeting_notes?: string;
   milestone_id?: string;
+
+  // Subtask guide field
+  guide?: string;
 }
 
 export interface TaskWithSubtasks extends Task {

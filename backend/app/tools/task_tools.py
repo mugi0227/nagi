@@ -11,7 +11,7 @@ from typing import Optional
 from uuid import UUID
 
 from google.adk.tools import FunctionTool
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.core.config import get_settings
 from app.interfaces.project_repository import IProjectRepository
@@ -29,6 +29,30 @@ from app.tools.approval_tools import create_tool_action_proposal
 # ===========================================
 # Tool Input Models
 # ===========================================
+
+
+def _normalize_enum_value(value: object, allowed: set[str]) -> object:
+    if value is None:
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().upper()
+        if normalized in allowed:
+            return normalized
+        import re
+
+        parts = [part for part in re.split(r"[\s,/|]+", normalized) if part]
+        for part in parts:
+            if part in allowed:
+                return part
+        return value
+    if isinstance(value, (list, tuple, set)):
+        for item in value:
+            if isinstance(item, str):
+                normalized = item.strip().upper()
+                if normalized in allowed:
+                    return normalized
+        return value
+    return value
 
 
 class CreateTaskInput(BaseModel):
@@ -69,10 +93,25 @@ class CreateTaskInput(BaseModel):
     # Subtask fields
     parent_id: Optional[str] = Field(None, description="親タスクID（UUID文字列）- サブタスクとして作成する場合に指定")
     order_in_parent: Optional[int] = Field(None, ge=1, description="親タスク内での順序（1から開始）")
+    guide: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="詳細な進め方ガイド（Markdown形式）- サブタスクの場合に設定推奨。具体的な手順、注意点、完了の判断基準を含める"
+    )
     # Assignee field for task creation
     assignee_ids: list[str] = Field(default_factory=list, description="担当者IDリスト（UUID文字列）")
 
     model_config = {"populate_by_name": True}
+
+    @field_validator("importance", "urgency", mode="before")
+    @classmethod
+    def _normalize_priority(cls, value: object) -> object:
+        return _normalize_enum_value(value, {"HIGH", "MEDIUM", "LOW"})
+
+    @field_validator("energy_level", mode="before")
+    @classmethod
+    def _normalize_energy_level(cls, value: object) -> object:
+        return _normalize_enum_value(value, {"HIGH", "MEDIUM", "LOW"})
 
 
 class UpdateTaskInput(BaseModel):
@@ -104,6 +143,11 @@ class UpdateTaskInput(BaseModel):
         max_length=2000,
         description="完了時メモ（学んだこと、工夫したこと、感想など。Achievement生成に活用）"
     )
+    guide: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="詳細な進め方ガイド（Markdown形式）- サブタスクの場合に設定推奨"
+    )
     # Meeting fields
     is_fixed_time: Optional[bool] = Field(None, description="会議・固定時間イベントの場合true")
     is_all_day: Optional[bool] = Field(None, description="終日タスク（休暇・出張など、その日のキャパシティを0にする）")
@@ -112,6 +156,16 @@ class UpdateTaskInput(BaseModel):
     location: Optional[str] = Field(None, description="場所（会議用）")
     attendees: Optional[list[str]] = Field(None, description="参加者リスト（会議用）")
     meeting_notes: Optional[str] = Field(None, description="議事録・メモ（会議用）")
+
+    @field_validator("importance", "urgency", mode="before")
+    @classmethod
+    def _normalize_priority(cls, value: object) -> object:
+        return _normalize_enum_value(value, {"HIGH", "MEDIUM", "LOW"})
+
+    @field_validator("energy_level", mode="before")
+    @classmethod
+    def _normalize_energy_level(cls, value: object) -> object:
+        return _normalize_enum_value(value, {"HIGH", "MEDIUM", "LOW"})
 
 
 class DeleteTaskInput(BaseModel):
@@ -409,6 +463,37 @@ async def create_task(
             # Invalid UUID format, skip this dependency
             pass
 
+    order_in_parent = input_data.order_in_parent
+    order_provided = order_in_parent is not None
+    siblings = []
+    if parent_id:
+        try:
+            siblings = await repo.get_subtasks(user_id, parent_id, project_id=project_id)
+        except Exception:
+            siblings = []
+
+        if order_in_parent is None and siblings:
+            max_order = max((sibling.order_in_parent or 0) for sibling in siblings)
+            if max_order > 0:
+                order_in_parent = max_order + 1
+            else:
+                order_in_parent = len(siblings) + 1
+
+    if parent_id and not dependency_ids:
+        previous = None
+        if order_in_parent is not None:
+            for sibling in siblings:
+                if sibling.order_in_parent is None:
+                    continue
+                if sibling.order_in_parent >= order_in_parent:
+                    continue
+                if previous is None or sibling.order_in_parent > previous.order_in_parent:
+                    previous = sibling
+        if previous is None and siblings and not order_provided:
+            previous = max(siblings, key=lambda sibling: sibling.created_at)
+        if previous:
+            dependency_ids.append(previous.id)
+
     # Parse meeting times if is_fixed_time
     start_time = None
     end_time = None
@@ -446,7 +531,8 @@ async def create_task(
         created_by=CreatedBy.AGENT,
         # Subtask fields
         parent_id=parent_id,
-        order_in_parent=input_data.order_in_parent,
+        order_in_parent=order_in_parent,
+        guide=input_data.guide,
         # Meeting fields
         is_fixed_time=input_data.is_fixed_time,
         is_all_day=input_data.is_all_day,
@@ -460,9 +546,9 @@ async def create_task(
     task = await repo.create(user_id, task_data)
     result = task.model_dump(mode="json")  # Serialize UUIDs to strings
 
+    assigned = []
     # Assign task to members if assignee_ids provided
     if input_data.assignee_ids and assignment_repo:
-        assigned = []
         for assignee_id in input_data.assignee_ids:
             if assignee_id and assignee_id.strip():
                 assignment = await assignment_repo.assign(
@@ -471,8 +557,25 @@ async def create_task(
                     TaskAssignmentCreate(assignee_id=assignee_id),
                 )
                 assigned.append(assignment.model_dump(mode="json"))
-        if assigned:
-            result["assignments"] = assigned
+
+    if not assigned and assignment_repo and parent_id and not input_data.assignee_ids:
+        parent_assignments = await assignment_repo.list_by_task(user_id, parent_id)
+        if not parent_assignments and project_id:
+            project_assignments = await assignment_repo.list_by_project(user_id, project_id)
+            parent_assignments = [
+                assignment for assignment in project_assignments if assignment.task_id == parent_id
+            ]
+        for assignment in parent_assignments:
+            if assignment.assignee_id:
+                created = await assignment_repo.assign(
+                    user_id,
+                    task.id,
+                    TaskAssignmentCreate(assignee_id=assignment.assignee_id),
+                )
+                assigned.append(created.model_dump(mode="json"))
+
+    if assigned:
+        result["assignments"] = assigned
 
     return result
 
@@ -586,6 +689,7 @@ async def update_task(
         progress=input_data.progress,
         source_capture_id=source_capture_id,
         completion_note=input_data.completion_note,
+        guide=input_data.guide,
         # Meeting fields
         is_fixed_time=input_data.is_fixed_time,
         is_all_day=input_data.is_all_day,

@@ -28,6 +28,21 @@ export interface ToolCall {
   status: 'running' | 'completed' | 'failed';
 }
 
+export type TimelineEvent =
+  | {
+    id: string;
+    kind: 'announcement';
+    content: string;
+    finalized?: boolean;
+    toolName?: string;
+  }
+  | {
+    id: string;
+    kind: 'tool';
+    name: string;
+    status: 'running' | 'completed' | 'failed';
+  };
+
 export interface ProposalInfo {
   id: string;
   proposalId: string;
@@ -47,9 +62,75 @@ export interface Message {
   questionsContext?: string;
   isStreaming?: boolean;
   imageUrl?: string;
+  suppressText?: boolean;
+  toolPlacement?: 'before' | 'after';
+  timeline?: TimelineEvent[];
 }
 
 const SESSION_STORAGE_KEY = 'chat_session_id';
+
+const APPROVAL_TOOL_NAMES = new Set([
+  'create_task',
+  'update_task',
+  'delete_task',
+  'assign_task',
+  'create_project',
+  'update_project',
+  'invite_project_member',
+  'create_project_summary',
+  'create_skill',
+  'create_meeting',
+  'add_to_memory',
+  'refresh_user_profile',
+  'schedule_agent_task',
+  'add_agenda_item',
+  'update_agenda_item',
+  'delete_agenda_item',
+  'reorder_agenda_items',
+  'create_phase',
+  'update_phase',
+  'delete_phase',
+  'create_milestone',
+  'update_milestone',
+  'delete_milestone',
+]);
+
+const readString = (value: unknown): string | undefined => {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+};
+
+const readFirstString = (
+  args: Record<string, unknown> | undefined,
+  keys: string[],
+): string | undefined => {
+  if (!args) {
+    return undefined;
+  }
+  for (const key of keys) {
+    const candidate = readString(args[key]);
+    if (candidate) {
+      return candidate;
+    }
+  }
+  return undefined;
+};
+
+const getToolAnnouncement = (
+  toolName: string,
+  args?: Record<string, unknown>,
+): { content: string; finalized: boolean } | null => {
+  const proposalDescription = readFirstString(args, ['proposal_description']);
+  if (!proposalDescription) {
+    return null;
+  }
+  return { content: proposalDescription, finalized: true };
+};
+
+
 
 export function useChat() {
   const queryClient = useQueryClient();
@@ -206,6 +287,7 @@ export function useChat() {
         timestamp: nowInTimezone(timezone).toJSDate(),
         toolCalls: [],
         proposals: [],
+        timeline: [],
         isStreaming: true,
       };
       setMessages((prev) => [...prev, assistantMessage]);
@@ -214,6 +296,7 @@ export function useChat() {
 
       try {
         const approvalMode = (userStorage.get('aiApprovalMode') as 'manual' | 'auto') || 'auto';
+        const manualApproval = approvalMode === 'manual';
 
         for await (const chunk of chatApi.streamMessage({
           text,
@@ -224,77 +307,166 @@ export function useChat() {
           proposal_mode: approvalMode === 'manual',
         }, abortControllerRef.current.signal)) {
           switch (chunk.chunk_type) {
-            case 'tool_start':
+            case 'tool_start': {
+              const toolName = chunk.tool_name || 'unknown';
+              const toolArgs = chunk.tool_args;
+              const toolId = crypto.randomUUID();
               setMessages((prev) =>
                 prev.map((msg) =>
                   msg.id === assistantMessageId
-                    ? {
-                      ...msg,
-                      toolCalls: [
+                    ? (() => {
+                      const nextToolCalls = [
                         ...(msg.toolCalls || []),
                         {
-                          id: crypto.randomUUID(),
-                          name: chunk.tool_name || 'unknown',
-                          args: chunk.tool_args,
+                          id: toolId,
+                          name: toolName,
+                          args: toolArgs,
                           status: 'running' as const,
                         },
-                      ],
-                    }
-                    : msg
-                )
-              );
-              break;
+                      ];
 
-            case 'tool_end':
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMessageId
-                    ? {
-                      ...msg,
-                      toolCalls: msg.toolCalls?.map((tc) =>
-                        tc.name === chunk.tool_name && tc.status === 'running'
-                          ? {
-                            ...tc,
-                            result: chunk.tool_result,
-                            status: 'completed' as const,
-                          }
-                          : tc
-                      ),
-                    }
-                    : msg
-                )
-              );
-              break;
+                      if (!manualApproval) {
+                        return {
+                          ...msg,
+                          toolCalls: nextToolCalls,
+                        };
+                      }
 
-            case 'tool_error':
-              setMessages((prev) =>
-                prev.map((msg) =>
-                  msg.id === assistantMessageId
-                    ? {
-                      ...msg,
-                      toolCalls: msg.toolCalls?.map((tc) =>
-                        tc.name === chunk.tool_name && tc.status === 'running'
-                          ? {
-                            ...tc,
-                            error: chunk.error_message,
-                            status: 'failed' as const,
-                          }
-                          : tc
-                      ),
-                    }
+                      const nextTimeline = [...(msg.timeline || [])];
+                      let suppressText = msg.suppressText;
+                      let nextIsStreaming = msg.isStreaming;
+                      if (toolName && APPROVAL_TOOL_NAMES.has(toolName)) {
+                        const announcement = getToolAnnouncement(toolName, toolArgs);
+                        if (announcement) {
+                          nextTimeline.push({
+                            id: crypto.randomUUID(),
+                            kind: 'announcement',
+                            content: announcement.content,
+                            finalized: announcement.finalized,
+                            toolName,
+                          });
+                          suppressText = true;
+                          nextIsStreaming = false;
+                        }
+                      }
+                      nextTimeline.push({
+                        id: toolId,
+                        kind: 'tool',
+                        name: toolName,
+                        status: 'running',
+                      });
+
+                      return {
+                        ...msg,
+                        toolCalls: nextToolCalls,
+                        timeline: nextTimeline,
+                        suppressText,
+                        isStreaming: nextIsStreaming,
+                        toolPlacement: 'after' as const,
+                      };
+                    })()
                     : msg
                 )
               );
               break;
+            }
+
+            case 'tool_end': {
+              const toolName = chunk.tool_name || 'unknown';
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.id !== assistantMessageId) {
+                    return msg;
+                  }
+                  const nextToolCalls = msg.toolCalls?.map((tc) =>
+                    tc.name === toolName && tc.status === 'running'
+                      ? {
+                        ...tc,
+                        result: chunk.tool_result,
+                        status: 'completed' as const,
+                      }
+                      : tc
+                  );
+                  if (!manualApproval || !msg.timeline || msg.timeline.length === 0) {
+                    return {
+                      ...msg,
+                      toolCalls: nextToolCalls,
+                    };
+                  }
+                  let updated = false;
+                  const nextTimeline = msg.timeline.map((item) => {
+                    if (!updated && item.kind === 'tool' && item.name === toolName && item.status === 'running') {
+                      updated = true;
+                      return {
+                        ...item,
+                        status: 'completed',
+                      };
+                    }
+                    return item;
+                  });
+                  return {
+                    ...msg,
+                    toolCalls: nextToolCalls,
+                    timeline: nextTimeline,
+                  };
+                })
+              );
+              break;
+            }
+
+            case 'tool_error': {
+              const toolName = chunk.tool_name || 'unknown';
+              setMessages((prev) =>
+                prev.map((msg) => {
+                  if (msg.id !== assistantMessageId) {
+                    return msg;
+                  }
+                  const nextToolCalls = msg.toolCalls?.map((tc) =>
+                    tc.name === toolName && tc.status === 'running'
+                      ? {
+                        ...tc,
+                        error: chunk.error_message,
+                        status: 'failed' as const,
+                      }
+                      : tc
+                  );
+                  if (!manualApproval || !msg.timeline || msg.timeline.length === 0) {
+                    return {
+                      ...msg,
+                      toolCalls: nextToolCalls,
+                    };
+                  }
+                  let updated = false;
+                  const nextTimeline = msg.timeline.map((item) => {
+                    if (!updated && item.kind === 'tool' && item.name === toolName && item.status === 'running') {
+                      updated = true;
+                      return {
+                        ...item,
+                        status: 'failed',
+                      };
+                    }
+                    return item;
+                  });
+                  return {
+                    ...msg,
+                    toolCalls: nextToolCalls,
+                    timeline: nextTimeline,
+                  };
+                })
+              );
+              break;
+            }
 
             case 'text':
               setMessages((prev) =>
                 prev.map((msg) =>
                   msg.id === assistantMessageId
-                    ? {
-                      ...msg,
-                      content: msg.content + (chunk.content || ''),
-                    }
+                    ? (msg.suppressText
+                      ? msg
+                      : {
+                        ...msg,
+                        content: msg.content + (chunk.content || ''),
+                      })
                     : msg
                 )
               );
@@ -334,13 +506,26 @@ export function useChat() {
                 setMessages((prev) =>
                   prev.map((msg) =>
                     msg.id === assistantMessageId
-                      ? {
-                        ...msg,
-                        proposals: [
+                      ? (() => {
+                        const proposals = [
                           ...(msg.proposals || []),
                           proposalInfo,
-                        ],
-                      }
+                        ];
+                        if (!manualApproval) {
+                          return {
+                            ...msg,
+                            proposals,
+                          };
+                        }
+                        return {
+                          ...msg,
+                          proposals,
+                          isStreaming: false,
+                          suppressText: true,
+                          toolPlacement: 'after' as const,
+                          timeline: msg.timeline,
+                        };
+                      })()
                       : msg
                   )
                 );

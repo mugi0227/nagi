@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { FaSpinner, FaCheck, FaWrench, FaTriangleExclamation } from 'react-icons/fa6';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import type { ToolCall, ProposalInfo } from '../../hooks/useChat';
+import type { ToolCall, ProposalInfo, TimelineEvent } from '../../hooks/useChat';
 import type { Task } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, toDateKey, toDateTime } from '../../utils/dateTime';
@@ -212,6 +212,8 @@ interface ChatMessageProps {
   meetingTasks?: Task[];
   isStreaming?: boolean;
   imageUrl?: string;
+  toolPlacement?: 'before' | 'after';
+  timeline?: TimelineEvent[];
 }
 
 export function ChatMessage({
@@ -223,6 +225,8 @@ export function ChatMessage({
   meetingTasks,
   isStreaming,
   imageUrl,
+  toolPlacement = 'before',
+  timeline,
 }: ChatMessageProps) {
   const timezone = useTimezone();
   const combinedPreview = buildCombinedMeetingPreview(proposals, meetingTasks, timezone);
@@ -261,31 +265,79 @@ export function ChatMessage({
     return toolNames[toolName] || toolName;
   };
 
+  const hasTimeline = !!(timeline && timeline.length > 0);
+
+  const toolChips = !hasTimeline && toolCalls && toolCalls.length > 0 ? (
+    <div className="tool-chips">
+      {toolCalls.map((tool) => (
+        <div key={tool.id} className={`tool-chip ${tool.status}`}>
+          <span className="tool-chip-icon">
+            {tool.status === 'running' ? (
+              <FaSpinner className="spinner" />
+            ) : tool.status === 'failed' ? (
+              <FaTriangleExclamation />
+            ) : (
+              <FaCheck />
+            )}
+          </span>
+          <span className="tool-chip-name">{getToolDisplayName(tool.name)}</span>
+        </div>
+      ))}
+    </div>
+  ) : null;
+
+  const timelineItems = hasTimeline ? (
+    <div className="message-timeline">
+      {timeline?.map((item) =>
+        item.kind === 'announcement' ? (
+          <div key={item.id} className="timeline-item announcement">
+            {item.content}
+          </div>
+        ) : (
+          <div key={item.id} className="timeline-item tool">
+            <div className={`tool-chip ${item.status}`}>
+              <span className="tool-chip-icon">
+                {item.status === 'running' ? (
+                  <FaSpinner className="spinner" />
+                ) : item.status === 'failed' ? (
+                  <FaTriangleExclamation />
+                ) : (
+                  <FaCheck />
+                )}
+              </span>
+              <span className="tool-chip-name">{getToolDisplayName(item.name)}</span>
+            </div>
+          </div>
+        )
+      )}
+    </div>
+  ) : null;
+
+  const messageText = isStreaming ? (
+    <div className="thinking-animation">
+      <div className="thinking-dots">
+        <span></span>
+        <span></span>
+        <span></span>
+      </div>
+      <span className="thinking-text">Thinking...</span>
+    </div>
+  ) : content ? (
+    <div className="message-text markdown-content">
+      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+        {content}
+      </ReactMarkdown>
+    </div>
+  ) : null;
+
   return (
     <div className={`chat-message ${role}`}>
       <div className="message-avatar">
         {role === 'assistant' ? '🤖' : '👤'}
       </div>
       <div className="message-content">
-        {/* Tool Calls */}
-        {toolCalls && toolCalls.length > 0 && (
-          <div className="tool-chips">
-            {toolCalls.map((tool) => (
-              <div key={tool.id} className={`tool-chip ${tool.status}`}>
-                <span className="tool-chip-icon">
-                  {tool.status === 'running' ? (
-                    <FaSpinner className="spinner" />
-                  ) : tool.status === 'failed' ? (
-                    <FaTriangleExclamation />
-                  ) : (
-                    <FaCheck />
-                  )}
-                </span>
-                <span className="tool-chip-name">{getToolDisplayName(tool.name)}</span>
-              </div>
-            ))}
-          </div>
-        )}
+        {toolPlacement === 'before' && toolChips}
+        {timelineItems}
 
         {/* Image Attachment */}
         {imageUrl && role === 'user' && (
@@ -377,23 +429,9 @@ export function ChatMessage({
 
         {/* Questions are now handled by QuestionsPanel in ChatWindow */}
 
-        {/* Message Text */}
-        {isStreaming ? (
-          <div className="thinking-animation">
-            <div className="thinking-dots">
-              <span></span>
-              <span></span>
-              <span></span>
-            </div>
-            <span className="thinking-text">Thinking...</span>
-          </div>
-        ) : content ? (
-          <div className="message-text markdown-content">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>
-              {content}
-            </ReactMarkdown>
-          </div>
-        ) : null}
+        {messageText}
+
+        {toolPlacement === 'after' && toolChips}
 
         <div className="message-time">{formatTime(timestamp)}</div>
       </div>

@@ -67,6 +67,7 @@ class SqliteTaskRepository(ITaskRepository):
             milestone_id=UUID(orm.milestone_id) if orm.milestone_id else None,
             completion_note=orm.completion_note if hasattr(orm, 'completion_note') else None,
             completed_at=orm.completed_at if hasattr(orm, 'completed_at') else None,
+            guide=orm.guide if hasattr(orm, 'guide') else None,
         )
 
     async def create(self, user_id: str, task: TaskCreate) -> Task:
@@ -101,6 +102,7 @@ class SqliteTaskRepository(ITaskRepository):
                 meeting_notes=task.meeting_notes,
                 milestone_id=str(task.milestone_id) if task.milestone_id else None,
                 completion_note=task.completion_note if hasattr(task, 'completion_note') else None,
+                guide=task.guide if hasattr(task, 'guide') else None,
             )
             session.add(orm)
             await session.commit()

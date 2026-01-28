@@ -84,6 +84,10 @@ async def run_migrations():
                 text("CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks(completed_at)")
             )
 
+        # Subtask guide field
+        if "guide" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN guide TEXT"))
+
         # Check checkins table for checkin_type and V2 fields
         checkin_result = await conn.execute(text("PRAGMA table_info(checkins)"))
         checkin_columns = {row[1] for row in checkin_result}

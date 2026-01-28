@@ -64,8 +64,11 @@ interface TaskDetailModalProps {
   onAssigneeChange?: (taskId: string, memberIds: string[]) => void;
 }
 
-// Helper to extract guide from description
-function extractGuide(description?: string | null): { mainDescription: string; guide: string } {
+function extractGuide(description?: string | null, guide?: string | null): { mainDescription: string; guide: string } {
+  const normalizedGuide = guide?.trim() || '';
+  if (normalizedGuide) {
+    return { mainDescription: description?.trim() || '', guide: normalizedGuide };
+  }
   if (!description) return { mainDescription: '', guide: '' };
 
   const guideSeparator = '---\n\n## 進め方ガイド';
@@ -243,8 +246,10 @@ export function TaskDetailModal({
     return `${startLabel} - ${endLabel}`;
   };
 
-  const selectedGuide = selectedSubtask ? extractGuide(selectedSubtask.description) : null;
-  const taskDescription = extractGuide(task.description);
+  const selectedGuide = selectedSubtask
+    ? extractGuide(selectedSubtask.description, selectedSubtask.guide)
+    : null;
+  const taskDescription = extractGuide(task.description, task.guide);
   const selectedSubtaskStepNumber = selectedSubtask ? stepNumberBySubtaskId.get(selectedSubtask.id) : undefined;
   const isMeeting = task.is_fixed_time && task.start_time && task.end_time;
   const meetingTimeLabel = formatMeetingTime(task.start_time, task.end_time);
@@ -481,7 +486,7 @@ export function TaskDetailModal({
                   <ul className="subtasks-list">
                     {sortedSubtasks.map((subtask) => {
 
-                      const { guide } = extractGuide(subtask.description);
+                      const { guide } = extractGuide(subtask.description, subtask.guide);
                       const hasGuide = guide.length > 0;
                       const stepNumber = stepNumberBySubtaskId.get(subtask.id);
                       const isLocked = isSubtaskLocked(subtask);
@@ -498,7 +503,7 @@ export function TaskDetailModal({
                         <li
                           key={subtask.id}
                           className={`subtask-item ${hasGuide ? 'has-guide' : ''} ${selectedSubtask?.id === subtask.id ? 'selected' : ''}`}
-                          onClick={() => hasGuide && setSelectedSubtask(subtask)}
+                          onClick={() => setSelectedSubtask(subtask)}
                         >
                           <div
                             className={`subtask-check-wrapper ${subtask.status === 'DONE' ? 'checked' : ''}`}

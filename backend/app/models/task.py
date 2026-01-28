@@ -63,6 +63,13 @@ class TaskBase(BaseModel):
         description="達成メモ（どのように達成したか、学んだこと等）",
     )
 
+    # Subtask guide field
+    guide: Optional[str] = Field(
+        None,
+        max_length=2000,
+        description="詳細な進め方ガイド（Markdown形式、サブタスク用）",
+    )
+
     @model_validator(mode='after')
     def validate_fixed_time(self):
         """Validate fixed-time task constraints."""
@@ -132,6 +139,7 @@ class TaskUpdate(BaseModel):
     recurring_meeting_id: Optional[UUID] = None
     milestone_id: Optional[UUID] = None
     completion_note: Optional[str] = Field(None, max_length=2000)
+    guide: Optional[str] = Field(None, max_length=2000)
 
 
 class Task(TaskBase):

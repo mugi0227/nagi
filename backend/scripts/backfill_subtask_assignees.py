@@ -51,16 +51,16 @@ def main() -> None:
     conn = sqlite3.connect(str(db_path))
     cur = conn.cursor()
 
-    # Get all subtasks (tasks with parent_id)
+    # Get all subtasks (tasks with parent_id) with their user_id
     cur.execute(
-        "SELECT id, parent_id FROM tasks WHERE parent_id IS NOT NULL"
+        "SELECT id, parent_id, user_id FROM tasks WHERE parent_id IS NOT NULL"
     )
     subtasks = cur.fetchall()
 
-    # Group subtasks by parent_id
-    subtasks_by_parent: dict[str, list[str]] = defaultdict(list)
-    for subtask_id, parent_id in subtasks:
-        subtasks_by_parent[parent_id].append(subtask_id)
+    # Group subtasks by parent_id (store subtask_id and user_id)
+    subtasks_by_parent: dict[str, list[tuple[str, str]]] = defaultdict(list)
+    for subtask_id, parent_id, user_id in subtasks:
+        subtasks_by_parent[parent_id].append((subtask_id, user_id))
 
     # Get all task assignments
     cur.execute("SELECT task_id, assignee_id FROM task_assignments")
@@ -74,12 +74,12 @@ def main() -> None:
     created = 0
     now = datetime.now(timezone.utc).isoformat()
 
-    for parent_id, subtask_ids in subtasks_by_parent.items():
+    for parent_id, subtask_infos in subtasks_by_parent.items():
         parent_assignees = assignees_by_task.get(parent_id, [])
         if not parent_assignees:
             continue
 
-        for subtask_id in subtask_ids:
+        for subtask_id, user_id in subtask_infos:
             subtask_assignees = set(assignees_by_task.get(subtask_id, []))
 
             for assignee_id in parent_assignees:
@@ -90,10 +90,10 @@ def main() -> None:
                 assignment_id = str(uuid.uuid4())
                 cur.execute(
                     """
-                    INSERT INTO task_assignments (id, task_id, assignee_id, created_at, updated_at)
-                    VALUES (?, ?, ?, ?, ?)
+                    INSERT INTO task_assignments (id, user_id, task_id, assignee_id, created_at, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?)
                     """,
-                    (assignment_id, subtask_id, assignee_id, now, now),
+                    (assignment_id, user_id, subtask_id, assignee_id, now, now),
                 )
                 created += 1
                 # Track for deduplication within this run

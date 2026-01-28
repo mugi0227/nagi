@@ -80,6 +80,9 @@ class TaskORM(Base):
     completion_note = Column(Text, nullable=True)
     completed_at = Column(DateTime, nullable=True, index=True)
 
+    # Subtask guide field
+    guide = Column(Text, nullable=True)
+
 
 class ProjectORM(Base):
     """Project ORM model."""
