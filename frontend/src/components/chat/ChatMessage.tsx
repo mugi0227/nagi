@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { FaSpinner, FaCheck, FaWrench, FaTriangleExclamation } from 'react-icons/fa6';
+import { FaSpinner, FaCheck, FaTriangleExclamation } from 'react-icons/fa6';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ToolCall, ProposalInfo, TimelineEvent } from '../../hooks/useChat';

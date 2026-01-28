@@ -1,4 +1,3 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { FaCheckSquare, FaPlus, FaRegSquare } from 'react-icons/fa';
 import { phasesApi } from '../../api/phases';
@@ -39,7 +38,6 @@ export function ProjectTasksView({
   onRefreshTasks,
   onCreateTask,
 }: ProjectTasksViewProps) {
-  const queryClient = useQueryClient();
   const [phases, setPhases] = useState<PhaseWithTaskCount[]>([]);
   const [isPhasesLoading, setIsPhasesLoading] = useState(false);
   const [sortBy, setSortBy] = useState<'default' | 'dueDate'>('default');

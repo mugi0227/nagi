@@ -120,7 +120,7 @@ const readFirstString = (
 };
 
 const getToolAnnouncement = (
-  toolName: string,
+  _toolName: string,
   args?: Record<string, unknown>,
 ): { content: string; finalized: boolean } | null => {
   const proposalDescription = readFirstString(args, ['proposal_description']);
@@ -399,7 +399,7 @@ export function useChat() {
                       updated = true;
                       return {
                         ...item,
-                        status: 'completed',
+                        status: 'completed' as const,
                       };
                     }
                     return item;
@@ -442,7 +442,7 @@ export function useChat() {
                       updated = true;
                       return {
                         ...item,
-                        status: 'failed',
+                        status: 'failed' as const,
                       };
                     }
                     return item;
