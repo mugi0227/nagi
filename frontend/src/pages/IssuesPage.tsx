@@ -122,12 +122,14 @@ export function IssuesPage() {
             アプリへの要望やバグ報告を投稿できます
           </p>
         </div>
-        <button
-          className="submit-button"
-          onClick={() => setShowChatWindow(true)}
-        >
-          要望を伝える
-        </button>
+        <div className="header-actions">
+          <button
+            className="submit-button"
+            onClick={() => setShowChatWindow(true)}
+          >
+            要望を伝える
+          </button>
+        </div>
       </div>
 
       <div className="issues-filters">

@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { issuesApi } from '../api/issues';
-import type { IssueChatChunk } from '../api/types';
+import type { IssueChatChunk, PendingQuestion } from '../api/types';
 
 export interface IssueChatMessage {
   id: string;
@@ -14,13 +14,38 @@ export interface IssueChatMessage {
     result?: unknown;
     status: 'running' | 'completed';
   }>;
+  questions?: PendingQuestion[];
+  questionsContext?: string;
+}
+
+export interface PendingQuestionsData {
+  messageId: string;
+  questions: PendingQuestion[];
+  context?: string;
 }
 
 export function useIssueChat() {
   const [messages, setMessages] = useState<IssueChatMessage[]>([]);
   const [sessionId, setSessionId] = useState<string | undefined>();
   const [isStreaming, setIsStreaming] = useState(false);
+  const [processedQuestionMessageIds, setProcessedQuestionMessageIds] = useState<Set<string>>(new Set());
   const abortControllerRef = useRef<AbortController | null>(null);
+
+  // Extract pending questions from messages
+  const pendingQuestionsData = useMemo((): PendingQuestionsData | null => {
+    for (const msg of messages) {
+      if (msg.questions && msg.questions.length > 0 && !processedQuestionMessageIds.has(msg.id)) {
+        return { messageId: msg.id, questions: msg.questions, context: msg.questionsContext };
+      }
+    }
+    return null;
+  }, [messages, processedQuestionMessageIds]);
+
+  const markQuestionsProcessed = useCallback(() => {
+    if (pendingQuestionsData) {
+      setProcessedQuestionMessageIds((prev) => new Set([...prev, pendingQuestionsData.messageId]));
+    }
+  }, [pendingQuestionsData]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || isStreaming) return;
@@ -132,6 +157,20 @@ export function useIssueChat() {
         );
         break;
 
+      case 'questions':
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === messageId
+              ? {
+                  ...m,
+                  questions: chunk.questions,
+                  questionsContext: chunk.questions_context,
+                }
+              : m
+          )
+        );
+        break;
+
       case 'error':
         setMessages((prev) =>
           prev.map((m) =>
@@ -147,6 +186,7 @@ export function useIssueChat() {
   const clearMessages = useCallback(() => {
     setMessages([]);
     setSessionId(undefined);
+    setProcessedQuestionMessageIds(new Set());
   }, []);
 
   const stopStreaming = useCallback(() => {
@@ -164,5 +204,7 @@ export function useIssueChat() {
     sendMessage,
     clearMessages,
     stopStreaming,
+    pendingQuestionsData,
+    markQuestionsProcessed,
   };
 }

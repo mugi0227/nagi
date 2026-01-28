@@ -91,6 +91,10 @@ export interface Task {
 
   // Subtask guide field
   guide?: string;
+
+  // Completion fields
+  completion_note?: string;
+  completed_at?: string;
 }
 
 export interface TaskCreate {
@@ -152,6 +156,9 @@ export interface TaskUpdate {
 
   // Subtask guide field
   guide?: string;
+
+  // Completion fields
+  completion_note?: string;
 }
 
 export interface TaskWithSubtasks extends Task {
@@ -879,12 +886,14 @@ export interface IssueChatRequest {
 }
 
 export interface IssueChatChunk {
-  chunk_type: 'session' | 'text' | 'tool_start' | 'tool_end' | 'done' | 'error';
+  chunk_type: 'session' | 'text' | 'tool_start' | 'tool_end' | 'questions' | 'done' | 'error';
   session_id?: string;
   content?: string;
   tool_name?: string;
   tool_args?: Record<string, unknown>;
   tool_result?: unknown;
+  questions?: PendingQuestion[];
+  questions_context?: string;
 }
 
 // User Questions (ask_user_questions tool)
