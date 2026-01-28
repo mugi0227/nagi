@@ -88,7 +88,7 @@ export function resolveDisplayName(options: {
   username?: string | null;
   userId?: string | null;
 }): string {
-  const { firstName, lastName, displayName, username, userId } = options;
+  const { firstName, lastName, displayName, userId } = options;
 
   const lastNameTrimmed = lastName?.trim();
   const firstNameTrimmed = firstName?.trim();

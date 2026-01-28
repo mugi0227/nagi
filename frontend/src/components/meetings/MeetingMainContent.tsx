@@ -8,7 +8,6 @@ import {
     useLatestSessionByTask,
     useCreateSession,
     useStartSession,
-    useResetSession,
     useReopenSession,
     useResetToPreparation,
 } from '../../hooks/useMeetingSession';
@@ -78,7 +77,6 @@ export function MeetingMainContent({
     // Session mutations
     const createSessionMutation = useCreateSession();
     const startSessionMutation = useStartSession(taskId);
-    const resetSessionMutation = useResetSession(taskId);
     const reopenSessionMutation = useReopenSession(taskId);
     const resetToPreparationMutation = useResetToPreparation(taskId);
 
@@ -222,15 +220,6 @@ export function MeetingMainContent({
 
     const handleResumeModal = () => {
         meetingTimer.showModal();
-    };
-
-    const handleResetSession = async () => {
-        if (!session) return;
-        try {
-            await resetSessionMutation.mutateAsync(session.id);
-        } catch (error) {
-            console.error('Failed to reset session:', error);
-        }
     };
 
     const handleReopenSession = async () => {

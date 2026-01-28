@@ -574,22 +574,56 @@ export function ProjectDetailV2Page() {
   }, [assignmentIdsByTaskId, phaseRows]);
 
   const memberStatsById = useMemo(() => {
-    const stats: Record<string, { total: number; done: number; inProgress: number; minutes: number }> = {};
+    const stats: Record<string, { total: number; done: number; inProgress: number; weeklyMinutes: number }> = {};
     const taskMap = new Map(tasks.map(task => [task.id, task]));
+
+    // Calculate this week's range (Monday to Sunday)
+    const today = todayInTimezone(timezone);
+    const dayOfWeek = today.weekday; // 1 = Monday, 7 = Sunday
+    const weekStart = today.minus({ days: dayOfWeek - 1 }).startOf('day');
+    const weekEnd = weekStart.plus({ days: 6 }).endOf('day');
+
     assignments.forEach((assignment) => {
       const task = taskMap.get(assignment.task_id);
       if (!task) return;
       const key = assignment.assignee_id;
       if (!stats[key]) {
-        stats[key] = { total: 0, done: 0, inProgress: 0, minutes: 0 };
+        stats[key] = { total: 0, done: 0, inProgress: 0, weeklyMinutes: 0 };
       }
       stats[key].total += 1;
       if (task.status === 'DONE') stats[key].done += 1;
       if (task.status === 'IN_PROGRESS') stats[key].inProgress += 1;
-      stats[key].minutes += task.estimated_minutes ?? 0;
+
+      // Skip DONE tasks for workload calculation
+      if (task.status === 'DONE') return;
+
+      const estimatedMinutes = task.estimated_minutes ?? 0;
+      if (estimatedMinutes <= 0) return;
+
+      const taskStart = task.start_not_before ? toDateTime(task.start_not_before, timezone).startOf('day') : null;
+      const taskDue = task.due_date ? toDateTime(task.due_date, timezone).endOf('day') : null;
+
+      // If both dates are set, calculate weekly workload based on task duration
+      if (taskStart && taskDue && taskStart.isValid && taskDue.isValid && taskDue >= taskStart) {
+        // Check if task overlaps with this week
+        const overlapStart = taskStart > weekStart ? taskStart : weekStart;
+        const overlapEnd = taskDue < weekEnd ? taskDue : weekEnd;
+
+        if (overlapStart <= overlapEnd) {
+          // Task overlaps with this week - calculate proportional workload
+          const taskDurationDays = Math.max(1, Math.ceil(taskDue.diff(taskStart, 'days').days));
+          const taskDurationWeeks = Math.max(1, taskDurationDays / 7);
+          const weeklyWorkload = estimatedMinutes / taskDurationWeeks;
+          stats[key].weeklyMinutes += weeklyWorkload;
+        }
+        // If no overlap, don't add to this week's workload
+      } else {
+        // No valid date range - assume all workload falls on this week
+        stats[key].weeklyMinutes += estimatedMinutes;
+      }
     });
     return stats;
-  }, [assignments, tasks]);
+  }, [assignments, tasks, timezone]);
 
   const kpiMetrics = useMemo(
     () => project?.kpi_config?.metrics ?? [],
@@ -1493,13 +1527,13 @@ export function ProjectDetailV2Page() {
                     total: 0,
                     done: 0,
                     inProgress: 0,
-                    minutes: 0,
+                    weeklyMinutes: 0,
                   };
                   const capacityMinutes = member.capacity_hours && member.capacity_hours > 0
                     ? member.capacity_hours * 60
                     : null;
                   const loadPercent = capacityMinutes
-                    ? Math.round((stats.minutes / capacityMinutes) * 100)
+                    ? Math.round((stats.weeklyMinutes / capacityMinutes) * 100)
                     : null;
                   const cappedPercent = loadPercent ? Math.min(loadPercent, 100) : 0;
                   const loadClass = loadPercent == null
@@ -1535,7 +1569,7 @@ export function ProjectDetailV2Page() {
                       </div>
                       <div className="project-v2-team-workload">
                         <div className="project-v2-muted">
-                          負荷 {loadPercent != null ? `${loadPercent}%` : '未設定'}
+                          今週の負荷 {loadPercent != null ? `${loadPercent}%` : '未設定'}
                         </div>
                         <div className="project-v2-workload-bar">
                           <div
