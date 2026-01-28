@@ -1148,14 +1148,6 @@ export function ProjectDetailV2Page() {
                 現在フェーズ: {currentPhase.name}
               </div>
             )}
-            {projectId && (
-              <button
-                className="project-v2-secondary"
-                onClick={() => navigate(`/projects/${projectId}`)}
-              >
-                v1を開く
-              </button>
-            )}
             <button
               className="project-v2-icon-btn"
               onClick={handleOpenProjectModal}
