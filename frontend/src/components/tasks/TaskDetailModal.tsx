@@ -1199,6 +1199,83 @@ export function TaskDetailModal({
                 )}
               </div>
 
+              {/* スケジュール（期限・着手可能日） */}
+              {(selectedSubtask.due_date || selectedSubtask.start_not_before || onUpdateTask) && (
+                <div className="guide-section subtask-schedule-section">
+                  <h4><HiOutlineCalendar /> スケジュール</h4>
+                  <div className="subtask-schedule-grid">
+                    {(selectedSubtask.due_date || onUpdateTask) && (
+                      <div className="subtask-schedule-item">
+                        <span className="metadata-label">期限</span>
+                        {onUpdateTask ? (
+                          <EditableDateTime
+                            value={selectedSubtask.due_date}
+                            onSave={async (newValue) => handleSubtaskFieldUpdate(selectedSubtask.id, 'due_date', newValue)}
+                            placeholder="未設定"
+                            timezone={timezone}
+                            icon={<HiOutlineCalendar />}
+                          />
+                        ) : (
+                          <span className="metadata-value">
+                            <HiOutlineCalendar /> {selectedSubtask.due_date ? formatDateValue(selectedSubtask.due_date) : '未設定'}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {(selectedSubtask.start_not_before || onUpdateTask) && (
+                      <div className="subtask-schedule-item">
+                        <span className="metadata-label">着手可能日</span>
+                        {onUpdateTask ? (
+                          <EditableDateTime
+                            value={selectedSubtask.start_not_before}
+                            onSave={async (newValue) => handleSubtaskFieldUpdate(selectedSubtask.id, 'start_not_before', newValue)}
+                            placeholder="未設定"
+                            timezone={timezone}
+                            icon={<HiOutlineCalendar />}
+                          />
+                        ) : (
+                          <span className="metadata-value">
+                            <HiOutlineCalendar /> {selectedSubtask.start_not_before ? formatDateValue(selectedSubtask.start_not_before) : '未設定'}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* 依存関係 */}
+              {((selectedSubtask.dependency_ids && selectedSubtask.dependency_ids.length > 0) || onUpdateTask) && (
+                <div className="guide-section subtask-dependencies-section">
+                  <h4><FaProjectDiagram /> 依存関係</h4>
+                  {onUpdateTask ? (
+                    <EditableDependencies
+                      value={selectedSubtask.dependency_ids}
+                      allTasks={[...allTasks, ...localSubtasks]}
+                      currentTaskId={selectedSubtask.id}
+                      onSave={async (newValue) => handleSubtaskFieldUpdate(selectedSubtask.id, 'dependency_ids', newValue)}
+                    />
+                  ) : (
+                    <ul className="sidebar-dependencies">
+                      {(selectedSubtask.dependency_ids || []).map((depId) => {
+                        const dep = [...allTasks, ...localSubtasks].find(t => t.id === depId);
+                        if (!dep) return null;
+                        return (
+                          <li
+                            key={dep.id}
+                            className={`sidebar-dep-item ${dep.status === 'DONE' ? 'completed' : ''}`}
+                            title={dep.title}
+                          >
+                            {dep.status === 'DONE' ? <FaLockOpen /> : <FaLock />}
+                            <span>{dep.title}</span>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                </div>
+              )}
+
               {(selectedGuide?.mainDescription || onUpdateTask) && (
                 <div className="guide-section">
                   <h4>説明</h4>

@@ -915,7 +915,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
               if (taskStartIndex < 0 || taskEndIndex < 0) return;
             }
 
-            const subtasks = phaseTasks.filter(t => t.parent_id === task.id);
+            const subtasks = tasks.filter(t => t.parent_id === task.id);
             const isTaskExpanded = expandedTasks.has(task.id);
 
             result.push({
@@ -1015,7 +1015,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
               if (taskStartIndex < 0 || taskEndIndex < 0) return;
             }
 
-            const subtasks = phaseTasks.filter(t => t.parent_id === task.id);
+            const subtasks = tasks.filter(t => t.parent_id === task.id);
             const hasSubtasks = subtasks.length > 0;
             const isTaskExpanded = expandedTasks.has(task.id);
 
@@ -1149,7 +1149,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
           }
 
           // Find subtasks for unassigned tasks
-          const subtasks = tasks.filter(t => !t.phase_id && t.parent_id === task.id);
+          const subtasks = tasks.filter(t => t.parent_id === task.id);
           const isTaskExpanded = expandedTasks.has(task.id);
 
           result.push({

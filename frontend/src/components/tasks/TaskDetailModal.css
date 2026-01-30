@@ -891,6 +891,75 @@
   font-size: 0.75rem;
 }
 
+/* Subtask Schedule Section */
+.subtask-schedule-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.subtask-schedule-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.subtask-schedule-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.subtask-schedule-item .metadata-label {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.subtask-schedule-item .metadata-value {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+}
+
+/* Subtask Dependencies Section */
+.subtask-dependencies-section h4 {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.subtask-dependencies-section .sidebar-dependencies {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.subtask-dependencies-section .sidebar-dep-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  background: rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(0, 0, 0, 0.04);
+}
+
+.subtask-dependencies-section .sidebar-dep-item.completed {
+  color: var(--text-muted);
+  text-decoration: line-through;
+}
+
+[data-theme="dark"] .subtask-dependencies-section .sidebar-dep-item {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
 /* Inline assignee display in subtask list */
 .subtask-assignee-inline {
   display: inline-flex;

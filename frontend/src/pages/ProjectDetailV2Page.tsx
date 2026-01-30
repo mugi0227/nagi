@@ -209,14 +209,7 @@ export function ProjectDetailV2Page() {
   } = useTasks(projectId);
   const { data: currentUser } = useCurrentUser();
 
-  // Unified task modal hook
-  const taskModal = useTaskModal({
-    tasks,
-    onRefetch: refetchTasks,
-    projectName: project?.name,
-    getPhaseName: (phaseId) => phases.find(p => p.id === phaseId)?.name,
-    defaultTaskData: { project_id: projectId },
-  });
+  // NOTE: useTaskModal is defined after memberOptions/handleAssignMultiple (see below)
 
   // Update tab when URL query param changes
   useEffect(() => {
@@ -1075,6 +1068,18 @@ export function ProjectDetailV2Page() {
       alert('担当者の更新に失敗しました。');
     }
   };
+
+  // Unified task modal hook (placed after memberOptions/handleAssignMultiple)
+  const taskModal = useTaskModal({
+    tasks,
+    onRefetch: refetchTasks,
+    projectName: project?.name,
+    getPhaseName: (phaseId) => phases.find(p => p.id === phaseId)?.name,
+    defaultTaskData: { project_id: projectId },
+    memberOptions,
+    taskAssignments: assignments,
+    onAssigneeChange: handleAssignMultiple,
+  });
 
   const handleOpenCreateTask = (phaseId: string | null) => {
     taskModal.openCreateForm({

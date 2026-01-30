@@ -3,7 +3,12 @@ import { AnimatePresence } from 'framer-motion';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { TaskDetailModal } from '../components/tasks/TaskDetailModal';
 import { tasksApi } from '../api/tasks';
-import type { Task, TaskCreate, TaskUpdate } from '../api/types';
+import type { Task, TaskCreate, TaskUpdate, TaskAssignment } from '../api/types';
+
+interface MemberOption {
+  id: string;
+  label: string;
+}
 
 interface UseTaskModalOptions {
   /** タスク一覧（親コンポーネントから渡す） */
@@ -22,6 +27,12 @@ interface UseTaskModalOptions {
   getPhaseName?: (phaseId: string | undefined) => string | undefined;
   /** 新規タスクのデフォルトデータ */
   defaultTaskData?: Partial<TaskCreate>;
+  /** 担当者選択肢 */
+  memberOptions?: MemberOption[];
+  /** タスクアサイン情報 */
+  taskAssignments?: TaskAssignment[];
+  /** 担当者変更ハンドラ */
+  onAssigneeChange?: (taskId: string, memberIds: string[]) => void;
 }
 
 interface TaskModalState {
@@ -74,6 +85,9 @@ export function useTaskModal(options: UseTaskModalOptions): UseTaskModalReturn {
     projectName,
     getPhaseName,
     defaultTaskData,
+    memberOptions = [],
+    taskAssignments = [],
+    onAssigneeChange,
   } = options;
 
   const queryClient = useQueryClient();
@@ -351,6 +365,9 @@ export function useTaskModal(options: UseTaskModalOptions): UseTaskModalReturn {
               queryClient.invalidateQueries({ queryKey: ['subtasks'] });
               onRefetch?.();
             }}
+            memberOptions={memberOptions}
+            taskAssignments={taskAssignments}
+            onAssigneeChange={onAssigneeChange}
           />
         )}
       </AnimatePresence>
@@ -369,6 +386,9 @@ export function useTaskModal(options: UseTaskModalOptions): UseTaskModalReturn {
     openCreateSubtaskForm,
     queryClient,
     onRefetch,
+    memberOptions,
+    taskAssignments,
+    onAssigneeChange,
   ]);
 
   return {
