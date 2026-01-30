@@ -1,0 +1,264 @@
+/* OverdueCheckinCard - Overdue task check-in prompts */
+
+.overdue-checkin-card {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  border-left: 4px solid #f59e0b;
+}
+
+/* Header */
+.overdue-checkin-card .card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-color);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.06), transparent);
+}
+
+.overdue-checkin-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.overdue-checkin-header h3 {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0;
+}
+
+.overdue-checkin-badge {
+  font-size: 11px;
+  font-weight: 600;
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+  padding: 2px 8px;
+  border-radius: 10px;
+}
+
+.overdue-checkin-toggle {
+  border: none;
+  background: rgba(148, 163, 184, 0.15);
+  color: var(--text-muted);
+  font-size: 11px;
+  padding: 5px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.overdue-checkin-toggle:hover {
+  background: rgba(148, 163, 184, 0.25);
+  color: var(--text-main);
+}
+
+/* Project group */
+.overdue-project-group {
+  padding: 14px 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+}
+
+.overdue-project-group:last-child {
+  border-bottom: none;
+}
+
+.overdue-project-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.overdue-project-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.overdue-project-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: rgba(148, 163, 184, 0.1);
+  padding: 2px 8px;
+  border-radius: 8px;
+}
+
+.overdue-checkin-btn {
+  border: none;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+}
+
+.overdue-checkin-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+/* Task list within project group */
+.overdue-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.overdue-task-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.overdue-task-item:hover {
+  background: rgba(148, 163, 184, 0.06);
+}
+
+.overdue-task-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.overdue-days-badge {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.overdue-days-badge.mild {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.overdue-days-badge.serious {
+  background: rgba(239, 68, 68, 0.12);
+  color: #dc2626;
+}
+
+/* Modal for check-in form */
+.overdue-checkin-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: modalFadeIn 0.3s ease-out;
+}
+
+.overdue-checkin-modal.closing {
+  animation: overdueModalFadeOut 0.3s ease-in forwards;
+}
+
+.overdue-checkin-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.5);
+}
+
+.overdue-checkin-modal.closing .overdue-checkin-backdrop {
+  animation: overdueBackdropFadeOut 0.3s ease-in forwards;
+}
+
+.overdue-checkin-panel {
+  position: relative;
+  width: min(560px, 92vw);
+  max-height: 90vh;
+  overflow-y: auto;
+  z-index: 1;
+  animation: overduePanelSlideIn 0.3s ease-out;
+}
+
+.overdue-checkin-modal.closing .overdue-checkin-panel {
+  animation: overduePanelSlideOut 0.3s ease-in forwards;
+}
+
+.overdue-checkin-panel-close {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid rgba(148, 163, 184, 0.4);
+  background: rgba(255, 255, 255, 0.85);
+  font-weight: 700;
+  color: var(--text-main);
+  cursor: pointer;
+  z-index: 2;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.overdue-checkin-panel-close:hover {
+  background: white;
+}
+
+/* Collapsed state */
+.overdue-checkin-card.collapsed .overdue-project-group {
+  display: none;
+}
+
+/* Empty/loading */
+.overdue-checkin-loading {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+
+@keyframes overdueModalFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes overdueBackdropFadeOut {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
+@keyframes overduePanelSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes overduePanelSlideOut {
+  from {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(20px) scale(0.95);
+  }
+}

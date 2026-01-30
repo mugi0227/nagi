@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { AgentCard } from '../components/dashboard/AgentCard';
 import { DailyBriefingCard } from '../components/dashboard/DailyBriefingCard';
 import { TodayTasksCard } from '../components/dashboard/TodayTasksCard';
+import { OverdueCheckinCard } from '../components/dashboard/OverdueCheckinCard';
 import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
 import { WeeklyMeetingsCard } from '../components/dashboard/WeeklyMeetingsCard';
 import { useTaskModal } from '../hooks/useTaskModal';
@@ -66,6 +67,10 @@ export function DashboardPage() {
 
       <motion.div variants={itemVariants}>
         <TodayTasksCard onTaskClick={taskModal.openTaskDetail} />
+      </motion.div>
+
+      <motion.div variants={itemVariants}>
+        <OverdueCheckinCard onTaskClick={taskModal.openTaskDetail} />
       </motion.div>
 
       <motion.div
