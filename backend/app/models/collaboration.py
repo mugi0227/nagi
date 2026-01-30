@@ -28,7 +28,7 @@ class ProjectMemberBase(BaseModel):
     project_id: UUID
     member_user_id: str = Field(..., min_length=1, max_length=255)
     role: ProjectRole = ProjectRole.MEMBER
-    capacity_hours: Optional[float] = Field(None, ge=0, le=24)
+    capacity_hours: Optional[float] = Field(None, ge=0, le=168)
     timezone: Optional[str] = Field(None, max_length=100)
 
 
@@ -37,7 +37,7 @@ class ProjectMemberCreate(BaseModel):
 
     member_user_id: str = Field(..., min_length=1, max_length=255)
     role: ProjectRole = ProjectRole.MEMBER
-    capacity_hours: Optional[float] = Field(None, ge=0, le=24)
+    capacity_hours: Optional[float] = Field(None, ge=0, le=168)
     timezone: Optional[str] = Field(None, max_length=100)
 
 
@@ -45,7 +45,7 @@ class ProjectMemberUpdate(BaseModel):
     """Update project member fields."""
 
     role: Optional[ProjectRole] = None
-    capacity_hours: Optional[float] = Field(None, ge=0, le=24)
+    capacity_hours: Optional[float] = Field(None, ge=0, le=168)
     timezone: Optional[str] = Field(None, max_length=100)
 
 
