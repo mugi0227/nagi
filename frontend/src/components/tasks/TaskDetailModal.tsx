@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
 import {
   FaArrowLeft,
+  FaCodeBranch,
   FaEdit,
   FaLayerGroup,
   FaLock,
@@ -418,6 +419,7 @@ export function TaskDetailModal({
     };
     const event = new CustomEvent('secretary:chat-open', { detail: { draftCard } });
     window.dispatchEvent(event);
+    onClose();
   };
 
   const handleEnrichTask = () => {
@@ -475,6 +477,30 @@ ${filledSummary}${emptySummary}
     };
     const event = new CustomEvent('secretary:chat-open', { detail: { draftCard } });
     window.dispatchEvent(event);
+    onClose();
+  };
+
+  const handleBreakdownTask = () => {
+    const draftCard: DraftCardData = {
+      type: 'subtask',
+      title: 'サブタスク分解',
+      info: [
+        { label: 'タスク', value: task.title },
+        { label: 'タスクID', value: task.id },
+        ...(task.estimated_minutes ? [{ label: '見積もり', value: `${Math.round(task.estimated_minutes / 60)}時間` }] : []),
+      ],
+      placeholder: '例: テスト作成も含めて',
+      promptTemplate: `タスク「${task.title}」をサブタスクに分解して。
+
+親タスクID: ${task.id}
+※サブタスク作成時は必ずparent_idに上記IDを指定してね
+
+追加の指示があれば以下に記入:
+{instruction}`,
+    };
+    const event = new CustomEvent('secretary:chat-open', { detail: { draftCard } });
+    window.dispatchEvent(event);
+    onClose();
   };
 
   return (
@@ -774,6 +800,15 @@ ${filledSummary}${emptySummary}
               <div className="detail-section subtasks-section">
                 <div className="section-header-row">
                   <h3 className="section-label">サブタスク ({sortedSubtasks.length})</h3>
+                  <button
+                    type="button"
+                    className="breakdown-btn"
+                    onClick={handleBreakdownTask}
+                    title="AIでサブタスク分解"
+                  >
+                    <FaCodeBranch />
+                    <span>AIで分解</span>
+                  </button>
                 </div>
                 <ul className="subtasks-list">
                   {sortedSubtasks.map((subtask) => {
