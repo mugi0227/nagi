@@ -1,9 +1,10 @@
 import { AnimatePresence, motion, useAnimationControls } from 'framer-motion';
+import { useMemo } from 'react';
 import { FaCheck } from 'react-icons/fa';
 import { FaBatteryFull, FaBatteryQuarter, FaClock, FaEllipsis, FaFire, FaLeaf, FaLock } from 'react-icons/fa6';
 import type { Task } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
-import { formatDate } from '../../utils/dateTime';
+import { formatDate, toDateTime, todayInTimezone } from '../../utils/dateTime';
 import './TaskItem.css';
 
 interface TaskItemProps {
@@ -75,9 +76,21 @@ export function TaskItem({
 
   const isDone = task.status === 'DONE';
 
+  // Deadline status
+  const deadlineStatus = useMemo(() => {
+    if (!task.due_date || isDone) return null;
+    const today = todayInTimezone(timezone);
+    const dueDate = toDateTime(task.due_date, timezone).startOf('day');
+    if (!dueDate.isValid) return null;
+    const diffDays = dueDate.diff(today.startOf('day'), 'days').days;
+    if (diffDays < 0) return 'overdue' as const;
+    if (diffDays <= 3) return 'approaching' as const;
+    return null;
+  }, [task.due_date, isDone, timezone]);
+
   return (
     <div
-      className={`task-item ${isRemoving ? 'removing' : ''}`}
+      className={`task-item ${isRemoving ? 'removing' : ''} ${deadlineStatus ? `deadline-${deadlineStatus}` : ''}`}
       onClick={handleClick}
       data-done={isDone}
       style={{ cursor: onClick ? 'pointer' : 'default' }}
@@ -135,10 +148,10 @@ export function TaskItem({
           )}
 
           {task.due_date && (
-            <span className="meta-tag due-date">
+            <span className={`meta-tag due-date ${deadlineStatus ? `deadline-${deadlineStatus}` : ''}`}>
               <FaClock />
               <span>
-                {formatDate(task.due_date, { month: 'numeric', day: 'numeric' }, timezone)}まで
+                {formatDate(task.due_date, { month: 'numeric', day: 'numeric' }, timezone)}{deadlineStatus === 'overdue' ? ' 超過' : 'まで'}
               </span>
             </span>
           )}

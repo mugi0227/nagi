@@ -13,7 +13,8 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect, useLayoutEffect } from 'react';
 import type { CSSProperties } from 'react';
 import { DateTime } from 'luxon';
-import { FaChevronDown, FaChevronRight, FaExpand, FaCompress, FaPlus, FaLink, FaUnlink, FaSort, FaTrash, FaMagic } from 'react-icons/fa';
+import { FaChevronDown, FaChevronRight, FaExpand, FaCompress, FaPlus, FaLink, FaUnlink, FaSort, FaTrash, FaMagic, FaCalendarDay } from 'react-icons/fa';
+import { FaUser } from 'react-icons/fa6';
 import {
   DndContext,
   closestCenter,
@@ -54,6 +55,7 @@ interface ProjectGanttChartProps {
   tasks: Task[];
   phases: Phase[];
   milestones: Milestone[];
+  assigneeByTaskId?: Record<string, string>;
   onTaskUpdate?: (taskId: string, updates: { start_not_before?: string; due_date?: string }) => void;
   onPhaseUpdate?: (phaseId: string, updates: { start_date?: string; end_date?: string }) => void;
   onMilestoneUpdate?: (milestoneId: string, updates: { due_date?: string }) => void;
@@ -97,6 +99,8 @@ interface GanttRow {
   hasNoDate?: boolean;  // For undated items
   parentTaskId?: string;  // For subtasks
   subtaskCount?: number;  // Number of subtasks for a parent task
+  assigneeName?: string;  // Display name of the assignee
+  dueDateStr?: string;    // Raw due_date for deadline status calculation
 }
 
 interface MonthHeader {
@@ -151,6 +155,18 @@ const getBufferStatusColor = (status: BufferStatus): string => {
     case 'warning': return '#f59e0b';
     default: return '#10b981';
   }
+};
+
+/** Calculate deadline status for a task based on due_date relative to today */
+const getDeadlineStatus = (dueDateStr: string | undefined, status: string, today: DateTime, timezone: string): 'overdue' | 'approaching' | null => {
+  if (!dueDateStr || status === 'DONE') return null;
+  const dueDate = toDateTime(dueDateStr, timezone).startOf('day');
+  if (!dueDate.isValid) return null;
+  const todayStart = today.startOf('day');
+  const diffDays = dueDate.diff(todayStart, 'days').days;
+  if (diffDays < 0) return 'overdue';
+  if (diffDays <= 3) return 'approaching';
+  return null;
 };
 
 const generateDateRange = (startDate: DateTime, days: number): DateTime[] => {
@@ -301,6 +317,7 @@ interface SortableSidebarRowProps {
   row: GanttRow;
   isLinkMode: boolean;
   linkSourceTask: string | null;
+  deadlineStatus?: 'overdue' | 'approaching' | null;
   onTogglePhase: (phaseId: string) => void;
   onToggleTask: (taskId: string) => void;
   onLinkModeClick: (taskId: string) => void;
@@ -318,6 +335,7 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
   row,
   isLinkMode,
   linkSourceTask,
+  deadlineStatus,
   onTogglePhase,
   onToggleTask,
   onLinkModeClick,
@@ -399,6 +417,8 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
     isDropTarget ? 'drop-target' : '',
     row.hasNoDate ? 'no-date' : '',
     row.parentTaskId ? 'is-subtask' : '',
+    deadlineStatus === 'overdue' ? 'deadline-overdue' : '',
+    deadlineStatus === 'approaching' ? 'deadline-approaching' : '',
   ].filter(Boolean).join(' ');
 
   return (
@@ -431,6 +451,12 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
         {row.title}
         <span className="pgantt-row-title-popover" style={popoverStyle}>{row.title}</span>
       </span>
+      {(row.type === 'task' || row.type === 'subtask') && row.assigneeName && (
+        <span className="pgantt-assignee-badge" title={row.assigneeName}>
+          <FaUser size={8} />
+          <span>{row.assigneeName}</span>
+        </span>
+      )}
       {hasSubtasks && (
         <span className="pgantt-subtask-count">{row.subtaskCount}</span>
       )}
@@ -513,6 +539,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   tasks,
   phases,
   milestones,
+  assigneeByTaskId = {},
   onTaskUpdate,
   onPhaseUpdate,
   onMilestoneUpdate,
@@ -924,7 +951,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
               type: 'task',
               id: task.id,
               title: task.title,
-              depth: 2, // Extra indentation for milestone-linked tasks
+              depth: 1, // Same level as unlinked tasks (milestone relationship shown via icon/border)
               phaseId: phase.id,
               bar: {
                 startIndex: Math.min(taskStartIndex, taskEndIndex),
@@ -968,7 +995,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                     type: 'subtask',
                     id: subtask.id,
                     title: subtask.title,
-                    depth: 3,
+                    depth: 2,
                     phaseId: phase.id,
                     parentTaskId: task.id,
                     bar: {
@@ -1218,8 +1245,20 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
       }
     }
 
+    // Post-process: add assigneeName and dueDateStr to task/subtask rows
+    const taskMap = new Map(tasks.map(t => [t.id, t]));
+    result.forEach(row => {
+      if (row.type === 'task' || row.type === 'subtask') {
+        row.assigneeName = assigneeByTaskId[row.id];
+        const task = taskMap.get(row.id);
+        if (task) {
+          row.dueDateStr = task.due_date;
+        }
+      }
+    });
+
     return result;
-  }, [phases, tasks, milestones, expandedPhases, expandedTasks, tasksByPhase, milestonesByPhase, dateRange, getDateIndex, dateIndexMap, taskOrderMap, milestoneOrderMap, parseDate, today]);
+  }, [phases, tasks, milestones, expandedPhases, expandedTasks, tasksByPhase, milestonesByPhase, dateRange, getDateIndex, dateIndexMap, taskOrderMap, milestoneOrderMap, parseDate, today, assigneeByTaskId]);
 
   // 依存関係の矢印データ
   const dependencyArrows = useMemo(() => {
@@ -1254,6 +1293,27 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   const dayWidth = useMemo(() => {
     return viewMode === 'day' ? 40 : viewMode === 'week' ? 16 : 6;
   }, [viewMode]);
+
+  // Deadline status map for task/subtask rows
+  const deadlineStatusMap = useMemo(() => {
+    const map = new Map<string, 'overdue' | 'approaching' | null>();
+    rows.forEach(row => {
+      if ((row.type === 'task' || row.type === 'subtask') && row.dueDateStr) {
+        map.set(row.id, getDeadlineStatus(row.dueDateStr, row.bar?.status || '', today, timezone));
+      }
+    });
+    return map;
+  }, [rows, today, timezone]);
+
+  // Scroll to today's position
+  const scrollToToday = useCallback(() => {
+    if (!scrollRef.current) return;
+    const currentDayWidth = viewMode === 'day' ? 40 : viewMode === 'week' ? 16 : 6;
+    const todayIndex = dateIndexMap.get(today.toISODate() ?? '') ?? 0;
+    const containerWidth = scrollRef.current.clientWidth;
+    const scrollPosition = Math.max(0, todayIndex * currentDayWidth - containerWidth / 3);
+    scrollRef.current.scrollTo({ left: scrollPosition, behavior: 'smooth' });
+  }, [viewMode, dateIndexMap, today]);
 
   // History management for Undo/Redo
   const pushToHistory = useCallback((entry: HistoryEntry) => {
@@ -1584,9 +1644,10 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
     const currentDayWidth = viewMode === 'day' ? 40 : viewMode === 'week' ? 16 : 6;
 
     if (!initialScrollDoneRef.current) {
-      // Initial scroll to today
+      // Initial scroll to today - center today in roughly the left third of the viewport
       const todayIndex = dateIndexMap.get(today.toISODate() ?? '') ?? 0;
-      const scrollPosition = Math.max(0, todayIndex * currentDayWidth - 200);
+      const containerWidth = scrollRef.current.clientWidth;
+      const scrollPosition = Math.max(0, todayIndex * currentDayWidth - containerWidth / 3);
       scrollRef.current.scrollLeft = scrollPosition;
       initialScrollDoneRef.current = true;
     } else if (prevViewModeRef.current !== viewMode) {
@@ -2035,6 +2096,10 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
     if (row.hasNoDate) {
       classes.push('no-date');
     }
+    // Deadline status styling
+    const dlStatus = deadlineStatusMap.get(row.id);
+    if (dlStatus === 'overdue') classes.push('deadline-overdue');
+    if (dlStatus === 'approaching') classes.push('deadline-approaching');
     return classes.join(' ');
   };
 
@@ -2122,10 +2187,20 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
             </div>
           </div>
         </div>
-        <div className="pgantt-view-modes">
-          <button className={viewMode === 'day' ? 'active' : ''} onClick={() => setViewMode('day')}>日</button>
-          <button className={viewMode === 'week' ? 'active' : ''} onClick={() => setViewMode('week')}>週</button>
-          <button className={viewMode === 'month' ? 'active' : ''} onClick={() => setViewMode('month')}>月</button>
+        <div className="pgantt-controls-right">
+          <button
+            className="pgantt-today-btn"
+            onClick={scrollToToday}
+            title="今日の位置にスクロール"
+          >
+            <FaCalendarDay size={10} />
+            <span>今日</span>
+          </button>
+          <div className="pgantt-view-modes">
+            <button className={viewMode === 'day' ? 'active' : ''} onClick={() => setViewMode('day')}>日</button>
+            <button className={viewMode === 'week' ? 'active' : ''} onClick={() => setViewMode('week')}>週</button>
+            <button className={viewMode === 'month' ? 'active' : ''} onClick={() => setViewMode('month')}>月</button>
+          </div>
         </div>
       </div>
 
@@ -2162,6 +2237,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                         row={row}
                         isLinkMode={isLinkMode}
                         linkSourceTask={linkSourceTask}
+                        deadlineStatus={deadlineStatusMap.get(row.id) ?? null}
                         onTogglePhase={togglePhase}
                         onToggleTask={toggleTask}
                         onLinkModeClick={handleLinkModeClick}

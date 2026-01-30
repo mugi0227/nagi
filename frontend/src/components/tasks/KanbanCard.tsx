@@ -9,7 +9,7 @@ import { StepNumber } from '../common/StepNumber';
 import './KanbanCard.css';
 import { MeetingBadge } from './MeetingBadge';
 import { useTimezone } from '../../hooks/useTimezone';
-import { formatDate, toDateTime } from '../../utils/dateTime';
+import { formatDate, toDateTime, todayInTimezone } from '../../utils/dateTime';
 
 interface KanbanCardProps {
   task: Task;
@@ -98,6 +98,18 @@ export function KanbanCard({
   const completedSubtasks = subtasks.filter(st => st.status === 'DONE').length;
   const totalSubtasks = subtasks.length;
   const isDone = task.status === 'DONE';
+
+  // Deadline status: overdue or approaching
+  const deadlineStatus = useMemo(() => {
+    if (!task.due_date || isDone) return null;
+    const today = todayInTimezone(timezone);
+    const dueDate = toDateTime(task.due_date, timezone).startOf('day');
+    if (!dueDate.isValid) return null;
+    const diffDays = dueDate.diff(today.startOf('day'), 'days').days;
+    if (diffDays < 0) return 'overdue' as const;
+    if (diffDays <= 3) return 'approaching' as const;
+    return null;
+  }, [task.due_date, isDone, timezone]);
 
   const taskLookup = useMemo(() => {
     return new Map(allTasks.map(t => [t.id, t]));
@@ -222,7 +234,7 @@ export function KanbanCard({
 
   return (
     <div
-      className={`kanban-card ${dependencyStatus.isBlocked ? 'blocked' : ''} ${isSelected ? 'selected' : ''} ${selectionMode ? 'selection-mode' : ''}`}
+      className={`kanban-card ${dependencyStatus.isBlocked ? 'blocked' : ''} ${isSelected ? 'selected' : ''} ${selectionMode ? 'selection-mode' : ''} ${deadlineStatus ? `deadline-${deadlineStatus}` : ''}`}
       draggable
       onClick={handleCardClick}
       style={{ cursor: onClick || selectionMode ? 'pointer' : 'default' }}
@@ -303,9 +315,9 @@ export function KanbanCard({
           </span>
         )}
         {task.due_date && (
-          <span className="meta-badge due-date" title="期限">
+          <span className={`meta-badge due-date ${deadlineStatus ? `deadline-${deadlineStatus}` : ''}`} title={deadlineStatus === 'overdue' ? '期限超過' : deadlineStatus === 'approaching' ? '期限間近' : '期限'}>
             <FaClock />
-            <span>{formatDate(task.due_date, { month: 'numeric', day: 'numeric' }, timezone)}期限</span>
+            <span>{formatDate(task.due_date, { month: 'numeric', day: 'numeric' }, timezone)}{deadlineStatus === 'overdue' ? ' 超過' : '期限'}</span>
           </span>
         )}
         {!task.is_fixed_time && effectiveStartNotBefore && (

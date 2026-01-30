@@ -12,6 +12,24 @@
   animation: fadeIn 0.6s ease-out;
 }
 
+.task-item.deadline-overdue {
+  border-left: 4px solid #ef4444;
+}
+
+.task-item.deadline-approaching {
+  border-left: 4px solid #f59e0b;
+}
+
+.task-item .meta-tag.due-date.deadline-overdue {
+  color: #dc2626;
+  font-weight: 700;
+}
+
+.task-item .meta-tag.due-date.deadline-approaching {
+  color: #d97706;
+  font-weight: 700;
+}
+
 @keyframes fadeIn {
   from {
     opacity: 0;
