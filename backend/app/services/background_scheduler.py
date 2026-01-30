@@ -23,6 +23,7 @@ from app.interfaces.notification_repository import INotificationRepository
 from app.interfaces.project_achievement_repository import IProjectAchievementRepository
 from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
+from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.interfaces.user_repository import IUserRepository
 from app.models.enums import GenerationType
@@ -52,6 +53,7 @@ class BackgroundScheduler:
         project_achievement_repo: IProjectAchievementRepository,
         notification_repo: INotificationRepository,
         llm_provider: ILLMProvider,
+        task_assignment_repo: Optional[ITaskAssignmentRepository] = None,
     ):
         self._user_repo = user_repo
         self._task_repo = task_repo
@@ -61,6 +63,7 @@ class BackgroundScheduler:
         self._project_achievement_repo = project_achievement_repo
         self._notification_repo = notification_repo
         self._llm_provider = llm_provider
+        self._task_assignment_repo = task_assignment_repo
         self._scheduler: Optional[AsyncIOScheduler] = None
         self._last_run: Optional[datetime] = None
 
@@ -299,6 +302,7 @@ class BackgroundScheduler:
                         period_end=period_end,
                         period_label=f"週次振り返り ({period_start.strftime('%m/%d')} - {period_end.strftime('%m/%d')})",
                         generation_type=GenerationType.AUTO,
+                        task_assignment_repo=self._task_assignment_repo,
                     )
 
                     if achievement:
@@ -385,6 +389,7 @@ async def get_background_scheduler() -> BackgroundScheduler:
             get_project_member_repository,
             get_project_achievement_repository,
             get_notification_repository,
+            get_task_assignment_repository,
             get_llm_provider,
         )
 
@@ -397,6 +402,7 @@ async def get_background_scheduler() -> BackgroundScheduler:
             project_achievement_repo=get_project_achievement_repository(),
             notification_repo=get_notification_repository(),
             llm_provider=get_llm_provider(),
+            task_assignment_repo=get_task_assignment_repository(),
         )
     return _scheduler
 
