@@ -12,6 +12,7 @@ from app.api.deps import (
     LLMProvider,
     MeetingAgendaRepo,
     MeetingSessionRepo,
+    TaskAssignmentRepo,
     TaskRepo,
 )
 from app.models.meeting_session import (
@@ -299,11 +300,13 @@ async def create_tasks_from_actions(
     user: CurrentUser,
     repo: MeetingSessionRepo,
     task_repo: TaskRepo,
+    assignment_repo: TaskAssignmentRepo,
 ):
     """
     Create tasks from next actions extracted from meeting transcript.
 
     Takes a list of next actions and creates corresponding tasks.
+    Optionally assigns tasks to specified members.
     Returns the list of created task IDs.
     """
     # Verify session exists
@@ -321,14 +324,22 @@ async def create_tasks_from_actions(
 
     # Create tasks from actions
     created_tasks = []
+    priority_map = {
+        "HIGH": Priority.HIGH,
+        "MEDIUM": Priority.MEDIUM,
+        "LOW": Priority.LOW,
+    }
+    energy_map = {
+        "HIGH": EnergyLevel.HIGH,
+        "MEDIUM": EnergyLevel.MEDIUM,
+        "LOW": EnergyLevel.LOW,
+    }
+
     for action in request.actions:
-        # Map priority string to enum
-        priority_map = {
-            "HIGH": Priority.HIGH,
-            "MEDIUM": Priority.MEDIUM,
-            "LOW": Priority.LOW,
-        }
         priority = priority_map.get(action.priority, Priority.MEDIUM)
+        energy_level = energy_map.get(
+            action.energy_level or "", EnergyLevel.MEDIUM
+        )
 
         # Parse due_date if provided
         due_date = None
@@ -338,19 +349,35 @@ async def create_tasks_from_actions(
         task_data = TaskCreate(
             title=action.title,
             description=action.description,
+            purpose=action.purpose,
             project_id=project_id,
             importance=priority,
             urgency=priority,
-            energy_level=EnergyLevel.MEDIUM,
+            energy_level=energy_level,
+            estimated_minutes=action.estimated_minutes,
             due_date=due_date,
             created_by=CreatedBy.AGENT,
         )
 
         task = await task_repo.create(user.id, task_data)
+
+        # Assign task to specified member if assignee_id is provided
+        if action.assignee_id:
+            try:
+                from app.models.collaboration import TaskAssignmentCreate
+                await assignment_repo.assign(
+                    user.id,
+                    task.id,
+                    TaskAssignmentCreate(assignee_id=action.assignee_id),
+                )
+            except Exception:
+                pass  # Assignment failure should not block task creation
+
         created_tasks.append({
             "id": str(task.id),
             "title": task.title,
             "assignee": action.assignee,
+            "assignee_id": action.assignee_id,
             "due_date": action.due_date.isoformat() if action.due_date else None,
         })
 

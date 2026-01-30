@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
 import { FaMagic, FaPlay, FaMapMarkerAlt, FaUsers, FaInfoCircle, FaExpand, FaUndo, FaChevronDown, FaChevronUp, FaHistory } from 'react-icons/fa';
 import { meetingAgendaApi } from '../../api/meetingAgenda';
+import { projectsApi } from '../../api/projects';
 import { RecurringMeeting, Task } from '../../api/types';
 import type { DraftCardData } from '../chat/DraftCard';
 import {
@@ -43,6 +44,21 @@ export function MeetingMainContent({
     const meetingEndTime = isAllDay
         ? null
         : (selectedTask?.end_time ? formatDate(selectedTask.end_time, { hour: '2-digit', minute: '2-digit' }, timezone) : null);
+
+    // Fetch project members for assignee selection
+    const { data: members = [] } = useQuery({
+        queryKey: ['project-members', projectId],
+        queryFn: () => projectsApi.listMembers(projectId),
+        enabled: !!projectId,
+    });
+
+    const memberOptions = useMemo(() =>
+        members.map((member: { member_user_id: string; member_display_name?: string }) => ({
+            id: member.member_user_id,
+            label: member.member_display_name || member.member_user_id,
+        })),
+        [members]
+    );
 
     // Collapsible state for meeting info section
     const [isInfoCollapsed, setIsInfoCollapsed] = useState(true);
@@ -379,6 +395,7 @@ export function MeetingMainContent({
                     <MeetingCompleted
                         session={session}
                         projectId={projectId}
+                        memberOptions={memberOptions}
                     />
                 )}
 

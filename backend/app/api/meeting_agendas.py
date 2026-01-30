@@ -7,6 +7,7 @@ from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from app.api.deps import (
     CurrentUser,
@@ -95,6 +96,30 @@ async def _get_owner_id_from_task(
     return user.id
 
 
+async def _resolve_owner_from_agenda_item(
+    user: CurrentUser,
+    item: MeetingAgendaItem,
+    repo: MeetingAgendaRepo,
+    meeting_repo: RecurringMeetingRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
+) -> str:
+    """Resolve owner_id from an agenda item's meeting or task context.
+
+    This enables project members (not just the owner) to operate on agenda items.
+    """
+    if item.meeting_id:
+        return await _get_owner_id_from_meeting(
+            user, item.meeting_id, meeting_repo, project_repo, member_repo
+        )
+    if item.task_id:
+        return await _get_owner_id_from_task(
+            user, item.task_id, task_repo, project_repo, member_repo
+        )
+    return user.id
+
+
 @router.post("/{meeting_id}/items", response_model=MeetingAgendaItem)
 async def create_agenda_item(
     meeting_id: UUID,
@@ -142,14 +167,27 @@ async def get_agenda_item(
     agenda_item_id: UUID,
     user: CurrentUser,
     repo: MeetingAgendaRepo,
+    meeting_repo: RecurringMeetingRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Get a specific agenda item."""
-    # Note: This endpoint doesn't have meeting/task context
-    # Falls back to user.id which works for owners
-    item = await repo.get(user.id, agenda_item_id)
+    # First look up item without user check to get meeting/task context
+    item = await repo.get_by_id(agenda_item_id)
     if not item:
         raise HTTPException(status_code=404, detail="Agenda item not found")
-    return item
+
+    # Resolve owner via project permissions (supports members)
+    owner_id = await _resolve_owner_from_agenda_item(
+        user, item, repo, meeting_repo, task_repo, project_repo, member_repo
+    )
+
+    # Verify access by fetching with resolved owner_id
+    verified = await repo.get(owner_id, agenda_item_id)
+    if not verified:
+        raise HTTPException(status_code=404, detail="Agenda item not found")
+    return verified
 
 
 @router.patch("/items/{agenda_item_id}", response_model=MeetingAgendaItem)
@@ -158,11 +196,22 @@ async def update_agenda_item(
     data: MeetingAgendaItemUpdate,
     user: CurrentUser,
     repo: MeetingAgendaRepo,
+    meeting_repo: RecurringMeetingRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Update an agenda item."""
-    # Note: This endpoint doesn't have meeting/task context
-    # Falls back to user.id which works for owners
-    return await repo.update(user.id, agenda_item_id, data)
+    # First look up item without user check to get meeting/task context
+    item = await repo.get_by_id(agenda_item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Agenda item not found")
+
+    # Resolve owner via project permissions (supports members)
+    owner_id = await _resolve_owner_from_agenda_item(
+        user, item, repo, meeting_repo, task_repo, project_repo, member_repo
+    )
+    return await repo.update(owner_id, agenda_item_id, data)
 
 
 @router.delete("/items/{agenda_item_id}")
@@ -170,14 +219,78 @@ async def delete_agenda_item(
     agenda_item_id: UUID,
     user: CurrentUser,
     repo: MeetingAgendaRepo,
+    meeting_repo: RecurringMeetingRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Delete an agenda item."""
-    # Note: This endpoint doesn't have meeting/task context
-    # Falls back to user.id which works for owners
-    success = await repo.delete(user.id, agenda_item_id)
+    # First look up item without user check to get meeting/task context
+    item = await repo.get_by_id(agenda_item_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Agenda item not found")
+
+    # Resolve owner via project permissions (supports members)
+    owner_id = await _resolve_owner_from_agenda_item(
+        user, item, repo, meeting_repo, task_repo, project_repo, member_repo
+    )
+    success = await repo.delete(owner_id, agenda_item_id)
     if not success:
         raise HTTPException(status_code=404, detail="Agenda item not found")
     return {"success": True}
+
+
+class BulkDeleteRequest(BaseModel):
+    """Request body for bulk agenda deletion."""
+    item_ids: list[UUID] = Field(..., min_length=1, description="削除するアジェンダ項目のIDリスト")
+
+
+@router.post("/{meeting_id}/items/bulk-delete")
+async def bulk_delete_agenda_items(
+    meeting_id: UUID,
+    request: BulkDeleteRequest,
+    user: CurrentUser,
+    repo: MeetingAgendaRepo,
+    meeting_repo: RecurringMeetingRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
+):
+    """Bulk delete agenda items for a meeting."""
+    owner_id = await _get_owner_id_from_meeting(
+        user, meeting_id, meeting_repo, project_repo, member_repo
+    )
+
+    deleted_count = 0
+    for item_id in request.item_ids:
+        success = await repo.delete(owner_id, item_id)
+        if success:
+            deleted_count += 1
+
+    return {"deleted_count": deleted_count, "total_requested": len(request.item_ids)}
+
+
+@router.post("/tasks/{task_id}/items/bulk-delete")
+async def bulk_delete_task_agenda_items(
+    task_id: UUID,
+    request: BulkDeleteRequest,
+    user: CurrentUser,
+    repo: MeetingAgendaRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
+):
+    """Bulk delete agenda items for a standalone meeting task."""
+    owner_id = await _get_owner_id_from_task(
+        user, task_id, task_repo, project_repo, member_repo
+    )
+
+    deleted_count = 0
+    for item_id in request.item_ids:
+        success = await repo.delete(owner_id, item_id)
+        if success:
+            deleted_count += 1
+
+    return {"deleted_count": deleted_count, "total_requested": len(request.item_ids)}
 
 
 @router.post("/{meeting_id}/items/reorder", response_model=list[MeetingAgendaItem])

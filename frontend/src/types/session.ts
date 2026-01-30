@@ -48,10 +48,14 @@ export interface Decision {
 export interface NextAction {
   title: string;
   description?: string;
+  purpose?: string;
   assignee?: string;
+  assignee_id?: string;
   due_date?: string;
   related_agenda?: string;
   priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  estimated_minutes?: number;
+  energy_level?: 'HIGH' | 'MEDIUM' | 'LOW';
 }
 
 export interface MeetingSummary {

@@ -2,7 +2,7 @@
  * MeetingCompleted - Post-meeting summary and task creation component
  *
  * Shows transcript analysis, summary, decisions, and next actions.
- * Allows creating tasks from extracted action items.
+ * Supports inline editing of summary sections and assignee selection for task creation.
  */
 
 import { useState, useCallback, useMemo } from 'react';
@@ -23,9 +23,11 @@ import {
     FaTimes,
     FaRedo,
     FaTrash,
+    FaClock,
+    FaBolt,
 } from 'react-icons/fa';
 import { meetingSessionApi } from '../../api/meetingSession';
-import type { MeetingSession, MeetingSummary } from '../../types/session';
+import type { MeetingSession, MeetingSummary, NextAction } from '../../types/session';
 import './MeetingCompleted.css';
 
 // Parse saved summary from session (stored as JSON string)
@@ -38,30 +40,40 @@ function parseSavedSummary(summaryJson: string | null): MeetingSummary | null {
     }
 }
 
+interface MemberOption {
+    id: string;
+    label: string;
+}
+
 interface MeetingCompletedProps {
     session: MeetingSession;
     projectId: string;
+    memberOptions?: MemberOption[];
     onTasksCreated?: () => void;
 }
 
-export function MeetingCompleted({ session, projectId, onTasksCreated }: MeetingCompletedProps) {
+export function MeetingCompleted({ session, projectId, memberOptions = [], onTasksCreated }: MeetingCompletedProps) {
     const [transcript, setTranscript] = useState(session.transcript || '');
-    const [savedTranscript, setSavedTranscript] = useState(session.transcript || ''); // Track last saved value
-    const [isEditing, setIsEditing] = useState(!session.transcript); // Start in edit mode if no transcript
+    const [savedTranscript, setSavedTranscript] = useState(session.transcript || '');
+    const [isEditing, setIsEditing] = useState(!session.transcript);
 
-    // Initialize summary from saved session data
+    // Summary state
     const initialSummary = useMemo(() => parseSavedSummary(session.summary), [session.summary]);
     const [summary, setSummary] = useState<MeetingSummary | null>(initialSummary);
 
-    // Initialize selected actions from saved summary (excluding already converted ones)
+    // Inline editing state for summary
+    const [editingSummary, setEditingSummary] = useState(false);
+    const [editSummaryData, setEditSummaryData] = useState<MeetingSummary | null>(null);
+
+    // Converted actions tracking
     const initialConvertedActions = useMemo(() => {
         return new Set<number>(initialSummary?.converted_action_indices || []);
     }, [initialSummary]);
     const [convertedActions, setConvertedActions] = useState<Set<number>>(initialConvertedActions);
 
+    // Selected actions for task creation
     const initialSelectedActions = useMemo(() => {
         if (initialSummary?.next_actions) {
-            // Only select actions that haven't been converted yet
             return new Set(
                 initialSummary.next_actions
                     .map((_, i) => i)
@@ -71,6 +83,10 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
         return new Set<number>();
     }, [initialSummary, initialConvertedActions]);
     const [selectedActions, setSelectedActions] = useState<Set<number>>(initialSelectedActions);
+
+    // Assignee mapping: action index → assignee_id
+    const [actionAssignees, setActionAssignees] = useState<Record<number, string>>({});
+
     const [successMessage, setSuccessMessage] = useState<string | null>(null);
     const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -96,10 +112,8 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
         },
         onSuccess: (data) => {
             setSummary(data);
-            // Select all actions by default
             setSelectedActions(new Set(data.next_actions.map((_, i) => i)));
             setErrorMessage(null);
-            // Save the summary to backend
             saveSummaryMutation.mutate(data);
         },
         onError: (error) => {
@@ -112,7 +126,14 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
     const createTasksMutation = useMutation({
         mutationFn: async (actionIndices: number[]) => {
             if (!summary) throw new Error('No summary available');
-            const actions = actionIndices.map((i) => summary.next_actions[i]);
+            const actions: NextAction[] = actionIndices.map((i) => {
+                const action = summary.next_actions[i];
+                const assigneeId = actionAssignees[i];
+                return {
+                    ...action,
+                    assignee_id: assigneeId || action.assignee_id,
+                };
+            });
             return meetingSessionApi.createTasksFromActions(session.id, {
                 project_id: projectId,
                 actions,
@@ -121,12 +142,10 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
         onSuccess: (data) => {
             setSuccessMessage(`${data.created_count}件のタスクを作成しました。`);
 
-            // Update converted actions
             const newConvertedActions = new Set(convertedActions);
-            data.actionIndices.forEach((i) => newConvertedActions.add(i));
+            data.actionIndices.forEach((i: number) => newConvertedActions.add(i));
             setConvertedActions(newConvertedActions);
 
-            // Save the updated summary with converted indices
             if (summary) {
                 const updatedSummary = {
                     ...summary,
@@ -137,6 +156,7 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
             }
 
             setSelectedActions(new Set());
+            setActionAssignees({});
             onTasksCreated?.();
         },
         onError: (error) => {
@@ -151,7 +171,7 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
             return meetingSessionApi.update(session.id, { transcript });
         },
         onSuccess: () => {
-            setSavedTranscript(transcript); // Update saved value
+            setSavedTranscript(transcript);
             setSuccessMessage('議事録を保存しました。');
             setErrorMessage(null);
             setIsEditing(false);
@@ -189,6 +209,8 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
             setSummary(null);
             setConvertedActions(new Set());
             setSelectedActions(new Set());
+            setEditingSummary(false);
+            setEditSummaryData(null);
             setSuccessMessage('サマリーを削除しました。');
             setErrorMessage(null);
         },
@@ -208,7 +230,7 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
     }, [saveTranscriptMutation]);
 
     const handleCancelEdit = useCallback(() => {
-        setTranscript(savedTranscript); // Restore to last saved value
+        setTranscript(savedTranscript);
         setIsEditing(false);
     }, [savedTranscript]);
 
@@ -226,6 +248,27 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
         deleteSummaryMutation.mutate();
     }, [deleteSummaryMutation]);
 
+    // Inline summary editing handlers
+    const handleStartSummaryEdit = useCallback(() => {
+        if (summary) {
+            setEditSummaryData(JSON.parse(JSON.stringify(summary)));
+            setEditingSummary(true);
+        }
+    }, [summary]);
+
+    const handleCancelSummaryEdit = useCallback(() => {
+        setEditingSummary(false);
+        setEditSummaryData(null);
+    }, []);
+
+    const handleSaveSummaryEdit = useCallback(() => {
+        if (!editSummaryData) return;
+        setSummary(editSummaryData);
+        saveSummaryMutation.mutate(editSummaryData);
+        setEditingSummary(false);
+        setEditSummaryData(null);
+    }, [editSummaryData, saveSummaryMutation]);
+
     const handleToggleAction = useCallback((index: number) => {
         setSelectedActions((prev) => {
             const newSet = new Set(prev);
@@ -238,38 +281,48 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
         });
     }, []);
 
+    const handleAssigneeChange = useCallback((index: number, assigneeId: string) => {
+        setActionAssignees((prev) => ({
+            ...prev,
+            [index]: assigneeId,
+        }));
+    }, []);
+
     const handleCreateTasks = useCallback(() => {
         if (!summary || selectedActions.size === 0) return;
-
         const indicesToCreate = Array.from(selectedActions);
         createTasksMutation.mutate(indicesToCreate);
     }, [summary, selectedActions, createTasksMutation]);
 
     const getPriorityClass = (priority: string) => {
         switch (priority) {
-            case 'HIGH':
-                return 'priority-high';
-            case 'MEDIUM':
-                return 'priority-medium';
-            case 'LOW':
-                return 'priority-low';
-            default:
-                return '';
+            case 'HIGH': return 'priority-high';
+            case 'MEDIUM': return 'priority-medium';
+            case 'LOW': return 'priority-low';
+            default: return '';
         }
     };
 
     const getPriorityLabel = (priority: string) => {
         switch (priority) {
-            case 'HIGH':
-                return '高';
-            case 'MEDIUM':
-                return '中';
-            case 'LOW':
-                return '低';
-            default:
-                return priority;
+            case 'HIGH': return '高';
+            case 'MEDIUM': return '中';
+            case 'LOW': return '低';
+            default: return priority;
         }
     };
+
+    const getEnergyLabel = (level?: string) => {
+        switch (level) {
+            case 'HIGH': return '重';
+            case 'MEDIUM': return '中';
+            case 'LOW': return '軽';
+            default: return null;
+        }
+    };
+
+    // Get display summary (editing version if in edit mode)
+    const displaySummary = editingSummary ? editSummaryData : summary;
 
     return (
         <div className="meeting-completed">
@@ -356,7 +409,7 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
                     </>
                 )}
 
-                {/* Analyze button - show when transcript exists */}
+                {/* Analyze button */}
                 {!isEditing && transcript && (
                     <div className="transcript-actions">
                         <button
@@ -372,7 +425,7 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
             </div>
 
             {/* Summary Section */}
-            {summary && (
+            {displaySummary && (
                 <>
                     <div className="summary-section">
                         <div className="summary-header">
@@ -380,31 +433,105 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
                                 <FaLightbulb />
                                 会議サマリー
                             </h4>
-                            <button
-                                className="delete-summary-btn"
-                                onClick={handleDeleteSummary}
-                                disabled={deleteSummaryMutation.isPending}
-                                title="サマリーを削除"
-                            >
-                                <FaTrash /> 削除
-                            </button>
-                        </div>
-                        <div className="overall-summary">
-                            <p>{summary.overall_summary}</p>
+                            <div className="summary-header-actions">
+                                {!editingSummary ? (
+                                    <>
+                                        <button
+                                            className="summary-edit-btn"
+                                            onClick={handleStartSummaryEdit}
+                                            title="サマリーを編集"
+                                        >
+                                            <FaEdit /> 編集
+                                        </button>
+                                        <button
+                                            className="delete-summary-btn"
+                                            onClick={handleDeleteSummary}
+                                            disabled={deleteSummaryMutation.isPending}
+                                            title="サマリーを削除"
+                                        >
+                                            <FaTrash /> 削除
+                                        </button>
+                                    </>
+                                ) : (
+                                    <>
+                                        <button
+                                            className="summary-save-btn"
+                                            onClick={handleSaveSummaryEdit}
+                                            disabled={saveSummaryMutation.isPending}
+                                        >
+                                            <FaSave /> 保存
+                                        </button>
+                                        <button
+                                            className="summary-cancel-btn"
+                                            onClick={handleCancelSummaryEdit}
+                                        >
+                                            <FaTimes /> キャンセル
+                                        </button>
+                                    </>
+                                )}
+                            </div>
                         </div>
 
-                        {summary.agenda_discussions.length > 0 && (
+                        {/* Overall Summary */}
+                        <div className="overall-summary">
+                            {editingSummary && editSummaryData ? (
+                                <textarea
+                                    className="summary-inline-textarea"
+                                    value={editSummaryData.overall_summary}
+                                    onChange={(e) =>
+                                        setEditSummaryData({
+                                            ...editSummaryData,
+                                            overall_summary: e.target.value,
+                                        })
+                                    }
+                                    rows={3}
+                                />
+                            ) : (
+                                <p>{displaySummary.overall_summary}</p>
+                            )}
+                        </div>
+
+                        {/* Agenda Discussions */}
+                        {displaySummary.agenda_discussions.length > 0 && (
                             <div className="agenda-discussions">
-                                {summary.agenda_discussions.map((disc, index) => (
+                                {displaySummary.agenda_discussions.map((disc, index) => (
                                     <div key={index} className="discussion-item">
-                                        <h5>{disc.agenda_title}</h5>
-                                        <p>{disc.summary}</p>
-                                        {disc.key_points.length > 0 && (
-                                            <div className="key-points">
-                                                {disc.key_points.map((point, i) => (
-                                                    <span key={i}>{point}</span>
-                                                ))}
-                                            </div>
+                                        {editingSummary && editSummaryData ? (
+                                            <>
+                                                <input
+                                                    className="summary-inline-input"
+                                                    value={editSummaryData.agenda_discussions[index]?.agenda_title || ''}
+                                                    onChange={(e) => {
+                                                        const updated = [...editSummaryData.agenda_discussions];
+                                                        updated[index] = { ...updated[index], agenda_title: e.target.value };
+                                                        setEditSummaryData({ ...editSummaryData, agenda_discussions: updated });
+                                                    }}
+                                                    placeholder="アジェンダタイトル"
+                                                />
+                                                <textarea
+                                                    className="summary-inline-textarea small"
+                                                    value={editSummaryData.agenda_discussions[index]?.summary || ''}
+                                                    onChange={(e) => {
+                                                        const updated = [...editSummaryData.agenda_discussions];
+                                                        updated[index] = { ...updated[index], summary: e.target.value };
+                                                        setEditSummaryData({ ...editSummaryData, agenda_discussions: updated });
+                                                    }}
+                                                    rows={2}
+                                                    placeholder="議論の要約"
+                                                />
+                                            </>
+                                        ) : (
+                                            <>
+                                                <h5>{disc.agenda_title}</h5>
+                                                <p>{disc.summary}</p>
+                                                {disc.key_points.length > 0 && (
+                                                    <div className="key-points">
+                                                        {disc.key_points.map((point, i) => (
+                                                            <span key={i}>{point}</span>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </>
                                         )}
                                     </div>
                                 ))}
@@ -413,23 +540,51 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
                     </div>
 
                     {/* Decisions Section */}
-                    {summary.decisions.length > 0 && (
+                    {displaySummary.decisions.length > 0 && (
                         <div className="decisions-section">
                             <h4>
                                 <FaCheckCircle />
                                 決定事項
                             </h4>
                             <div className="decisions-list">
-                                {summary.decisions.map((decision, index) => (
+                                {displaySummary.decisions.map((decision, index) => (
                                     <div key={index} className="decision-item">
-                                        <div className="content">{decision.content}</div>
-                                        {decision.rationale && (
-                                            <div className="rationale">{decision.rationale}</div>
-                                        )}
-                                        {decision.related_agenda && (
-                                            <div className="related-agenda">
-                                                関連アジェンダ: {decision.related_agenda}
-                                            </div>
+                                        {editingSummary && editSummaryData ? (
+                                            <>
+                                                <textarea
+                                                    className="summary-inline-textarea small"
+                                                    value={editSummaryData.decisions[index]?.content || ''}
+                                                    onChange={(e) => {
+                                                        const updated = [...editSummaryData.decisions];
+                                                        updated[index] = { ...updated[index], content: e.target.value };
+                                                        setEditSummaryData({ ...editSummaryData, decisions: updated });
+                                                    }}
+                                                    rows={2}
+                                                    placeholder="決定内容"
+                                                />
+                                                <input
+                                                    className="summary-inline-input small"
+                                                    value={editSummaryData.decisions[index]?.rationale || ''}
+                                                    onChange={(e) => {
+                                                        const updated = [...editSummaryData.decisions];
+                                                        updated[index] = { ...updated[index], rationale: e.target.value };
+                                                        setEditSummaryData({ ...editSummaryData, decisions: updated });
+                                                    }}
+                                                    placeholder="決定の理由（任意）"
+                                                />
+                                            </>
+                                        ) : (
+                                            <>
+                                                <div className="content">{decision.content}</div>
+                                                {decision.rationale && (
+                                                    <div className="rationale">{decision.rationale}</div>
+                                                )}
+                                                {decision.related_agenda && (
+                                                    <div className="related-agenda">
+                                                        関連アジェンダ: {decision.related_agenda}
+                                                    </div>
+                                                )}
+                                            </>
                                         )}
                                     </div>
                                 ))}
@@ -438,12 +593,12 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
                     )}
 
                     {/* Next Actions Section */}
-                    {summary.next_actions.length > 0 && (
+                    {displaySummary.next_actions.length > 0 && (
                         <div className="next-actions-section">
                             <div className="next-actions-header">
                                 <h4>
                                     <FaTasks />
-                                    ネクストアクション ({summary.next_actions.length}件)
+                                    ネクストアクション ({displaySummary.next_actions.length}件)
                                     {convertedActions.size > 0 && (
                                         <span className="converted-count">
                                             {convertedActions.size}件タスク化済み
@@ -464,7 +619,7 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
                                 </button>
                             </div>
                             <div className="actions-list">
-                                {summary.next_actions.map((action, index) => {
+                                {displaySummary.next_actions.map((action, index) => {
                                     const isConverted = convertedActions.has(index);
                                     return (
                                         <div
@@ -488,6 +643,9 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
                                                     )}
                                                 </div>
                                                 {action.description && <p>{action.description}</p>}
+                                                {action.purpose && (
+                                                    <p className="action-purpose">目的: {action.purpose}</p>
+                                                )}
                                                 <div className="action-meta">
                                                     {action.assignee && (
                                                         <span>
@@ -502,7 +660,40 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
                                                     <span className={getPriorityClass(action.priority)}>
                                                         <FaFlag /> 優先度: {getPriorityLabel(action.priority)}
                                                     </span>
+                                                    {action.estimated_minutes && (
+                                                        <span>
+                                                            <FaClock /> {action.estimated_minutes}分
+                                                        </span>
+                                                    )}
+                                                    {action.energy_level && (
+                                                        <span className={`energy-${action.energy_level.toLowerCase()}`}>
+                                                            <FaBolt /> 負荷: {getEnergyLabel(action.energy_level)}
+                                                        </span>
+                                                    )}
                                                 </div>
+
+                                                {/* Assignee selection for unconverted actions */}
+                                                {!isConverted && memberOptions.length > 0 && (
+                                                    <div className="action-assignee-select">
+                                                        <label>
+                                                            <FaUser />
+                                                            担当者:
+                                                        </label>
+                                                        <select
+                                                            value={actionAssignees[index] || ''}
+                                                            onChange={(e) => handleAssigneeChange(index, e.target.value)}
+                                                        >
+                                                            <option value="">
+                                                                {action.assignee ? `AI提案: ${action.assignee}` : '未指定'}
+                                                            </option>
+                                                            {memberOptions.map((member) => (
+                                                                <option key={member.id} value={member.id}>
+                                                                    {member.label}
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                    </div>
+                                                )}
                                             </div>
                                         </div>
                                     );
@@ -512,7 +703,6 @@ export function MeetingCompleted({ session, projectId, onTasksCreated }: Meeting
                     )}
                 </>
             )}
-
         </div>
     );
 }
