@@ -166,6 +166,7 @@ export function ProjectDetailV2Page() {
   const [phasePlanInstruction, setPhasePlanInstruction] = useState('');
   const [capacityDrafts, setCapacityDrafts] = useState<Record<string, string>>({});
   const [capacityActionId, setCapacityActionId] = useState<string | null>(null);
+  const [editingCapacityId, setEditingCapacityId] = useState<string | null>(null);
   const [phaseBufferDrafts, setPhaseBufferDrafts] = useState<Record<string, string>>({});
   const [phaseBufferActionId, setPhaseBufferActionId] = useState<string | null>(null);
 
@@ -788,12 +789,15 @@ export function ProjectDetailV2Page() {
     const parsed = trimmed === '' ? null : Number(trimmed);
     if (trimmed !== '' && !Number.isFinite(parsed)) {
       alert('数値を入力してください。');
+      setEditingCapacityId(null);
       return;
     }
     if (trimmed === '' && member.capacity_hours == null) {
+      setEditingCapacityId(null);
       return;
     }
     if (trimmed !== '' && parsed === member.capacity_hours) {
+      setEditingCapacityId(null);
       return;
     }
     setCapacityActionId(member.id);
@@ -808,7 +812,16 @@ export function ProjectDetailV2Page() {
       alert('基本工数の更新に失敗しました。');
     } finally {
       setCapacityActionId(null);
+      setEditingCapacityId(null);
     }
+  };
+
+  const handleCapacityCancel = (member: ProjectMember) => {
+    setCapacityDrafts((prev) => ({
+      ...prev,
+      [member.id]: member.capacity_hours != null ? String(member.capacity_hours) : '',
+    }));
+    setEditingCapacityId(null);
   };
 
   const handlePhaseBufferDraftChange = (phaseId: string, value: string) => {
@@ -1726,26 +1739,41 @@ export function ProjectDetailV2Page() {
                             </div>
                             <div className="project-v2-muted">{member.member_user_id}</div>
                             <div className="project-v2-inline-field">
-                              <label className="project-v2-inline-label" htmlFor={`capacity-${member.id}`}>
-                                基本工数 (h/週)
-                              </label>
-                              <input
-                                id={`capacity-${member.id}`}
-                                className="project-v2-input"
-                                type="number"
-                                min="0"
-                                step="0.5"
-                                value={capacityDrafts[member.id] ?? ''}
-                                onChange={(e) => handleCapacityDraftChange(member.id, e.target.value)}
-                                disabled={capacityActionId === member.id}
-                              />
-                              <button
-                                className="project-v2-button"
-                                onClick={() => handleCapacitySave(member)}
-                                disabled={capacityActionId === member.id}
-                              >
-                                {capacityActionId === member.id ? '保存中...' : '保存'}
-                              </button>
+                              {editingCapacityId === member.id ? (
+                                <>
+                                  <label className="project-v2-inline-label" htmlFor={`capacity-${member.id}`}>
+                                    基本工数 (h/週)
+                                  </label>
+                                  <input
+                                    id={`capacity-${member.id}`}
+                                    className="project-v2-input project-v2-inline-input"
+                                    type="number"
+                                    min="0"
+                                    step="0.5"
+                                    value={capacityDrafts[member.id] ?? ''}
+                                    onChange={(e) => handleCapacityDraftChange(member.id, e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') handleCapacitySave(member);
+                                      if (e.key === 'Escape') handleCapacityCancel(member);
+                                    }}
+                                    onBlur={() => handleCapacitySave(member)}
+                                    disabled={capacityActionId === member.id}
+                                    autoFocus
+                                  />
+                                  {capacityActionId === member.id && (
+                                    <span className="project-v2-muted">保存中...</span>
+                                  )}
+                                </>
+                              ) : (
+                                <span
+                                  className="project-v2-inline-value"
+                                  onClick={() => setEditingCapacityId(member.id)}
+                                  title="クリックして編集"
+                                >
+                                  <FaEdit className="project-v2-inline-edit-icon" />
+                                  基本工数: {member.capacity_hours != null ? `${member.capacity_hours} h/週` : '未設定'}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <div className="project-v2-actions">

@@ -27,7 +27,7 @@ from app.api.deps import (
     UserRepo,
 )
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import ForbiddenError, NotFoundError
 from app.utils.datetime_utils import ensure_utc, now_utc
 from app.models.collaboration import (
     Blocker,
@@ -462,13 +462,16 @@ async def update_project_member(
     repo: ProjectRepo,
     member_repo: ProjectMemberRepo,
 ):
-    """Update a project member."""
-    access = await require_project_action(
+    """Update a project member.
+
+    Any member can update their own capacity_hours.
+    Role changes and other updates require MEMBER_MANAGE (ADMIN/OWNER).
+    """
+    access = await require_project_member(
         user,
         project_id,
         repo,
         member_repo,
-        ProjectAction.MEMBER_MANAGE,
     )
     owner_id = access.owner_id
     existing = await member_repo.get(owner_id, member_id)
@@ -477,6 +480,21 @@ async def update_project_member(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Project member {member_id} not found",
         )
+
+    update_fields = update.model_dump(exclude_unset=True)
+    is_self = existing.member_user_id == user.id
+    is_capacity_only = set(update_fields.keys()) <= {"capacity_hours"}
+
+    if not (is_self and is_capacity_only):
+        from app.services.project_permissions import ensure_project_action
+        try:
+            ensure_project_action(access, ProjectAction.MEMBER_MANAGE)
+        except ForbiddenError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=str(exc),
+            ) from exc
+
     return await member_repo.update(owner_id, member_id, update)
 
 

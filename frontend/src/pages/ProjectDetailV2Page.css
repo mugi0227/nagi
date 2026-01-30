@@ -1134,6 +1134,38 @@
   color: var(--text-muted);
 }
 
+.project-v2-inline-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: 4px;
+  transition: background-color 0.15s;
+}
+
+.project-v2-inline-value:hover {
+  background-color: var(--hover-bg, rgba(0, 0, 0, 0.05));
+  color: var(--text-primary, #333);
+}
+
+.project-v2-inline-edit-icon {
+  font-size: 11px;
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+
+.project-v2-inline-value:hover .project-v2-inline-edit-icon {
+  opacity: 0.8;
+}
+
+.project-v2-inline-input {
+  width: 80px;
+  font-size: 13px;
+}
+
 .project-v2-timeline {
   position: relative;
   padding-left: 24px;

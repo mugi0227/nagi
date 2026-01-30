@@ -18,6 +18,7 @@ from app.interfaces.notification_repository import INotificationRepository
 from app.interfaces.project_achievement_repository import IProjectAchievementRepository
 from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
+from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.interfaces.user_repository import IUserRepository
 from app.models.achievement import MemberContribution, ProjectAchievement
@@ -228,6 +229,7 @@ async def generate_project_achievement(
     period_end: datetime,
     period_label: Optional[str] = None,
     generation_type: GenerationType = GenerationType.AUTO,
+    task_assignment_repo: Optional[ITaskAssignmentRepository] = None,
 ) -> Optional[ProjectAchievement]:
     """
     Generate a project achievement summary for a given period.
@@ -245,6 +247,7 @@ async def generate_project_achievement(
         period_end: Period end datetime
         period_label: Optional human-readable period label
         generation_type: AUTO or MANUAL
+        task_assignment_repo: Task assignment repository (for attributing tasks to members)
 
     Returns:
         Generated and saved ProjectAchievement, or None if no tasks
@@ -255,42 +258,61 @@ async def generate_project_achievement(
         logger.warning(f"Project {project_id} not found")
         return None
 
+    owner_id = project.user_id
+
     # Get project members
     members = await project_member_repo.list_by_project(project_id)
-    member_user_ids = [str(m.user_id) for m in members]
+    member_user_ids = [str(m.member_user_id) for m in members]
 
     # Get user display names
     member_names: dict[str, str] = {}
-    for user_id in member_user_ids:
+    for uid in member_user_ids:
         try:
-            user = await user_repo.get_by_id(UUID(user_id))
+            user = await user_repo.get_by_id(UUID(uid))
             if user:
-                member_names[user_id] = user.display_name or user.username
+                member_names[uid] = user.display_name or user.username
             else:
-                member_names[user_id] = "不明"
+                member_names[uid] = "不明"
         except Exception:
-            member_names[user_id] = "不明"
+            member_names[uid] = "不明"
 
-    # Fetch completed tasks by member
-    tasks_by_member: dict[str, list[Task]] = defaultdict(list)
-    for user_id in member_user_ids:
-        completed_tasks = await task_repo.list_completed_in_period(
-            user_id=user_id,
-            period_start=period_start,
-            period_end=period_end,
-            project_id=project_id,
-        )
-        if completed_tasks:
-            tasks_by_member[user_id] = completed_tasks
+    # Fetch all completed tasks for the project using the owner's user_id
+    # (all project tasks are stored under the project owner)
+    all_completed = await task_repo.list_completed_in_period(
+        user_id=owner_id,
+        period_start=period_start,
+        period_end=period_end,
+        project_id=project_id,
+    )
 
-    total_task_count = sum(len(tasks) for tasks in tasks_by_member.values())
-    if total_task_count == 0:
+    if not all_completed:
         logger.info(f"No completed tasks for project {project_id} in period")
         return None
 
+    # Group tasks by assigned member via task assignments
+    tasks_by_member: dict[str, list[Task]] = defaultdict(list)
+    if task_assignment_repo:
+        assignments = await task_assignment_repo.list_by_project(owner_id, project_id)
+        task_assignee_map: dict[str, str] = {}
+        for a in assignments:
+            task_assignee_map[str(a.task_id)] = a.assignee_id
+
+        for task in all_completed:
+            assignee = task_assignee_map.get(str(task.id))
+            if assignee and assignee in member_user_ids:
+                tasks_by_member[assignee].append(task)
+            else:
+                # Unassigned tasks → attribute to owner
+                tasks_by_member[owner_id].append(task)
+    else:
+        # Fallback: attribute all tasks to owner
+        tasks_by_member[owner_id] = all_completed
+
+    total_task_count = len(all_completed)
+
     # Get remaining tasks count (include_done=False excludes DONE tasks by default)
     remaining_tasks = await task_repo.list(
-        user_id=member_user_ids[0] if member_user_ids else "",
+        user_id=owner_id,
         project_id=project_id,
         include_done=False,
     )

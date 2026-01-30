@@ -18,6 +18,7 @@ from app.api.deps import (
     ProjectAchievementRepo,
     ProjectMemberRepo,
     ProjectRepo,
+    TaskAssignmentRepo,
     TaskRepo,
     UserRepo,
 )
@@ -149,6 +150,7 @@ async def create_project_achievement(
     user_repo: UserRepo,
     project_achievement_repo: ProjectAchievementRepo,
     notification_repo: NotificationRepo,
+    task_assignment_repo: TaskAssignmentRepo,
 ):
     """
     Generate a new project achievement summary for the specified period.
@@ -183,6 +185,7 @@ async def create_project_achievement(
         period_end=request.period_end,
         period_label=request.period_label,
         generation_type=GenerationType.MANUAL,
+        task_assignment_repo=task_assignment_repo,
     )
 
     if not achievement:
