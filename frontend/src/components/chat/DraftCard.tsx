@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { FaRobot, FaListCheck, FaFileLines, FaCodeBranch, FaClipboardList } from 'react-icons/fa6';
+import { FaRobot, FaListCheck, FaFileLines, FaCodeBranch, FaClipboardList, FaWandMagicSparkles } from 'react-icons/fa6';
 import { useTimezone } from '../../hooks/useTimezone';
 import { todayInTimezone } from '../../utils/dateTime';
 import './DraftCard.css';
 
-export type DraftCardType = 'task' | 'phase' | 'agenda' | 'subtask' | 'actionItem' | 'phase_tasks';
+export type DraftCardType = 'task' | 'phase' | 'agenda' | 'subtask' | 'actionItem' | 'phase_tasks' | 'enrich';
 
 export interface DraftCardInfo {
   label: string;
@@ -42,6 +42,7 @@ const iconMap: Record<DraftCardType, React.ReactNode> = {
   subtask: <FaCodeBranch />,
   actionItem: <FaClipboardList />,
   phase_tasks: <FaListCheck />,
+  enrich: <FaWandMagicSparkles />,
 };
 
 export function DraftCard({ data, onSend, onCancel }: DraftCardProps) {

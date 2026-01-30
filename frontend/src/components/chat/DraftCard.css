@@ -55,6 +55,10 @@
   background: linear-gradient(135deg, #ffa726, #ff7043);
 }
 
+.draft-card-enrich .draft-card-header {
+  background: linear-gradient(135deg, #a855f7, #6366f1);
+}
+
 .draft-card-icon {
   width: 20px;
   height: 20px;

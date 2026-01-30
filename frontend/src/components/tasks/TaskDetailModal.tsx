@@ -7,6 +7,7 @@ import {
   FaLayerGroup,
   FaLock,
   FaLockOpen,
+  FaMagic,
   FaProjectDiagram,
   FaTimes,
   FaTrash,
@@ -419,6 +420,63 @@ export function TaskDetailModal({
     window.dispatchEvent(event);
   };
 
+  const handleEnrichTask = () => {
+    // Build a summary of what's already filled in and what's missing
+    const filledFields: string[] = [];
+    const emptyFields: string[] = [];
+
+    if (localTask.description) filledFields.push('説明');
+    else emptyFields.push('説明');
+
+    if (localTask.purpose) filledFields.push('目的');
+    else emptyFields.push('目的（なぜやるか）');
+
+    if (localTask.guide) filledFields.push('進め方ガイド');
+    else emptyFields.push('進め方ガイド');
+
+    if (localTask.estimated_minutes) filledFields.push(`見積時間(${localTask.estimated_minutes}分)`);
+    else emptyFields.push('見積時間');
+
+    if (localTask.due_date) filledFields.push('期限');
+    else emptyFields.push('期限');
+
+    filledFields.push(`重要度: ${localTask.importance}`, `緊急度: ${localTask.urgency}`, `エネルギー: ${localTask.energy_level}`);
+
+    const currentAssignees = taskAssignments
+      .filter(a => a.task_id === task.id)
+      .map(a => memberOptions.find(m => m.id === a.assignee_id)?.label)
+      .filter(Boolean);
+    if (currentAssignees.length > 0) filledFields.push(`担当者: ${currentAssignees.join(', ')}`);
+    else emptyFields.push('担当者');
+
+    const infoRows = [
+      { label: 'タスク', value: localTask.title },
+      { label: 'タスクID', value: task.id },
+    ];
+    if (effectiveProjectName) infoRows.push({ label: 'プロジェクト', value: effectiveProjectName });
+    if (effectivePhaseName) infoRows.push({ label: 'フェーズ', value: effectivePhaseName });
+
+    const filledSummary = filledFields.length > 0 ? `\n記入済み: ${filledFields.join(', ')}` : '';
+    const emptySummary = emptyFields.length > 0 ? `\n未記入: ${emptyFields.join(', ')}` : '';
+
+    const draftCard: DraftCardData = {
+      type: 'enrich',
+      title: 'タスクの記入補助',
+      info: infoRows,
+      placeholder: '例: 説明と目的を重点的に、見積時間は30分くらいで',
+      promptTemplate: `タスク「${localTask.title}」(ID: ${task.id}) の内容を肉付けして。
+
+get_taskでタスクの現在情報を取得した上で、未記入のフィールドを中心にupdate_taskで補完して。
+担当者が未設定の場合は、プロジェクトメンバーから適切な人を推測してassign_taskで割り当てて。
+${filledSummary}${emptySummary}
+
+追加の指示があれば以下に記入:
+{instruction}`,
+    };
+    const event = new CustomEvent('secretary:chat-open', { detail: { draftCard } });
+    window.dispatchEvent(event);
+  };
+
   return (
     <motion.div
       className="modal-overlay"
@@ -458,6 +516,13 @@ export function TaskDetailModal({
               )}
             </div>
             <div className="modal-header-actions">
+              <button
+                className="enrich-btn"
+                onClick={handleEnrichTask}
+                title="AIで記入補助"
+              >
+                <FaMagic />
+              </button>
               {/* 編集ボタンはインライン編集が無い場合のみ表示 */}
               {onEdit && !onUpdateTask && (
                 <button className="edit-btn" onClick={() => onEdit(task)} title="編集">

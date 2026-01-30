@@ -687,6 +687,21 @@ async def create_task(
                 )
                 assigned.append(created.model_dump(mode="json"))
 
+    # Auto-assign to the sole project member if project has exactly one member
+    if not assigned and assignment_repo and project_id and member_repo:
+        try:
+            members = await member_repo.list_by_project(project_id)
+            if len(members) == 1:
+                sole_member_id = members[0].member_user_id
+                created = await assignment_repo.assign(
+                    owner_id,
+                    task.id,
+                    TaskAssignmentCreate(assignee_id=sole_member_id),
+                )
+                assigned.append(created.model_dump(mode="json"))
+        except Exception:
+            pass  # Non-critical, skip on error
+
     if assigned:
         result["assignments"] = assigned
 
