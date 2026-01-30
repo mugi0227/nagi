@@ -535,8 +535,10 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
   const [expandedPhases, setExpandedPhases] = useState<Set<string>>(() => new Set(phases.map(p => p.id)));
   const [expandedTasks, setExpandedTasks] = useState<Set<string>>(new Set());
   const [showTaskList, setShowTaskList] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(260);
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const sidebarResizeRef = useRef<{ startX: number; startWidth: number } | null>(null);
 
   // Phase 3: Task reordering state (frontend-only session state)
   const [taskOrderMap, setTaskOrderMap] = useState<Map<string, number>>(new Map());
@@ -1653,6 +1655,42 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
     };
   }, []);
 
+  // Sidebar resize handlers
+  const handleSidebarResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    sidebarResizeRef.current = {
+      startX: e.clientX,
+      startWidth: sidebarWidth,
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  }, [sidebarWidth]);
+
+  useEffect(() => {
+    const handleResizeMove = (e: MouseEvent) => {
+      if (!sidebarResizeRef.current) return;
+      const delta = e.clientX - sidebarResizeRef.current.startX;
+      const newWidth = Math.max(160, Math.min(600, sidebarResizeRef.current.startWidth + delta));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleResizeEnd = () => {
+      if (sidebarResizeRef.current) {
+        sidebarResizeRef.current = null;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    };
+
+    document.addEventListener('mousemove', handleResizeMove);
+    document.addEventListener('mouseup', handleResizeEnd);
+
+    return () => {
+      document.removeEventListener('mousemove', handleResizeMove);
+      document.removeEventListener('mouseup', handleResizeEnd);
+    };
+  }, []);
+
   // ドラッグ開始
   const handleDragStart = useCallback((
     e: React.MouseEvent,
@@ -2095,7 +2133,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
       <div className="pgantt-main">
         {/* 左サイドバー（タスクリスト） */}
         {showTaskList && (
-          <div className="pgantt-sidebar">
+          <div className="pgantt-sidebar" style={{ width: sidebarWidth, minWidth: sidebarWidth }}>
             <div className="pgantt-sidebar-header">タスク</div>
             <div className="pgantt-sidebar-body">
               <DndContext
@@ -2141,6 +2179,10 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
                 </SortableContext>
               </DndContext>
             </div>
+            <div
+              className="pgantt-sidebar-resize-handle"
+              onMouseDown={handleSidebarResizeStart}
+            />
           </div>
         )}
 

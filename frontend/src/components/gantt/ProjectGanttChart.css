@@ -185,6 +185,24 @@
   background: var(--c-bg);
   border-right: 1px solid var(--c-border);
   z-index: 10;
+  position: relative;
+}
+
+.pgantt-sidebar-resize-handle {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 20;
+  transition: background 0.15s;
+}
+
+.pgantt-sidebar-resize-handle:hover,
+.pgantt-sidebar-resize-handle:active {
+  background: var(--c-primary);
+  opacity: 0.4;
 }
 
 .pgantt-sidebar-header {
@@ -217,6 +235,7 @@
   border-bottom: 1px solid var(--c-border-light);
   cursor: default;
   transition: background 0.1s;
+  position: relative;
 }
 
 .pgantt-sidebar-row:hover {
@@ -416,23 +435,29 @@
 }
 
 .pgantt-add-task-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   justify-content: center;
   width: 20px;
   height: 20px;
-  margin-left: auto;
   background: transparent;
   border: 1px solid var(--c-border);
   border-radius: 4px;
   color: var(--c-text-muted);
   cursor: pointer;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.15s, background 0.15s, color 0.15s;
 }
 
 .pgantt-sidebar-row.phase:hover .pgantt-add-task-btn {
   opacity: 1;
+  pointer-events: auto;
+  background: var(--c-bg-hover);
 }
 
 .pgantt-add-task-btn:hover {
@@ -1383,31 +1408,49 @@
    ============================================ */
 
 .pgantt-task-actions {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 2px;
-  margin-left: auto;
   opacity: 0;
   transition: opacity 0.15s;
+  background: var(--c-bg);
+  padding: 2px 4px;
+  border-radius: 4px;
+  pointer-events: none;
 }
 
 .pgantt-sidebar-row.task:hover .pgantt-task-actions,
 .pgantt-sidebar-row.subtask:hover .pgantt-task-actions {
   opacity: 1;
+  pointer-events: auto;
+  background: var(--c-bg-hover);
 }
 
 /* Milestone actions (similar to task actions) */
 .pgantt-milestone-actions {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 2px;
-  margin-left: auto;
   opacity: 0;
   transition: opacity 0.15s;
+  background: var(--c-bg);
+  padding: 2px 4px;
+  border-radius: 4px;
+  pointer-events: none;
 }
 
 .pgantt-sidebar-row.milestone:hover .pgantt-milestone-actions {
   opacity: 1;
+  pointer-events: auto;
+  background: var(--c-bg-hover);
 }
 
 .pgantt-action-btn {

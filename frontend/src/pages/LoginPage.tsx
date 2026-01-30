@@ -34,6 +34,8 @@ const getAuthErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
+const USERNAME_PATTERN = /^[a-zA-Z0-9_-]*$/;
+
 export function LoginPage() {
   const [tokenInput, setTokenInput] = useState('');
   const [isEditingToken, setIsEditingToken] = useState(false);
@@ -48,6 +50,7 @@ export function LoginPage() {
   const [registerPassword, setRegisterPassword] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
   const [localLoading, setLocalLoading] = useState(false);
+  const [sessionExpired, setSessionExpired] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const { token, source } = getAuthToken();
@@ -72,6 +75,13 @@ export function LoginPage() {
   const inviteEmail = inviteEmailFromState || inviteEmailFromQuery || '';
   const fromLocation = locationState?.from;
   const from = fromLocation ? `${fromLocation.pathname}${fromLocation.search ?? ''}` : '/';
+
+  useEffect(() => {
+    if (sessionStorage.getItem('session_expired') === '1') {
+      sessionStorage.removeItem('session_expired');
+      setSessionExpired(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (!inviteEmail) return;
@@ -178,6 +188,12 @@ export function LoginPage() {
                 : 'JWT のトークンを入力するか、開発用の dev_user でログインできます。'}
           </p>
         </div>
+
+        {sessionExpired && !token && (
+          <div className="login-session-expired">
+            セッションが切れました。再度ログインしてください。
+          </div>
+        )}
 
         {token ? (
           <div className="login-status">
@@ -286,10 +302,17 @@ export function LoginPage() {
                   className="login-input"
                   type="text"
                   value={registerUsername}
-                  onChange={(event) => setRegisterUsername(event.target.value)}
-                  placeholder="your-name"
+                  onChange={(event) => {
+                    const v = event.target.value;
+                    if (USERNAME_PATTERN.test(v)) {
+                      setRegisterUsername(v);
+                    }
+                  }}
+                  placeholder="your_name"
+                  pattern="[a-zA-Z0-9_\-]+"
                   autoComplete="username"
                 />
+                <p className="login-username-hint">半角英数字・ハイフン・アンダースコアのみ</p>
                 <label className="login-label" htmlFor="register-last-name">
                   姓（任意）
                 </label>

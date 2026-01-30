@@ -1,4 +1,4 @@
-import { getAuthToken } from './auth';
+import { clearAuthToken, getAuthToken } from './auth';
 
 /**
  * API Client - Fetch wrapper with error handling
@@ -58,6 +58,16 @@ export async function apiClient<T>(
 
   if (!response.ok) {
     const data = await response.json().catch(() => null);
+
+    // Session expired: clear token and flag for login page message
+    if (response.status === 401) {
+      const { token: currentToken } = getAuthToken();
+      if (currentToken) {
+        sessionStorage.setItem('session_expired', '1');
+        clearAuthToken();
+      }
+    }
+
     throw new ApiError(response.status, response.statusText, data);
   }
 
