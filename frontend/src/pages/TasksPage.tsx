@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FaPlus, FaFilter } from 'react-icons/fa';
 import { KanbanBoard } from '../components/tasks/KanbanBoard';
+import { ViewModeToggle, getStoredViewMode, setStoredViewMode, type ViewMode } from '../components/common/ViewModeToggle';
 import { useTaskModal } from '../hooks/useTaskModal';
 import { tasksApi } from '../api/tasks';
 import type { Task, TaskStatus, TaskUpdate } from '../api/types';
@@ -22,6 +23,12 @@ export function TasksPage() {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [showPersonalOnly, setShowPersonalOnly] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>(getStoredViewMode);
+
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    setStoredViewMode(mode);
+  };
   const offset = (page - 1) * PAGE_SIZE;
 
   const { data: allTasks = [], isLoading, error, isFetching } = useQuery({
@@ -155,6 +162,7 @@ export function TasksPage() {
               {TEXT.next}
             </button>
           </div>
+          <ViewModeToggle value={viewMode} onChange={handleViewModeChange} />
           <button className="primary-btn" onClick={() => taskModal.openCreateForm()}>
             <FaPlus />
             新規タスク
@@ -167,6 +175,7 @@ export function TasksPage() {
         onUpdateTask={handleUpdateStatus}
         onDeleteTask={(taskId) => deleteMutation.mutate(taskId)}
         onTaskClick={taskModal.openTaskDetail}
+        compact={viewMode === 'compact'}
       />
 
       {taskModal.renderModals()}
