@@ -618,6 +618,206 @@
     border: 1px solid #86efac;
 }
 
+/* Summary Header Actions */
+.summary-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* Summary Edit Button */
+.summary-edit-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background-color: transparent;
+    color: #94a3b8;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.summary-edit-btn:hover {
+    background-color: #f1f5f9;
+    color: #3b82f6;
+    border-color: #93c5fd;
+}
+
+/* Summary Save Button */
+.summary-save-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background-color: #22c55e;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.summary-save-btn:hover:not(:disabled) {
+    background-color: #16a34a;
+}
+
+.summary-save-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Summary Cancel Button */
+.summary-cancel-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background-color: #f1f5f9;
+    color: #64748b;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.summary-cancel-btn:hover {
+    background-color: #e2e8f0;
+    color: #475569;
+}
+
+/* Inline Editing Styles */
+.summary-inline-textarea {
+    width: 100%;
+    padding: 10px 14px;
+    border: 1.5px solid #93c5fd;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    resize: vertical;
+    font-family: inherit;
+    color: #166534;
+    background-color: #f0fdf4;
+}
+
+.summary-inline-textarea:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.summary-inline-textarea.small {
+    font-size: 0.9rem;
+    padding: 8px 12px;
+    margin-bottom: 8px;
+}
+
+.summary-inline-input {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1.5px solid #93c5fd;
+    border-radius: 8px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    font-family: inherit;
+    color: #1e293b;
+    background-color: #ffffff;
+    margin-bottom: 8px;
+}
+
+.summary-inline-input:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.summary-inline-input.small {
+    font-size: 0.85rem;
+    font-weight: 400;
+    color: #a16207;
+}
+
+/* Assignee Select */
+.action-assignee-select {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 10px;
+    padding: 8px 12px;
+    background-color: #f0f9ff;
+    border: 1px solid #bae6fd;
+    border-radius: 8px;
+}
+
+.action-assignee-select label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #0369a1;
+    white-space: nowrap;
+}
+
+.action-assignee-select select {
+    flex: 1;
+    padding: 6px 10px;
+    border: 1px solid #bae6fd;
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: #1e293b;
+    background-color: white;
+    cursor: pointer;
+    min-width: 0;
+}
+
+.action-assignee-select select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+/* Purpose text */
+.action-purpose {
+    font-size: 0.8rem !important;
+    color: #7c3aed !important;
+    font-style: italic;
+    margin: 2px 0 6px 0 !important;
+}
+
+/* Energy Level Badges */
+.energy-high {
+    background-color: #fef2f2;
+    color: #dc2626;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    border: 1px solid #fecaca;
+}
+
+.energy-medium {
+    background-color: #fefce8;
+    color: #ca8a04;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    border: 1px solid #fde047;
+}
+
+.energy-low {
+    background-color: #f0fdf4;
+    color: #16a34a;
+    font-weight: 600;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    border: 1px solid #86efac;
+}
+
 /* Empty State */
 .empty-summary {
     text-align: center;

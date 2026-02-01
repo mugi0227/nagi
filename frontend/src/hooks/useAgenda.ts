@@ -129,6 +129,35 @@ export function useDeleteAgendaItem(meetingId?: string, eventDate?: string, task
 }
 
 /**
+ * Bulk delete agenda items
+ */
+export function useBulkDeleteAgendaItems(meetingId?: string, eventDate?: string, taskId?: string) {
+  const queryClient = useQueryClient();
+  const isStandalone = taskId && !meetingId;
+
+  return useMutation({
+    mutationFn: async (itemIds: string[]) => {
+      const id = isStandalone ? taskId : meetingId;
+      const endpoint = isStandalone
+        ? `/meeting-agendas/tasks/${id}/items/bulk-delete`
+        : `/meeting-agendas/${id}/items/bulk-delete`;
+      return api.post<{ deleted_count: number; total_requested: number }>(
+        endpoint,
+        { item_ids: itemIds }
+      );
+    },
+    onSuccess: () => {
+      if (meetingId) {
+        queryClient.invalidateQueries({ queryKey: ['agenda-items', meetingId, eventDate] });
+      }
+      if (taskId) {
+        queryClient.invalidateQueries({ queryKey: ['task-agendas', taskId] });
+      }
+    },
+  });
+}
+
+/**
  * Reorder agenda items
  */
 export function useReorderAgendaItems(meetingId?: string, eventDate?: string, taskId?: string) {

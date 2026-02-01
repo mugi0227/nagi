@@ -137,10 +137,13 @@ class MeetingSummaryService:
     {
       "title": "アクション項目のタイトル",
       "description": "詳細説明（任意）",
+      "purpose": "なぜやるか・目的（任意）",
       "assignee": "担当者名（任意）",
       "due_date": "YYYY-MM-DD形式の期限（任意）",
       "related_agenda": "関連するアジェンダ（任意）",
-      "priority": "HIGH/MEDIUM/LOW"
+      "priority": "HIGH/MEDIUM/LOW",
+      "estimated_minutes": 見積もり時間（分、整数、任意）,
+      "energy_level": "HIGH/MEDIUM/LOW（タスクの負荷レベル）"
     }
   ]
 }
@@ -151,6 +154,9 @@ class MeetingSummaryService:
 - ネクストアクションは具体的なアクションのみを抽出（「検討する」などの曖昧なものは含めない）
 - 担当者名は議事録に記載があれば抽出、なければnull
 - 期限も同様に、明示されていればYYYY-MM-DD形式で、なければnull
+- estimated_minutes: タスクの内容から見積もり時間を推定する（例: 簡単なタスク=30, 中程度=60, 複雑=120）
+- energy_level: タスクの負荷を推定する（HIGH=集中力が必要な重い作業, MEDIUM=普通, LOW=軽い作業）
+- purpose: アクションの目的や背景を簡潔に記述する
 """)
 
         return "\n".join(parts)
@@ -263,10 +269,13 @@ class MeetingSummaryService:
             next_actions.append(NextAction(
                 title=action_data.get("title", ""),
                 description=action_data.get("description"),
+                purpose=action_data.get("purpose"),
                 assignee=action_data.get("assignee"),
                 due_date=action_data.get("due_date"),
                 related_agenda=action_data.get("related_agenda"),
                 priority=action_data.get("priority", "MEDIUM"),
+                estimated_minutes=action_data.get("estimated_minutes"),
+                energy_level=action_data.get("energy_level"),
             ))
 
         return MeetingSummary(

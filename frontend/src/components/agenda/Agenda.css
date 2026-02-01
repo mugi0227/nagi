@@ -593,3 +593,130 @@
 [data-theme="dark"] .agenda-form-textarea::placeholder {
   color: #64748b;
 }
+
+/* Bulk Delete Styles */
+.agenda-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.agenda-bulk-toggle-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.agenda-bulk-toggle-btn:hover {
+  background: #fef2f2;
+  color: #ef4444;
+  border-color: #fecaca;
+}
+
+.agenda-bulk-toggle-btn.active {
+  background: #fef2f2;
+  color: #ef4444;
+  border-color: #fecaca;
+}
+
+[data-theme="dark"] .agenda-bulk-toggle-btn {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+}
+
+[data-theme="dark"] .agenda-bulk-toggle-btn:hover,
+[data-theme="dark"] .agenda-bulk-toggle-btn.active {
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.agenda-bulk-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem 1rem;
+  margin-bottom: 0.75rem;
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+}
+
+[data-theme="dark"] .agenda-bulk-controls {
+  background: rgba(239, 68, 68, 0.08);
+  border-color: rgba(239, 68, 68, 0.2);
+}
+
+.agenda-bulk-select-all {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #991b1b;
+  cursor: pointer;
+}
+
+[data-theme="dark"] .agenda-bulk-select-all {
+  color: #fca5a5;
+}
+
+.agenda-bulk-select-all input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #ef4444;
+  cursor: pointer;
+}
+
+.agenda-bulk-delete-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.5rem 1rem;
+  background: #ef4444;
+  color: #ffffff;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.agenda-bulk-delete-btn:hover:not(:disabled) {
+  background: #dc2626;
+}
+
+.agenda-bulk-delete-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.agenda-bulk-item-wrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+.agenda-bulk-item-wrapper .agenda-item {
+  flex: 1;
+}
+
+.agenda-bulk-checkbox {
+  width: 20px;
+  height: 20px;
+  margin-top: 1.125rem;
+  accent-color: #ef4444;
+  cursor: pointer;
+  flex-shrink: 0;
+}

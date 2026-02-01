@@ -34,10 +34,14 @@ class NextAction(BaseModel):
 
     title: str = Field(..., description="アクション項目のタイトル")
     description: Optional[str] = Field(None, description="詳細説明")
-    assignee: Optional[str] = Field(None, description="担当者")
+    purpose: Optional[str] = Field(None, description="なぜやるか（目的）")
+    assignee: Optional[str] = Field(None, description="担当者名")
+    assignee_id: Optional[str] = Field(None, description="担当者のユーザーID")
     due_date: Optional[date] = Field(None, description="期限")
     related_agenda: Optional[str] = Field(None, description="関連するアジェンダ項目")
     priority: str = Field("MEDIUM", description="優先度 (HIGH/MEDIUM/LOW)")
+    estimated_minutes: Optional[int] = Field(None, description="見積もり時間（分）")
+    energy_level: Optional[str] = Field(None, description="必要エネルギー (HIGH/MEDIUM/LOW)")
 
 
 class MeetingSummary(BaseModel):

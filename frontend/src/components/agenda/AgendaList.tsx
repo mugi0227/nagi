@@ -1,5 +1,5 @@
 /**
- * Agenda list component with drag-and-drop reordering
+ * Agenda list component with drag-and-drop reordering and bulk delete
  */
 
 import React, { useState } from 'react';
@@ -21,7 +21,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { Plus, Loader2, AlertCircle } from 'lucide-react';
+import { Plus, Loader2, AlertCircle, Trash2 } from 'lucide-react';
 import { AgendaItem } from './AgendaItem';
 import { AgendaModal } from './AgendaModal';
 import {
@@ -31,6 +31,7 @@ import {
   useCreateTaskAgendaItem,
   useUpdateAgendaItem,
   useDeleteAgendaItem,
+  useBulkDeleteAgendaItems,
   useReorderAgendaItems,
 } from '../../hooks/useAgenda';
 import type { MeetingAgendaItem, MeetingAgendaItemCreate } from '../../types/agenda';
@@ -49,16 +50,22 @@ function SortableAgendaItem({
   onDelete,
   onToggleComplete,
   readonly,
+  bulkMode,
+  isSelected,
+  onToggleSelect,
 }: {
   item: MeetingAgendaItem;
   onEdit: (item: MeetingAgendaItem) => void;
   onDelete: (id: string) => void;
   onToggleComplete: (id: string, isCompleted: boolean) => void;
   readonly?: boolean;
+  bulkMode?: boolean;
+  isSelected?: boolean;
+  onToggleSelect?: (id: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.id,
-    disabled: readonly,
+    disabled: readonly || bulkMode,
   });
 
   const style = {
@@ -67,17 +74,25 @@ function SortableAgendaItem({
   };
 
   // Pass drag listeners only to the drag handle, not the entire item
-  const dragHandleProps = readonly ? undefined : { ...attributes, ...listeners };
+  const dragHandleProps = (readonly || bulkMode) ? undefined : { ...attributes, ...listeners };
 
   return (
-    <div ref={setNodeRef} style={style}>
+    <div ref={setNodeRef} style={style} className={bulkMode ? 'agenda-bulk-item-wrapper' : ''}>
+      {bulkMode && (
+        <input
+          type="checkbox"
+          className="agenda-bulk-checkbox"
+          checked={isSelected}
+          onChange={() => onToggleSelect?.(item.id)}
+        />
+      )}
       <AgendaItem
         item={item}
         onEdit={onEdit}
         onDelete={onDelete}
         onToggleComplete={onToggleComplete}
         isDragging={isDragging}
-        readonly={readonly}
+        readonly={readonly || bulkMode}
         dragHandleProps={dragHandleProps}
       />
     </div>
@@ -87,6 +102,8 @@ function SortableAgendaItem({
 export const AgendaList: React.FC<AgendaListProps> = ({ meetingId, taskId, eventDate, readonly = false }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MeetingAgendaItem | null>(null);
+  const [bulkMode, setBulkMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   // Determine if this is a standalone meeting (taskId only, no meetingId)
   const isStandalone = taskId && !meetingId;
@@ -106,6 +123,7 @@ export const AgendaList: React.FC<AgendaListProps> = ({ meetingId, taskId, event
   // Update, delete, and reorder mutations - pass both IDs for proper cache invalidation
   const updateMutation = useUpdateAgendaItem(meetingId, eventDate, taskId);
   const deleteMutation = useDeleteAgendaItem(meetingId, eventDate, taskId);
+  const bulkDeleteMutation = useBulkDeleteAgendaItems(meetingId, eventDate, taskId);
   const reorderMutation = useReorderAgendaItems(meetingId, eventDate, taskId);
 
   const sensors = useSensors(
@@ -173,6 +191,46 @@ export const AgendaList: React.FC<AgendaListProps> = ({ meetingId, taskId, event
     setEditingItem(null);
   };
 
+  const handleToggleBulkMode = () => {
+    if (bulkMode) {
+      setSelectedIds(new Set());
+    }
+    setBulkMode(!bulkMode);
+  };
+
+  const handleToggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedIds.size === items.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(items.map((item) => item.id)));
+    }
+  };
+
+  const handleBulkDelete = () => {
+    if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    if (!confirm(`${count}件のアジェンダ項目を削除しますか？この操作は元に戻せません。`)) return;
+
+    bulkDeleteMutation.mutate(Array.from(selectedIds), {
+      onSuccess: () => {
+        setSelectedIds(new Set());
+        setBulkMode(false);
+      },
+    });
+  };
+
   const totalDuration = items.reduce((sum, item) => sum + (item.duration_minutes || 0), 0);
 
   if (isLoading) {
@@ -204,15 +262,53 @@ export const AgendaList: React.FC<AgendaListProps> = ({ meetingId, taskId, event
         </div>
 
         {!readonly && (
-          <button
-            onClick={() => setIsModalOpen(true)}
-            className="agenda-add-btn"
-          >
-            <Plus className="agenda-icon-sm" />
-            <span>追加</span>
-          </button>
+          <div className="agenda-header-actions">
+            {items.length > 0 && (
+              <button
+                onClick={handleToggleBulkMode}
+                className={`agenda-bulk-toggle-btn ${bulkMode ? 'active' : ''}`}
+                title={bulkMode ? '選択モード解除' : '一括選択'}
+              >
+                <Trash2 className="agenda-icon-sm" />
+                <span>{bulkMode ? '解除' : '一括削除'}</span>
+              </button>
+            )}
+            {!bulkMode && (
+              <button
+                onClick={() => setIsModalOpen(true)}
+                className="agenda-add-btn"
+              >
+                <Plus className="agenda-icon-sm" />
+                <span>追加</span>
+              </button>
+            )}
+          </div>
         )}
       </div>
+
+      {/* Bulk delete controls */}
+      {bulkMode && items.length > 0 && (
+        <div className="agenda-bulk-controls">
+          <label className="agenda-bulk-select-all">
+            <input
+              type="checkbox"
+              checked={selectedIds.size === items.length}
+              onChange={handleSelectAll}
+            />
+            <span>すべて選択 ({selectedIds.size}/{items.length})</span>
+          </label>
+          <button
+            className="agenda-bulk-delete-btn"
+            onClick={handleBulkDelete}
+            disabled={selectedIds.size === 0 || bulkDeleteMutation.isPending}
+          >
+            <Trash2 className="agenda-icon-sm" />
+            {bulkDeleteMutation.isPending
+              ? '削除中...'
+              : `選択を削除 (${selectedIds.size}件)`}
+          </button>
+        </div>
+      )}
 
       {/* Agenda items */}
       {items.length === 0 ? (
@@ -232,6 +328,9 @@ export const AgendaList: React.FC<AgendaListProps> = ({ meetingId, taskId, event
                   onDelete={handleDelete}
                   onToggleComplete={handleToggleComplete}
                   readonly={readonly}
+                  bulkMode={bulkMode}
+                  isSelected={selectedIds.has(item.id)}
+                  onToggleSelect={handleToggleSelect}
                 />
               ))}
             </div>
