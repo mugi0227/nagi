@@ -70,7 +70,7 @@ export function DashboardPage() {
       </motion.div>
 
       <motion.div variants={itemVariants}>
-        <OverdueCheckinCard onTaskClick={taskModal.openTaskDetail} />
+        <OverdueCheckinCard />
       </motion.div>
 
       <motion.div
