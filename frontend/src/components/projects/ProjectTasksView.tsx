@@ -7,6 +7,7 @@ import type {
   Task,
   TaskStatus,
 } from '../../api/types';
+import { ViewModeToggle, getStoredViewMode, setStoredViewMode, type ViewMode } from '../common/ViewModeToggle';
 import { KanbanBoard } from '../tasks/KanbanBoard';
 import { PhaseExplorerSidebar } from './PhaseExplorerSidebar';
 import './ProjectTasksView.css';
@@ -41,6 +42,12 @@ export function ProjectTasksView({
   const [phases, setPhases] = useState<PhaseWithTaskCount[]>([]);
   const [isPhasesLoading, setIsPhasesLoading] = useState(false);
   const [sortBy, setSortBy] = useState<'default' | 'dueDate'>('default');
+  const [viewMode, setViewMode] = useState<ViewMode>(getStoredViewMode);
+
+  const handleViewModeChange = (mode: ViewMode) => {
+    setViewMode(mode);
+    setStoredViewMode(mode);
+  };
 
   // Phase explorer state
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null); // null = unassigned
@@ -223,6 +230,7 @@ export function ProjectTasksView({
             )}
           </div>
           <div className="toolbar-right">
+            <ViewModeToggle value={viewMode} onChange={handleViewModeChange} />
             <select
               className="sort-select"
               value={sortBy}
@@ -254,6 +262,7 @@ export function ProjectTasksView({
               onSelectTask={handleSelectTask}
               onDragSelectedStart={handleDragSelectedStart}
               onSingleDragStart={handleSingleDragStart}
+              compact={viewMode === 'compact'}
             />
           </div>
         )}

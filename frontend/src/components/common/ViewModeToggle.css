@@ -1,0 +1,34 @@
+.view-mode-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.view-mode-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.875rem;
+  transition: all 0.15s ease;
+}
+
+.view-mode-btn:not(:last-child) {
+  border-right: 1px solid var(--border-color);
+}
+
+.view-mode-btn:hover {
+  background: var(--bg-hover, rgba(148, 163, 184, 0.08));
+  color: var(--text-main);
+}
+
+.view-mode-btn.active {
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--primary);
+}

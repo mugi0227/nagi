@@ -22,6 +22,8 @@ interface KanbanBoardProps {
   onDragSelectedStart?: () => void;
   // Single task drag (for phase move)
   onSingleDragStart?: (taskId: string) => void;
+  // View mode
+  compact?: boolean;
 }
 
 const COLUMNS: { status: TaskStatus; title: string }[] = [
@@ -47,6 +49,7 @@ export function KanbanBoard({
   onSelectTask,
   onDragSelectedStart,
   onSingleDragStart,
+  compact = false,
 }: KanbanBoardProps) {
   // Group tasks: parent tasks only (no parent_id)
   const parentTasks = useMemo(() => {
@@ -114,6 +117,7 @@ export function KanbanBoard({
           onSelectTask={onSelectTask}
           onDragSelectedStart={onDragSelectedStart}
           onSingleDragStart={onSingleDragStart}
+          compact={compact}
         />
       ))}
     </div>

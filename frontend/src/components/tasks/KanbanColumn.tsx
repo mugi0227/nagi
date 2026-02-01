@@ -24,6 +24,8 @@ interface KanbanColumnProps {
   onDragSelectedStart?: () => void;
   // Single task drag (for phase move)
   onSingleDragStart?: (taskId: string) => void;
+  // View mode
+  compact?: boolean;
 }
 
 export function KanbanColumn({
@@ -46,6 +48,7 @@ export function KanbanColumn({
   onSelectTask,
   onDragSelectedStart,
   onSingleDragStart,
+  compact = false,
 }: KanbanColumnProps) {
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -78,7 +81,7 @@ export function KanbanColumn({
 
   return (
     <div
-      className="kanban-column"
+      className={`kanban-column ${compact ? 'compact' : ''}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -109,6 +112,7 @@ export function KanbanColumn({
               selectionMode={selectionMode}
               isSelected={selectedTaskIds?.has(task.id) ?? false}
               onSelect={onSelectTask}
+              compact={compact}
             />
           </div>
         ))}
