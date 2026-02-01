@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { FaCalendarAlt, FaList, FaPlus, FaArrowLeft, FaCog, FaTrash } from 'react-icons/fa';
 import { api as client } from '../../api/client';
 import { projectsApi } from '../../api/projects';
@@ -26,6 +27,7 @@ interface MeetingsTabProps {
 
 export function MeetingsTab({ projectId, members, tasks, currentUserId, canDeleteAnyCheckin }: MeetingsTabProps) {
     const timezone = useTimezone();
+    const [searchParams, setSearchParams] = useSearchParams();
     const [viewMode, setViewMode] = useState<ViewMode>('list');
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
     const [selectedMeeting, setSelectedMeeting] = useState<RecurringMeeting | null>(null);
@@ -35,6 +37,17 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
     const [isCheckinSaving, setIsCheckinSaving] = useState(false);
     const [showCheckinForm, setShowCheckinForm] = useState(false);
     const [checkinsV2, setCheckinsV2] = useState<CheckinV2[]>([]);
+
+    // Auto-open CheckinForm when navigated with ?checkin=true (e.g. from dashboard alert)
+    useEffect(() => {
+        if (searchParams.get('checkin') === 'true') {
+            setShowCheckinForm(true);
+            // Remove the query param so it doesn't re-trigger
+            const next = new URLSearchParams(searchParams);
+            next.delete('checkin');
+            setSearchParams(next, { replace: true });
+        }
+    }, [searchParams, setSearchParams]);
     const [isCheckinsLoading, setIsCheckinsLoading] = useState(true);
     const [expandedCheckinId, setExpandedCheckinId] = useState<string | null>(null);
     const [showRecurringMeetingsModal, setShowRecurringMeetingsModal] = useState(false);

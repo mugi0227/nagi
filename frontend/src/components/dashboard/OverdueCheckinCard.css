@@ -1,0 +1,101 @@
+/* OverdueCheckinCard - Alert banners for overdue tasks in TEAM projects */
+
+.overdue-checkin-alerts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.overdue-checkin-alert {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 16px;
+  border: none;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 0.2s;
+  text-align: left;
+  font-family: inherit;
+}
+
+/* Mild: < 7 days overdue */
+.overdue-checkin-alert.mild {
+  background: rgba(245, 158, 11, 0.08);
+  border-left: 4px solid #f59e0b;
+}
+
+.overdue-checkin-alert.mild:hover {
+  background: rgba(245, 158, 11, 0.14);
+}
+
+/* Serious: >= 7 days overdue */
+.overdue-checkin-alert.serious {
+  background: rgba(239, 68, 68, 0.08);
+  border-left: 4px solid #ef4444;
+}
+
+.overdue-checkin-alert.serious:hover {
+  background: rgba(239, 68, 68, 0.14);
+}
+
+.overdue-alert-icon {
+  font-size: 14px;
+  font-weight: 800;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.overdue-checkin-alert.mild .overdue-alert-icon {
+  background: rgba(245, 158, 11, 0.15);
+  color: #d97706;
+}
+
+.overdue-checkin-alert.serious .overdue-alert-icon {
+  background: rgba(239, 68, 68, 0.15);
+  color: #dc2626;
+}
+
+.overdue-alert-text {
+  flex: 1;
+  font-size: 13px;
+  color: var(--text-main);
+  line-height: 1.4;
+}
+
+.overdue-alert-text strong {
+  font-weight: 600;
+}
+
+.overdue-alert-action {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 6px;
+  transition: all 0.2s;
+}
+
+.overdue-checkin-alert.mild .overdue-alert-action {
+  color: #d97706;
+  background: rgba(245, 158, 11, 0.12);
+}
+
+.overdue-checkin-alert.mild:hover .overdue-alert-action {
+  background: rgba(245, 158, 11, 0.2);
+}
+
+.overdue-checkin-alert.serious .overdue-alert-action {
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.12);
+}
+
+.overdue-checkin-alert.serious:hover .overdue-alert-action {
+  background: rgba(239, 68, 68, 0.2);
+}
