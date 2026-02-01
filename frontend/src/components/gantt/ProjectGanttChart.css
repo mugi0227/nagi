@@ -228,7 +228,7 @@
 .pgantt-sidebar-row {
   height: var(--row-height);
   padding: 0 16px;
-  padding-left: calc(16px + var(--depth, 0) * 16px);
+  padding-left: calc(12px + var(--depth, 0) * 14px);
   display: flex;
   align-items: center;
   gap: 8px;
@@ -694,7 +694,7 @@
 }
 
 .pgantt-sidebar-row.milestone-linked {
-  padding-left: calc(16px + var(--depth, 0) * 16px);
+  padding-left: calc(12px + var(--depth, 0) * 14px);
   background: linear-gradient(to right, rgba(168, 85, 247, 0.05), transparent);
   border-left: 3px solid var(--c-milestone);
 }
@@ -1352,7 +1352,7 @@
   }
 
   .pgantt-sidebar-row {
-    padding-left: calc(12px + var(--depth, 0) * 12px);
+    padding-left: calc(10px + var(--depth, 0) * 10px);
   }
 
   .pgantt-row-title {
@@ -1607,4 +1607,110 @@
   font-size: 0.8rem !important;
   color: #94a3b8 !important;
   margin-bottom: 24px !important;
+}
+
+/* ============================================
+   Controls Right Side
+   ============================================ */
+
+.pgantt-controls-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ============================================
+   Today Button
+   ============================================ */
+
+.pgantt-today-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--c-primary);
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.pgantt-today-btn:hover {
+  background: rgba(99, 102, 241, 0.15);
+  border-color: var(--c-primary);
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15);
+}
+
+/* ============================================
+   Assignee Badge (Sidebar)
+   ============================================ */
+
+.pgantt-assignee-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 6px;
+  font-size: 0.6rem;
+  font-weight: 600;
+  color: #1d4ed8;
+  background: rgba(59, 130, 246, 0.1);
+  border-radius: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 80px;
+  flex-shrink: 0;
+}
+
+.pgantt-assignee-badge span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ============================================
+   Deadline Status - Sidebar Rows
+   ============================================ */
+
+.pgantt-sidebar-row.deadline-overdue {
+  border-left: 3px solid #ef4444;
+}
+
+.pgantt-sidebar-row.deadline-overdue .pgantt-row-title {
+  color: #dc2626;
+}
+
+.pgantt-sidebar-row.deadline-approaching {
+  border-left: 3px solid #f59e0b;
+}
+
+.pgantt-sidebar-row.deadline-approaching .pgantt-row-title {
+  color: #d97706;
+}
+
+/* ============================================
+   Deadline Status - Bars
+   ============================================ */
+
+.pgantt-bar.task.deadline-overdue:not(.done) {
+  background: linear-gradient(135deg, #f87171 0%, #ef4444 100%);
+  box-shadow: 0 2px 8px rgba(239, 68, 68, 0.4);
+}
+
+.pgantt-bar.subtask.deadline-overdue:not(.done) {
+  background: linear-gradient(135deg, #fca5a5 0%, #f87171 100%);
+  box-shadow: 0 1px 4px rgba(239, 68, 68, 0.3);
+}
+
+.pgantt-bar.task.deadline-approaching:not(.done) {
+  background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.4);
+}
+
+.pgantt-bar.subtask.deadline-approaching:not(.done) {
+  background: linear-gradient(135deg, #fde68a 0%, #fbbf24 100%);
+  box-shadow: 0 1px 4px rgba(245, 158, 11, 0.3);
 }

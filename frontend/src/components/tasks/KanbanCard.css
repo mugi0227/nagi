@@ -14,6 +14,27 @@
   border: 2px dashed rgba(148, 163, 184, 0.3);
 }
 
+/* Deadline status styles */
+.kanban-card.deadline-overdue {
+  border-left: 4px solid #ef4444;
+}
+
+.kanban-card.deadline-approaching {
+  border-left: 4px solid #f59e0b;
+}
+
+.kanban-card .meta-badge.due-date.deadline-overdue {
+  color: #dc2626;
+  background: rgba(239, 68, 68, 0.12);
+  font-weight: 700;
+}
+
+.kanban-card .meta-badge.due-date.deadline-approaching {
+  color: #d97706;
+  background: rgba(245, 158, 11, 0.12);
+  font-weight: 700;
+}
+
 /* Selection mode */
 .kanban-card.selection-mode {
   padding-left: 2.5rem;

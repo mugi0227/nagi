@@ -499,6 +499,14 @@
   background: var(--bg-card);
 }
 
+.project-v2-task-item.deadline-overdue {
+  border-left: 4px solid #ef4444;
+}
+
+.project-v2-task-item.deadline-approaching {
+  border-left: 4px solid #f59e0b;
+}
+
 .project-v2-task-priority {
   width: 8px;
   height: 8px;

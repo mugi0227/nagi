@@ -48,7 +48,7 @@ import { useCurrentUser } from '../hooks/useCurrentUser';
 import { useTaskModal } from '../hooks/useTaskModal';
 import { useTasks } from '../hooks/useTasks';
 import { useTimezone } from '../hooks/useTimezone';
-import { formatDate, toDateKey, toDateTime, todayInTimezone } from '../utils/dateTime';
+import { formatDate, getDeadlineStatus, toDateKey, toDateTime, todayInTimezone } from '../utils/dateTime';
 import './ProjectDetailV2Page.css';
 
 type TabId = 'dashboard' | 'team' | 'timeline' | 'board' | 'gantt' | 'meetings' | 'achievements';
@@ -1411,6 +1411,7 @@ export function ProjectDetailV2Page() {
                             const parentTask = task.parent_id ? tasks.find(t => t.id === task.parent_id) : null;
                             const taskAssigneeLabel = assigneeByTaskId[task.id];
                             const taskAssigneeInitial = taskAssigneeLabel ? taskAssigneeLabel.trim().charAt(0) : null;
+                            const dlStatus = getDeadlineStatus(task.due_date, task.status, timezone);
                             const formatTime = (mins: number) => {
                               if (mins >= 60) {
                                 const h = Math.floor(mins / 60);
@@ -1423,7 +1424,7 @@ export function ProjectDetailV2Page() {
                             return (
                               <div
                                 key={task.id}
-                                className={`project-v2-task-item ${isDone ? 'done' : ''}`}
+                                className={`project-v2-task-item ${isDone ? 'done' : ''} ${dlStatus ? `deadline-${dlStatus}` : ''}`}
                                 onClick={() => taskModal.openTaskDetail(task)}
                               >
                                 {/* 進捗バー */}
@@ -2168,6 +2169,7 @@ export function ProjectDetailV2Page() {
                   tasks={tasks}
                   phases={phases}
                   milestones={milestones}
+                  assigneeByTaskId={assigneeByTaskId}
                   onTaskUpdate={async (taskId, updates) => {
                     try {
                       await tasksApi.update(taskId, updates);

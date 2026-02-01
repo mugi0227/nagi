@@ -76,3 +76,20 @@ export const toUtcIsoString = (value?: string | null, timezone?: string) => {
   const dt = DateTime.fromISO(value, { zone: timezone ?? getStoredTimezone() });
   return dt.isValid ? dt.toUTC().toISO() ?? undefined : undefined;
 };
+
+/** Calculate deadline status for a task based on due_date relative to today */
+export const getDeadlineStatus = (
+  dueDateStr: string | undefined | null,
+  status: string,
+  timezone?: string,
+): 'overdue' | 'approaching' | null => {
+  if (!dueDateStr || status === 'DONE') return null;
+  const tz = timezone ?? getStoredTimezone();
+  const dueDate = toDateTime(dueDateStr, tz).startOf('day');
+  if (!dueDate.isValid) return null;
+  const today = todayInTimezone(tz);
+  const diffDays = dueDate.diff(today, 'days').days;
+  if (diffDays < 0) return 'overdue';
+  if (diffDays <= 3) return 'approaching';
+  return null;
+};
