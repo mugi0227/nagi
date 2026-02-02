@@ -176,6 +176,43 @@
     white-space: nowrap;
 }
 
+/* Meeting status badges */
+.meeting-nav-item-badges {
+    display: flex;
+    gap: 4px;
+    margin-top: 4px;
+    flex-wrap: wrap;
+}
+
+.meeting-badge {
+    font-size: 0.6rem;
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-weight: 600;
+    white-space: nowrap;
+    line-height: 1.4;
+}
+
+.badge-conducted {
+    background-color: #f1f5f9;
+    color: #64748b;
+}
+
+.badge-upcoming {
+    background-color: #dbeafe;
+    color: #1e40af;
+}
+
+.badge-agenda {
+    background-color: #fef3c7;
+    color: #92400e;
+}
+
+.badge-summary {
+    background-color: #ede9fe;
+    color: #5b21b6;
+}
+
 /* Main Content Styles */
 .meetings-main {
     flex: 1;

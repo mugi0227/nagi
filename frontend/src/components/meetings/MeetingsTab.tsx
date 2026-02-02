@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { FaCalendarAlt, FaList, FaPlus, FaArrowLeft, FaCog, FaTrash, FaRobot } from 'react-icons/fa';
@@ -94,7 +94,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
         fetchCheckins();
     }, [projectId]);
 
-    const handleSelectTask = (task: Task, date: Date) => {
+    const handleSelectTask = useCallback((task: Task, date: Date) => {
         setSelectedDate(date);
         setSelectedTask(task);
         if (task.recurring_meeting_id) {
@@ -103,7 +103,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
         } else {
             setSelectedMeeting(null);
         }
-    };
+    }, [recurringMeetings]);
 
     const handleCalendarMeetingSelect = (task: Task, date: Date) => {
         setSelectedDate(date);
