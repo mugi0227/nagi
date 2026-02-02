@@ -164,6 +164,125 @@
   position: relative;
 }
 
+/* Project expandable group */
+.nav-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.nav-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.nav-group-header .nav-link {
+  flex: 1;
+  min-width: 0;
+}
+
+.expand-toggle {
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.expand-toggle:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--primary);
+}
+
+[data-theme="dark"] .expand-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.expand-toggle svg {
+  transition: transform 0.25s ease;
+  transform: rotate(-90deg);
+}
+
+.expand-toggle.expanded svg {
+  transform: rotate(0deg);
+}
+
+/* Project sub-list */
+.project-sublist {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.25rem 0 0.25rem 1.2rem;
+  margin-left: 1.2rem;
+  border-left: 2px solid var(--bg-main);
+  overflow: hidden;
+  animation: slideDown 0.2s ease forwards;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    max-height: 0;
+  }
+  to {
+    opacity: 1;
+    max-height: 500px;
+  }
+}
+
+.project-subitem {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.45rem 0.8rem;
+  border-radius: var(--radius-sm, 4px);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  text-decoration: none;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.project-subitem:hover {
+  background: var(--bg-main);
+  color: var(--primary);
+}
+
+.project-subitem.active {
+  color: var(--primary);
+  background: var(--primary-light);
+  font-weight: 600;
+}
+
+.project-subitem-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  flex-shrink: 0;
+  opacity: 0.5;
+}
+
+.project-subitem.active .project-subitem-dot {
+  background: var(--primary);
+  opacity: 1;
+}
+
+.project-subitem-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .sidebar-footer {
   border-top: 2px solid var(--bg-main);
   padding-top: 1.25rem;

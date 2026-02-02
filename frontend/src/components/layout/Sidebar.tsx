@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear, FaMoon, FaSun, FaRightFromBracket, FaRightToBracket, FaBookOpen, FaComments, FaChevronLeft, FaChevronRight } from 'react-icons/fa6';
+import { FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear, FaMoon, FaSun, FaRightFromBracket, FaRightToBracket, FaBookOpen, FaComments, FaChevronLeft, FaChevronRight, FaChevronDown } from 'react-icons/fa6';
 import { useTheme } from '../../context/ThemeContext';
 import { clearAuthToken, getAuthToken } from '../../api/auth';
 import { SettingsModal } from '../settings/SettingsModal';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { projectsApi } from '../../api/projects';
+import type { ProjectWithTaskCount } from '../../api/types';
 import { NotificationDropdown } from '../notifications/NotificationDropdown';
 import { resolveDisplayName } from '../../utils/displayName';
 import nagiIcon from '../../assets/nagi_icon.png';
@@ -24,6 +25,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
   const { data: currentUser } = useCurrentUser();
   const [showSettings, setShowSettings] = useState(false);
   const [totalUnassigned, setTotalUnassigned] = useState(0);
+  const [projects, setProjects] = useState<ProjectWithTaskCount[]>([]);
+  const [projectsExpanded, setProjectsExpanded] = useState(() => {
+    return localStorage.getItem('secretary_sidebar_projects_expanded') === 'true';
+  });
   const isAuthLocked = source === 'env' || source === 'mock';
   const displayName = currentUser
     ? resolveDisplayName({
@@ -37,13 +42,26 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
   useEffect(() => {
     if (!token) return;
-    projectsApi.getAll().then((projects) => {
-      const total = projects.reduce((sum, p) => sum + (p.unassigned_tasks || 0), 0);
+    projectsApi.getAll().then((fetched) => {
+      setProjects(fetched);
+      const total = fetched.reduce((sum, p) => sum + (p.unassigned_tasks || 0), 0);
       setTotalUnassigned(total);
     }).catch(() => {
       // Ignore errors
     });
   }, [token, location.pathname]);
+
+  const toggleProjectsExpanded = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setProjectsExpanded(prev => {
+      const next = !prev;
+      localStorage.setItem('secretary_sidebar_projects_expanded', String(next));
+      return next;
+    });
+  };
+
+  const activeProjects = projects.filter(p => p.status === 'ACTIVE');
 
   const navItems = [
     { path: '/', label: 'ダッシュボード', icon: FaChartPie },
@@ -85,22 +103,69 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
       </div>
 
       <nav className="sidebar-nav">
-        {navItems.map(item => (
-          <Link
-            key={item.path}
-            to={item.path}
-            className={`nav-link ${location.pathname === item.path ? 'active' : ''}`}
-            title={collapsed ? item.label : undefined}
-          >
-            <item.icon className="nav-icon" />
-            {!collapsed && <span className="nav-label">{item.label}</span>}
-            {item.path === '/projects' && totalUnassigned > 0 && (
-              <span className={`nav-badge unassigned-badge ${collapsed ? 'collapsed-badge' : ''}`} title="未割り当てタスク">
-                {totalUnassigned}
-              </span>
-            )}
-          </Link>
-        ))}
+        {navItems.map(item => {
+          if (item.path === '/projects') {
+            const isProjectActive = location.pathname === '/projects' || location.pathname.startsWith('/projects/');
+            return (
+              <div key={item.path} className="nav-group">
+                <div className="nav-group-header">
+                  <Link
+                    to={item.path}
+                    className={`nav-link ${isProjectActive ? 'active' : ''}`}
+                    title={collapsed ? item.label : undefined}
+                  >
+                    <item.icon className="nav-icon" />
+                    {!collapsed && <span className="nav-label">{item.label}</span>}
+                    {totalUnassigned > 0 && collapsed && (
+                      <span className="nav-badge unassigned-badge collapsed-badge" title="未割り当てタスク">
+                        {totalUnassigned}
+                      </span>
+                    )}
+                  </Link>
+                  {!collapsed && activeProjects.length > 0 && (
+                    <button
+                      className={`expand-toggle ${projectsExpanded ? 'expanded' : ''}`}
+                      onClick={toggleProjectsExpanded}
+                      title={projectsExpanded ? '折りたたむ' : '展開する'}
+                    >
+                      <FaChevronDown />
+                    </button>
+                  )}
+                </div>
+                {!collapsed && projectsExpanded && activeProjects.length > 0 && (
+                  <div className="project-sublist">
+                    {activeProjects.map(project => {
+                      const projectPath = `/projects/${project.id}/v2`;
+                      const isActive = location.pathname === projectPath || location.pathname === `/projects/${project.id}`;
+                      return (
+                        <Link
+                          key={project.id}
+                          to={projectPath}
+                          className={`project-subitem ${isActive ? 'active' : ''}`}
+                          title={project.name}
+                        >
+                          <span className="project-subitem-dot" />
+                          <span className="project-subitem-name">{project.name}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          }
+          return (
+            <Link
+              key={item.path}
+              to={item.path}
+              className={`nav-link ${location.pathname === item.path ? 'active' : ''}`}
+              title={collapsed ? item.label : undefined}
+            >
+              <item.icon className="nav-icon" />
+              {!collapsed && <span className="nav-label">{item.label}</span>}
+            </Link>
+          );
+        })}
       </nav>
 
       <div className={`sidebar-footer ${collapsed ? 'collapsed' : ''}`}>
