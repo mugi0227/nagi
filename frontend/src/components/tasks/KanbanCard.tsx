@@ -27,6 +27,8 @@ interface KanbanCardProps {
   selectionMode?: boolean;
   isSelected?: boolean;
   onSelect?: (taskId: string) => void;
+  // View mode
+  compact?: boolean;
 }
 
 export function KanbanCard({
@@ -44,6 +46,7 @@ export function KanbanCard({
   selectionMode = false,
   isSelected = false,
   onSelect,
+  compact = false,
 }: KanbanCardProps) {
   const timezone = useTimezone();
   const getPriorityIcon = (level: string) => {
@@ -63,7 +66,7 @@ export function KanbanCard({
     return level === 'HIGH' ? <FaBatteryFull /> : <FaBatteryQuarter />;
   };
 
-  const formatStartNotBefore = (value?: string | DateTime | null) => {
+  const formatShortDate = (value?: string | DateTime | null) => {
     if (!value) return null;
     if (typeof value === 'string') {
       return formatDate(value, { month: 'numeric', day: 'numeric' }, timezone);
@@ -140,6 +143,25 @@ export function KanbanCard({
     if (dateMillis.length === 0) return null;
     return toDateTime(new Date(Math.max(...dateMillis)), timezone);
   }, [task.start_not_before, task.parent_id, taskLookup, timezone]);
+
+  // Combined date range display: "1/15〜1/31"
+  const dateRangeDisplay = useMemo(() => {
+    const startDate = !task.is_fixed_time && effectiveStartNotBefore
+      ? formatShortDate(effectiveStartNotBefore)
+      : null;
+    const endDate = task.due_date
+      ? formatShortDate(task.due_date)
+      : null;
+
+    if (!startDate && !endDate) return null;
+
+    const overdueSuffix = deadlineStatus === 'overdue' ? ' 超過' : '';
+
+    if (startDate && endDate) return `${startDate}〜${endDate}${overdueSuffix}`;
+    if (endDate) return `〜${endDate}${overdueSuffix}`;
+    if (startDate) return `${startDate}〜`;
+    return null;
+  }, [task.is_fixed_time, effectiveStartNotBefore, task.due_date, deadlineStatus, timezone]);
 
   const handleBreakdown = () => {
     const draftCard: DraftCardData = {
@@ -232,6 +254,85 @@ export function KanbanCard({
     );
   }
 
+  // Compact view for non-done tasks
+  if (compact) {
+    return (
+      <div
+        className={`kanban-card compact ${dependencyStatus.isBlocked ? 'blocked' : ''} ${isSelected ? 'selected' : ''} ${selectionMode ? 'selection-mode' : ''} ${deadlineStatus ? `deadline-${deadlineStatus}` : ''}`}
+        draggable
+        onClick={handleCardClick}
+        style={{ cursor: onClick || selectionMode ? 'pointer' : 'default' }}
+        title={
+          dependencyStatus.isBlocked
+            ? `ブロック中: ${dependencyStatus.blockingTasks.map(t => t.title).join(', ')}を先に完了してください`
+            : undefined
+        }
+      >
+        {selectionMode && (
+          <div className="card-selection-checkbox" onClick={handleCheckboxClick}>
+            <input
+              type="checkbox"
+              checked={isSelected}
+              onChange={() => {}}
+              onClick={(e) => e.stopPropagation()}
+            />
+          </div>
+        )}
+        <div className="compact-row-1">
+          <span className={`compact-priority-dot urgency-${task.urgency.toLowerCase()}`} />
+          {dependencyStatus.isBlocked && (
+            <FaLock className="compact-lock-icon" />
+          )}
+          <span className="compact-title">{task.title}</span>
+          {totalSubtasks > 0 && (
+            <span className="compact-subtask-badge">
+              <FaCheckCircle className="compact-subtask-icon" />
+              {completedSubtasks}/{totalSubtasks}
+            </span>
+          )}
+          <div className="card-actions">
+            {onUpdateTask && (
+              <button
+                className="card-action-btn check"
+                onClick={(e) => handleActionClick(e, () => onUpdateTask(task.id, 'DONE'))}
+                title="完了にする"
+              >
+                <FaCircle />
+              </button>
+            )}
+            {onEdit && (
+              <button
+                className="card-action-btn"
+                onClick={(e) => handleActionClick(e, () => onEdit(task))}
+                title="Edit"
+              >
+                <FaPen />
+              </button>
+            )}
+          </div>
+        </div>
+        <div className="compact-row-2">
+          {assigneeName && (
+            <span className="compact-assignee">
+              <FaUser className="compact-meta-icon" />
+              {assigneeName}
+            </span>
+          )}
+          {dateRangeDisplay && (
+            <span className={`compact-date-range ${deadlineStatus ? `deadline-${deadlineStatus}` : ''}`}>
+              <FaCalendarAlt className="compact-meta-icon" />
+              {dateRangeDisplay}
+            </span>
+          )}
+          {task.is_fixed_time && (
+            <MeetingBadge task={task} showDetails={false} />
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  // Normal (full) view
   return (
     <div
       className={`kanban-card ${dependencyStatus.isBlocked ? 'blocked' : ''} ${isSelected ? 'selected' : ''} ${selectionMode ? 'selection-mode' : ''} ${deadlineStatus ? `deadline-${deadlineStatus}` : ''}`}
@@ -314,16 +415,10 @@ export function KanbanCard({
             <span>{assigneeName}</span>
           </span>
         )}
-        {task.due_date && (
-          <span className={`meta-badge due-date ${deadlineStatus ? `deadline-${deadlineStatus}` : ''}`} title={deadlineStatus === 'overdue' ? '期限超過' : deadlineStatus === 'approaching' ? '期限間近' : '期限'}>
-            <FaClock />
-            <span>{formatDate(task.due_date, { month: 'numeric', day: 'numeric' }, timezone)}{deadlineStatus === 'overdue' ? ' 超過' : '期限'}</span>
-          </span>
-        )}
-        {!task.is_fixed_time && effectiveStartNotBefore && (
-          <span className="meta-badge start-not-before" title="着手可能日">
+        {dateRangeDisplay && (
+          <span className={`meta-badge date-range ${deadlineStatus ? `deadline-${deadlineStatus}` : ''}`} title={deadlineStatus === 'overdue' ? '期限超過' : deadlineStatus === 'approaching' ? '期限間近' : '期間'}>
             <FaCalendarAlt />
-            <span>{formatStartNotBefore(effectiveStartNotBefore)}〜</span>
+            <span>{dateRangeDisplay}</span>
           </span>
         )}
         <span
