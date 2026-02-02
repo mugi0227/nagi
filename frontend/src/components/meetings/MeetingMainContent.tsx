@@ -1,10 +1,12 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { FaMagic, FaPlay, FaMapMarkerAlt, FaUsers, FaInfoCircle, FaExpand, FaUndo, FaChevronDown, FaChevronUp, FaHistory } from 'react-icons/fa';
+import { FaMagic, FaPlay, FaMapMarkerAlt, FaUsers, FaInfoCircle, FaExpand, FaUndo, FaChevronDown, FaChevronUp, FaHistory, FaTrash, FaClock } from 'react-icons/fa';
 import { meetingAgendaApi } from '../../api/meetingAgenda';
 import { projectsApi } from '../../api/projects';
-import { RecurringMeeting, Task } from '../../api/types';
+import type { RecurringMeeting, Task, TaskUpdate } from '../../api/types';
 import type { DraftCardData } from '../chat/DraftCard';
+import { EditableSection } from '../common/EditableSection';
+import { EditableDateTime } from '../common/EditableDateTime';
 import {
     useLatestSessionByTask,
     useCreateSession,
@@ -25,13 +27,17 @@ interface MeetingMainContentProps {
     selectedDate: Date | null;
     selectedMeeting: RecurringMeeting | null;
     selectedTask?: Task | null;
+    onUpdateTask?: (taskId: string, update: TaskUpdate) => Promise<void>;
+    onDeleteTask?: (taskId: string) => Promise<void>;
 }
 
 export function MeetingMainContent({
     projectId,
     selectedDate,
     selectedMeeting,
-    selectedTask
+    selectedTask,
+    onUpdateTask,
+    onDeleteTask,
 }: MeetingMainContentProps) {
     const timezone = useTimezone();
     // Either recurring meeting or standalone task (meeting)
@@ -44,6 +50,20 @@ export function MeetingMainContent({
     const meetingEndTime = isAllDay
         ? null
         : (selectedTask?.end_time ? formatDate(selectedTask.end_time, { hour: '2-digit', minute: '2-digit' }, timezone) : null);
+
+    // Editable: whether this task can be edited inline
+    const canEdit = !!onUpdateTask && !!selectedTask;
+
+    const handleFieldUpdate = async (field: keyof TaskUpdate, value: unknown) => {
+        if (!onUpdateTask || !selectedTask) return;
+        await onUpdateTask(selectedTask.id, { [field]: value } as TaskUpdate);
+    };
+
+    const handleDelete = async () => {
+        if (!onDeleteTask || !selectedTask) return;
+        if (!window.confirm('このミーティングを削除しますか？')) return;
+        await onDeleteTask(selectedTask.id);
+    };
 
     // Fetch project members for assignee selection
     const { data: members = [] } = useQuery({
@@ -60,8 +80,8 @@ export function MeetingMainContent({
         [members]
     );
 
-    // Collapsible state for meeting info section
-    const [isInfoCollapsed, setIsInfoCollapsed] = useState(true);
+    // Collapsible state for meeting info section (default open when editable)
+    const [isInfoCollapsed, setIsInfoCollapsed] = useState(!canEdit);
 
     const getDateStr = (date: Date) => toDateKey(date, timezone);
 
@@ -284,7 +304,16 @@ export function MeetingMainContent({
                         )}
                     </h2>
                     <div className="meeting-header-meta">
-                        <span>{meetingTitle}</span>
+                        {canEdit ? (
+                            <EditableSection
+                                value={meetingTitle}
+                                onSave={async (v) => handleFieldUpdate('title', v)}
+                                placeholder="タイトルを入力"
+                                className="meeting-title-editable"
+                            />
+                        ) : (
+                            <span>{meetingTitle}</span>
+                        )}
                         {meetingStartTime && (
                             <span>
                                 {meetingStartTime}
@@ -293,8 +322,19 @@ export function MeetingMainContent({
                         )}
                     </div>
                 </div>
-                <div className={`meeting-status-badge ${mode === 'MEETING' ? 'status-meeting' : mode === 'ARCHIVE' ? 'status-archive' : 'status-preparation'}`}>
-                    {mode === 'MEETING' ? 'ミーティング中' : mode === 'ARCHIVE' ? '終了' : '準備中'}
+                <div className="meeting-header-actions">
+                    <div className={`meeting-status-badge ${mode === 'MEETING' ? 'status-meeting' : mode === 'ARCHIVE' ? 'status-archive' : 'status-preparation'}`}>
+                        {mode === 'MEETING' ? 'ミーティング中' : mode === 'ARCHIVE' ? '終了' : '準備中'}
+                    </div>
+                    {canEdit && onDeleteTask && (
+                        <button
+                            className="meeting-delete-btn"
+                            onClick={handleDelete}
+                            title="ミーティングを削除"
+                        >
+                            <FaTrash />
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -303,7 +343,7 @@ export function MeetingMainContent({
                 const location = selectedTask?.location || selectedMeeting?.location;
                 const attendees = selectedTask?.attendees?.length ? selectedTask.attendees : selectedMeeting?.attendees;
                 const description = selectedTask?.description;
-                const hasInfo = location || (attendees && attendees.length > 0) || description;
+                const hasInfo = location || (attendees && attendees.length > 0) || description || canEdit;
 
                 if (!hasInfo) return null;
 
@@ -319,23 +359,69 @@ export function MeetingMainContent({
                         </button>
                         {!isInfoCollapsed && (
                             <div className="meeting-info-content">
-                                {location && (
-                                    <div className="meeting-info-item">
-                                        <FaMapMarkerAlt className="meeting-info-icon" />
-                                        <span>{location}</span>
+                                {/* Start/End time - editable */}
+                                {canEdit && (
+                                    <div className="meeting-info-item meeting-info-time-row">
+                                        <FaClock className="meeting-info-icon" />
+                                        <EditableDateTime
+                                            value={selectedTask?.start_time}
+                                            onSave={async (v) => handleFieldUpdate('start_time', v)}
+                                            placeholder="開始時刻"
+                                            timezone={timezone}
+                                            showTime
+                                        />
+                                        <span className="meeting-info-time-separator">〜</span>
+                                        <EditableDateTime
+                                            value={selectedTask?.end_time}
+                                            onSave={async (v) => handleFieldUpdate('end_time', v)}
+                                            placeholder="終了時刻"
+                                            timezone={timezone}
+                                            showTime
+                                        />
                                     </div>
                                 )}
-                                {attendees && attendees.length > 0 && (
-                                    <div className="meeting-info-item">
-                                        <FaUsers className="meeting-info-icon" />
-                                        <span>{attendees.join(', ')}</span>
-                                    </div>
-                                )}
-                                {description && (
-                                    <div className="meeting-info-item meeting-info-description">
-                                        <span>{description}</span>
-                                    </div>
-                                )}
+                                {/* Location */}
+                                <div className="meeting-info-item">
+                                    <FaMapMarkerAlt className="meeting-info-icon" />
+                                    {canEdit ? (
+                                        <EditableSection
+                                            value={location || ''}
+                                            onSave={async (v) => handleFieldUpdate('location', v || null)}
+                                            placeholder="場所を入力"
+                                        />
+                                    ) : (
+                                        location && <span>{location}</span>
+                                    )}
+                                </div>
+                                {/* Attendees */}
+                                <div className="meeting-info-item">
+                                    <FaUsers className="meeting-info-icon" />
+                                    {canEdit ? (
+                                        <EditableSection
+                                            value={attendees?.join(', ') || ''}
+                                            onSave={async (v) => {
+                                                const arr = v.split(',').map(s => s.trim()).filter(Boolean);
+                                                await handleFieldUpdate('attendees', arr);
+                                            }}
+                                            placeholder="参加者（カンマ区切り）"
+                                        />
+                                    ) : (
+                                        attendees && attendees.length > 0 && <span>{attendees.join(', ')}</span>
+                                    )}
+                                </div>
+                                {/* Description */}
+                                <div className="meeting-info-item meeting-info-description">
+                                    {canEdit ? (
+                                        <EditableSection
+                                            value={description || ''}
+                                            onSave={async (v) => handleFieldUpdate('description', v || null)}
+                                            placeholder="説明を入力"
+                                            multiline
+                                        />
+                                    ) : (
+                                        description && <span>{description}</span>
+                                    )}
+                                </div>
                             </div>
                         )}
                     </div>

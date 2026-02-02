@@ -59,6 +59,10 @@
   background: linear-gradient(135deg, #a855f7, #6366f1);
 }
 
+.draft-card-meeting .draft-card-header {
+  background: linear-gradient(135deg, #5b5fc7, #7b83eb);
+}
+
 .draft-card-icon {
   width: 20px;
   height: 20px;

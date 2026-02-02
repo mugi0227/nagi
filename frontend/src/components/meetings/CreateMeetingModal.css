@@ -1,0 +1,193 @@
+/* CreateMeetingModal - Teams-style meeting creation modal */
+
+.create-meeting-modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.create-meeting-modal-content {
+  background: var(--bg-card, #fff);
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  max-width: 560px;
+  width: 92%;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.create-meeting-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px 0;
+}
+
+.create-meeting-modal-header h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary, #1a1a2e);
+}
+
+.create-meeting-modal-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--text-muted, #9ca3af);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.create-meeting-modal-close:hover {
+  background: var(--bg-hover, #f3f4f6);
+  color: var(--text-primary, #1a1a2e);
+}
+
+/* Form layout */
+.create-meeting-form {
+  padding: 20px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.create-meeting-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.create-meeting-form-row label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+  letter-spacing: 0.02em;
+}
+
+.create-meeting-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: end;
+}
+
+/* Input styles */
+.create-meeting-form input[type="text"],
+.create-meeting-form input[type="date"],
+.create-meeting-form input[type="time"],
+.create-meeting-form textarea {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  background: var(--bg-input, #fff);
+  color: var(--text-primary, #1a1a2e);
+  transition: border-color 0.15s ease;
+  box-sizing: border-box;
+}
+
+.create-meeting-form input:focus,
+.create-meeting-form textarea:focus {
+  outline: none;
+  border-color: var(--primary, #3b82f6);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.create-meeting-form textarea {
+  resize: vertical;
+  min-height: 72px;
+}
+
+/* All-day checkbox */
+.create-meeting-allday-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary, #1a1a2e);
+  cursor: pointer;
+  padding-bottom: 4px;
+}
+
+.create-meeting-allday-label input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary, #3b82f6);
+  cursor: pointer;
+}
+
+/* Error message */
+.create-meeting-error {
+  color: #ef4444;
+  font-size: 13px;
+  margin: 0;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+}
+
+/* Action buttons */
+.create-meeting-form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+}
+
+.create-meeting-submit-btn {
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary, #3b82f6);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.create-meeting-submit-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.create-meeting-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.create-meeting-cancel-btn {
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
+  background: var(--bg-hover, #f3f4f6);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.create-meeting-cancel-btn:hover {
+  background: var(--bg-input, #e5e7eb);
+}
+
+/* Dark mode */
+[data-theme="dark"] .create-meeting-error {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+}

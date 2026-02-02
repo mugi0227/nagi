@@ -897,6 +897,100 @@
     color: #1e293b;
 }
 
-.recurring-meetings-btn {
+.create-meeting-btn {
     margin-left: auto;
+    background-color: #3b82f6 !important;
+    color: #fff !important;
+}
+
+.create-meeting-btn:hover {
+    background-color: #2563eb !important;
+}
+
+.ai-meeting-btn {
+    background: linear-gradient(135deg, #5b5fc7, #7b83eb) !important;
+    color: #fff !important;
+}
+
+.ai-meeting-btn:hover {
+    opacity: 0.9;
+}
+
+.recurring-meetings-btn {
+    margin-left: 0;
+}
+
+/* Meeting header actions (status badge + delete) */
+.meeting-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.meeting-delete-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: #94a3b8;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.meeting-delete-btn:hover {
+    background-color: #fee2e2;
+    color: #ef4444;
+}
+
+/* Meeting title editable inline */
+.meeting-title-editable {
+    font-weight: 500;
+}
+
+.meeting-title-editable .editable-input {
+    font-size: 0.9rem;
+    font-weight: 500;
+}
+
+/* Meeting info: time row */
+.meeting-info-time-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.meeting-info-time-separator {
+    color: #94a3b8;
+    font-size: 0.85rem;
+    margin: 0 2px;
+}
+
+/* Inline editing within meeting info */
+.meeting-info-item .editable-section {
+    flex: 1;
+    min-width: 0;
+}
+
+.meeting-info-item .editable-datetime {
+    flex: 0 0 auto;
+}
+
+/* Time row: two EditableDateTimes share space equally */
+.meeting-info-time-row .editable-datetime {
+    flex: 1 1 0;
+    min-width: 0;
+    width: auto;
+}
+
+.meeting-info-item .editable-view-mode {
+    padding: 2px 6px;
+    border-radius: 4px;
+}
+
+.meeting-info-item .editable-view-mode:hover {
+    background-color: rgba(0, 0, 0, 0.04);
 }

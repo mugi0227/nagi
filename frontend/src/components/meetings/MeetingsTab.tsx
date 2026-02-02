@@ -1,9 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { FaCalendarAlt, FaList, FaPlus, FaArrowLeft, FaCog, FaTrash } from 'react-icons/fa';
+import { useQueryClient } from '@tanstack/react-query';
+import { FaCalendarAlt, FaList, FaPlus, FaArrowLeft, FaCog, FaTrash, FaRobot } from 'react-icons/fa';
 import { api as client } from '../../api/client';
 import { projectsApi } from '../../api/projects';
-import type { CheckinCreateV2, CheckinV2, ProjectMember, RecurringMeeting, Task } from '../../api/types';
+import { tasksApi } from '../../api/tasks';
+import type { CheckinCreateV2, CheckinV2, ProjectMember, RecurringMeeting, Task, TaskUpdate } from '../../api/types';
+import type { DraftCardData } from '../chat/DraftCard';
+import { CreateMeetingModal } from './CreateMeetingModal';
 import { CheckinForm } from '../projects/CheckinForm';
 import { RecurringMeetingsPanel } from '../projects/RecurringMeetingsPanel';
 import { MeetingCalendarView } from './MeetingCalendarView';
@@ -27,6 +31,7 @@ interface MeetingsTabProps {
 
 export function MeetingsTab({ projectId, members, tasks, currentUserId, canDeleteAnyCheckin }: MeetingsTabProps) {
     const timezone = useTimezone();
+    const queryClient = useQueryClient();
     const [searchParams, setSearchParams] = useSearchParams();
     const [viewMode, setViewMode] = useState<ViewMode>('list');
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -51,6 +56,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
     const [isCheckinsLoading, setIsCheckinsLoading] = useState(true);
     const [expandedCheckinId, setExpandedCheckinId] = useState<string | null>(null);
     const [showRecurringMeetingsModal, setShowRecurringMeetingsModal] = useState(false);
+    const [showCreateMeetingModal, setShowCreateMeetingModal] = useState(false);
 
     const getMemberName = (memberUserId: string) => {
         const member = members.find(m => m.member_user_id === memberUserId);
@@ -138,6 +144,53 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
         }
     };
 
+    const invalidateMeetingQueries = () => {
+        queryClient.invalidateQueries({ queryKey: ['meetings', 'project', projectId] });
+        queryClient.invalidateQueries({ queryKey: ['meetings', 'week'] });
+        queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        queryClient.invalidateQueries({ queryKey: ['schedule'] });
+        queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
+    };
+
+    const handleMeetingCreated = () => {
+        invalidateMeetingQueries();
+    };
+
+    const handleUpdateTask = async (taskId: string, update: TaskUpdate) => {
+        const updated = await tasksApi.update(taskId, update);
+        setSelectedTask(updated);
+        invalidateMeetingQueries();
+    };
+
+    const handleDeleteTask = async (taskId: string) => {
+        await tasksApi.delete(taskId);
+        setSelectedTask(null);
+        setSelectedDate(null);
+        setSelectedMeeting(null);
+        invalidateMeetingQueries();
+    };
+
+    const handleAiMeetingCreate = () => {
+        const draftCard: DraftCardData = {
+            type: 'meeting',
+            title: 'AIでミーティング作成',
+            info: [
+                { label: 'プロジェクトID', value: projectId },
+            ],
+            placeholder: '例: 来週月曜に設計レビュー、参加者は田中さんと佐藤さん',
+            promptTemplate: `プロジェクト (ID: ${projectId}) にミーティングを作成して。
+
+【ルール】
+- create_task で is_fixed_time: true を指定して会議タスクとして作成すること
+- 日時・タイトル・場所・参加者・説明をユーザーの指示から推測して設定すること
+- 不明な項目はスキップして構わない
+
+追加の指示:
+{instruction}`,
+        };
+        window.dispatchEvent(new CustomEvent('secretary:chat-open', { detail: { draftCard } }));
+    };
+
     return (
         <div className="meetings-tab-wrapper">
             <div className="meetings-tab-view-toggle">
@@ -154,6 +207,20 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
                     title="カレンダー表示"
                 >
                     <FaCalendarAlt /> カレンダー
+                </button>
+                <button
+                    className="view-toggle-btn create-meeting-btn"
+                    onClick={() => setShowCreateMeetingModal(true)}
+                    title="単発ミーティングを作成"
+                >
+                    <FaPlus /> ミーティング作成
+                </button>
+                <button
+                    className="view-toggle-btn ai-meeting-btn"
+                    onClick={handleAiMeetingCreate}
+                    title="AIでミーティングを作成"
+                >
+                    <FaRobot /> AI作成
                 </button>
                 <button
                     className="view-toggle-btn recurring-meetings-btn"
@@ -178,6 +245,8 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
                         selectedDate={selectedDate}
                         selectedMeeting={selectedMeeting}
                         selectedTask={selectedTask}
+                        onUpdateTask={handleUpdateTask}
+                        onDeleteTask={handleDeleteTask}
                     />
                     <div className="meetings-checkin-panel">
                         {showCheckinForm ? (
@@ -303,6 +372,8 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
                                     selectedDate={selectedDate}
                                     selectedMeeting={selectedMeeting}
                                     selectedTask={selectedTask}
+                                    onUpdateTask={handleUpdateTask}
+                                    onDeleteTask={handleDeleteTask}
                                 />
                             </div>
                         )}
@@ -417,6 +488,15 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
                         )}
                     </div>
                 </div>
+            )}
+
+            {/* Create Standalone Meeting Modal */}
+            {showCreateMeetingModal && (
+                <CreateMeetingModal
+                    projectId={projectId}
+                    onClose={() => setShowCreateMeetingModal(false)}
+                    onCreated={handleMeetingCreated}
+                />
             )}
 
             {/* Recurring Meetings Management Modal */}
