@@ -27,11 +27,14 @@ def get_effective_estimated_minutes(task: Task, all_tasks: Iterable[Task]) -> in
     subtasks = [t for t in all_tasks if t.parent_id == task.id]
 
     if subtasks:
-        # If has subtasks: return sum of subtask estimates
         return sum(st.estimated_minutes or 0 for st in subtasks)
-    else:
-        # If no subtasks: return task's own estimate
-        return task.estimated_minutes or 0
+    if task.estimated_minutes:
+        return task.estimated_minutes
+    steps = getattr(task, "touchpoint_steps", None) or []
+    step_minutes = sum(step.estimated_minutes or 0 for step in steps)
+    if step_minutes > 0:
+        return step_minutes
+    return 0
 
 
 def is_parent_task(task: Task, all_tasks: Iterable[Task]) -> bool:
@@ -77,8 +80,9 @@ def get_remaining_minutes(task: Task, all_tasks: Iterable[Task]) -> int:
             remaining = estimated * (100 - progress) // 100
             total_remaining += remaining
         return total_remaining
-    else:
-        # If no subtasks: return task's own remaining estimate
-        estimated = task.estimated_minutes or 0
-        progress = task.progress if hasattr(task, 'progress') and task.progress is not None else 0
-        return estimated * (100 - progress) // 100
+    estimated = task.estimated_minutes or 0
+    if estimated <= 0:
+        steps = getattr(task, "touchpoint_steps", None) or []
+        estimated = sum(step.estimated_minutes or 0 for step in steps)
+    progress = task.progress if hasattr(task, 'progress') and task.progress is not None else 0
+    return estimated * (100 - progress) // 100

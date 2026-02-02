@@ -71,7 +71,7 @@ class MockTaskRepository:
             return task
         return None
 
-    async def update(self, user_id: str, task_id, update) -> Task:
+    async def update(self, user_id: str, task_id, update, project_id=None) -> Task:
         """Update a task."""
         task = self.tasks.get(task_id)
         if not task or task.user_id != user_id:
@@ -85,7 +85,7 @@ class MockTaskRepository:
         task.updated_at = datetime.utcnow()
         return task
 
-    async def delete(self, user_id: str, task_id) -> bool:
+    async def delete(self, user_id: str, task_id, project_id=None) -> bool:
         """Delete a task."""
         task = self.tasks.get(task_id)
         if not task or task.user_id != user_id:

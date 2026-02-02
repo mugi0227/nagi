@@ -23,7 +23,7 @@ from app.interfaces.task_repository import ITaskRepository
 from app.models.collaboration import TaskAssignmentCreate, TaskAssignmentsCreate
 from app.models.enums import CreatedBy, EnergyLevel, Priority
 from app.models.proposal import Proposal, ProposalResponse, ProposalType
-from app.models.task import Task, TaskCreate, TaskUpdate
+from app.models.task import Task, TaskCreate, TaskUpdate, TouchpointStep
 from app.tools.approval_tools import create_tool_action_proposal
 from app.services.project_permissions import ProjectAction
 from app.tools.permissions import require_project_action, require_project_member
@@ -85,6 +85,12 @@ class CreateTaskInput(BaseModel):
         default_factory=list,
         description="このタスクが依存する他のタスクのIDリスト（UUID文字列のリスト）"
     )
+    same_day_allowed: bool = Field(True, description="Allow sibling subtasks on the same day")
+    min_gap_days: int = Field(0, ge=0, description="Minimum gap days between sibling subtasks")
+    touchpoint_count: Optional[int] = Field(None, ge=1, description="Touchpoint count")
+    touchpoint_minutes: Optional[int] = Field(None, ge=1, description="Minutes per touchpoint")
+    touchpoint_gap_days: int = Field(0, ge=0, description="Minimum gap days between touchpoints")
+    touchpoint_steps: list[TouchpointStep] = Field(default_factory=list, description="Touchpoint step guides")
     # Meeting fields (optional, only for fixed-time events)
     is_fixed_time: bool = Field(False, description="会議・固定時間イベントの場合true")
     is_all_day: bool = Field(False, description="終日タスク（休暇・出張など、その日のキャパシティを0にする）")
@@ -139,6 +145,12 @@ class UpdateTaskInput(BaseModel):
     parent_id: Optional[str] = Field(None, description="親タスクID（UUID文字列、サブタスク化/解除）")
     order_in_parent: Optional[int] = Field(None, ge=1, description="親タスク内での順序")
     dependency_ids: Optional[list[str]] = Field(None, description="依存タスクIDリスト（UUID文字列）")
+    same_day_allowed: Optional[bool] = Field(None, description="Allow sibling subtasks on the same day")
+    min_gap_days: Optional[int] = Field(None, ge=0, description="Minimum gap days between sibling subtasks")
+    touchpoint_count: Optional[int] = Field(None, ge=1, description="Touchpoint count")
+    touchpoint_minutes: Optional[int] = Field(None, ge=1, description="Minutes per touchpoint")
+    touchpoint_gap_days: Optional[int] = Field(None, ge=0, description="Minimum gap days between touchpoints")
+    touchpoint_steps: Optional[list[TouchpointStep]] = Field(None, description="Touchpoint step guides")
     progress: Optional[int] = Field(None, ge=0, le=100, description="進捗率（0-100%）")
     source_capture_id: Optional[str] = Field(None, description="元Capture ID（UUID文字列）")
     completion_note: Optional[str] = Field(
@@ -641,6 +653,12 @@ async def create_task(
         due_date=due_date,
         start_not_before=start_not_before,
         dependency_ids=dependency_ids,
+        same_day_allowed=input_data.same_day_allowed,
+        min_gap_days=input_data.min_gap_days,
+        touchpoint_count=input_data.touchpoint_count,
+        touchpoint_minutes=input_data.touchpoint_minutes,
+        touchpoint_gap_days=input_data.touchpoint_gap_days,
+        touchpoint_steps=input_data.touchpoint_steps,
         created_by=CreatedBy.AGENT,
         # Subtask fields
         parent_id=parent_id,
@@ -838,10 +856,16 @@ async def update_task(
         parent_id=parent_id,
         order_in_parent=input_data.order_in_parent,
         dependency_ids=dependency_ids,
+        same_day_allowed=input_data.same_day_allowed,
+        min_gap_days=input_data.min_gap_days,
         progress=input_data.progress,
         source_capture_id=source_capture_id,
         completion_note=input_data.completion_note,
         guide=input_data.guide,
+        touchpoint_count=input_data.touchpoint_count,
+        touchpoint_minutes=input_data.touchpoint_minutes,
+        touchpoint_gap_days=input_data.touchpoint_gap_days,
+        touchpoint_steps=input_data.touchpoint_steps,
         # Meeting fields
         is_fixed_time=input_data.is_fixed_time,
         is_all_day=input_data.is_all_day,

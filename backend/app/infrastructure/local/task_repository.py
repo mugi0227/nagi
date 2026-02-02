@@ -51,6 +51,12 @@ class SqliteTaskRepository(ITaskRepository):
             parent_id=UUID(orm.parent_id) if orm.parent_id else None,
             order_in_parent=orm.order_in_parent,
             dependency_ids=[UUID(dep_id) for dep_id in (orm.dependency_ids or [])],
+            same_day_allowed=(
+                bool(orm.same_day_allowed)
+                if hasattr(orm, 'same_day_allowed') and orm.same_day_allowed is not None
+                else True
+            ),
+            min_gap_days=orm.min_gap_days if hasattr(orm, 'min_gap_days') and orm.min_gap_days is not None else 0,
             progress=orm.progress if hasattr(orm, 'progress') and orm.progress is not None else 0,
             source_capture_id=UUID(orm.source_capture_id) if orm.source_capture_id else None,
             created_by=orm.created_by,
@@ -65,6 +71,10 @@ class SqliteTaskRepository(ITaskRepository):
             meeting_notes=orm.meeting_notes,
             recurring_meeting_id=UUID(orm.recurring_meeting_id) if orm.recurring_meeting_id else None,
             milestone_id=UUID(orm.milestone_id) if orm.milestone_id else None,
+            touchpoint_count=orm.touchpoint_count if hasattr(orm, 'touchpoint_count') else None,
+            touchpoint_minutes=orm.touchpoint_minutes if hasattr(orm, 'touchpoint_minutes') else None,
+            touchpoint_gap_days=orm.touchpoint_gap_days if hasattr(orm, 'touchpoint_gap_days') and orm.touchpoint_gap_days is not None else 0,
+            touchpoint_steps=orm.touchpoint_steps or [],
             completion_note=orm.completion_note if hasattr(orm, 'completion_note') else None,
             completed_at=orm.completed_at if hasattr(orm, 'completed_at') else None,
             guide=orm.guide if hasattr(orm, 'guide') else None,
@@ -90,6 +100,8 @@ class SqliteTaskRepository(ITaskRepository):
                 parent_id=str(task.parent_id) if task.parent_id else None,
                 order_in_parent=task.order_in_parent,
                 dependency_ids=[str(dep_id) for dep_id in task.dependency_ids],
+                same_day_allowed=task.same_day_allowed,
+                min_gap_days=task.min_gap_days,
                 progress=task.progress,
                 source_capture_id=str(task.source_capture_id) if task.source_capture_id else None,
                 created_by=task.created_by.value,
@@ -101,6 +113,10 @@ class SqliteTaskRepository(ITaskRepository):
                 attendees=task.attendees,
                 meeting_notes=task.meeting_notes,
                 milestone_id=str(task.milestone_id) if task.milestone_id else None,
+                touchpoint_count=task.touchpoint_count,
+                touchpoint_minutes=task.touchpoint_minutes,
+                touchpoint_gap_days=task.touchpoint_gap_days,
+                touchpoint_steps=[step.model_dump(mode="json") for step in task.touchpoint_steps],
                 completion_note=task.completion_note if hasattr(task, 'completion_note') else None,
                 guide=task.guide if hasattr(task, 'guide') else None,
             )
@@ -200,6 +216,11 @@ class SqliteTaskRepository(ITaskRepository):
                         value = str(value) if value else None
                     elif field == "dependency_ids":
                         value = [str(dep_id) for dep_id in value]
+                    elif field == "touchpoint_steps":
+                        value = [
+                            step.model_dump(mode="json") if hasattr(step, "model_dump") else step
+                            for step in value
+                        ]
                     elif hasattr(value, "value"):  # Enum
                         value = value.value
                     if field == "status":

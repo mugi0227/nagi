@@ -13,6 +13,14 @@ from pydantic import BaseModel, Field, model_validator
 from app.models.enums import CreatedBy, EnergyLevel, Priority, TaskStatus
 
 
+class TouchpointStep(BaseModel):
+    """Touchpoint step details for multi-day tasks."""
+
+    title: str = Field(..., min_length=1, max_length=500)
+    guide: Optional[str] = Field(None, max_length=2000)
+    estimated_minutes: Optional[int] = Field(None, ge=1)
+
+
 class TaskBase(BaseModel):
     """Base task fields shared across create/read."""
 
@@ -45,6 +53,15 @@ class TaskBase(BaseModel):
     dependency_ids: list[UUID] = Field(
         default_factory=list, description="このタスクより先に終わらせるべきタスクのID"
     )
+    same_day_allowed: bool = Field(
+        True,
+        description="Allow sibling subtasks on the same day",
+    )
+    min_gap_days: int = Field(
+        0,
+        ge=0,
+        description="Minimum gap days between sibling subtasks",
+    )
     progress: int = Field(
         default=0, ge=0, le=100, description="進捗率（0-100%）"
     )
@@ -65,6 +82,25 @@ class TaskBase(BaseModel):
         None,
         max_length=2000,
         description="達成メモ（どのように達成したか、学んだこと等）",
+    )
+    touchpoint_count: Optional[int] = Field(
+        None,
+        ge=1,
+        description="Touchpoint count",
+    )
+    touchpoint_minutes: Optional[int] = Field(
+        None,
+        ge=1,
+        description="Minutes per touchpoint",
+    )
+    touchpoint_gap_days: int = Field(
+        0,
+        ge=0,
+        description="Minimum gap days between touchpoints",
+    )
+    touchpoint_steps: list[TouchpointStep] = Field(
+        default_factory=list,
+        description="Touchpoint step guides",
     )
 
     # Subtask guide field
@@ -101,6 +137,11 @@ class TaskBase(BaseModel):
             if not self.estimated_minutes:
                 duration_seconds = (self.end_time - self.start_time).total_seconds()
                 self.estimated_minutes = int(duration_seconds / 60)
+        if self.touchpoint_steps and not self.touchpoint_count:
+            self.touchpoint_count = len(self.touchpoint_steps)
+        if self.touchpoint_steps and self.touchpoint_count:
+            if len(self.touchpoint_steps) != self.touchpoint_count:
+                raise ValueError("touchpoint_steps length must match touchpoint_count")
         return self
 
 
@@ -132,6 +173,8 @@ class TaskUpdate(BaseModel):
     parent_id: Optional[UUID] = None
     order_in_parent: Optional[int] = Field(None, ge=1, description="親タスク内での順序")
     dependency_ids: Optional[list[UUID]] = None
+    same_day_allowed: Optional[bool] = None
+    min_gap_days: Optional[int] = Field(None, ge=0)
     source_capture_id: Optional[UUID] = None
     progress: Optional[int] = Field(None, ge=0, le=100, description="進捗率（0-100%）")
     start_time: Optional[datetime] = None
@@ -143,6 +186,10 @@ class TaskUpdate(BaseModel):
     meeting_notes: Optional[str] = Field(None, max_length=5000)
     recurring_meeting_id: Optional[UUID] = None
     milestone_id: Optional[UUID] = None
+    touchpoint_count: Optional[int] = Field(None, ge=1)
+    touchpoint_minutes: Optional[int] = Field(None, ge=1)
+    touchpoint_gap_days: Optional[int] = Field(None, ge=0)
+    touchpoint_steps: Optional[list[TouchpointStep]] = None
     completion_note: Optional[str] = Field(None, max_length=2000)
     guide: Optional[str] = Field(None, max_length=2000)
 

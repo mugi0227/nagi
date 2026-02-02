@@ -26,8 +26,15 @@ def make_task(
     is_fixed_time: bool = False,
     start_time: datetime | None = None,
     end_time: datetime | None = None,
+    same_day_allowed: bool = True,
+    min_gap_days: int = 0,
+    touchpoint_count: int | None = None,
+    touchpoint_minutes: int | None = None,
+    touchpoint_gap_days: int = 0,
+    touchpoint_steps: list | None = None,
+    created_at: datetime | None = None,
 ) -> Task:
-    now = datetime.now()
+    now = created_at or datetime.now()
     return Task(
         id=uuid4(),
         user_id=user_id,
@@ -41,6 +48,8 @@ def make_task(
         start_not_before=start_not_before,
         parent_id=parent_id,
         dependency_ids=dependency_ids or [],
+        same_day_allowed=same_day_allowed,
+        min_gap_days=min_gap_days,
         progress=progress,
         created_by=CreatedBy.USER,
         created_at=now,
@@ -48,6 +57,10 @@ def make_task(
         is_fixed_time=is_fixed_time,
         start_time=start_time,
         end_time=end_time,
+        touchpoint_count=touchpoint_count,
+        touchpoint_minutes=touchpoint_minutes,
+        touchpoint_gap_days=touchpoint_gap_days,
+        touchpoint_steps=touchpoint_steps or [],
     )
 
 
@@ -640,3 +653,140 @@ def test_multiple_tasks_force_scheduled_before_due_dates():
     assert task_b_info is not None
     assert task_b_info.planned_end is not None
     assert task_b_info.planned_end <= start_date + timedelta(days=2)
+
+
+def _get_task_days(schedule, task_id):
+    return [
+        day.date
+        for day in schedule.days
+        for alloc in day.task_allocations
+        if alloc.task_id == task_id
+    ]
+
+
+def test_subtasks_same_day_disallowed():
+    service = SchedulerService()
+    start_date = date.today()
+    parent = make_task("Parent")
+    sub_a = make_task(
+        "Subtask A",
+        parent_id=parent.id,
+        estimated_minutes=30,
+        same_day_allowed=False,
+    )
+    sub_b = make_task(
+        "Subtask B",
+        parent_id=parent.id,
+        estimated_minutes=30,
+        same_day_allowed=False,
+    )
+
+    schedule = service.build_schedule(
+        [parent, sub_a, sub_b],
+        capacity_hours=8,
+        start_date=start_date,
+        max_days=5,
+    )
+    days_a = _get_task_days(schedule, sub_a.id)
+    days_b = _get_task_days(schedule, sub_b.id)
+
+    assert days_a
+    assert days_b
+    assert min(days_a) != min(days_b)
+
+
+def test_subtasks_min_gap_days():
+    service = SchedulerService()
+    start_date = date.today()
+    parent = make_task("Parent")
+    sub_a = make_task(
+        "Subtask A",
+        parent_id=parent.id,
+        estimated_minutes=30,
+        due_date=datetime.combine(start_date + timedelta(days=1), datetime.min.time()),
+    )
+    sub_b = make_task(
+        "Subtask B",
+        parent_id=parent.id,
+        estimated_minutes=30,
+        min_gap_days=2,
+        due_date=datetime.combine(start_date + timedelta(days=4), datetime.min.time()),
+    )
+
+    schedule = service.build_schedule(
+        [parent, sub_a, sub_b],
+        capacity_hours=8,
+        start_date=start_date,
+        max_days=7,
+    )
+    days_a = _get_task_days(schedule, sub_a.id)
+    days_b = _get_task_days(schedule, sub_b.id)
+
+    assert days_a
+    assert days_b
+    assert (min(days_b) - min(days_a)).days >= 2
+
+
+def test_touchpoint_splits_across_days():
+    service = SchedulerService()
+    start_date = date.today()
+    task = make_task(
+        "Touchpoint task",
+        estimated_minutes=60,
+        touchpoint_count=3,
+    )
+
+    schedule = service.build_schedule([task], capacity_hours=8, start_date=start_date, max_days=7)
+    days = _get_task_days(schedule, task.id)
+
+    assert len(days) == 3
+    assert sum(
+        alloc.minutes
+        for day in schedule.days
+        for alloc in day.task_allocations
+        if alloc.task_id == task.id
+    ) == 60
+
+
+def test_touchpoint_gap_days():
+    service = SchedulerService()
+    start_date = date.today()
+    task = make_task(
+        "Touchpoint gap task",
+        estimated_minutes=30,
+        touchpoint_count=3,
+        touchpoint_gap_days=2,
+    )
+
+    schedule = service.build_schedule([task], capacity_hours=8, start_date=start_date, max_days=10)
+    days = _get_task_days(schedule, task.id)
+
+    assert len(days) == 3
+    assert (days[1] - days[0]).days >= 2
+    assert (days[2] - days[1]).days >= 2
+
+
+def test_warmup_prefers_low_energy_first():
+    service = SchedulerService()
+    start_date = date.today()
+    base_time = datetime.combine(start_date, datetime.min.time())
+    high_task = make_task(
+        "High energy",
+        energy_level=EnergyLevel.HIGH,
+        estimated_minutes=30,
+        created_at=base_time,
+    )
+    low_task = make_task(
+        "Low energy",
+        energy_level=EnergyLevel.LOW,
+        estimated_minutes=30,
+        created_at=base_time + timedelta(seconds=1),
+    )
+
+    schedule = service.build_schedule([high_task, low_task], capacity_hours=2, start_date=start_date, max_days=1)
+    first_allocation = next(
+        alloc for alloc in schedule.days[0].task_allocations
+        if alloc.task_id in {high_task.id, low_task.id}
+    )
+
+    assert first_allocation.task_id == low_task.id

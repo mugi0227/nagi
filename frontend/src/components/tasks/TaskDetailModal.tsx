@@ -1180,6 +1180,88 @@ ${filledSummary}${emptySummary}
                 </div>
               )}
 
+              {(localTask.touchpoint_count || localTask.touchpoint_minutes || (localTask.touchpoint_steps && localTask.touchpoint_steps.length > 0) || onUpdateTask) && (
+                <div className="sidebar-group">
+                  <h3 className="sidebar-label">Touchpoints</h3>
+                  <div className="sidebar-meta-list">
+                    <div className="sidebar-meta-item">
+                      <span className="label">Count</span>
+                      {onUpdateTask ? (
+                        <EditableSection
+                          value={localTask.touchpoint_count?.toString() || ''}
+                          onSave={async (newValue) => {
+                            const count = newValue ? parseInt(newValue, 10) : null;
+                            await handleFieldUpdate('touchpoint_count', count);
+                          }}
+                          placeholder="未設定"
+                          className="editable-number"
+                          renderView={(val) => (
+                            <span className="value">{val ? `${val}回` : '未設定'}</span>
+                          )}
+                        />
+                      ) : (
+                        <span className="value">
+                          {localTask.touchpoint_count ? `${localTask.touchpoint_count}回` : '未設定'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="sidebar-meta-item">
+                      <span className="label">Minutes</span>
+                      {onUpdateTask ? (
+                        <EditableSection
+                          value={localTask.touchpoint_minutes?.toString() || ''}
+                          onSave={async (newValue) => {
+                            const minutes = newValue ? parseInt(newValue, 10) : null;
+                            await handleFieldUpdate('touchpoint_minutes', minutes);
+                          }}
+                          placeholder="未設定"
+                          className="editable-number"
+                          renderView={(val) => (
+                            <span className="value">{val ? `${val}分` : '未設定'}</span>
+                          )}
+                        />
+                      ) : (
+                        <span className="value">
+                          {localTask.touchpoint_minutes ? `${localTask.touchpoint_minutes}分` : '未設定'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="sidebar-meta-item">
+                      <span className="label">Gap</span>
+                      {onUpdateTask ? (
+                        <EditableSection
+                          value={(localTask.touchpoint_gap_days ?? 0).toString()}
+                          onSave={async (newValue) => {
+                            const gap = newValue ? parseInt(newValue, 10) : 0;
+                            await handleFieldUpdate('touchpoint_gap_days', gap);
+                          }}
+                          placeholder="0"
+                          className="editable-number"
+                          renderView={(val) => (
+                            <span className="value">{val || '0'}日</span>
+                          )}
+                        />
+                      ) : (
+                        <span className="value">{localTask.touchpoint_gap_days ?? 0}日</span>
+                      )}
+                    </div>
+                    {(localTask.touchpoint_steps && localTask.touchpoint_steps.length > 0) && (
+                      <div className="sidebar-meta-item">
+                        <span className="label">Steps</span>
+                        <div className="value">
+                          {localTask.touchpoint_steps.map((step, index) => (
+                            <div key={`${step.title}-${index}`}>
+                              {index + 1}. {step.title}
+                              {step.estimated_minutes ? ` (${step.estimated_minutes}分)` : ''}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {(dependencies.length > 0 || onUpdateTask) && (
                 <div className="sidebar-group">
                   <h3 className="sidebar-label">依存関係</h3>
@@ -1395,6 +1477,48 @@ ${filledSummary}${emptySummary}
                         )}
                       </div>
                     )}
+                    <div className="subtask-schedule-item">
+                      <span className="metadata-label">Same day</span>
+                      {onUpdateTask ? (
+                        <EditableSegment
+                          value={selectedSubtask.same_day_allowed === false ? 'false' : 'true'}
+                          options={[
+                            { value: 'true', label: 'OK' },
+                            { value: 'false', label: 'NG' },
+                          ]}
+                          onSave={async (newValue) => {
+                            await handleSubtaskFieldUpdate(
+                              selectedSubtask.id,
+                              'same_day_allowed',
+                              newValue === 'true'
+                            );
+                          }}
+                        />
+                      ) : (
+                        <span className="metadata-value">
+                          {selectedSubtask.same_day_allowed === false ? 'NG' : 'OK'}
+                        </span>
+                      )}
+                    </div>
+                    <div className="subtask-schedule-item">
+                      <span className="metadata-label">Gap (days)</span>
+                      {onUpdateTask ? (
+                        <EditableSection
+                          value={(selectedSubtask.min_gap_days ?? 0).toString()}
+                          onSave={async (newValue) => {
+                            const gap = newValue ? parseInt(newValue, 10) : 0;
+                            await handleSubtaskFieldUpdate(selectedSubtask.id, 'min_gap_days', gap);
+                          }}
+                          placeholder="0"
+                          className="editable-number"
+                          renderView={(val) => (
+                            <span className="metadata-value">{val || '0'}日</span>
+                          )}
+                        />
+                      ) : (
+                        <span className="metadata-value">{selectedSubtask.min_gap_days ?? 0}日</span>
+                      )}
+                    </div>
                   </div>
                 </div>
               )}

@@ -62,6 +62,12 @@ async def run_migrations():
         if "order_in_parent" not in columns:
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN order_in_parent INTEGER"))
 
+        if "same_day_allowed" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN same_day_allowed BOOLEAN DEFAULT 1"))
+
+        if "min_gap_days" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN min_gap_days INTEGER DEFAULT 0"))
+
         if "recurring_meeting_id" not in columns:
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN recurring_meeting_id VARCHAR(36)"))
             await conn.execute(
@@ -73,6 +79,18 @@ async def run_migrations():
             await conn.execute(
                 text("CREATE INDEX IF NOT EXISTS idx_tasks_milestone_id ON tasks(milestone_id)")
             )
+
+        if "touchpoint_count" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN touchpoint_count INTEGER"))
+
+        if "touchpoint_minutes" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN touchpoint_minutes INTEGER"))
+
+        if "touchpoint_gap_days" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN touchpoint_gap_days INTEGER DEFAULT 0"))
+
+        if "touchpoint_steps" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN touchpoint_steps JSON"))
 
         # Achievement-related task fields
         if "completion_note" not in columns:

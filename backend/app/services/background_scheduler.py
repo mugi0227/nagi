@@ -67,6 +67,23 @@ class BackgroundScheduler:
         self._scheduler: Optional[AsyncIOScheduler] = None
         self._last_run: Optional[datetime] = None
 
+    @staticmethod
+    def _calculate_last_friday(now: Optional[datetime] = None) -> datetime:
+        """
+        Calculate the most recent Friday 00:00:00 UTC.
+
+        If it is currently Friday before 01:00, returns the *previous* Friday
+        to avoid racing with the scheduled cron job.
+        """
+        if now is None:
+            now = datetime.utcnow()
+        days_since_friday = (now.weekday() - 4) % 7  # 4 = Friday
+        if days_since_friday == 0 and now.hour < 1:
+            days_since_friday = 7
+        return (now - timedelta(days=days_since_friday)).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        )
+
     async def start(self):
         """Start the scheduler and check for missed runs."""
         settings = get_settings()
@@ -117,16 +134,7 @@ class BackgroundScheduler:
         - No AUTO achievement has been created since last Friday 00:00
         """
         now = datetime.utcnow()
-
-        # Calculate last Friday 00:00
-        days_since_friday = (now.weekday() - 4) % 7  # 4 = Friday
-        if days_since_friday == 0 and now.hour < 1:
-            # It's Friday but before 01:00, check previous Friday
-            days_since_friday = 7
-
-        last_friday = (now - timedelta(days=days_since_friday)).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        )
+        last_friday = self._calculate_last_friday(now)
 
         # Check personal achievements
         await self._check_and_run_missed_personal(now, last_friday)
@@ -160,7 +168,7 @@ class BackgroundScheduler:
 
         if needs_run:
             logger.info("Missed weekly personal achievement generation detected, running now...")
-            await self._run_weekly_achievement_generation()
+            await self._run_weekly_achievement_generation(last_friday)
         else:
             logger.info("No missed weekly personal achievement generation detected")
 
@@ -195,11 +203,11 @@ class BackgroundScheduler:
 
         if needs_run:
             logger.info("Missed weekly project achievement generation detected, running now...")
-            await self._run_weekly_project_achievement_generation()
+            await self._run_weekly_project_achievement_generation(last_friday)
         else:
             logger.info("No missed weekly project achievement generation detected")
 
-    async def _run_weekly_achievement_generation(self):
+    async def _run_weekly_achievement_generation(self, last_friday: Optional[datetime] = None):
         """
         Run weekly achievement generation for all users.
 
@@ -208,6 +216,9 @@ class BackgroundScheduler:
         - Error isolation (one user's failure doesn't affect others)
         - Only generates if there are new completed tasks
         """
+        if last_friday is None:
+            last_friday = self._calculate_last_friday()
+
         logger.info("Starting weekly achievement generation...")
 
         try:
@@ -226,7 +237,7 @@ class BackgroundScheduler:
                     await asyncio.sleep(delay)
 
                 try:
-                    result = await self._generate_weekly_for_user(str(user.id))
+                    result = await self._generate_weekly_for_user(str(user.id), last_friday)
                     if result:
                         generated_count += 1
                         logger.info(f"Generated weekly achievement for user {user.id}")
@@ -243,17 +254,20 @@ class BackgroundScheduler:
             )
 
             # Also generate project achievements
-            await self._run_weekly_project_achievement_generation()
+            await self._run_weekly_project_achievement_generation(last_friday)
 
             self._last_run = datetime.utcnow()
 
         except Exception as e:
             logger.error(f"Weekly achievement generation failed: {e}")
 
-    async def _run_weekly_project_achievement_generation(self):
+    async def _run_weekly_project_achievement_generation(self, last_friday: Optional[datetime] = None):
         """
         Run weekly project achievement generation for all projects.
         """
+        if last_friday is None:
+            last_friday = self._calculate_last_friday()
+
         logger.info("Starting weekly project achievement generation...")
 
         try:
@@ -271,9 +285,8 @@ class BackgroundScheduler:
             skipped_count = 0
             error_count = 0
 
-            now = datetime.utcnow()
-            period_start = now - timedelta(days=7)
-            period_end = now
+            period_end = last_friday
+            period_start = last_friday - timedelta(days=7)
 
             for i, project_id in enumerate(all_projects):
                 # Staggered processing
@@ -282,9 +295,9 @@ class BackgroundScheduler:
                     await asyncio.sleep(delay)
 
                 try:
-                    # Check if there's a recent project achievement
+                    # Check if latest achievement already covers this period
                     latest = await self._project_achievement_repo.get_latest(project_id)
-                    if latest and (now - latest.created_at).days < 7:
+                    if latest and latest.period_end >= last_friday:
                         skipped_count += 1
                         continue
 
@@ -323,30 +336,31 @@ class BackgroundScheduler:
         except Exception as e:
             logger.error(f"Weekly project achievement generation failed: {e}")
 
-    async def _generate_weekly_for_user(self, user_id: str) -> bool:
+    async def _generate_weekly_for_user(self, user_id: str, last_friday: datetime) -> bool:
         """
         Generate weekly achievement for a single user.
+
+        Args:
+            user_id: The user ID to generate for.
+            last_friday: The Friday 00:00 UTC boundary for this period's end.
 
         Returns:
             True if achievement was generated, False if skipped
         """
-        now = datetime.utcnow()
-
         # Get latest achievement to determine period
         latest = await self._achievement_repo.get_latest(user_id)
 
         if latest:
-            # Check if it's been at least 7 days
-            days_since = (now - latest.created_at).days
-            if days_since < 7:
-                return False  # Too soon
+            # Skip if latest achievement already covers this period
+            if latest.period_end >= last_friday:
+                return False
 
             period_start = latest.period_end
         else:
-            # First time: use last 7 days
-            period_start = now - timedelta(days=7)
+            # First time: use last 7 days from last_friday
+            period_start = last_friday - timedelta(days=7)
 
-        period_end = now
+        period_end = last_friday
 
         # Check if there are new completed tasks
         completed_tasks = await self._task_repo.list_completed_in_period(

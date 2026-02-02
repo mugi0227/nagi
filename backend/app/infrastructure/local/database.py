@@ -60,6 +60,8 @@ class TaskORM(Base):
     parent_id = Column(String(36), nullable=True, index=True)
     order_in_parent = Column(Integer, nullable=True)
     dependency_ids = Column(JSON, nullable=True, default=list)
+    same_day_allowed = Column(Boolean, default=True)
+    min_gap_days = Column(Integer, default=0)
     progress = Column(Integer, default=0, nullable=False)
     source_capture_id = Column(String(36), nullable=True)
     created_by = Column(String(10), default="USER")
@@ -76,6 +78,10 @@ class TaskORM(Base):
     meeting_notes = Column(Text, nullable=True)
     recurring_meeting_id = Column(String(36), nullable=True, index=True)
     milestone_id = Column(String(36), nullable=True, index=True)
+    touchpoint_count = Column(Integer, nullable=True)
+    touchpoint_minutes = Column(Integer, nullable=True)
+    touchpoint_gap_days = Column(Integer, default=0)
+    touchpoint_steps = Column(JSON, nullable=True, default=list)
 
     # Achievement-related fields
     completion_note = Column(Text, nullable=True)

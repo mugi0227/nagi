@@ -5,6 +5,7 @@ Handles task scheduling with capacity constraints and dependency resolution.
 """
 
 from datetime import date, datetime, timedelta
+import math
 from typing import Optional
 from uuid import UUID
 
@@ -384,6 +385,10 @@ class SchedulerService:
         default_assignee = current_user_id or "unassigned"
 
         all_task_map = {task.id: task for task in tasks}
+        subtasks_by_parent: dict[UUID, set[UUID]] = {}
+        for task in tasks:
+            if task.parent_id:
+                subtasks_by_parent.setdefault(task.parent_id, set()).add(task.id)
         effective_start_by_task, effective_due_by_task = self._get_effective_constraints(
             tasks,
             planned_window_by_task=planned_window_by_task,
@@ -397,6 +402,24 @@ class SchedulerService:
                 return None, None
             parent = all_task_map.get(task.parent_id)
             return task.parent_id, parent.title if parent else None
+
+        def is_touchpoint_task(task: Task) -> bool:
+            return bool(
+                task.touchpoint_count
+                or task.touchpoint_minutes
+                or task.touchpoint_gap_days
+                or task.touchpoint_steps
+            )
+
+        def get_touchpoint_limit(task: Task, total_minutes: int) -> Optional[int]:
+            if task.touchpoint_minutes:
+                return task.touchpoint_minutes
+            count = task.touchpoint_count or (len(task.touchpoint_steps) if task.touchpoint_steps else None)
+            if count:
+                return max(1, math.ceil(total_minutes / count))
+            if task.touchpoint_gap_days:
+                return min(total_minutes, self.default_task_minutes)
+            return None
 
         excluded_tasks: list[ExcludedTask] = []
         for task in tasks:
@@ -512,15 +535,21 @@ class SchedulerService:
             return not_before is None or not_before <= day
         
         remaining_minutes: dict[UUID, int] = {}
+        total_minutes_by_task: dict[UUID, int] = {}
+        last_scheduled_day_by_task: dict[UUID, date] = {}
         base_scores: dict[UUID, float] = {}
 
         for task in candidate_tasks:
             base_scores[task.id] = self._calculate_base_score(task, project_priorities)
 
         for task in scheduled_tasks:
+            total_minutes = get_effective_estimated_minutes(task, tasks)
+            if total_minutes <= 0:
+                total_minutes = self.default_task_minutes
+            total_minutes_by_task[task.id] = total_minutes
             minutes = get_remaining_minutes(task, tasks)
             if minutes <= 0:
-                minutes = get_effective_estimated_minutes(task, tasks)
+                minutes = total_minutes
             remaining_minutes[task.id] = minutes if minutes > 0 else self.default_task_minutes
 
         # Build dependency graph
@@ -588,6 +617,15 @@ class SchedulerService:
                     user_capacities[user_id] = max(0, user_capacities[user_id] - minutes)
 
             # Map meeting ID to allocations for reporting
+            energy_minutes = {
+                EnergyLevel.HIGH: meeting_minutes,
+                EnergyLevel.MEDIUM: 0,
+                EnergyLevel.LOW: 0,
+            }
+            warmup_pending = True
+            cooldown_for_high = False
+            scheduled_today_by_parent: dict[UUID, set[UUID]] = {}
+            touchpoint_allocated_today: set[UUID] = set()
             allocations: list[TaskAllocation] = []
 
             for meeting in day_meetings:
@@ -619,19 +657,44 @@ class SchedulerService:
             for tid in pinned_for_day:
                 if tid not in task_start:
                     task_start[tid] = day_cursor
+                task = task_map.get(tid)
+                total_minutes = total_minutes_by_task.get(tid, self.default_task_minutes)
+                limit = get_touchpoint_limit(task, total_minutes) if task else None
                 force_mins = remaining_minutes[tid]
+                if limit:
+                    force_mins = min(force_mins, limit)
                 allocations.append(TaskAllocation(task_id=tid, minutes=force_mins))
                 assignee = assignment_map.get(tid, default_assignee)
                 user_capacities[assignee] = max(0, user_capacities.get(assignee, 0) - force_mins)
                 pinned_allocated_minutes += force_mins
-                remaining_minutes[tid] = 0
-                task_end[tid] = day_cursor
-                remaining_task_ids.discard(tid)
-                if tid in in_progress:
-                    in_progress.remove(tid)
-                if tid in ready:
-                    ready.remove(tid)
-                self._release_dependents(tid, indegree, dependents, ready)
+                if task and task.energy_level in energy_minutes:
+                    energy_minutes[task.energy_level] += force_mins
+                if task and task.parent_id:
+                    scheduled_today_by_parent.setdefault(task.parent_id, set()).add(tid)
+                if task and is_touchpoint_task(task):
+                    touchpoint_allocated_today.add(tid)
+                last_scheduled_day_by_task[tid] = day_cursor
+                remaining_minutes[tid] = max(0, remaining_minutes[tid] - force_mins)
+                if remaining_minutes[tid] <= 0:
+                    task_end[tid] = day_cursor
+                    remaining_task_ids.discard(tid)
+                    if tid in in_progress:
+                        in_progress.remove(tid)
+                    if tid in ready:
+                        ready.remove(tid)
+                    self._release_dependents(tid, indegree, dependents, ready)
+                else:
+                    task_end[tid] = day_cursor
+                    if tid in ready:
+                        ready.remove(tid)
+                    if tid not in in_progress:
+                        in_progress.append(tid)
+                if warmup_pending:
+                    warmup_pending = False
+                if task and task.energy_level == EnergyLevel.HIGH:
+                    cooldown_for_high = True
+                elif task and task.energy_level == EnergyLevel.LOW:
+                    cooldown_for_high = False
 
             # 2. Schedule Ready Tasks
             # We loop until no more tasks can be scheduled today for ANY user
@@ -646,6 +709,33 @@ class SchedulerService:
             }
 
             allocated_minutes_total = 0
+
+            def can_schedule_today(task_id: UUID) -> bool:
+                task = task_map.get(task_id)
+                if not task:
+                    return False
+                if task.parent_id:
+                    siblings_today = scheduled_today_by_parent.get(task.parent_id, set()) - {task_id}
+                    if not task.same_day_allowed and siblings_today:
+                        return False
+                    gap_days = task.min_gap_days or 0
+                    if gap_days > 0:
+                        sibling_days = [
+                            last_scheduled_day_by_task.get(sid)
+                            for sid in subtasks_by_parent.get(task.parent_id, set())
+                            if sid != task_id and last_scheduled_day_by_task.get(sid)
+                        ]
+                        if sibling_days and (day_cursor - max(sibling_days)).days < gap_days:
+                            return False
+                if is_touchpoint_task(task):
+                    if task_id in touchpoint_allocated_today:
+                        return False
+                    gap_days = task.touchpoint_gap_days or 0
+                    if gap_days > 0:
+                        last_day = last_scheduled_day_by_task.get(task_id)
+                        if last_day and (day_cursor - last_day).days < gap_days:
+                            return False
+                return True
             
             while True:
                 # Find available tasks
@@ -658,15 +748,33 @@ class SchedulerService:
                     assignee = assignment_map.get(tid, default_assignee)
                     return user_capacities.get(assignee, 0) > 0
 
-                candidates_ip = [t for t in available_in_progress if has_capacity(t)]
-                candidates_rd = [t for t in available_ready if has_capacity(t)]
+                candidates_ip = [
+                    t for t in available_in_progress if has_capacity(t) and can_schedule_today(t)
+                ]
+                candidates_rd = [
+                    t for t in available_ready if has_capacity(t) and can_schedule_today(t)
+                ]
 
                 if not candidates_ip and not candidates_rd:
                     break
 
                 # Pick best task
                 candidate_pool = candidates_ip if candidates_ip else candidates_rd
-                next_id = self._pick_next_task(candidate_pool, day_scores, task_map, {EnergyLevel.HIGH: 0, EnergyLevel.MEDIUM: 0, EnergyLevel.LOW: 0}) # energy skipped for now
+                if warmup_pending:
+                    low_candidates = [
+                        tid for tid in candidate_pool
+                        if task_map[tid].energy_level == EnergyLevel.LOW
+                    ]
+                    if low_candidates:
+                        candidate_pool = low_candidates
+                if cooldown_for_high:
+                    low_candidates = [
+                        tid for tid in candidate_pool
+                        if task_map[tid].energy_level == EnergyLevel.LOW
+                    ]
+                    if low_candidates:
+                        candidate_pool = low_candidates
+                next_id = self._pick_next_task(candidate_pool, day_scores, task_map, energy_minutes)
                 
                 minutes_left = remaining_minutes.get(next_id, 0)
                 if minutes_left <= 0:
@@ -681,7 +789,12 @@ class SchedulerService:
                 assignee = assignment_map.get(next_id, default_assignee)
                 cap = user_capacities.get(assignee, 0)
                 
+                task = task_map[next_id]
+                total_minutes = total_minutes_by_task.get(next_id, self.default_task_minutes)
+                limit = get_touchpoint_limit(task, total_minutes)
                 allocation = min(cap, minutes_left)
+                if limit:
+                    allocation = min(allocation, limit)
                 
                 if next_id not in task_start:
                     task_start[next_id] = day_cursor
@@ -691,6 +804,19 @@ class SchedulerService:
                 user_capacities[assignee] -= allocation
                 remaining_minutes[next_id] -= allocation
                 allocated_minutes_total += allocation
+                if task.energy_level in energy_minutes:
+                    energy_minutes[task.energy_level] += allocation
+                if task.parent_id:
+                    scheduled_today_by_parent.setdefault(task.parent_id, set()).add(next_id)
+                if is_touchpoint_task(task):
+                    touchpoint_allocated_today.add(next_id)
+                last_scheduled_day_by_task[next_id] = day_cursor
+                if warmup_pending:
+                    warmup_pending = False
+                if task.energy_level == EnergyLevel.HIGH:
+                    cooldown_for_high = True
+                elif task.energy_level == EnergyLevel.LOW:
+                    cooldown_for_high = False
 
                 if remaining_minutes[next_id] <= 0:
                     task_end[next_id] = day_cursor
@@ -720,6 +846,20 @@ class SchedulerService:
                     force_mins = remaining_minutes[tid]
                     allocations.append(TaskAllocation(task_id=tid, minutes=force_mins))
                     forced_overflow_minutes += force_mins
+                    task = task_map.get(tid)
+                    if task and task.energy_level in energy_minutes:
+                        energy_minutes[task.energy_level] += force_mins
+                    if task and task.parent_id:
+                        scheduled_today_by_parent.setdefault(task.parent_id, set()).add(tid)
+                    if task and is_touchpoint_task(task):
+                        touchpoint_allocated_today.add(tid)
+                    last_scheduled_day_by_task[tid] = day_cursor
+                    if warmup_pending:
+                        warmup_pending = False
+                    if task and task.energy_level == EnergyLevel.HIGH:
+                        cooldown_for_high = True
+                    elif task and task.energy_level == EnergyLevel.LOW:
+                        cooldown_for_high = False
 
                     task_end[tid] = day_cursor
                     remaining_minutes[tid] = 0

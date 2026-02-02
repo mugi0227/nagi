@@ -71,6 +71,8 @@ export interface Task {
   parent_id?: string;
   order_in_parent?: number;
   dependency_ids: string[];
+  same_day_allowed: boolean;
+  min_gap_days: number;
   source_capture_id?: string;
   created_by: CreatedBy;
   created_at: string;
@@ -89,6 +91,10 @@ export interface Task {
   meeting_notes?: string;
   recurring_meeting_id?: string;
   milestone_id?: string;
+  touchpoint_count?: number;
+  touchpoint_minutes?: number;
+  touchpoint_gap_days: number;
+  touchpoint_steps: TouchpointStep[];
 
   // Subtask guide field
   guide?: string;
@@ -96,6 +102,12 @@ export interface Task {
   // Completion fields
   completion_note?: string;
   completed_at?: string;
+}
+
+export interface TouchpointStep {
+  title: string;
+  guide?: string;
+  estimated_minutes?: number;
 }
 
 export interface TaskCreate {
@@ -113,6 +125,8 @@ export interface TaskCreate {
   parent_id?: string;
   order_in_parent?: number;
   dependency_ids?: string[];
+  same_day_allowed?: boolean;
+  min_gap_days?: number;
   source_capture_id?: string;
   // Meeting/Fixed-time event fields
   start_time?: string;
@@ -123,6 +137,10 @@ export interface TaskCreate {
   attendees?: string[];
   meeting_notes?: string;
   milestone_id?: string;
+  touchpoint_count?: number;
+  touchpoint_minutes?: number;
+  touchpoint_gap_days?: number;
+  touchpoint_steps?: TouchpointStep[];
 
   // Subtask guide field
   guide?: string;
@@ -145,6 +163,8 @@ export interface TaskUpdate {
   parent_id?: string;
   order_in_parent?: number;
   dependency_ids?: string[];
+  same_day_allowed?: boolean;
+  min_gap_days?: number;
   progress?: number;
   // Meeting fields
   start_time?: string;
@@ -155,6 +175,10 @@ export interface TaskUpdate {
   attendees?: string[];
   meeting_notes?: string;
   milestone_id?: string;
+  touchpoint_count?: number;
+  touchpoint_minutes?: number;
+  touchpoint_gap_days?: number;
+  touchpoint_steps?: TouchpointStep[];
 
   // Subtask guide field
   guide?: string;

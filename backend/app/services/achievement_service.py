@@ -855,7 +855,7 @@ async def check_and_auto_generate(
     Check if auto-generation is needed and generate if so.
 
     Auto-generates weekly achievement if:
-    - Last achievement was more than 7 days ago (or never)
+    - The latest achievement does not cover the most recent Friday period
     - There are new DONE tasks since last achievement
 
     Args:
@@ -869,23 +869,31 @@ async def check_and_auto_generate(
     """
     from datetime import timedelta
 
+    now = datetime.utcnow()
+
+    # Calculate last Friday 00:00 UTC
+    days_since_friday = (now.weekday() - 4) % 7  # 4 = Friday
+    if days_since_friday == 0 and now.hour < 1:
+        days_since_friday = 7
+    last_friday = (now - timedelta(days=days_since_friday)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
     # Get latest achievement
     latest = await achievement_repo.get_latest(user_id)
 
     # Determine period
-    now = datetime.utcnow()
     if latest:
-        # Check if it's been at least 7 days
-        days_since = (now - latest.created_at).days
-        if days_since < 7:
-            return None  # Too soon
+        # Skip if latest achievement already covers this period
+        if latest.period_end >= last_friday:
+            return None
 
         period_start = latest.period_end
     else:
-        # First time: use last 7 days
-        period_start = now - timedelta(days=7)
+        # First time: use last 7 days from last_friday
+        period_start = last_friday - timedelta(days=7)
 
-    period_end = now
+    period_end = last_friday
 
     # Check if there are new completed tasks
     completed_tasks = await task_repo.list_completed_in_period(
