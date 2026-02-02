@@ -670,11 +670,28 @@ export function ScheduleOverviewCard({
               Math.round(getCapacityForDate(dayDate.toJSDate()) * 60)
             );
             const displayCapacity = baseCapacityMinutes || capacity;
+            const meetingMinutes = effectiveDay.meeting_minutes ?? 0;
+            const taskMinutes = Math.max(0, allocated - meetingMinutes);
+            const totalCommittedMinutes = taskMinutes + meetingMinutes;
+            const meetingMinutesWithin = Math.min(meetingMinutes, displayCapacity);
+            const taskMinutesWithin = Math.min(
+              taskMinutes,
+              Math.max(0, displayCapacity - meetingMinutesWithin),
+            );
+            const taskPercent = displayCapacity
+              ? Math.min(100, Math.round((taskMinutesWithin / displayCapacity) * 100))
+              : 0;
+            const meetingPercent = displayCapacity
+              ? Math.min(100, Math.round((meetingMinutesWithin / displayCapacity) * 100))
+              : 0;
             const percent = displayCapacity
-              ? Math.min(100, Math.round((allocated / displayCapacity) * 100))
+              ? Math.min(100, Math.round((totalCommittedMinutes / displayCapacity) * 100))
               : 0;
             const isToday = dayKey === todayKey;
-            const hasOverflow = effectiveDay.overflow_minutes > 0;
+            const hasOverflow = totalCommittedMinutes > displayCapacity || effectiveDay.overflow_minutes > 0;
+            const capacityLabel = meetingMinutes > 0
+              ? `タスク${formatMinutes(taskMinutes)} + 会議${formatMinutes(meetingMinutes)} / ${formatMinutes(displayCapacity)}`
+              : `${formatMinutes(taskMinutes)} / ${formatMinutes(displayCapacity)}`;
             const dayGroups = new Map<string, ScheduleGroup>();
 
             effectiveDay.task_allocations.forEach(allocation => {
@@ -715,7 +732,7 @@ export function ScheduleOverviewCard({
                   </div>
                   <div className="schedule-day-meta">
                     <span className="schedule-day-capacity">
-                      {formatMinutes(allocated)} / {formatMinutes(displayCapacity)}
+                      {capacityLabel}
                     </span>
                     <span className={`schedule-day-pill ${hasOverflow ? 'warn' : ''}`}>
                       {percent}%
@@ -724,7 +741,16 @@ export function ScheduleOverviewCard({
                 </div>
 
                 <div className="schedule-day-bar">
-                  <div className="schedule-day-fill" style={{ width: `${percent}%` }} />
+                  <div
+                    className={`schedule-day-fill-task ${hasOverflow ? 'overflow' : ''}`}
+                    style={{ width: `${taskPercent}%` }}
+                  />
+                  {meetingPercent > 0 && (
+                    <div
+                      className="schedule-day-fill-meeting"
+                      style={{ width: `${meetingPercent}%` }}
+                    />
+                  )}
                 </div>
 
                 {/* Capacity breakdown for days with meetings */}
@@ -734,10 +760,6 @@ export function ScheduleOverviewCard({
                       <FaCalendarAlt className="breakdown-icon" />
                       <span className="breakdown-label">会議</span>
                       <span className="breakdown-value">{formatMinutes(effectiveDay.meeting_minutes)}</span>
-                    </div>
-                    <div className="breakdown-item available">
-                      <span className="breakdown-label">作業可能</span>
-                      <span className="breakdown-value">{formatMinutes(effectiveDay.available_minutes)}</span>
                     </div>
                   </div>
                 )}

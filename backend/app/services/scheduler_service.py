@@ -796,6 +796,7 @@ class SchedulerService:
         allocated_minutes = 0
         overflow_minutes = 0
         capacity_minutes = 0
+        meeting_minutes = 0
         allocation_minutes_by_task: dict[UUID, int] = {}
 
         if today_day:
@@ -814,6 +815,7 @@ class SchedulerService:
             allocated_minutes = sum(allocation_minutes_by_task.values())
             overflow_minutes = today_day.overflow_minutes
             capacity_minutes = today_day.capacity_minutes
+            meeting_minutes = today_day.meeting_minutes
 
         today_tasks = [task_map[task_id] for task_id in today_task_ids if task_id in task_map]
         today_allocations: list[TodayTaskAllocation] = []
@@ -887,6 +889,7 @@ class SchedulerService:
             top3_ids=top3_ids,
             total_estimated_minutes=allocated_minutes,
             capacity_minutes=capacity_minutes,
+            meeting_minutes=meeting_minutes,
             overflow_minutes=overflow_minutes,
             overflow=overflow_minutes > 0,
         )

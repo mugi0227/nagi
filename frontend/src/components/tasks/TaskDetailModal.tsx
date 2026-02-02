@@ -127,6 +127,7 @@ export function TaskDetailModal({
   const [localProgress, setLocalProgress] = useState<number>(task.progress ?? 0);
   const [localStatus, setLocalStatus] = useState<string>(task.status);
   const [localSubtasks, setLocalSubtasks] = useState<Task[]>(subtasks);
+  const [localSubtaskProgress, setLocalSubtaskProgress] = useState<number>(0);
   const [fetchedProject, setFetchedProject] = useState<Project | null>(null);
   const [fetchedPhase, setFetchedPhase] = useState<Phase | null>(null);
 
@@ -141,6 +142,11 @@ export function TaskDetailModal({
   useEffect(() => {
     setLocalTask(task);
   }, [task]);
+
+  // Sync subtask progress when selected subtask changes
+  useEffect(() => {
+    setLocalSubtaskProgress(selectedSubtask?.progress ?? 0);
+  }, [selectedSubtask]);
 
   // Handler for inline field updates
   const handleFieldUpdate = async (field: keyof TaskUpdate, value: unknown) => {
@@ -1283,6 +1289,30 @@ ${filledSummary}${emptySummary}
                     )}
                   </div>
                 </div>
+                {onUpdateTask && (
+                  <div className="subtask-progress-section">
+                    <div className="progress-header">
+                      <span className="metadata-label">進捗率</span>
+                      <span className="progress-val">{localSubtaskProgress}%</span>
+                    </div>
+                    <div className="progress-control">
+                      <div className="progress-bar-container">
+                        <div className="progress-bar-fill" style={{ width: `${localSubtaskProgress}%` }} />
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          step="5"
+                          value={localSubtaskProgress}
+                          onChange={(e) => setLocalSubtaskProgress(parseInt(e.target.value, 10))}
+                          onMouseUp={() => handleSubtaskFieldUpdate(selectedSubtask.id, 'progress', localSubtaskProgress)}
+                          onTouchEnd={() => handleSubtaskFieldUpdate(selectedSubtask.id, 'progress', localSubtaskProgress)}
+                          className="progress-slider"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
                 {memberOptions.length > 0 && onAssigneeChange && (
                   <div className="subtask-assignee-section">
                     <span className="metadata-label"><FaUser /> 担当者</span>

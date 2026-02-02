@@ -697,6 +697,7 @@ export interface TodayTasksResponse {
   top3_ids: string[];
   total_estimated_minutes: number;
   capacity_minutes: number;
+  meeting_minutes: number;
   overflow_minutes: number;
   overflow: boolean;
 }

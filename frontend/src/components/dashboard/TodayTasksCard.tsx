@@ -202,6 +202,7 @@ export function TodayTasksCard({ onTaskClick }: TodayTasksCardProps) {
   };
 
   const allocatedMinutes = data?.total_estimated_minutes ?? 0;
+  const meetingMinutes = data?.meeting_minutes ?? 0;
   const displayCapacityMinutes = Math.max(
     0,
     Math.round(getCapacityForDate(todayInTimezone(timezone).toJSDate()) * 60)
@@ -245,10 +246,19 @@ export function TodayTasksCard({ onTaskClick }: TodayTasksCardProps) {
     : (lockInfo
       ? effectiveTodayTasks.reduce((sum, task) => sum + (task.estimated_minutes ?? 0), 0)
       : allocatedMinutes);
-  const capacityPercent = displayCapacityMinutes
-    ? Math.min(100, Math.round((displayAllocatedMinutes / displayCapacityMinutes) * 100))
+  const totalCommittedMinutes = displayAllocatedMinutes + meetingMinutes;
+  const meetingMinutesWithin = Math.min(meetingMinutes, displayCapacityMinutes);
+  const taskMinutesWithin = Math.min(
+    displayAllocatedMinutes,
+    Math.max(0, displayCapacityMinutes - meetingMinutesWithin),
+  );
+  const taskPercent = displayCapacityMinutes
+    ? Math.min(100, Math.round((taskMinutesWithin / displayCapacityMinutes) * 100))
     : 0;
-  const isOverflow = capacityPercent > 100 || (data?.overflow ?? false);
+  const meetingPercent = displayCapacityMinutes
+    ? Math.min(100, Math.round((meetingMinutesWithin / displayCapacityMinutes) * 100))
+    : 0;
+  const isOverflow = totalCommittedMinutes > displayCapacityMinutes || (data?.overflow ?? false);
 
   useEffect(() => {
     const tasksForDependencyScan = lockInfo ? (lockedTasks ?? []) : todayTasks;
@@ -401,6 +411,12 @@ export function TodayTasksCard({ onTaskClick }: TodayTasksCardProps) {
   const focusStepNumber = focusTask ? stepNumberByTaskId.get(focusTask.id) : undefined;
 
   const isLocked = Boolean(lockInfo);
+  const allocatedLabel = formatMinutes(displayAllocatedMinutes);
+  const capacityTotalLabel = formatMinutes(displayCapacityMinutes);
+  const meetingLabel = formatMinutes(meetingMinutes);
+  const capacityLabel = meetingMinutes > 0
+    ? `タスク${allocatedLabel} + 会議${meetingLabel} / ${capacityTotalLabel}`
+    : `${allocatedLabel} / ${capacityTotalLabel}`;
 
   const handleToggleLock = () => {
     if (isLocked) {
@@ -485,7 +501,7 @@ export function TodayTasksCard({ onTaskClick }: TodayTasksCardProps) {
         </div>
         <div className="today-actions">
           <span className="capacity-text">
-            {formatMinutes(displayAllocatedMinutes)} / {formatMinutes(displayCapacityMinutes)}
+            {capacityLabel}
           </span>
           <button
             type="button"
@@ -501,9 +517,15 @@ export function TodayTasksCard({ onTaskClick }: TodayTasksCardProps) {
       {/* Capacity Bar */}
       <div className="capacity-bar-wrapper">
         <div
-          className={`capacity-bar-fill ${isOverflow ? 'overflow' : ''}`}
-          style={{ width: `${Math.min(capacityPercent, 100)}%` }}
+          className={`capacity-bar-tasks ${isOverflow ? 'overflow' : ''}`}
+          style={{ width: `${taskPercent}%` }}
         />
+        {meetingPercent > 0 && (
+          <div
+            className="capacity-bar-meetings"
+            style={{ width: `${meetingPercent}%` }}
+          />
+        )}
       </div>
 
       {/* Focus Section (1st task) */}

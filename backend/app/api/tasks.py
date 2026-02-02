@@ -18,6 +18,7 @@ from app.api.deps import (
     ScheduleSnapshotRepo,
     TaskAssignmentRepo,
     TaskRepo,
+    UserRepo,
 )
 from app.core.exceptions import BusinessLogicError, NotFoundError
 from app.models.collaboration import (
@@ -34,6 +35,7 @@ from app.models.task import Task, TaskCreate, TaskUpdate
 from app.models.enums import CreatedBy, ProjectVisibility
 from app.services.scheduler_service import SchedulerService
 from app.utils.dependency_validator import DependencyValidator
+from app.utils.datetime_utils import get_user_today
 
 router = APIRouter()
 
@@ -360,6 +362,7 @@ async def get_today_tasks(
     project_repo: ProjectRepo,
     assignment_repo: TaskAssignmentRepo,
     snapshot_repo: ScheduleSnapshotRepo,
+    user_repo: UserRepo,
     scheduler_service: SchedulerService = Depends(get_scheduler_service),
     target_date: Optional[date] = Query(None, description="Target date (default: today)"),
     capacity_hours: Optional[float] = Query(None, description="Daily capacity in hours (default: 8)"),
@@ -373,6 +376,16 @@ async def get_today_tasks(
     apply_plan_constraints: bool = Query(True, description="Apply project plan windows"),
 ):
     """Get today's tasks derived from the schedule."""
+    resolved_date = target_date
+    if resolved_date is None:
+        user_timezone = "Asia/Tokyo"
+        try:
+            user_account = await user_repo.get(UUID(user.id))
+        except (TypeError, ValueError):
+            user_account = None
+        if user_account and user_account.timezone:
+            user_timezone = user_account.timezone
+        resolved_date = get_user_today(user_timezone)
     tasks = await repo.list(user.id, include_done=True, limit=1000)
     project_priorities = await load_project_priorities(project_repo, user.id)
     parsed_weekly = parse_capacity_by_weekday(capacity_by_weekday)
@@ -395,7 +408,7 @@ async def get_today_tasks(
     schedule = scheduler_service.build_schedule(
         tasks,
         project_priorities=project_priorities,
-        start_date=target_date,
+        start_date=resolved_date,
         capacity_hours=effective_capacity,
         capacity_by_weekday=effective_weekly,
         max_days=max_days,
@@ -408,7 +421,7 @@ async def get_today_tasks(
         schedule,
         tasks,
         project_priorities=project_priorities,
-        today=target_date or date.today(),
+        today=resolved_date,
     )
 
 

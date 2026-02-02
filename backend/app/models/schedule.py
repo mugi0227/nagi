@@ -93,5 +93,6 @@ class TodayTasksResponse(BaseModel):
     top3_ids: list[UUID]
     total_estimated_minutes: int
     capacity_minutes: int
+    meeting_minutes: int = 0
     overflow_minutes: int
     overflow: bool

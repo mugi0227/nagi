@@ -75,18 +75,29 @@
 .capacity-bar-wrapper {
   height: 3px;
   background: rgba(148, 163, 184, 0.15);
+  display: flex;
+  overflow: hidden;
 }
 
-.capacity-bar-fill {
+.capacity-bar-tasks {
   height: 100%;
   background: linear-gradient(90deg, var(--primary), var(--accent-green));
   transition: width 0.3s ease;
 }
 
-.capacity-bar-fill.overflow {
+.capacity-bar-tasks.overflow {
   background: linear-gradient(90deg, var(--accent-orange), #ef4444);
 }
 
+.capacity-bar-meetings {
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(102, 126, 234, 0.9),
+    rgba(118, 75, 162, 0.9)
+  );
+  transition: width 0.3s ease;
+}
 /* ===== Focus Section (ADHD Enhanced) ===== */
 .focus-section {
   padding: 24px 20px;
