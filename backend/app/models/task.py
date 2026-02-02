@@ -34,6 +34,10 @@ class TaskBase(BaseModel):
         None,
         description="着手可能日時（この日時より前は着手できない）",
     )
+    pinned_date: Optional[datetime] = Field(
+        None,
+        description="ユーザー指定の実施希望日（この日に強制配置、キャパオーバーでも表示）",
+    )
     parent_id: Optional[UUID] = Field(None, description="親タスクID（サブタスクの場合）")
     order_in_parent: Optional[int] = Field(
         None, ge=1, description="親タスク内での順序（1から始まる連番、サブタスクの場合のみ）"
@@ -124,6 +128,7 @@ class TaskUpdate(BaseModel):
     estimated_minutes: Optional[int] = Field(None, ge=1)
     due_date: Optional[datetime] = None
     start_not_before: Optional[datetime] = None
+    pinned_date: Optional[datetime] = None
     parent_id: Optional[UUID] = None
     order_in_parent: Optional[int] = Field(None, ge=1, description="親タスク内での順序")
     dependency_ids: Optional[list[UUID]] = None

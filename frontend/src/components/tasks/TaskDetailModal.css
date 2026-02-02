@@ -142,6 +142,35 @@
   color: var(--text-main);
 }
 
+.do-today-header-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: 10px;
+  background: rgba(14, 165, 233, 0.1);
+  color: var(--primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.do-today-header-btn:hover {
+  background: rgba(14, 165, 233, 0.2);
+}
+
+.do-today-header-btn:active {
+  background: var(--primary);
+  color: white;
+}
+
+[data-theme="dark"] .do-today-header-btn {
+  background: rgba(14, 165, 233, 0.15);
+}
+
 /* Body Layout */
 .modal-body-wrapper {
   display: flex;

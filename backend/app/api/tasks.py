@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.api.deps import (
     BlockerRepo,
     CurrentUser,
+    PostponeRepo,
     ProjectRepo,
     ScheduleSnapshotRepo,
     TaskAssignmentRepo,
@@ -30,6 +31,7 @@ from app.models.collaboration import (
     TaskAssignmentsCreate,
     TaskAssignmentUpdate,
 )
+from app.models.postpone import DoTodayRequest, PostponeEvent, PostponeRequest, PostponeStats
 from app.models.schedule import ScheduleResponse, TodayTasksResponse
 from app.models.task import Task, TaskCreate, TaskUpdate
 from app.models.enums import CreatedBy, ProjectVisibility
@@ -425,6 +427,41 @@ async def get_today_tasks(
     )
 
 
+@router.get("/postpone-stats", response_model=PostponeStats)
+async def get_postpone_stats(
+    user: CurrentUser,
+    postpone_repo: PostponeRepo,
+    repo: TaskRepo,
+    days: int = Query(7, ge=1, le=90, description="集計期間（日数）"),
+):
+    """Get aggregate postponement statistics for the user."""
+    from datetime import timedelta
+
+    since = date.today() - timedelta(days=days)
+    events = await postpone_repo.list_by_user(user.id, since=since)
+
+    task_counts: dict[UUID, int] = {}
+    for event in events:
+        task_counts[event.task_id] = task_counts.get(event.task_id, 0) + 1
+
+    from app.models.postpone import PostponeTaskSummary
+
+    most_postponed = []
+    sorted_tasks = sorted(task_counts.items(), key=lambda x: x[1], reverse=True)[:5]
+    for tid, count in sorted_tasks:
+        task = await repo.get_by_id(user.id, tid)
+        title = task.title if task else "不明"
+        most_postponed.append(
+            PostponeTaskSummary(task_id=tid, task_title=title, postpone_count=count)
+        )
+
+    return PostponeStats(
+        total_postpones=len(events),
+        unique_tasks=len(task_counts),
+        most_postponed=most_postponed,
+    )
+
+
 @router.get("/{task_id}", response_model=Task)
 async def get_task(
     task_id: UUID,
@@ -775,4 +812,100 @@ async def update_task_blocker(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(exc),
         )
+
+
+# ===========================================
+# Postpone / Do-Today Endpoints
+# ===========================================
+
+
+@router.post("/{task_id}/postpone", response_model=Task)
+async def postpone_task(
+    task_id: UUID,
+    request: PostponeRequest,
+    user: CurrentUser,
+    repo: TaskRepo,
+    project_repo: ProjectRepo,
+    postpone_repo: PostponeRepo,
+    user_repo: UserRepo,
+):
+    """Postpone a task to a later date."""
+    task, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+
+    # Calculate "from" date (today in user's timezone)
+    user_timezone = "Asia/Tokyo"
+    user_account = await user_repo.get(UUID(user.id))
+    if user_account and user_account.timezone:
+        user_timezone = user_account.timezone
+    from_date = get_user_today(user_timezone)
+
+    # Record postpone event
+    await postpone_repo.create(
+        user_id=owner_user_id,
+        task_id=task_id,
+        from_date=from_date,
+        to_date=request.to_date,
+        reason=request.reason,
+        pinned=request.pin,
+    )
+
+    # Build update: set start_not_before to target date
+    from datetime import datetime as dt
+    target_datetime = dt.combine(request.to_date, dt.min.time())
+    update_data = TaskUpdate(start_not_before=target_datetime)
+
+    if request.pin:
+        update_data.pinned_date = target_datetime
+    else:
+        # Clear any existing pin when not pinning
+        update_data.pinned_date = None
+
+    return await repo.update(owner_user_id, task_id, update_data)
+
+
+@router.post("/{task_id}/do-today", response_model=Task)
+async def do_today(
+    task_id: UUID,
+    request: DoTodayRequest,
+    user: CurrentUser,
+    repo: TaskRepo,
+    project_repo: ProjectRepo,
+    user_repo: UserRepo,
+):
+    """Pull a task into today's schedule."""
+    task, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+
+    user_timezone = "Asia/Tokyo"
+    user_account = await user_repo.get(UUID(user.id))
+    if user_account and user_account.timezone:
+        user_timezone = user_account.timezone
+    today = get_user_today(user_timezone)
+    from datetime import datetime as dt
+    today_datetime = dt.combine(today, dt.min.time())
+
+    update_data = TaskUpdate()
+
+    # Clear future start_not_before if it's blocking today
+    if task.start_not_before and task.start_not_before.date() > today:
+        update_data.start_not_before = today_datetime
+
+    if request.pin:
+        update_data.pinned_date = today_datetime
+
+    return await repo.update(owner_user_id, task_id, update_data)
+
+
+@router.get("/{task_id}/postpone-history", response_model=list[PostponeEvent])
+async def get_postpone_history(
+    task_id: UUID,
+    user: CurrentUser,
+    repo: TaskRepo,
+    postpone_repo: PostponeRepo,
+    project_repo: ProjectRepo,
+):
+    """Get postponement history for a specific task."""
+    await _get_task_or_404(user, repo, task_id, project_repo)
+    return await postpone_repo.list_by_task(user.id, task_id)
+
+
 

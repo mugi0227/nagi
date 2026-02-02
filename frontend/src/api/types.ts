@@ -67,6 +67,7 @@ export interface Task {
   estimated_minutes?: number;
   due_date?: string;
   start_not_before?: string;
+  pinned_date?: string;
   parent_id?: string;
   order_in_parent?: number;
   dependency_ids: string[];
@@ -140,6 +141,7 @@ export interface TaskUpdate {
   estimated_minutes?: number;
   due_date?: string;
   start_not_before?: string;
+  pinned_date?: string;
   parent_id?: string;
   order_in_parent?: number;
   dependency_ids?: string[];
@@ -163,6 +165,17 @@ export interface TaskUpdate {
 
 export interface TaskWithSubtasks extends Task {
   subtasks: Task[];
+}
+
+// Postpone / Do-Today models
+export interface PostponeRequest {
+  to_date: string;
+  pin?: boolean;
+  reason?: string;
+}
+
+export interface DoTodayRequest {
+  pin?: boolean;
 }
 
 // Chat models

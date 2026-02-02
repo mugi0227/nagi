@@ -45,13 +45,10 @@ const TEXT = {
   dueOver: '\u671f\u9650\u8d85\u904e',
   parentUnknown: '\u89aa\u30bf\u30b9\u30af\u4e0d\u660e',
   parentLabel: '\u89aa',
-  open: '\u958b\u304f',
-  close: '\u9589\u3058\u308b',
   locked: '\u4eca\u65e5\u306e\u4e88\u5b9a\u306f\u30ed\u30c3\u30af\u4e2d',
   dependencyAlert: '\u4f9d\u5b58\u30bf\u30b9\u30af\u304c\u5b8c\u4e86\u3057\u3066\u3044\u306a\u3044\u305f\u3081\u5b8c\u4e86\u3067\u304d\u307e\u305b\u3093',
   toggleDone: '\u5b8c\u4e86\u306b\u3059\u308b',
   toggleUndone: '\u672a\u5b8c\u4e86\u306b\u623b\u3059',
-  startNotBefore: '\u7740\u624b\u53ef',
   checkMark: '\u2713',
 };
 
@@ -71,11 +68,7 @@ const formatWeekday = (dateStr: string, timezone: string) => {
   return formatDate(dateStr, { weekday: 'short' }, timezone);
 };
 
-const formatShortDate = (value: string | Date, timezone: string) => {
-  return formatDate(value, { month: 'numeric', day: 'numeric' }, timezone);
-};
-
-const getDueTag = (task: TaskScheduleInfo | undefined, day: Date, timezone: string) => {
+const getDueTag =(task: TaskScheduleInfo | undefined, day: Date, timezone: string) => {
   if (!task?.due_date) return null;
   const due = toDateTime(task.due_date, timezone);
   const dayDate = toDateTime(day, timezone).startOf('day');
@@ -85,28 +78,6 @@ const getDueTag = (task: TaskScheduleInfo | undefined, day: Date, timezone: stri
   }
   if (due.startOf('day').toMillis() < dayDate.toMillis()) return TEXT.dueOver;
   return null;
-};
-
-const getStartNotBeforeTag = (task: Task | undefined, parent: Task | undefined, timezone: string) => {
-  const dates: ReturnType<typeof toDateTime>[] = [];
-  if (task?.start_not_before) {
-    const parsed = toDateTime(task.start_not_before, timezone);
-    if (parsed.isValid) {
-      dates.push(parsed);
-    }
-  }
-  if (parent?.start_not_before) {
-    const parsed = toDateTime(parent.start_not_before, timezone);
-    if (parsed.isValid) {
-      dates.push(parsed);
-    }
-  }
-  if (dates.length === 0) return null;
-  const latest = dates.reduce((acc, current) =>
-    acc.toMillis() >= current.toMillis() ? acc : current,
-  );
-  const label = formatShortDate(latest.toJSDate(), timezone);
-  return `${TEXT.startNotBefore} ${label}`;
 };
 
 type ScheduleGroupItem = {
@@ -384,14 +355,6 @@ export function ScheduleOverviewCard({
     return buckets;
   }, [scheduleData?.unscheduled_task_ids]);
 
-  const excludedReasons = useMemo(() => {
-    const buckets: Record<string, number> = {};
-    (scheduleData?.excluded_tasks ?? []).forEach(item => {
-      buckets[item.reason] = (buckets[item.reason] || 0) + 1;
-    });
-    return buckets;
-  }, [scheduleData?.excluded_tasks]);
-
   const dependencyStatusByTaskId = useMemo(() => {
     const map = new Map<string, { blocked: boolean; reason?: string }>();
     const prefix = '\u4f9d\u5b58: ';
@@ -427,7 +390,19 @@ export function ScheduleOverviewCard({
     onTaskClick?.(taskId);
   };
 
-
+  const handleDoToday = async (taskId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await tasksApi.doToday(taskId, { pin: true });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
+      queryClient.invalidateQueries({ queryKey: ['top3'] });
+      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['schedule'] });
+    } catch {
+      alert('今日やるの設定に失敗しました');
+    }
+  };
 
   const handleToggleStatus = async (taskId: string) => {
     const task = await tasksApi.getById(taskId).catch(() => null);
@@ -579,46 +554,29 @@ export function ScheduleOverviewCard({
       )}
 
       {excludedCount > 0 && (
-        <div className="excluded-section">
-          <div className="excluded-header">
-            <div className="excluded-title-row">
-              <span className="excluded-title">{TEXT.excludedTitle}</span>
-              <span className="excluded-count">{excludedCount}{TEXT.countUnit}</span>
-            </div>
-            <button
-              type="button"
-              className="excluded-toggle"
-              onClick={() => setIsExcludedOpen(prev => !prev)}
-            >
-              {isExcludedOpen ? TEXT.close : TEXT.open}
-            </button>
-          </div>
+        <div className="excluded-inline">
+          <button
+            type="button"
+            className="excluded-inline-toggle"
+            onClick={() => setIsExcludedOpen(prev => !prev)}
+          >
+            <span className="excluded-inline-label">{TEXT.excludedTitle}</span>
+            <span className="excluded-inline-count">{excludedCount}{TEXT.countUnit}</span>
+            <span className="excluded-inline-chevron">{isExcludedOpen ? '▾' : '▸'}</span>
+          </button>
           {isExcludedOpen && (
-            <>
-              <div className="excluded-reasons">
-                {excludedReasons.waiting && (
-                  <span className="reason-chip">{TEXT.waiting} {excludedReasons.waiting}{TEXT.countUnit}</span>
-                )}
-                {excludedReasons.parent_task && (
-                  <span className="reason-chip">{TEXT.parentTask} {excludedReasons.parent_task}{TEXT.countUnit}</span>
-                )}
-              </div>
-              <div className="excluded-list">
-                {(scheduleData?.excluded_tasks ?? []).map(item => (
-                  <div key={item.task_id} className="excluded-item">
-                    <span className="excluded-item-title">{item.title}</span>
-                    {item.parent_title && (
-                      <span className="excluded-item-parent">{TEXT.parentLabel}: {item.parent_title}</span>
-                    )}
-                    <span className="excluded-item-reason">
-                      {item.reason === 'waiting' && TEXT.waiting}
-                      {item.reason === 'parent_task' && TEXT.parentTask}
-                      {!['waiting', 'parent_task'].includes(item.reason) && item.reason}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </>
+            <div className="excluded-compact-list">
+              {(scheduleData?.excluded_tasks ?? []).map(item => (
+                <div key={item.task_id} className="excluded-compact-item">
+                  <span className="excluded-compact-title">{item.title}</span>
+                  <span className="excluded-compact-reason">
+                    {item.reason === 'waiting' && TEXT.waiting}
+                    {item.reason === 'parent_task' && TEXT.parentTask}
+                    {!['waiting', 'parent_task'].includes(item.reason) && item.reason}
+                  </span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
@@ -753,16 +711,6 @@ export function ScheduleOverviewCard({
                   )}
                 </div>
 
-                {/* Capacity breakdown for days with meetings */}
-                {effectiveDay.meeting_minutes > 0 && (
-                  <div className="capacity-breakdown">
-                    <div className="breakdown-item meeting">
-                      <FaCalendarAlt className="breakdown-icon" />
-                      <span className="breakdown-label">会議</span>
-                      <span className="breakdown-value">{formatMinutes(effectiveDay.meeting_minutes)}</span>
-                    </div>
-                  </div>
-                )}
 
                 <div className="schedule-day-tasks">
                   {groups.length === 0 ? (
@@ -818,36 +766,35 @@ export function ScheduleOverviewCard({
                               <span className="schedule-task-time">
                                 {formatMinutes(item.allocation.minutes)}
                               </span>
-                              <span className="schedule-task-title">
-                                {item.info?.title || TEXT.task}
-                                {isMeeting && taskDetail?.start_time && (
-                                  <span className="meeting-time-inline">
-                                    {' '}(
-                                      {formatDate(
-                                        taskDetail.start_time,
-                                        { hour: '2-digit', minute: '2-digit', hour12: false },
-                                        timezone,
-                                      )}
-                                    )
-                                  </span>
-                                )}
+                              <div className="schedule-task-content">
+                                <span className="schedule-task-title">
+                                  {item.info?.title || TEXT.task}
+                                  {isMeeting && taskDetail?.start_time && (
+                                    <span className="meeting-time-inline">
+                                      {' '}(
+                                        {formatDate(
+                                          taskDetail.start_time,
+                                          { hour: '2-digit', minute: '2-digit', hour12: false },
+                                          timezone,
+                                        )}
+                                      )
+                                    </span>
+                                  )}
                                 </span>
+                              </div>
                             {item.dayCount > 1 && <span className="schedule-task-tag">{TEXT.split}</span>}
                               {item.dueTag && (
                                 <span className="schedule-task-tag warn">{item.dueTag}</span>
                               )}
-                            {(() => {
-                              const parent = item.info?.parent_id
-                                ? taskDetailsCache[item.info.parent_id]
-                                : undefined;
-                              const startNotBeforeTag = getStartNotBeforeTag(taskDetail, parent, timezone);
-                              if (!startNotBeforeTag) return null;
-                              return (
-                                <span className="schedule-task-tag">
-                                  {startNotBeforeTag}
-                                </span>
-                              );
-                            })()}
+                            {!isToday && !isMeeting && statusOverrides[item.allocation.task_id] !== 'DONE' && (
+                              <button
+                                type="button"
+                                className="do-today-btn"
+                                onClick={(e) => handleDoToday(item.allocation.task_id, e)}
+                              >
+                                今日やる
+                              </button>
+                            )}
                           </div>
                         );
                             })}
@@ -900,39 +847,36 @@ export function ScheduleOverviewCard({
                           <span className="schedule-task-time">
                             {formatMinutes(item.allocation.minutes)}
                           </span>
-                          <span className="schedule-task-title">
-                            {item.info?.title || TEXT.task}
-                            {isMeeting && taskDetail?.start_time && (
-                              <span className="meeting-time-inline">
-                                {' '}(
-                                      {formatDate(
-                                        taskDetail.start_time,
-                                        { hour: '2-digit', minute: '2-digit', hour12: false },
-                                        timezone,
-                                      )}
-                                    )
-                              </span>
-                            )}
-                          </span>
-                          {group.isParentGroup && (
-                            <span className="schedule-task-tag parent">
-                              {TEXT.parentLabel}: {group.parentTitle}
+                          <div className="schedule-task-content">
+                            <span className="schedule-task-title">
+                              {item.info?.title || TEXT.task}
+                              {isMeeting && taskDetail?.start_time && (
+                                <span className="meeting-time-inline">
+                                  {' '}(
+                                        {formatDate(
+                                          taskDetail.start_time,
+                                          { hour: '2-digit', minute: '2-digit', hour12: false },
+                                          timezone,
+                                        )}
+                                      )
+                                </span>
+                              )}
                             </span>
-                          )}
+                            {group.isParentGroup && (
+                              <span className="schedule-task-parent-hint">{group.parentTitle}</span>
+                            )}
+                          </div>
                           {item.dayCount > 1 && <span className="schedule-task-tag">{TEXT.split}</span>}
                           {item.dueTag && <span className="schedule-task-tag warn">{item.dueTag}</span>}
-                          {(() => {
-                            const parent = item.info?.parent_id
-                              ? taskDetailsCache[item.info.parent_id]
-                              : undefined;
-                            const startNotBeforeTag = getStartNotBeforeTag(taskDetail, parent, timezone);
-                            if (!startNotBeforeTag) return null;
-                            return (
-                              <span className="schedule-task-tag">
-                                {startNotBeforeTag}
-                              </span>
-                            );
-                          })()}
+                          {!isToday && !isMeeting && statusOverrides[item.allocation.task_id] !== 'DONE' && (
+                            <button
+                              type="button"
+                              className="do-today-btn"
+                              onClick={(e) => handleDoToday(item.allocation.task_id, e)}
+                            >
+                              今日やる
+                            </button>
+                          )}
                         </div>
                         );
                       });

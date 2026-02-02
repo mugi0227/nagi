@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useEffect, useMemo, useState } from 'react';
 import {
@@ -32,6 +32,7 @@ import remarkBreaks from 'remark-breaks';
 import remarkGfm from 'remark-gfm';
 import { phasesApi } from '../../api/phases';
 import { projectsApi, getProject } from '../../api/projects';
+import { tasksApi } from '../../api/tasks';
 import type { Phase, Project, Task, TaskAssignment } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/dateTime';
@@ -123,6 +124,7 @@ export function TaskDetailModal({
   onAssigneeChange,
 }: TaskDetailModalProps) {
   const timezone = useTimezone();
+  const queryClient = useQueryClient();
   const [selectedSubtask, setSelectedSubtask] = useState<Task | null>(initialSubtask);
   const [localProgress, setLocalProgress] = useState<number>(task.progress ?? 0);
   const [localStatus, setLocalStatus] = useState<string>(task.status);
@@ -159,6 +161,19 @@ export function TaskDetailModal({
       // Revert on error
       setLocalTask(task);
       console.error('Failed to update task:', error);
+    }
+  };
+
+  const handleDoToday = async () => {
+    try {
+      await tasksApi.doToday(task.id, { pin: true });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
+      queryClient.invalidateQueries({ queryKey: ['top3'] });
+      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['schedule'] });
+    } catch {
+      alert('今日やるの設定に失敗しました');
     }
   };
 
@@ -548,6 +563,16 @@ ${filledSummary}${emptySummary}
               )}
             </div>
             <div className="modal-header-actions">
+              {localTask.status !== 'DONE' && !localTask.is_fixed_time && (
+                <button
+                  className="do-today-header-btn"
+                  onClick={handleDoToday}
+                  title="今日やる"
+                >
+                  <HiOutlineCalendar />
+                  <span>今日やる</span>
+                </button>
+              )}
               <button
                 className="enrich-btn"
                 onClick={handleEnrichTask}

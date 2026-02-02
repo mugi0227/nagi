@@ -444,7 +444,14 @@ class SchedulerService:
                     return False  # Unassigned project tasks excluded
                 return current_user_id in assignees  # Include if I'm one of the assignees
 
-            candidate_tasks = [t for t in candidate_tasks if is_my_task(t)]
+            # Pinned tasks bypass assignee filter — the user explicitly chose
+            # to pin this task to a date, so it must appear in the schedule.
+            today = date.today()
+            candidate_tasks = [
+                t for t in candidate_tasks
+                if is_my_task(t)
+                or (t.pinned_date and t.pinned_date.date() >= today)
+            ]
 
         candidate_ids = {task.id for task in candidate_tasks}
 
@@ -594,10 +601,37 @@ class SchedulerService:
                     remaining_minutes[meeting.id] = 0
 
             # Calculate total capacity for reporting (sum of all users)
-            total_capacity_minutes = sum(user_capacities.values()) # + meeting consumed? 
+            total_capacity_minutes = sum(user_capacities.values()) # + meeting consumed?
             # Ideally report original total.
             original_capacities = {uid: get_user_capacity_minutes(uid if uid != "unassigned" else None, day_cursor) for uid in active_users}
             capacity_minutes_today = sum(original_capacities.values())
+
+            # Force-schedule pinned tasks for this day (bypass capacity AND
+            # start_not_before — pinned_date is the strongest user signal)
+            pinned_for_day = [
+                tid for tid in list(ready) + list(in_progress)
+                if tid in remaining_task_ids
+                and task_map[tid].pinned_date
+                and task_map[tid].pinned_date.date() == day_cursor
+                and remaining_minutes.get(tid, 0) > 0
+            ]
+            pinned_allocated_minutes = 0
+            for tid in pinned_for_day:
+                if tid not in task_start:
+                    task_start[tid] = day_cursor
+                force_mins = remaining_minutes[tid]
+                allocations.append(TaskAllocation(task_id=tid, minutes=force_mins))
+                assignee = assignment_map.get(tid, default_assignee)
+                user_capacities[assignee] = max(0, user_capacities.get(assignee, 0) - force_mins)
+                pinned_allocated_minutes += force_mins
+                remaining_minutes[tid] = 0
+                task_end[tid] = day_cursor
+                remaining_task_ids.discard(tid)
+                if tid in in_progress:
+                    in_progress.remove(tid)
+                if tid in ready:
+                    ready.remove(tid)
+                self._release_dependents(tid, indegree, dependents, ready)
 
             # 2. Schedule Ready Tasks
             # We loop until no more tasks can be scheduled today for ANY user
@@ -669,14 +703,16 @@ class SchedulerService:
                     if next_id not in in_progress: in_progress.append(next_id)
 
             # Force-schedule tasks that would exceed their due date if pushed to tomorrow
-            # These tasks get scheduled even if over capacity
+            # These tasks get scheduled even if over capacity, BUT respect
+            # start_not_before so that explicit "明日やる" postpones are honoured.
             forced_overflow_minutes = 0
             for tid in list(in_progress) + list(ready):
                 due_dt = effective_due_date_by_task.get(tid)
                 if due_dt is None:
                     continue
-                # If due date is today or earlier, and task is not yet fully scheduled
-                if due_dt <= day_cursor and tid in remaining_task_ids and remaining_minutes.get(tid, 0) > 0:
+                # If due date is today or earlier, and task is not yet fully scheduled,
+                # AND the task is actually available today (respects start_not_before)
+                if due_dt <= day_cursor and tid in remaining_task_ids and remaining_minutes.get(tid, 0) > 0 and is_available(tid, day_cursor):
                     # Force allocate this task today regardless of capacity
                     if tid not in task_start:
                         task_start[tid] = day_cursor
@@ -702,7 +738,7 @@ class SchedulerService:
                 ScheduleDay(
                     date=day_cursor,
                     capacity_minutes=capacity_minutes_today,
-                    allocated_minutes=allocated_minutes_total + meeting_minutes + forced_overflow_minutes,
+                    allocated_minutes=allocated_minutes_total + meeting_minutes + forced_overflow_minutes + pinned_allocated_minutes,
                     overflow_minutes=overflow_minutes,
                     task_allocations=allocations,
                     meeting_minutes=meeting_minutes,
@@ -816,6 +852,18 @@ class SchedulerService:
             overflow_minutes = today_day.overflow_minutes
             capacity_minutes = today_day.capacity_minutes
             meeting_minutes = today_day.meeting_minutes
+
+        # Ensure pinned_date == today tasks are included even if not in schedule
+        for task in tasks:
+            if (
+                task.pinned_date
+                and task.pinned_date.date() == today_date
+                and task.id not in set(today_task_ids)
+                and task.id in task_map
+                and task.status != TaskStatus.DONE
+                and not task.is_fixed_time
+            ):
+                today_task_ids.append(task.id)
 
         today_tasks = [task_map[task_id] for task_id in today_task_ids if task_id in task_map]
         today_allocations: list[TodayTaskAllocation] = []
@@ -967,6 +1015,12 @@ class SchedulerService:
             start_dt = task.start_not_before
             if parent_start and (start_dt is None or start_dt < parent_start):
                 start_dt = parent_start
+
+            # Pinned date is the strongest signal — unconditionally override
+            # start_not_before / parent constraints.  Past pins are ignored
+            # so that "今日やる" only lasts for one day.
+            if task.pinned_date and task.pinned_date.date() >= date.today():
+                start_dt = task.pinned_date
 
             planned_start, planned_end = planned_window_by_task.get(task.id, (None, None))
             if planned_start:

@@ -88,6 +88,10 @@ async def run_migrations():
         if "guide" not in columns:
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN guide TEXT"))
 
+        # Pinned date field for forced scheduling
+        if "pinned_date" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN pinned_date DATETIME"))
+
         # Check checkins table for checkin_type and V2 fields
         checkin_result = await conn.execute(text("PRAGMA table_info(checkins)"))
         checkin_columns = {row[1] for row in checkin_result}
@@ -407,6 +411,34 @@ async def run_migrations():
             )
             await conn.execute(
                 text("CREATE INDEX idx_milestones_phase_id ON milestones(phase_id)")
+            )
+
+        # Create postpone_events table if missing
+        postpone_events_result = await conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='postpone_events'")
+        )
+        if not postpone_events_result.scalar():
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE postpone_events (
+                        id VARCHAR(36) PRIMARY KEY,
+                        user_id VARCHAR(255) NOT NULL,
+                        task_id VARCHAR(36) NOT NULL,
+                        from_date DATE NOT NULL,
+                        to_date DATE NOT NULL,
+                        reason TEXT,
+                        pinned BOOLEAN DEFAULT 0,
+                        created_at DATETIME
+                    )
+                    """
+                )
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_postpone_events_user_id ON postpone_events(user_id)")
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_postpone_events_task_id ON postpone_events(task_id)")
             )
 
 

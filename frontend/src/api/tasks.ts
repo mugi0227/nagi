@@ -12,6 +12,8 @@ import type {
   Blocker,
   BlockerCreate,
   BlockerUpdate,
+  PostponeRequest,
+  DoTodayRequest,
 } from './types';
 
 export const tasksApi = {
@@ -136,4 +138,10 @@ export const tasksApi = {
 
   createActionItems: (id: string) =>
     api.post<Task[]>(`/tasks/${id}/action-items`, {}),
+
+  postpone: (id: string, data: PostponeRequest) =>
+    api.post<Task>(`/tasks/${id}/postpone`, data),
+
+  doToday: (id: string, data?: DoTodayRequest) =>
+    api.post<Task>(`/tasks/${id}/do-today`, data ?? {}),
 };

@@ -181,88 +181,64 @@
   margin-bottom: 1rem;
 }
 
-.excluded-section {
-  background: rgba(148, 163, 184, 0.1);
-  border-radius: var(--radius-md);
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  padding: 0.75rem;
-  margin-bottom: 1rem;
+.excluded-inline {
+  margin-bottom: 0.75rem;
 }
 
-.excluded-header {
-  display: flex;
+.excluded-inline-toggle {
+  display: inline-flex;
   align-items: center;
-  justify-content: space-between;
-  margin-bottom: 0.5rem;
+  gap: 0.3rem;
+  border: none;
+  background: none;
+  padding: 0;
+  cursor: pointer;
+  font-size: 0.72rem;
+  color: var(--text-muted);
 }
 
-.excluded-title-row {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.excluded-title {
-  font-size: 0.8rem;
-  font-weight: 600;
+.excluded-inline-toggle:hover {
   color: var(--text-main);
 }
 
-.excluded-count {
-  font-size: 0.75rem;
-  color: var(--text-muted);
+.excluded-inline-label {
+  font-weight: 500;
 }
 
-.excluded-toggle {
-  border: none;
-  background: rgba(148, 163, 184, 0.2);
-  color: var(--text-muted);
-  font-size: 0.7rem;
-  padding: 0.2rem 0.5rem;
-  border-radius: var(--radius-full);
-  cursor: pointer;
+.excluded-inline-count {
+  opacity: 0.7;
 }
 
-.excluded-toggle:hover {
-  background: rgba(148, 163, 184, 0.3);
+.excluded-inline-chevron {
+  font-size: 0.6rem;
 }
 
-.excluded-reasons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin-bottom: 0.6rem;
-}
-
-.excluded-list {
+.excluded-compact-list {
+  margin-top: 0.3rem;
+  padding-left: 0.5rem;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.1rem;
 }
 
-.excluded-item {
+.excluded-compact-item {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
-  background: rgba(255, 255, 255, 0.65);
-  border-radius: var(--radius-sm);
-  padding: 0.35rem 0.5rem;
-  border: 1px solid rgba(148, 163, 184, 0.15);
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
 }
 
-.excluded-item-title {
-  flex: 1;
-  font-size: 0.75rem;
-  color: var(--text-main);
+.excluded-compact-title {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.excluded-item-parent,
-.excluded-item-reason {
-  font-size: 0.65rem;
-  color: var(--text-muted);
+.excluded-compact-reason {
+  font-size: 0.62rem;
+  opacity: 0.6;
+  flex-shrink: 0;
 }
 
 .reason-chip {
@@ -450,8 +426,13 @@
   min-width: 48px;
 }
 
-.schedule-task-title {
+.schedule-task-content {
   flex: 1;
+  min-width: 0;
+}
+
+.schedule-task-title {
+  display: block;
   font-size: 0.8rem;
   color: var(--text-main);
   overflow: hidden;
@@ -460,21 +441,25 @@
 }
 
 .schedule-task-tag {
-  font-size: 0.65rem;
-  padding: 0.1rem 0.35rem;
-  border-radius: var(--radius-full);
-  background: rgba(148, 163, 184, 0.2);
+  font-size: 0.62rem;
   color: var(--text-muted);
-}
-
-.schedule-task-tag.parent {
-  background: rgba(14, 165, 233, 0.15);
-  color: var(--primary);
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .schedule-task-tag.warn {
-  background: rgba(251, 146, 60, 0.2);
   color: var(--accent-orange);
+  font-weight: 600;
+}
+
+.schedule-task-parent-hint {
+  display: block;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  opacity: 0.7;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .schedule-task-group {
@@ -548,4 +533,28 @@
   color: var(--text-secondary);
   font-size: 0.875rem;
   font-weight: normal;
+}
+
+/* Do Today button */
+.do-today-btn {
+  border: none;
+  background: rgba(14, 165, 233, 0.12);
+  color: var(--primary);
+  font-size: 0.65rem;
+  font-weight: 600;
+  padding: 0.15rem 0.4rem;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.do-today-btn:hover {
+  background: rgba(14, 165, 233, 0.25);
+}
+
+.do-today-btn:active {
+  background: var(--primary);
+  color: white;
 }

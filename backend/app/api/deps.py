@@ -25,6 +25,7 @@ from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.checkin_repository import ICheckinRepository
 from app.interfaces.blocker_repository import IBlockerRepository
+from app.interfaces.postpone_repository import IPostponeRepository
 from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
 from app.interfaces.meeting_agenda_repository import IMeetingAgendaRepository
 from app.interfaces.meeting_session_repository import IMeetingSessionRepository
@@ -209,6 +210,17 @@ def get_blocker_repository() -> IBlockerRepository:
     else:
         from app.infrastructure.local.blocker_repository import SqliteBlockerRepository
         return SqliteBlockerRepository()
+
+
+@lru_cache()
+def get_postpone_repository() -> IPostponeRepository:
+    """Get postpone repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Postpone repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.postpone_repository import SqlitePostponeRepository
+        return SqlitePostponeRepository()
 
 
 @lru_cache()
@@ -445,6 +457,7 @@ ProjectMemberRepo = Annotated[IProjectMemberRepository, Depends(get_project_memb
 TaskAssignmentRepo = Annotated[ITaskAssignmentRepository, Depends(get_task_assignment_repository)]
 CheckinRepo = Annotated[ICheckinRepository, Depends(get_checkin_repository)]
 BlockerRepo = Annotated[IBlockerRepository, Depends(get_blocker_repository)]
+PostponeRepo = Annotated[IPostponeRepository, Depends(get_postpone_repository)]
 RecurringMeetingRepo = Annotated[IRecurringMeetingRepository, Depends(get_recurring_meeting_repository)]
 MeetingAgendaRepo = Annotated[IMeetingAgendaRepository, Depends(get_meeting_agenda_repository)]
 MeetingSessionRepo = Annotated[IMeetingSessionRepository, Depends(get_meeting_session_repository)]

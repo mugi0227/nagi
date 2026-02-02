@@ -56,6 +56,7 @@ class TaskORM(Base):
     estimated_minutes = Column(Integer, nullable=True)
     due_date = Column(DateTime, nullable=True)
     start_not_before = Column(DateTime, nullable=True)
+    pinned_date = Column(DateTime, nullable=True)
     parent_id = Column(String(36), nullable=True, index=True)
     order_in_parent = Column(Integer, nullable=True)
     dependency_ids = Column(JSON, nullable=True, default=list)
@@ -535,6 +536,21 @@ class ProjectAchievementORM(Base):
     generation_type = Column(String(20), default="AUTO")
     created_at = Column(DateTime, default=now_utc)
     updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+
+class PostponeEventORM(Base):
+    """Postpone event ORM model."""
+
+    __tablename__ = "postpone_events"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    task_id = Column(String(36), nullable=False, index=True)
+    from_date = Column(Date, nullable=False)
+    to_date = Column(Date, nullable=False)
+    reason = Column(Text, nullable=True)
+    pinned = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=now_utc)
 
 
 class NotificationORM(Base):

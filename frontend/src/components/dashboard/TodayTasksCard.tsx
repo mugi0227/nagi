@@ -10,6 +10,7 @@ import { sortTasksByStepNumber } from '../../utils/taskSort';
 import { userStorage } from '../../utils/userStorage';
 import { useTimezone } from '../../hooks/useTimezone';
 import { toDateKey, todayInTimezone } from '../../utils/dateTime';
+import { PostponePopover } from './PostponePopover';
 import './TodayTasksCard.css';
 
 const LOCK_STORAGE_KEY = 'todayTasksLock';
@@ -581,6 +582,13 @@ export function TodayTasksCard({ onTaskClick }: TodayTasksCardProps) {
                     {allocation && ` / 目標${Math.round(allocation.ratio * 100)}%`}
                   </div>
                 </div>
+                {!isDone && (
+                  <PostponePopover
+                    taskId={focusTask.id}
+                    taskTitle={focusTask.title}
+                    className="focus-postpone"
+                  />
+                )}
               </div>
             );
           })()}
@@ -720,6 +728,12 @@ function TaskItemRow({
         )}
         <span className="task-time">{formatMinutes(task.estimated_minutes || 0)}</span>
       </div>
+      {!isDone && (
+        <PostponePopover
+          taskId={task.id}
+          taskTitle={task.title}
+        />
+      )}
     </div>
   );
 }
