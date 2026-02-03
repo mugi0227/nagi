@@ -83,8 +83,6 @@ export function TodayTasksCard({ onTaskClick }: TodayTasksCardProps) {
     }
   });
   const [dependencyCache, setDependencyCache] = useState<Record<string, Task>>({});
-  // Track if user manually unlocked to prevent auto-relock
-  const [manuallyUnlocked, setManuallyUnlocked] = useState(false);
 
   const parentMap = useMemo(() => {
     const map = new Map<string, Task>();
@@ -120,40 +118,6 @@ export function TodayTasksCard({ onTaskClick }: TodayTasksCardProps) {
       userStorage.remove(LOCK_STORAGE_KEY);
     }
   }, [lockInfo, dateLabel]);
-
-  // Auto-lock when today's tasks are loaded and no lock exists yet
-  useEffect(() => {
-    // Skip if user manually unlocked this session
-    if (isLoading || lockInfo || todayTasks.length === 0 || manuallyUnlocked) return;
-
-    const taskIds = todayTasks.map(task => task.id);
-    const allocationSnapshot: Record<string, TodayTaskAllocationSnapshot> = {};
-    todayAllocations.forEach(allocation => {
-      allocationSnapshot[allocation.task_id] = {
-        allocated_minutes: allocation.allocated_minutes,
-        total_minutes: allocation.total_minutes,
-        ratio: allocation.ratio,
-      };
-    });
-    const taskSnapshot: Record<string, TodayTaskSnapshot> = {};
-    todayTasks.forEach(task => {
-      taskSnapshot[task.id] = {
-        title: task.title,
-        parent_id: task.parent_id,
-        parent_title: task.parent_id
-          ? (parentMap.get(task.parent_id)?.title || TEXT.parentUnknown)
-          : null,
-      };
-    });
-    const payload: TodayTasksLock = {
-      date: dateLabel,
-      taskIds,
-      allocations: allocationSnapshot,
-      taskSnapshots: taskSnapshot,
-    };
-    userStorage.set(LOCK_STORAGE_KEY, JSON.stringify(payload));
-    setLockInfoState(payload);
-  }, [isLoading, lockInfo, todayTasks, todayAllocations, dateLabel, parentMap, manuallyUnlocked]);
 
   const handleTaskClick = (task: Task) => {
     onTaskClick?.(task);
@@ -423,7 +387,6 @@ export function TodayTasksCard({ onTaskClick }: TodayTasksCardProps) {
     if (isLocked) {
       userStorage.remove(LOCK_STORAGE_KEY);
       setLockInfoState(null);
-      setManuallyUnlocked(true);
       return;
     }
 
@@ -454,7 +417,6 @@ export function TodayTasksCard({ onTaskClick }: TodayTasksCardProps) {
     };
     userStorage.set(LOCK_STORAGE_KEY, JSON.stringify(payload));
     setLockInfoState(payload);
-    setManuallyUnlocked(false);
   };
 
   // Helper to get progress values (placeholder until progress field is added)
