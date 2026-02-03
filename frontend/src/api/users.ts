@@ -8,6 +8,7 @@ export interface UserProfile {
   first_name?: string | null;
   last_name?: string | null;
   timezone?: string;
+  is_developer?: boolean;
 }
 
 export interface UserSearchResult {

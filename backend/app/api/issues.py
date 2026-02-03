@@ -14,6 +14,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.api.deps import CurrentUser, IssueRepo, LLMProvider
+from app.core.config import get_settings
 from app.core.exceptions import NotFoundError, ForbiddenError
 from app.models.issue import (
     Issue,
@@ -21,11 +22,19 @@ from app.models.issue import (
     IssueUpdate,
     IssueStatusUpdate,
     IssueListResponse,
+    IssueComment,
+    IssueCommentCreate,
 )
 from app.models.enums import IssueCategory, IssueStatus
 from app.services.issue_chat_service import IssueChatService
 
 router = APIRouter()
+
+
+def _is_developer(user_id: str) -> bool:
+    """Check if the user is a developer account."""
+    settings = get_settings()
+    return user_id in settings.developer_user_ids
 
 
 # ============================================
@@ -181,8 +190,12 @@ async def update_issue_status(
     user: CurrentUser,
     repo: IssueRepo,
 ):
-    """Update issue status (admin only - for now, any user can update)."""
-    # TODO: Add admin check when role system is implemented
+    """Update issue status (developer accounts only)."""
+    if not _is_developer(user.id):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Only developer accounts can change issue status",
+        )
     try:
         return await repo.update_status(issue_id, update)
     except NotFoundError as e:
@@ -241,5 +254,66 @@ async def unlike_issue(
     except NotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+
+
+# ============================================
+# Issue Comment API
+# ============================================
+
+
+@router.get("/{issue_id}/comments", response_model=list[IssueComment])
+async def list_issue_comments(
+    issue_id: UUID,
+    user: CurrentUser,
+    repo: IssueRepo,
+):
+    """List comments for an issue."""
+    return await repo.list_comments(issue_id)
+
+
+@router.post(
+    "/{issue_id}/comments",
+    response_model=IssueComment,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_issue_comment(
+    issue_id: UUID,
+    comment: IssueCommentCreate,
+    user: CurrentUser,
+    repo: IssueRepo,
+):
+    """Create a comment on an issue (any user)."""
+    try:
+        return await repo.create_comment(issue_id, user.id, comment)
+    except NotFoundError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e),
+        )
+
+
+@router.delete(
+    "/{issue_id}/comments/{comment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+async def delete_issue_comment(
+    issue_id: UUID,
+    comment_id: UUID,
+    user: CurrentUser,
+    repo: IssueRepo,
+):
+    """Delete a comment (by author only)."""
+    try:
+        deleted = await repo.delete_comment(comment_id, user.id)
+        if not deleted:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Comment {comment_id} not found",
+            )
+    except ForbiddenError as e:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
             detail=str(e),
         )

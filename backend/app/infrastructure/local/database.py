@@ -459,6 +459,19 @@ class IssueLikeORM(Base):
     created_at = Column(DateTime, default=now_utc)
 
 
+class IssueCommentORM(Base):
+    """Issue comment ORM model."""
+
+    __tablename__ = "issue_comments"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    issue_id = Column(String(36), nullable=False, index=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+
 class ScheduleSnapshotORM(Base):
     """Schedule snapshot ORM model for baseline management."""
 

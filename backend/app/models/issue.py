@@ -77,3 +77,24 @@ class IssueListResponse(BaseModel):
 
     items: list[Issue]
     total: int
+
+
+class IssueCommentCreate(BaseModel):
+    """Schema for creating a new issue comment."""
+
+    content: str = Field(..., min_length=1, max_length=2000, description="コメント内容")
+
+
+class IssueComment(BaseModel):
+    """Complete issue comment model."""
+
+    id: UUID
+    issue_id: UUID
+    user_id: str
+    display_name: Optional[str] = None
+    content: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True

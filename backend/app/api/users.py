@@ -31,6 +31,7 @@ class UserProfile(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
     timezone: Optional[str] = "Asia/Tokyo"
+    is_developer: bool = False
 
 
 class UserSearchResult(BaseModel):
@@ -76,6 +77,9 @@ async def get_current_user_profile(
     user: CurrentUser,
     user_repo: UserRepo,
 ) -> UserProfile:
+    settings = get_settings()
+    is_dev = user.id in settings.developer_user_ids
+
     profile = UserProfile(
         id=user.id,
         email=user.email,
@@ -83,6 +87,7 @@ async def get_current_user_profile(
         username=None,
         first_name=None,
         last_name=None,
+        is_developer=is_dev,
     )
     try:
         user_uuid = UUID(user.id)
@@ -101,6 +106,7 @@ async def get_current_user_profile(
         first_name=record.first_name,
         last_name=record.last_name,
         timezone=record.timezone,
+        is_developer=is_dev,
     )
 
 
