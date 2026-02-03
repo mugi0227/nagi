@@ -12,11 +12,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError, ForbiddenError
 from app.interfaces.issue_repository import IIssueRepository
-from app.models.issue import Issue, IssueCreate, IssueUpdate, IssueStatusUpdate
+from app.models.issue import Issue, IssueCreate, IssueUpdate, IssueStatusUpdate, IssueComment, IssueCommentCreate
 from app.models.enums import IssueCategory, IssueStatus
 from app.infrastructure.local.database import (
     IssueORM,
     IssueLikeORM,
+    IssueCommentORM,
     UserORM,
     get_session_factory,
 )
@@ -318,3 +319,77 @@ class SqliteIssueRepository(IIssueRepository):
                 issue = await self._orm_to_model(session, orm, current_user_id)
                 issues.append(issue)
             return issues
+
+    async def _comment_orm_to_model(
+        self, session: AsyncSession, orm: IssueCommentORM
+    ) -> IssueComment:
+        """Convert comment ORM to Pydantic model."""
+        display_name = None
+        user_result = await session.execute(
+            select(UserORM.display_name).where(UserORM.id == orm.user_id)
+        )
+        user_row = user_result.first()
+        if user_row:
+            display_name = user_row[0]
+
+        return IssueComment(
+            id=UUID(orm.id),
+            issue_id=UUID(orm.issue_id),
+            user_id=orm.user_id,
+            display_name=display_name,
+            content=orm.content,
+            created_at=orm.created_at,
+            updated_at=orm.updated_at,
+        )
+
+    async def create_comment(
+        self, issue_id: UUID, user_id: str, comment: IssueCommentCreate
+    ) -> IssueComment:
+        """Create a new comment on an issue."""
+        async with self._session_factory() as session:
+            # Check issue exists
+            result = await session.execute(
+                select(IssueORM).where(IssueORM.id == str(issue_id))
+            )
+            if not result.scalar_one_or_none():
+                raise NotFoundError(f"Issue {issue_id} not found")
+
+            orm = IssueCommentORM(
+                id=str(uuid4()),
+                issue_id=str(issue_id),
+                user_id=user_id,
+                content=comment.content,
+            )
+            session.add(orm)
+            await session.commit()
+            await session.refresh(orm)
+            return await self._comment_orm_to_model(session, orm)
+
+    async def list_comments(self, issue_id: UUID) -> list[IssueComment]:
+        """List all comments for an issue."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(IssueCommentORM)
+                .where(IssueCommentORM.issue_id == str(issue_id))
+                .order_by(IssueCommentORM.created_at.asc())
+            )
+            comments = []
+            for orm in result.scalars().all():
+                comment = await self._comment_orm_to_model(session, orm)
+                comments.append(comment)
+            return comments
+
+    async def delete_comment(self, comment_id: UUID, user_id: str) -> bool:
+        """Delete a comment (by author only)."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(IssueCommentORM).where(IssueCommentORM.id == str(comment_id))
+            )
+            orm = result.scalar_one_or_none()
+            if not orm:
+                return False
+            if orm.user_id != user_id:
+                raise ForbiddenError("Only the author can delete this comment")
+            await session.delete(orm)
+            await session.commit()
+            return True

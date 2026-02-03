@@ -8,6 +8,8 @@ import type {
   IssueCategory,
   IssueStatus,
   IssueChatChunk,
+  IssueComment,
+  IssueCommentCreate,
 } from './types';
 
 interface ListIssuesParams extends Record<string, string | number | undefined> {
@@ -60,6 +62,16 @@ export const issuesApi = {
   like: (issueId: string) => api.post<Issue>(`/issues/${issueId}/like`, {}),
 
   unlike: (issueId: string) => api.delete<Issue>(`/issues/${issueId}/like`),
+
+  // Comments
+  listComments: (issueId: string) =>
+    api.get<IssueComment[]>(`/issues/${issueId}/comments`),
+
+  createComment: (issueId: string, data: IssueCommentCreate) =>
+    api.post<IssueComment>(`/issues/${issueId}/comments`, data),
+
+  deleteComment: (issueId: string, commentId: string) =>
+    api.delete<void>(`/issues/${issueId}/comments/${commentId}`),
 
   // Chat Stream
   chatStream: async function* (

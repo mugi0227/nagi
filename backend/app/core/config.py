@@ -143,11 +143,26 @@ class Settings(BaseSettings):
     WHISPER_MODEL_SIZE: str = "base"  # tiny, base, small, medium, large
 
     # ===========================================
+    # Developer Accounts
+    # ===========================================
+    # Comma-separated list of user IDs that are developer accounts.
+    # Developer accounts can change issue statuses.
+    # Example: "user-id-1,user-id-2"
+    DEVELOPER_USER_IDS: str = ""
+
+    # ===========================================
     # Input Validation Limits
     # ===========================================
     MAX_TEXT_LENGTH: int = 10000
     MAX_TRANSCRIPTION_LENGTH: int = 10000
     MAX_IMAGE_ANALYSIS_LENGTH: int = 5000
+
+    @property
+    def developer_user_ids(self) -> set[str]:
+        """Get set of developer user IDs."""
+        if not self.DEVELOPER_USER_IDS:
+            return set()
+        return {uid.strip() for uid in self.DEVELOPER_USER_IDS.split(",") if uid.strip()}
 
     @property
     def is_gcp(self) -> bool:

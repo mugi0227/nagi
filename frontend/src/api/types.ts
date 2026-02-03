@@ -918,6 +918,20 @@ export interface IssueListResponse {
   total: number;
 }
 
+export interface IssueComment {
+  id: string;
+  issue_id: string;
+  user_id: string;
+  display_name?: string;
+  content: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface IssueCommentCreate {
+  content: string;
+}
+
 export interface IssueChatRequest {
   message: string;
   session_id?: string;

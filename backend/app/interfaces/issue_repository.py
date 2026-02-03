@@ -11,7 +11,7 @@ from abc import ABC, abstractmethod
 from typing import Optional
 from uuid import UUID
 
-from app.models.issue import Issue, IssueCreate, IssueUpdate, IssueStatusUpdate
+from app.models.issue import Issue, IssueCreate, IssueUpdate, IssueStatusUpdate, IssueComment, IssueCommentCreate
 from app.models.enums import IssueCategory, IssueStatus
 
 
@@ -163,4 +163,21 @@ class IIssueRepository(ABC):
         Returns:
             List of matching issues
         """
+        pass
+
+    @abstractmethod
+    async def create_comment(
+        self, issue_id: UUID, user_id: str, comment: IssueCommentCreate
+    ) -> IssueComment:
+        """Create a new comment on an issue."""
+        pass
+
+    @abstractmethod
+    async def list_comments(self, issue_id: UUID) -> list[IssueComment]:
+        """List all comments for an issue."""
+        pass
+
+    @abstractmethod
+    async def delete_comment(self, comment_id: UUID, user_id: str) -> bool:
+        """Delete a comment (by author only)."""
         pass
