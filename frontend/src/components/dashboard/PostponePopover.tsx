@@ -9,11 +9,10 @@ import './PostponePopover.css';
 
 interface PostponePopoverProps {
   taskId: string;
-  taskTitle: string;
   className?: string;
 }
 
-export function PostponePopover({ taskId, taskTitle, className }: PostponePopoverProps) {
+export function PostponePopover({ taskId, className }: PostponePopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [reason, setReason] = useState('');

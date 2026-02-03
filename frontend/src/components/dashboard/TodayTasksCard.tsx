@@ -585,7 +585,6 @@ export function TodayTasksCard({ onTaskClick }: TodayTasksCardProps) {
                 {!isDone && (
                   <PostponePopover
                     taskId={focusTask.id}
-                    taskTitle={focusTask.title}
                     className="focus-postpone"
                   />
                 )}
@@ -731,7 +730,6 @@ function TaskItemRow({
       {!isDone && (
         <PostponePopover
           taskId={task.id}
-          taskTitle={task.title}
         />
       )}
     </div>
