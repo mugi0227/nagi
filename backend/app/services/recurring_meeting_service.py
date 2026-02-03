@@ -10,6 +10,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from app.interfaces.checkin_repository import ICheckinRepository
+from app.interfaces.project_member_repository import IProjectMemberRepository
+from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.models.collaboration import Checkin
@@ -27,11 +29,15 @@ class RecurringMeetingService:
         task_repo: ITaskRepository,
         checkin_repo: ICheckinRepository,
         lookahead_days: int = 30,
+        project_repo: Optional[IProjectRepository] = None,
+        member_repo: Optional[IProjectMemberRepository] = None,
     ):
         self.recurring_repo = recurring_repo
         self.task_repo = task_repo
         self.checkin_repo = checkin_repo
         self.lookahead_days = lookahead_days
+        self.project_repo = project_repo
+        self.member_repo = member_repo
 
     async def ensure_upcoming_meetings(self, user_id: str) -> dict:
         """Ensure upcoming meeting tasks exist within the lookahead window.
@@ -95,6 +101,8 @@ class RecurringMeetingService:
                         project_id=str(meeting.project_id) if meeting.project_id else None,
                         recurring_meeting_id=str(meeting.id),
                     ),
+                    project_repo=self.project_repo,
+                    member_repo=self.member_repo,
                 )
                 created.append(created_task)
 

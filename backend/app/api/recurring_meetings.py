@@ -109,7 +109,10 @@ async def create_recurring_meeting(
         )
         owner_id = access.owner_id
     created = await repo.create(owner_id, payload.model_copy(update={"anchor_date": anchor_date}))
-    service = RecurringMeetingService(repo, task_repo, checkin_repo)
+    service = RecurringMeetingService(
+        repo, task_repo, checkin_repo,
+        project_repo=project_repo, member_repo=member_repo,
+    )
     await service.ensure_upcoming_meetings(owner_id)
     return created
 
@@ -226,6 +229,8 @@ async def generate_meeting_tasks(
         task_repo=task_repo,
         checkin_repo=checkin_repo,
         lookahead_days=lookahead_days,
+        project_repo=project_repo,
+        member_repo=member_repo,
     )
 
     result = await service.ensure_upcoming_meetings(owner_id)
