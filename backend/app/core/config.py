@@ -145,10 +145,10 @@ class Settings(BaseSettings):
     # ===========================================
     # Developer Accounts
     # ===========================================
-    # Comma-separated list of user IDs that are developer accounts.
+    # Comma-separated list of email addresses that are developer accounts.
     # Developer accounts can change issue statuses.
-    # Example: "user-id-1,user-id-2"
-    DEVELOPER_USER_IDS: str = ""
+    # Example: "dev@example.com,admin@example.com"
+    DEVELOPER_EMAILS: str = ""
 
     # ===========================================
     # Input Validation Limits
@@ -158,11 +158,11 @@ class Settings(BaseSettings):
     MAX_IMAGE_ANALYSIS_LENGTH: int = 5000
 
     @property
-    def developer_user_ids(self) -> set[str]:
-        """Get set of developer user IDs."""
-        if not self.DEVELOPER_USER_IDS:
+    def developer_emails(self) -> set[str]:
+        """Get set of developer email addresses (lowercased)."""
+        if not self.DEVELOPER_EMAILS:
             return set()
-        return {uid.strip() for uid in self.DEVELOPER_USER_IDS.split(",") if uid.strip()}
+        return {e.strip().lower() for e in self.DEVELOPER_EMAILS.split(",") if e.strip()}
 
     @property
     def is_gcp(self) -> bool:

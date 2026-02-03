@@ -78,7 +78,11 @@ async def get_current_user_profile(
     user_repo: UserRepo,
 ) -> UserProfile:
     settings = get_settings()
-    is_dev = user.id in settings.developer_user_ids
+
+    def _check_dev(email: str | None) -> bool:
+        return bool(email and email.lower() in settings.developer_emails)
+
+    is_dev = _check_dev(user.email)
 
     profile = UserProfile(
         id=user.id,
@@ -98,9 +102,12 @@ async def get_current_user_profile(
     if not record:
         return profile
 
+    resolved_email = record.email or user.email
+    is_dev = _check_dev(resolved_email)
+
     return UserProfile(
         id=str(record.id),
-        email=record.email or user.email,
+        email=resolved_email,
         display_name=record.display_name or user.display_name,
         username=record.username,
         first_name=record.first_name,

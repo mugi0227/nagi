@@ -31,10 +31,12 @@ from app.services.issue_chat_service import IssueChatService
 router = APIRouter()
 
 
-def _is_developer(user_id: str) -> bool:
-    """Check if the user is a developer account."""
+def _is_developer(email: str | None) -> bool:
+    """Check if the user is a developer account by email."""
+    if not email:
+        return False
     settings = get_settings()
-    return user_id in settings.developer_user_ids
+    return email.lower() in settings.developer_emails
 
 
 # ============================================
@@ -191,7 +193,7 @@ async def update_issue_status(
     repo: IssueRepo,
 ):
     """Update issue status (developer accounts only)."""
-    if not _is_developer(user.id):
+    if not _is_developer(user.email):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Only developer accounts can change issue status",
