@@ -171,6 +171,7 @@ async def get_top3_tasks(
         tasks,
         project_priorities=project_priorities,
         today=today,
+        user_timezone=user_timezone,
     )
 
     top3_tasks = [task for task in today_result.today_tasks if task.id in set(today_result.top3_ids)]
