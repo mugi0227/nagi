@@ -8,6 +8,7 @@ from datetime import date, datetime, timedelta
 import math
 from typing import Optional
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from app.core.logger import setup_logger
 from app.models.enums import EnergyLevel, Priority, TaskStatus
@@ -957,6 +958,7 @@ class SchedulerService:
         tasks: list[Task],
         project_priorities: dict[UUID, int] | None = None,
         today: Optional[date] = None,
+        user_timezone: str = "UTC",
     ) -> TodayTasksResponse:
         """Extract today's tasks and top3 from schedule."""
         today_date = today or date.today()
@@ -1004,6 +1006,29 @@ class SchedulerService:
                 and not task.is_fixed_time
             ):
                 today_task_ids.append(task.id)
+
+        # Include tasks completed today so they remain visible after unlock
+        today_task_id_set = set(today_task_ids)
+        tz = ZoneInfo(user_timezone)
+        for task in tasks:
+            if (
+                task.status == TaskStatus.DONE
+                and task.completed_at
+                and task.id not in today_task_id_set
+                and not task.is_fixed_time
+                and not is_parent_task(task, tasks)
+            ):
+                completed_dt = task.completed_at
+                if completed_dt.tzinfo is None:
+                    completed_dt = completed_dt.replace(tzinfo=ZoneInfo("UTC"))
+                if completed_dt.astimezone(tz).date() == today_date:
+                    today_task_ids.append(task.id)
+                    today_task_id_set.add(task.id)
+                    task_minutes = get_effective_estimated_minutes(task, tasks)
+                    if task_minutes <= 0:
+                        task_minutes = self.default_task_minutes
+                    allocation_minutes_by_task[task.id] = task_minutes
+                    allocated_minutes += task_minutes
 
         today_tasks = [task_map[task_id] for task_id in today_task_ids if task_id in task_map]
         today_allocations: list[TodayTaskAllocation] = []

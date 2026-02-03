@@ -378,15 +378,15 @@ async def get_today_tasks(
     apply_plan_constraints: bool = Query(True, description="Apply project plan windows"),
 ):
     """Get today's tasks derived from the schedule."""
+    user_timezone = "Asia/Tokyo"
+    try:
+        user_account = await user_repo.get(UUID(user.id))
+    except (TypeError, ValueError):
+        user_account = None
+    if user_account and user_account.timezone:
+        user_timezone = user_account.timezone
     resolved_date = target_date
     if resolved_date is None:
-        user_timezone = "Asia/Tokyo"
-        try:
-            user_account = await user_repo.get(UUID(user.id))
-        except (TypeError, ValueError):
-            user_account = None
-        if user_account and user_account.timezone:
-            user_timezone = user_account.timezone
         resolved_date = get_user_today(user_timezone)
     tasks = await repo.list(user.id, include_done=True, limit=1000)
     project_priorities = await load_project_priorities(project_repo, user.id)
@@ -424,6 +424,7 @@ async def get_today_tasks(
         tasks,
         project_priorities=project_priorities,
         today=resolved_date,
+        user_timezone=user_timezone,
     )
 
 
