@@ -33,7 +33,6 @@ import type {
   ProjectInvitation,
   ProjectKpiMetric,
   ProjectMember,
-  ProjectWithTaskCount,
   Task,
   TaskAssignment,
   TaskStatus,
