@@ -124,6 +124,11 @@ class Settings(BaseSettings):
     QUIET_HOURS_END: str = "06:00"
 
     # ===========================================
+    # Developer / Admin
+    # ===========================================
+    DEVELOPER_USER_ID: str = ""
+
+    # ===========================================
     # Similarity Detection
     # ===========================================
     SIMILARITY_LOOKBACK_MINUTES: int = 10

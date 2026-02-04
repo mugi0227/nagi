@@ -20,6 +20,13 @@ class NotificationType(str, Enum):
     TASK_ASSIGNED = "task_assigned"  # タスクが割り当てられた
     PROJECT_INVITED = "project_invited"  # プロジェクトに招待された
     MILESTONE_REACHED = "milestone_reached"  # マイルストーン達成
+    CHECKIN_CREATED = "checkin_created"  # チェックインが作成された
+    CHECKIN_UPDATED = "checkin_updated"  # チェックインが更新された
+    ISSUE_NEW = "issue_new"  # 新しい要望が投稿された
+    ISSUE_EDITED = "issue_edited"  # 要望が編集された
+    ISSUE_LIKED = "issue_liked"  # 要望にいいねがついた
+    ISSUE_COMMENTED = "issue_commented"  # 要望にコメントがついた
+    ISSUE_STATUS_CHANGED = "issue_status_changed"  # 要望のステータスが変更された
 
 
 class Notification(BaseModel):
