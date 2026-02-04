@@ -22,6 +22,7 @@ import {
   HiOutlineFire,
   HiOutlineLightningBolt,
   HiOutlineLocationMarker,
+  HiOutlinePencilAlt,
   HiOutlineUserGroup
 } from 'react-icons/hi';
 import {
@@ -678,17 +679,17 @@ ${filledSummary}${emptySummary}
                 </div>
               )}
 
-              {/* 達成メモセクション */}
-              {(localTask.completion_note || (onUpdateTask && localTask.status === 'DONE')) && (
+              {/* メモセクション */}
+              {(localTask.completion_note || onUpdateTask) && (
                 <div className="detail-section completion-note-section">
                   <h3 className="section-label">
-                    <HiOutlineCheckCircle className="section-icon" /> 達成メモ
+                    <HiOutlinePencilAlt className="section-icon" /> メモ
                   </h3>
                   {onUpdateTask ? (
                     <EditableSection
                       value={localTask.completion_note}
                       onSave={async (newValue) => handleFieldUpdate('completion_note', newValue)}
-                      placeholder="達成メモを入力（どのように達成したか、学んだこと等）"
+                      placeholder="メモを入力"
                       multiline
                       markdown
                       renderView={(value) => (
@@ -1614,17 +1615,17 @@ ${filledSummary}${emptySummary}
                 </div>
               )}
 
-              {(selectedSubtask.completion_note || (onUpdateTask && selectedSubtask.status === 'DONE')) && (
+              {(selectedSubtask.completion_note || onUpdateTask) && (
                 <div className="guide-section completion-note-section">
                   <div className="section-header-with-icon">
-                    <HiOutlineCheckCircle />
-                    <h4>達成メモ</h4>
+                    <HiOutlinePencilAlt />
+                    <h4>メモ</h4>
                   </div>
                   {onUpdateTask ? (
                     <EditableSection
                       value={selectedSubtask.completion_note}
                       onSave={async (newValue) => handleSubtaskFieldUpdate(selectedSubtask.id, 'completion_note', newValue)}
-                      placeholder="達成メモを入力（どのように達成したか、学んだこと等）"
+                      placeholder="メモを入力"
                       multiline
                       markdown
                       renderView={(value) => (

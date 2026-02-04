@@ -156,7 +156,7 @@ class UpdateTaskInput(BaseModel):
     completion_note: Optional[str] = Field(
         None,
         max_length=2000,
-        description="完了時メモ（学んだこと、工夫したこと、感想など。Achievement生成に活用）"
+        description="メモ（学んだこと、気づき、作業記録など。いつでも記入可能。Achievement生成に活用）"
     )
     guide: Optional[str] = Field(
         None,
@@ -705,18 +705,15 @@ async def create_task(
                 )
                 assigned.append(created.model_dump(mode="json"))
 
-    # Auto-assign to the sole project member if project has exactly one member
-    if not assigned and assignment_repo and project_id and member_repo:
+    # Auto-assign to the requester (current user) when no assignee specified
+    if not assigned and assignment_repo:
         try:
-            members = await member_repo.list_by_project(project_id)
-            if len(members) == 1:
-                sole_member_id = members[0].member_user_id
-                created = await assignment_repo.assign(
-                    owner_id,
-                    task.id,
-                    TaskAssignmentCreate(assignee_id=sole_member_id),
-                )
-                assigned.append(created.model_dump(mode="json"))
+            created = await assignment_repo.assign(
+                owner_id,
+                task.id,
+                TaskAssignmentCreate(assignee_id=user_id),
+            )
+            assigned.append(created.model_dump(mode="json"))
         except Exception:
             pass  # Non-critical, skip on error
 
@@ -1546,7 +1543,7 @@ def update_task_tool(
             location (str, optional): 場所（会議用）
             attendees (list[str], optional): 参加者リスト（会議用）
             meeting_notes (str, optional): 議事録・メモ（会議用）
-            completion_note (str, optional): 完了時メモ（学んだこと、工夫したこと、感想など。status=DONEと一緒に指定すると振り返りに活用される）
+            completion_note (str, optional): メモ（学んだこと、気づき、作業記録など。いつでも記入可能。Achievement生成にも活用される）
 
         Returns:
             dict: 更新されたタスク情報

@@ -133,7 +133,7 @@ def _build_tasks_prompt(tasks: list[Task]) -> str:
         if task.purpose:
             lines.append(f"- 目的: {task.purpose}")
         if task.completion_note:
-            lines.append(f"- 達成メモ: {task.completion_note}")
+            lines.append(f"- メモ: {task.completion_note}")
         lines.append("")
 
     return "\n".join(lines)
@@ -149,7 +149,7 @@ def _build_task_snapshots_prompt(tasks: list[TaskSnapshot]) -> str:
         if task.description:
             lines.append(f"- 説明: {task.description[:500]}")
         if task.completion_note:
-            lines.append(f"- 達成メモ: {task.completion_note[:500]}")
+            lines.append(f"- メモ: {task.completion_note[:500]}")
         lines.append("")
 
     return "\n".join(lines)

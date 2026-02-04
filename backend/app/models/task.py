@@ -81,7 +81,7 @@ class TaskBase(BaseModel):
     completion_note: Optional[str] = Field(
         None,
         max_length=2000,
-        description="達成メモ（どのように達成したか、学んだこと等）",
+        description="メモ（学んだこと、気づき、作業記録など）",
     )
     touchpoint_count: Optional[int] = Field(
         None,
