@@ -5,6 +5,7 @@ import { useTimezone } from '../hooks/useTimezone';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { formatDate as formatDateValue } from '../utils/dateTime';
 import { IssueChatWindow } from '../components/issues/IssueChatWindow';
+import { IssueCommentSection } from '../components/issues/IssueCommentSection';
 import './IssuesPage.css';
 
 const CATEGORY_LABELS: Record<IssueCategory, string> = {

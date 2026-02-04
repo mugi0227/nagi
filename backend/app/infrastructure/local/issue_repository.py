@@ -206,10 +206,14 @@ class SqliteIssueRepository(IIssueRepository):
             if orm.user_id != user_id:
                 raise ForbiddenError("Only the author can delete this issue")
 
-            # Delete likes first
-            await session.execute(
-                select(IssueLikeORM).where(IssueLikeORM.issue_id == str(issue_id))
+            # Delete comments first
+            comments_result = await session.execute(
+                select(IssueCommentORM).where(IssueCommentORM.issue_id == str(issue_id))
             )
+            for comment in comments_result.scalars().all():
+                await session.delete(comment)
+
+            # Delete likes
             likes_result = await session.execute(
                 select(IssueLikeORM).where(IssueLikeORM.issue_id == str(issue_id))
             )

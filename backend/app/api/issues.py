@@ -13,7 +13,7 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.api.deps import CurrentUser, IssueRepo, LLMProvider
+from app.api.deps import CurrentUser, IssueRepo, IssueCommentRepo, NotificationRepo, LLMProvider
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError, ForbiddenError
 from app.models.issue import (
@@ -22,13 +22,26 @@ from app.models.issue import (
     IssueUpdate,
     IssueStatusUpdate,
     IssueListResponse,
+)
+from app.models.issue_comment import (
     IssueComment,
     IssueCommentCreate,
+    IssueCommentListResponse,
 )
 from app.models.enums import IssueCategory, IssueStatus
 from app.services.issue_chat_service import IssueChatService
+from app.services import notification_service as notify
 
 router = APIRouter()
+
+STATUS_LABELS: dict[str, str] = {
+    "OPEN": "投稿済み",
+    "UNDER_REVIEW": "検討中",
+    "PLANNED": "対応予定",
+    "IN_PROGRESS": "対応中",
+    "COMPLETED": "完了",
+    "WONT_FIX": "対応なし",
+}
 
 
 def _is_developer(email: str | None) -> bool:
@@ -105,9 +118,14 @@ async def create_issue(
     issue: IssueCreate,
     user: CurrentUser,
     repo: IssueRepo,
+    notification_repo: NotificationRepo,
 ):
     """Create a new issue."""
-    return await repo.create(user.id, issue)
+    result = await repo.create(user.id, issue)
+    await notify.notify_issue_new(
+        notification_repo, result.id, result.title, user.id,
+    )
+    return result
 
 
 @router.get("", response_model=IssueListResponse)
@@ -169,10 +187,15 @@ async def update_issue(
     update: IssueUpdate,
     user: CurrentUser,
     repo: IssueRepo,
+    notification_repo: NotificationRepo,
 ):
     """Update an existing issue (by author only)."""
     try:
-        return await repo.update(issue_id, user.id, update)
+        result = await repo.update(issue_id, user.id, update)
+        await notify.notify_issue_edited(
+            notification_repo, result.id, result.title, user.id,
+        )
+        return result
     except NotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -191,6 +214,7 @@ async def update_issue_status(
     update: IssueStatusUpdate,
     user: CurrentUser,
     repo: IssueRepo,
+    notification_repo: NotificationRepo,
 ):
     """Update issue status (developer accounts only)."""
     if not _is_developer(user.email):
@@ -199,7 +223,18 @@ async def update_issue_status(
             detail="Only developer accounts can change issue status",
         )
     try:
-        return await repo.update_status(issue_id, update)
+        # Get issue first to know the poster
+        issue = await repo.get(issue_id)
+        if not issue:
+            raise NotFoundError(f"Issue {issue_id} not found")
+
+        result = await repo.update_status(issue_id, update)
+        status_label = STATUS_LABELS.get(update.status.value, update.status.value)
+        await notify.notify_issue_status_changed(
+            notification_repo, result.id, result.title,
+            issue.user_id, user.id, status_label,
+        )
+        return result
     except NotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -233,10 +268,25 @@ async def like_issue(
     issue_id: UUID,
     user: CurrentUser,
     repo: IssueRepo,
+    notification_repo: NotificationRepo,
 ):
     """Add a like to an issue."""
     try:
-        return await repo.like(issue_id, user.id)
+        # Get issue before like to check prior state
+        issue = await repo.get(issue_id, current_user_id=user.id)
+        if not issue:
+            raise NotFoundError(f"Issue {issue_id} not found")
+
+        was_liked = issue.liked_by_me
+        result = await repo.like(issue_id, user.id)
+
+        # Only notify if this is a new like (not already liked)
+        if not was_liked:
+            await notify.notify_issue_liked(
+                notification_repo, result.id, result.title,
+                issue.user_id, user.id, user.display_name or "",
+            )
+        return result
     except NotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -265,50 +315,62 @@ async def unlike_issue(
 # ============================================
 
 
-@router.get("/{issue_id}/comments", response_model=list[IssueComment])
-async def list_issue_comments(
-    issue_id: UUID,
-    user: CurrentUser,
-    repo: IssueRepo,
-):
-    """List comments for an issue."""
-    return await repo.list_comments(issue_id)
-
-
 @router.post(
     "/{issue_id}/comments",
     response_model=IssueComment,
     status_code=status.HTTP_201_CREATED,
 )
-async def create_issue_comment(
+async def create_comment(
     issue_id: UUID,
     comment: IssueCommentCreate,
     user: CurrentUser,
-    repo: IssueRepo,
+    issue_repo: IssueRepo,
+    comment_repo: IssueCommentRepo,
+    notification_repo: NotificationRepo,
 ):
-    """Create a comment on an issue (any user)."""
-    try:
-        return await repo.create_comment(issue_id, user.id, comment)
-    except NotFoundError as e:
+    """Create a comment on an issue."""
+    issue = await issue_repo.get(issue_id)
+    if not issue:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=str(e),
+            detail=f"Issue {issue_id} not found",
         )
 
+    result = await comment_repo.create(issue_id, user.id, comment)
+    await notify.notify_issue_commented(
+        notification_repo, issue_id, issue.title,
+        issue.user_id, user.id, user.display_name or "",
+    )
+    return result
+
+
+@router.get("/{issue_id}/comments", response_model=IssueCommentListResponse)
+async def list_comments(
+    issue_id: UUID,
+    user: CurrentUser,
+    comment_repo: IssueCommentRepo,
+    limit: int = Query(50, ge=1, le=100),
+    offset: int = Query(0, ge=0),
+):
+    """List comments for an issue."""
+    comments, total = await comment_repo.list_by_issue(
+        issue_id, limit=limit, offset=offset,
+    )
+    return IssueCommentListResponse(comments=comments, total=total)
 
 @router.delete(
     "/{issue_id}/comments/{comment_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-async def delete_issue_comment(
+async def delete_comment(
     issue_id: UUID,
     comment_id: UUID,
     user: CurrentUser,
-    repo: IssueRepo,
+    comment_repo: IssueCommentRepo,
 ):
-    """Delete a comment (by author only)."""
+    """Delete a comment (author only)."""
     try:
-        deleted = await repo.delete_comment(comment_id, user.id)
+        deleted = await comment_repo.delete(comment_id, user.id)
         if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

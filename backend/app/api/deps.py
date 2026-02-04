@@ -36,6 +36,7 @@ from app.interfaces.issue_repository import IIssueRepository
 from app.interfaces.achievement_repository import IAchievementRepository
 from app.interfaces.project_achievement_repository import IProjectAchievementRepository
 from app.interfaces.notification_repository import INotificationRepository
+from app.interfaces.issue_comment_repository import IIssueCommentRepository
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.speech_provider import ISpeechToTextProvider
 from app.interfaces.storage_provider import IStorageProvider
@@ -301,6 +302,17 @@ def get_project_achievement_repository() -> IProjectAchievementRepository:
 
 
 @lru_cache()
+def get_issue_comment_repository() -> IIssueCommentRepository:
+    """Get issue comment repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Issue comment repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.issue_comment_repository import SqliteIssueCommentRepository
+        return SqliteIssueCommentRepository()
+
+
+@lru_cache()
 def get_notification_repository() -> INotificationRepository:
     """Get notification repository instance."""
     settings = get_settings()
@@ -470,6 +482,7 @@ StorageProvider = Annotated[IStorageProvider, Depends(get_storage_provider)]
 SpeechProvider = Annotated[ISpeechToTextProvider, Depends(get_speech_provider)]
 ScheduleSnapshotRepo = Annotated[IScheduleSnapshotRepository, Depends(get_schedule_snapshot_repository)]
 IssueRepo = Annotated[IIssueRepository, Depends(get_issue_repository)]
+IssueCommentRepo = Annotated[IIssueCommentRepository, Depends(get_issue_comment_repository)]
 AchievementRepo = Annotated[IAchievementRepository, Depends(get_achievement_repository)]
 ProjectAchievementRepo = Annotated[IProjectAchievementRepository, Depends(get_project_achievement_repository)]
 NotificationRepo = Annotated[INotificationRepository, Depends(get_notification_repository)]

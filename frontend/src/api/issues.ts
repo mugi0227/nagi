@@ -5,11 +5,12 @@ import type {
   IssueUpdate,
   IssueStatusUpdate,
   IssueListResponse,
+  IssueComment,
+  IssueCommentCreate,
+  IssueCommentListResponse,
   IssueCategory,
   IssueStatus,
   IssueChatChunk,
-  IssueComment,
-  IssueCommentCreate,
 } from './types';
 
 interface ListIssuesParams extends Record<string, string | number | undefined> {
@@ -64,8 +65,8 @@ export const issuesApi = {
   unlike: (issueId: string) => api.delete<Issue>(`/issues/${issueId}/like`),
 
   // Comments
-  listComments: (issueId: string) =>
-    api.get<IssueComment[]>(`/issues/${issueId}/comments`),
+  listComments: (issueId: string, params: { limit?: number; offset?: number } = {}) =>
+    api.get<IssueCommentListResponse>(`/issues/${issueId}/comments${buildQuery(params)}`),
 
   createComment: (issueId: string, data: IssueCommentCreate) =>
     api.post<IssueComment>(`/issues/${issueId}/comments`, data),

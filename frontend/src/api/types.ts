@@ -932,6 +932,11 @@ export interface IssueCommentCreate {
   content: string;
 }
 
+export interface IssueCommentListResponse {
+  comments: IssueComment[];
+  total: number;
+}
+
 export interface IssueChatRequest {
   message: string;
   session_id?: string;
@@ -1049,7 +1054,14 @@ export type NotificationType =
   | 'achievement_project'
   | 'task_assigned'
   | 'project_invited'
-  | 'milestone_reached';
+  | 'milestone_reached'
+  | 'checkin_created'
+  | 'checkin_updated'
+  | 'issue_new'
+  | 'issue_edited'
+  | 'issue_liked'
+  | 'issue_commented'
+  | 'issue_status_changed';
 
 export interface Notification {
   id: string;

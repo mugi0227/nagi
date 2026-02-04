@@ -462,6 +462,33 @@ async def run_migrations():
             )
 
 
+        # Create issue_comments table if missing
+        issue_comments_result = await conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='issue_comments'")
+        )
+        if not issue_comments_result.scalar():
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE issue_comments (
+                        id VARCHAR(36) PRIMARY KEY,
+                        issue_id VARCHAR(36) NOT NULL,
+                        user_id VARCHAR(255) NOT NULL,
+                        content TEXT NOT NULL,
+                        created_at DATETIME,
+                        updated_at DATETIME
+                    )
+                    """
+                )
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_issue_comments_issue_id ON issue_comments(issue_id)")
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_issue_comments_user_id ON issue_comments(user_id)")
+            )
+
+
 async def _ensure_chat_sessions_composite_pk(conn):
     """
     Ensure chat_sessions uses a composite primary key (session_id, user_id).
