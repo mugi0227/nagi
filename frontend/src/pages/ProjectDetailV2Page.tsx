@@ -613,6 +613,26 @@ export function ProjectDetailV2Page() {
     return stats;
   }, [assignments, tasks, timezone]);
 
+  const STATUS_ORDER: Record<string, number> = { IN_PROGRESS: 0, TODO: 1, WAITING: 2, DONE: 3 };
+
+  const tasksByMemberId = useMemo(() => {
+    const map: Record<string, Task[]> = {};
+    const taskMap = new Map(tasks.map(t => [t.id, t]));
+    const parentTaskIds = new Set(tasks.filter(t => t.parent_id).map(t => t.parent_id as string));
+    assignments.forEach((a) => {
+      if (!a.assignee_id) return;
+      const task = taskMap.get(a.task_id);
+      if (!task || parentTaskIds.has(task.id)) return;
+      if (!map[a.assignee_id]) map[a.assignee_id] = [];
+      map[a.assignee_id].push(task);
+    });
+    // Sort: IN_PROGRESS → TODO → WAITING → DONE
+    for (const key of Object.keys(map)) {
+      map[key].sort((a, b) => (STATUS_ORDER[a.status] ?? 9) - (STATUS_ORDER[b.status] ?? 9));
+    }
+    return map;
+  }, [assignments, tasks]);
+
   const kpiMetrics = useMemo(
     () => project?.kpi_config?.metrics ?? [],
     [project]
@@ -1552,40 +1572,110 @@ export function ProjectDetailV2Page() {
                         ? 'warn'
                         : 'ok';
                   const displayName = member.member_display_name || member.member_user_id;
+                  const isExpanded = expandedMemberIds.has(member.member_user_id);
+                  const memberTasks = tasksByMemberId[member.member_user_id] ?? [];
                   return (
-                    <div key={member.id} className="project-v2-team-card">
-                      <div className="project-v2-team-header">
-                        <div className="project-v2-team-avatar">{getInitial(displayName)}</div>
-                        <div>
-                          <div className="project-v2-team-name">{displayName}</div>
-                          <div className="project-v2-muted">{member.role}</div>
+                    <div
+                      key={member.id}
+                      className={`project-v2-team-card${isExpanded ? ' expanded' : ''}`}
+                    >
+                      <div
+                        className="project-v2-team-card-toggle"
+                        onClick={() => toggleMemberExpand(member.member_user_id)}
+                      >
+                        <div className="project-v2-team-header">
+                          <div className="project-v2-team-avatar">{getInitial(displayName)}</div>
+                          <div style={{ flex: 1 }}>
+                            <div className="project-v2-team-name">{displayName}</div>
+                            <div className="project-v2-muted">{member.role}</div>
+                          </div>
+                          <div className={`project-v2-team-chevron${isExpanded ? ' open' : ''}`}>
+                            <FaChevronDown />
+                          </div>
+                        </div>
+                        <div className="project-v2-team-stats">
+                          <div className="project-v2-team-stat">
+                            <div className="project-v2-team-stat-value">{stats.total}</div>
+                            <div className="project-v2-team-stat-label">TOTAL</div>
+                          </div>
+                          <div className="project-v2-team-stat">
+                            <div className="project-v2-team-stat-value">{stats.inProgress}</div>
+                            <div className="project-v2-team-stat-label">IN PROGRESS</div>
+                          </div>
+                          <div className="project-v2-team-stat">
+                            <div className="project-v2-team-stat-value">{stats.done}</div>
+                            <div className="project-v2-team-stat-label">DONE</div>
+                          </div>
+                        </div>
+                        <div className="project-v2-team-workload">
+                          <div className="project-v2-muted">
+                            今週の負荷 {loadPercent != null ? `${loadPercent}%` : '未設定'}
+                          </div>
+                          <div className="project-v2-workload-bar">
+                            <div
+                              className={`project-v2-workload-fill ${loadClass}`}
+                              style={{ width: `${cappedPercent}%` }}
+                            />
+                          </div>
                         </div>
                       </div>
-                      <div className="project-v2-team-stats">
-                        <div className="project-v2-team-stat">
-                          <div className="project-v2-team-stat-value">{stats.total}</div>
-                          <div className="project-v2-team-stat-label">TOTAL</div>
+                      {isExpanded && (
+                        <div className="project-v2-member-tasks">
+                          {memberTasks.length === 0 ? (
+                            <p className="project-v2-muted">割り当てられたタスクはありません。</p>
+                          ) : (
+                            <div className="project-v2-task-list">
+                              {memberTasks.map((task) => {
+                                const isDone = task.status === 'DONE';
+                                const progress = task.progress ?? (isDone ? 100 : 0);
+                                const dlStatus = getDeadlineStatus(task.due_date, task.status, timezone);
+                                const est = task.estimated_minutes;
+                                const timeLabel = est
+                                  ? est >= 60
+                                    ? `${Math.floor(est / 60)}h${est % 60 > 0 ? ` ${est % 60}m` : ''}`
+                                    : `${est}m`
+                                  : '';
+                                return (
+                                  <div
+                                    key={task.id}
+                                    className={`project-v2-task-item ${isDone ? 'done' : ''} ${dlStatus ? `deadline-${dlStatus}` : ''}`}
+                                    onClick={() => taskModal.openTaskDetail(task)}
+                                  >
+                                    <div
+                                      className="project-v2-task-progress-bar"
+                                      style={{ width: `${progress}%` }}
+                                    />
+                                    <div
+                                      className={`project-v2-task-checkbox ${isDone ? 'checked' : ''}`}
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        updateTask(task.id, { status: isDone ? 'TODO' : 'DONE' });
+                                      }}
+                                    />
+                                    <div className="project-v2-task-content">
+                                      <div className={`project-v2-task-title ${isDone ? 'done' : ''}`}>
+                                        {task.title}
+                                      </div>
+                                      {task.due_date && (
+                                        <div className="project-v2-muted">{formatShortDate(task.due_date)}</div>
+                                      )}
+                                    </div>
+                                    {timeLabel && (
+                                      <div className="project-v2-task-time">{timeLabel}</div>
+                                    )}
+                                    <div
+                                      className="project-v2-member-task-status"
+                                      data-status={task.status}
+                                    >
+                                      {STATUS_LABELS[task.status]}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                        <div className="project-v2-team-stat">
-                          <div className="project-v2-team-stat-value">{stats.inProgress}</div>
-                          <div className="project-v2-team-stat-label">IN PROGRESS</div>
-                        </div>
-                        <div className="project-v2-team-stat">
-                          <div className="project-v2-team-stat-value">{stats.done}</div>
-                          <div className="project-v2-team-stat-label">DONE</div>
-                        </div>
-                      </div>
-                      <div className="project-v2-team-workload">
-                        <div className="project-v2-muted">
-                          今週の負荷 {loadPercent != null ? `${loadPercent}%` : '未設定'}
-                        </div>
-                        <div className="project-v2-workload-bar">
-                          <div
-                            className={`project-v2-workload-fill ${loadClass}`}
-                            style={{ width: `${cappedPercent}%` }}
-                          />
-                        </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })
