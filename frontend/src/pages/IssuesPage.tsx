@@ -118,7 +118,7 @@ export function IssuesPage() {
     setCommentsLoading(true);
     try {
       const result = await issuesApi.listComments(issueId);
-      setComments(result);
+      setComments(result.comments);
     } catch (err) {
       console.error('Failed to load comments:', err);
     } finally {
