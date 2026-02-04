@@ -112,6 +112,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const [quietHoursEnd, setQuietHoursEnd] = useState(
     () => userStorage.get('quietHoursEnd') || '07:00'
   );
+  const [enableWeeklyMeetingReminder, setEnableWeeklyMeetingReminder] = useState(false);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -121,6 +122,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     setUserEmail(currentUser.email || '');
     setUserTimezone(currentUser.timezone || 'Asia/Tokyo');
     setStoredTimezone(currentUser.timezone || 'Asia/Tokyo');
+    setEnableWeeklyMeetingReminder(currentUser.enable_weekly_meeting_reminder ?? false);
   }, [currentUser]);
 
   const handleUserNameChange = (value: string) => {
@@ -196,6 +198,12 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     userStorage.set('quietHoursEnd', value);
   };
 
+  const handleWeeklyMeetingReminderToggle = () => {
+    const newValue = !enableWeeklyMeetingReminder;
+    setEnableWeeklyMeetingReminder(newValue);
+    setAccountError(null);
+    setAccountSuccess(null);
+  };
 
   const hasAccountChanges = () => {
     const nextUserName = userName.trim();
@@ -207,6 +215,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     const currentUserLastName = currentUser?.last_name || '';
     const currentUserEmail = currentUser?.email || '';
     const currentUserTimezone = currentUser?.timezone || 'Asia/Tokyo';
+    const currentEnableWeeklyMeetingReminder = currentUser?.enable_weekly_meeting_reminder ?? false;
 
     return (
       (nextUserName && nextUserName !== currentUserName) ||
@@ -214,7 +223,8 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       (nextFirstName !== currentUserFirstName) ||
       (nextEmail && nextEmail !== currentUserEmail) ||
       newPassword.trim() ||
-      (userTimezone && userTimezone !== currentUserTimezone)
+      (userTimezone && userTimezone !== currentUserTimezone) ||
+      (enableWeeklyMeetingReminder !== currentEnableWeeklyMeetingReminder)
     );
   };
 
@@ -258,6 +268,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       last_name?: string;
       new_password?: string;
       timezone?: string;
+      enable_weekly_meeting_reminder?: boolean;
     } = { current_password: currentPassword };
 
     const nextUserName = userName.trim();
@@ -269,6 +280,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     const currentUserLastName = currentUser?.last_name || '';
     const currentUserEmail = currentUser?.email || '';
     const currentUserTimezone = currentUser?.timezone || 'Asia/Tokyo';
+    const currentEnableWeeklyMeetingReminder = currentUser?.enable_weekly_meeting_reminder ?? false;
 
     if (nextUserName && nextUserName !== currentUserName) {
       payload.username = nextUserName;
@@ -287,6 +299,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     }
     if (userTimezone && userTimezone !== currentUserTimezone) {
       payload.timezone = userTimezone;
+    }
+    if (enableWeeklyMeetingReminder !== currentEnableWeeklyMeetingReminder) {
+      payload.enable_weekly_meeting_reminder = enableWeeklyMeetingReminder;
     }
 
     setIsUpdatingAccount(true);
@@ -672,6 +687,24 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                   </div>
                 </div>
               )}
+            </div>
+
+            <div className="setting-item">
+              <div className="setting-row">
+                <div className="setting-label-group">
+                  <span className="setting-label">週次会議登録リマインダー</span>
+                  <p className="setting-description">
+                    毎週月曜日に、会議情報の登録を促すタスクを自動作成します。
+                  </p>
+                </div>
+                <button
+                  className={`toggle-btn ${enableWeeklyMeetingReminder ? 'active' : ''}`}
+                  onClick={handleWeeklyMeetingReminderToggle}
+                  disabled={!isLocalAuth || isUpdatingAccount}
+                >
+                  <span className="toggle-slider"></span>
+                </button>
+              </div>
             </div>
           </div>
 

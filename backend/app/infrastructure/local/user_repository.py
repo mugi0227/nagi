@@ -34,6 +34,7 @@ class SqliteUserRepository(IUserRepository):
             username=orm.username,
             password_hash=orm.password_hash,
             timezone=orm.timezone,
+            enable_weekly_meeting_reminder=orm.enable_weekly_meeting_reminder,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
         )
@@ -85,6 +86,7 @@ class SqliteUserRepository(IUserRepository):
                 username=data.username,
                 password_hash=data.password_hash,
                 timezone=data.timezone,
+                enable_weekly_meeting_reminder=data.enable_weekly_meeting_reminder,
             )
             session.add(orm)
             await session.commit()
@@ -131,6 +133,8 @@ class SqliteUserRepository(IUserRepository):
                 orm.password_hash = update.password_hash
             if update.timezone is not None:
                 orm.timezone = update.timezone
+            if update.enable_weekly_meeting_reminder is not None:
+                orm.enable_weekly_meeting_reminder = update.enable_weekly_meeting_reminder
 
             orm.updated_at = now_utc()
             await session.commit()

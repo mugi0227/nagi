@@ -168,6 +168,7 @@ class UserORM(Base):
     username = Column(String(255), nullable=True, index=True)
     password_hash = Column(String(255), nullable=True)
     timezone = Column(String(50), default="Asia/Tokyo", nullable=False)
+    enable_weekly_meeting_reminder = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, default=now_utc)
     updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 

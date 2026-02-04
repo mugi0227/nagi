@@ -202,6 +202,8 @@ async def run_migrations():
             await conn.execute(text("ALTER TABLE users ADD COLUMN first_name VARCHAR(100)"))
         if "last_name" not in user_columns:
             await conn.execute(text("ALTER TABLE users ADD COLUMN last_name VARCHAR(100)"))
+        if "enable_weekly_meeting_reminder" not in user_columns:
+            await conn.execute(text("ALTER TABLE users ADD COLUMN enable_weekly_meeting_reminder BOOLEAN DEFAULT 0 NOT NULL"))
 
         # Create recurring_meetings table if missing
         recurring_result = await conn.execute(
@@ -708,6 +710,7 @@ async def _ensure_username_unique(conn):
                 username VARCHAR(255),
                 password_hash VARCHAR(255),
                 timezone VARCHAR(50) NOT NULL DEFAULT 'Asia/Tokyo',
+                enable_weekly_meeting_reminder BOOLEAN NOT NULL DEFAULT 0,
                 created_at DATETIME,
                 updated_at DATETIME,
                 CONSTRAINT uq_user_provider UNIQUE (provider_issuer, provider_sub),
@@ -723,11 +726,13 @@ async def _ensure_username_unique(conn):
             INSERT INTO users (
                 id, provider_issuer, provider_sub, email, display_name,
                 first_name, last_name, username, password_hash, timezone,
-                created_at, updated_at
+                enable_weekly_meeting_reminder, created_at, updated_at
             )
             SELECT
                 id, provider_issuer, provider_sub, email, display_name,
-                first_name, last_name, username, password_hash, timezone,
+                first_name, last_name, username, password_hash,
+                COALESCE(timezone, 'Asia/Tokyo'),
+                COALESCE(enable_weekly_meeting_reminder, 0),
                 created_at, updated_at
             FROM users_old
             """

@@ -9,6 +9,7 @@ export interface UserProfile {
   last_name?: string | null;
   timezone?: string;
   is_developer?: boolean;
+  enable_weekly_meeting_reminder?: boolean;
 }
 
 export interface UserSearchResult {
@@ -26,6 +27,7 @@ export interface UpdateCredentialsRequest {
   last_name?: string;
   new_password?: string;
   timezone?: string;
+  enable_weekly_meeting_reminder?: boolean;
 }
 
 export const usersApi = {

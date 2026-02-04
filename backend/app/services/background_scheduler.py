@@ -30,6 +30,7 @@ from app.models.enums import GenerationType
 from app.models.notification import NotificationCreate, NotificationType
 from app.services.achievement_service import generate_achievement
 from app.services.project_achievement_service import generate_project_achievement
+from app.services.weekly_meeting_reminder_service import ensure_weekly_meeting_reminders
 
 
 class BackgroundScheduler:
@@ -39,7 +40,8 @@ class BackgroundScheduler:
     Features:
     - Weekly achievement auto-generation (Friday 00:00)
     - Weekly project achievement auto-generation
-    - Startup check for missed runs
+    - Weekly meeting registration reminder tasks (Monday 00:00)
+    - Startup check for missed runs (achievements + meeting reminders)
     - Staggered processing to avoid load spikes
     """
 
@@ -104,8 +106,21 @@ class BackgroundScheduler:
             replace_existing=True,
         )
 
+        # Schedule weekly meeting reminder task creation for Monday at 00:00
+        self._scheduler.add_job(
+            self._run_weekly_meeting_reminder_generation,
+            CronTrigger(day_of_week="mon", hour=0, minute=0),
+            id="weekly_meeting_reminder_generation",
+            name="Weekly Meeting Reminder Task Generation",
+            replace_existing=True,
+        )
+
         self._scheduler.start()
-        logger.info("Background scheduler started - Weekly achievement generation scheduled for Friday 00:00")
+        logger.info(
+            "Background scheduler started:\n"
+            "  - Weekly achievement generation: Friday 00:00\n"
+            "  - Weekly meeting reminder tasks: Monday 00:00"
+        )
 
         # Check for missed runs in background (non-blocking)
         asyncio.create_task(self._check_and_run_missed_background())
@@ -119,11 +134,11 @@ class BackgroundScheduler:
     async def _check_and_run_missed_background(self):
         """Background wrapper for checking missed runs with error handling."""
         try:
-            logger.info("Starting background check for missed achievement generation...")
+            logger.info("Starting background check for missed scheduled jobs...")
             await self._check_and_run_missed()
-            logger.info("Background check for missed achievement generation completed")
+            logger.info("Background check for missed scheduled jobs completed")
         except Exception as e:
-            logger.error(f"Background check for missed achievement generation failed: {e}")
+            logger.error(f"Background check for missed scheduled jobs failed: {e}")
 
     async def _check_and_run_missed(self):
         """
@@ -141,6 +156,9 @@ class BackgroundScheduler:
 
         # Check project achievements
         await self._check_and_run_missed_projects(now, last_friday)
+
+        # Check weekly meeting reminder tasks
+        await self._check_and_run_missed_meeting_reminders()
 
     async def _check_and_run_missed_personal(self, now: datetime, last_friday: datetime):
         """Check and run missed personal achievement generation."""
@@ -206,6 +224,32 @@ class BackgroundScheduler:
             await self._run_weekly_project_achievement_generation(last_friday)
         else:
             logger.info("No missed weekly project achievement generation detected")
+
+    async def _check_and_run_missed_meeting_reminders(self):
+        """
+        Check if weekly meeting reminder tasks were missed and create if needed.
+
+        This runs on startup and delegates to ensure_weekly_meeting_reminders(),
+        which has built-in duplicate detection logic.
+        """
+        logger.info("Checking for missed weekly meeting reminder task generation...")
+
+        try:
+            results = await ensure_weekly_meeting_reminders(
+                user_repo=self._user_repo,
+                task_repo=self._task_repo,
+            )
+
+            if results["tasks_created"] > 0:
+                logger.info(
+                    f"Created {results['tasks_created']} missed weekly meeting reminder tasks "
+                    f"({results['users_processed']} users processed)"
+                )
+            else:
+                logger.info("No missed weekly meeting reminder tasks detected")
+
+        except Exception as e:
+            logger.error(f"Failed to check for missed weekly meeting reminder tasks: {e}")
 
     async def _run_weekly_achievement_generation(self, last_friday: Optional[datetime] = None):
         """
@@ -335,6 +379,30 @@ class BackgroundScheduler:
 
         except Exception as e:
             logger.error(f"Weekly project achievement generation failed: {e}")
+
+    async def _run_weekly_meeting_reminder_generation(self):
+        """
+        Run weekly meeting reminder task generation for all users with the feature enabled.
+
+        Creates reminder tasks for the next 4-5 weeks (approximately 1 month).
+        """
+        logger.info("Starting weekly meeting reminder task generation...")
+
+        try:
+            results = await ensure_weekly_meeting_reminders(
+                user_repo=self._user_repo,
+                task_repo=self._task_repo,
+            )
+
+            logger.info(
+                f"Weekly meeting reminder task generation completed: "
+                f"{results['tasks_created']} tasks created, "
+                f"{results['tasks_skipped']} skipped, "
+                f"{results['users_processed']} users processed"
+            )
+
+        except Exception as e:
+            logger.error(f"Weekly meeting reminder task generation failed: {e}")
 
     async def _generate_weekly_for_user(self, user_id: str, last_friday: datetime) -> bool:
         """
