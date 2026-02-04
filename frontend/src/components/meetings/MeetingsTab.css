@@ -859,6 +859,7 @@
 .checkin-item-content {
     color: #475569;
     line-height: 1.4;
+    white-space: pre-wrap;
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;
@@ -884,6 +885,7 @@
     font-size: 0.8rem;
     color: #64748b;
     font-style: italic;
+    white-space: pre-wrap;
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;
