@@ -24,6 +24,7 @@ export function TasksPage() {
   const [page, setPage] = useState(1);
   const [showPersonalOnly, setShowPersonalOnly] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(getStoredViewMode);
+  const [sortBy, setSortBy] = useState<'default' | 'dueDate'>('dueDate');
 
   const handleViewModeChange = (mode: ViewMode) => {
     setViewMode(mode);
@@ -163,6 +164,14 @@ export function TasksPage() {
             </button>
           </div>
           <ViewModeToggle value={viewMode} onChange={handleViewModeChange} />
+          <select
+            className="sort-select"
+            value={sortBy}
+            onChange={(e) => setSortBy(e.target.value as 'default' | 'dueDate')}
+          >
+            <option value="default">デフォルト順</option>
+            <option value="dueDate">期限が近い順</option>
+          </select>
           <button className="primary-btn" onClick={() => taskModal.openCreateForm()}>
             <FaPlus />
             新規タスク
@@ -175,6 +184,7 @@ export function TasksPage() {
         onUpdateTask={handleUpdateStatus}
         onDeleteTask={(taskId) => deleteMutation.mutate(taskId)}
         onTaskClick={taskModal.openTaskDetail}
+        sortBy={sortBy}
         compact={viewMode === 'compact'}
       />
 

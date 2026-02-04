@@ -41,7 +41,7 @@ export function ProjectTasksView({
 }: ProjectTasksViewProps) {
   const [phases, setPhases] = useState<PhaseWithTaskCount[]>([]);
   const [isPhasesLoading, setIsPhasesLoading] = useState(false);
-  const [sortBy, setSortBy] = useState<'default' | 'dueDate'>('default');
+  const [sortBy, setSortBy] = useState<'default' | 'dueDate'>('dueDate');
   const [viewMode, setViewMode] = useState<ViewMode>(getStoredViewMode);
 
   const handleViewModeChange = (mode: ViewMode) => {

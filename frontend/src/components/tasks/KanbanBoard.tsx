@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { Task, TaskStatus } from '../../api/types';
 import { KanbanColumn } from './KanbanColumn';
 import { sortTasksByStepNumber } from '../../utils/taskSort';
+import { todayInTimezone } from '../../utils/dateTime';
 import './KanbanBoard.css';
 
 interface KanbanBoardProps {
@@ -43,7 +44,7 @@ export function KanbanBoard({
   assignedMemberIdsByTaskId,
   memberOptions,
   onAssignMultiple,
-  sortBy: _sortBy,
+  sortBy = 'default',
   selectionMode = false,
   selectedTaskIds,
   onSelectTask,
@@ -86,8 +87,32 @@ export function KanbanBoard({
       grouped[task.status].push(task);
     });
 
+    if (sortBy === 'dueDate') {
+      const todayMs = todayInTimezone().toMillis();
+      const isActionable = (t: Task) =>
+        !t.start_not_before || new Date(t.start_not_before).getTime() <= todayMs;
+
+      const smartSort = (a: Task, b: Task) => {
+        const aOk = isActionable(a);
+        const bOk = isActionable(b);
+        if (aOk !== bOk) return aOk ? -1 : 1;
+        // Not-yet-actionable group: sort by start_not_before ASC
+        if (!aOk && !bOk) {
+          return new Date(a.start_not_before!).getTime() - new Date(b.start_not_before!).getTime();
+        }
+        // Actionable group: sort by due_date ASC (nulls last)
+        if (!a.due_date && !b.due_date) return 0;
+        if (!a.due_date) return 1;
+        if (!b.due_date) return -1;
+        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+      };
+      (Object.keys(grouped) as TaskStatus[]).forEach((status) => {
+        grouped[status].sort(smartSort);
+      });
+    }
+
     return grouped;
-  }, [parentTasks]);
+  }, [parentTasks, sortBy]);
 
   const handleDrop = (taskId: string, newStatus: TaskStatus) => {
     onUpdateTask(taskId, newStatus);
