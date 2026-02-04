@@ -35,6 +35,7 @@ import { phasesApi } from '../../api/phases';
 import { projectsApi, getProject } from '../../api/projects';
 import { tasksApi } from '../../api/tasks';
 import type { Phase, Project, Task, TaskAssignment } from '../../api/types';
+import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/dateTime';
 import type { DraftCardData } from '../chat/DraftCard';
@@ -125,6 +126,7 @@ export function TaskDetailModal({
   onAssigneeChange,
 }: TaskDetailModalProps) {
   const timezone = useTimezone();
+  const { data: currentUser } = useCurrentUser();
   const queryClient = useQueryClient();
   const [selectedSubtask, setSelectedSubtask] = useState<Task | null>(initialSubtask);
   const [localProgress, setLocalProgress] = useState<number>(task.progress ?? 0);
@@ -323,6 +325,13 @@ export function TaskDetailModal({
 
   const getEnergyIcon = (level: string) => {
     return level === 'HIGH' ? <HiOutlineLightningBolt className="energy-icon-high" /> : <HiOutlineClock className="energy-icon-low" />;
+  };
+
+  const resolveCompletedByName = (userId?: string) => {
+    if (!userId) return '不明';
+    if (currentUser?.id === userId) return '自分';
+    const member = memberOptions.find(m => m.id === userId);
+    return member?.label ?? '不明';
   };
 
   const getStatusLabel = (status: string) => {
@@ -930,6 +939,9 @@ ${filledSummary}${emptySummary}
 
                 <p>作成: {localTask.created_by === 'AGENT' ? 'AI秘書' : '自分'} • {formatDateValue(localTask.created_at)}</p>
                 <p>更新: {formatDateValue(localTask.updated_at)}</p>
+                {localTask.completed_at && (
+                  <p>完了: {resolveCompletedByName(localTask.completed_by)} • {formatDateValue(localTask.completed_at)}</p>
+                )}
               </div>
             </div>
 

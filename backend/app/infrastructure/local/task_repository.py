@@ -77,6 +77,7 @@ class SqliteTaskRepository(ITaskRepository):
             touchpoint_steps=orm.touchpoint_steps or [],
             completion_note=orm.completion_note if hasattr(orm, 'completion_note') else None,
             completed_at=orm.completed_at if hasattr(orm, 'completed_at') else None,
+            completed_by=orm.completed_by if hasattr(orm, 'completed_by') else None,
             guide=orm.guide if hasattr(orm, 'guide') else None,
         )
 
@@ -229,12 +230,14 @@ class SqliteTaskRepository(ITaskRepository):
 
             orm.updated_at = datetime.utcnow()
 
-            # Auto-set completed_at when status changes to DONE
+            # Auto-set completed_at/completed_by when status changes to DONE
             if status_value == TaskStatus.DONE.value and orm.completed_at is None:
                 orm.completed_at = datetime.utcnow()
+                orm.completed_by = user_id
             elif status_value is not None and status_value != TaskStatus.DONE.value:
-                # Clear completed_at if status changes from DONE to something else
+                # Clear completed_at/completed_by if status changes from DONE to something else
                 orm.completed_at = None
+                orm.completed_by = None
 
             # Cascade status to subtasks
             if status_value is not None:
@@ -253,11 +256,13 @@ class SqliteTaskRepository(ITaskRepository):
                 for subtask in subtask_result.scalars().all():
                     subtask.status = status_value
                     subtask.updated_at = datetime.utcnow()
-                    # Auto-set completed_at for subtasks as well
+                    # Auto-set completed_at/completed_by for subtasks as well
                     if status_value == TaskStatus.DONE.value and subtask.completed_at is None:
                         subtask.completed_at = datetime.utcnow()
+                        subtask.completed_by = user_id
                     elif status_value != TaskStatus.DONE.value:
                         subtask.completed_at = None
+                        subtask.completed_by = None
 
             await session.commit()
             await session.refresh(orm)

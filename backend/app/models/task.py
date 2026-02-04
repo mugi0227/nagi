@@ -205,6 +205,7 @@ class Task(TaskBase):
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = Field(None, description="完了日時（DONEになった時刻）")
+    completed_by: Optional[str] = Field(None, description="完了に変更したユーザーID")
 
     class Config:
         from_attributes = True

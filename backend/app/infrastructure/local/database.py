@@ -86,6 +86,7 @@ class TaskORM(Base):
     # Achievement-related fields
     completion_note = Column(Text, nullable=True)
     completed_at = Column(DateTime, nullable=True, index=True)
+    completed_by = Column(String(255), nullable=True)
 
     # Subtask guide field
     guide = Column(Text, nullable=True)

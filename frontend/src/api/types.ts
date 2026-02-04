@@ -102,6 +102,7 @@ export interface Task {
   // Completion fields
   completion_note?: string;
   completed_at?: string;
+  completed_by?: string;
 }
 
 export interface TouchpointStep {

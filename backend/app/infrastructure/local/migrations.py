@@ -102,6 +102,9 @@ async def run_migrations():
                 text("CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks(completed_at)")
             )
 
+        if "completed_by" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN completed_by VARCHAR(255)"))
+
         # Subtask guide field
         if "guide" not in columns:
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN guide TEXT"))
