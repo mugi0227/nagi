@@ -5,14 +5,13 @@ Tests POST /api/tasks/{task_id}/breakdown with real API calls.
 """
 
 import pytest
-from httpx import AsyncClient, ASGITransport
-from sqlalchemy import select
+from httpx import ASGITransport, AsyncClient
 
 from app.core.config import get_settings
-from app.infrastructure.local.database import init_db, get_session_factory, TaskORM
+from app.infrastructure.local.database import get_session_factory, init_db
+from app.infrastructure.local.task_repository import SqliteTaskRepository
 from app.models.enums import CreatedBy
 from app.models.task import TaskCreate
-from app.infrastructure.local.task_repository import SqliteTaskRepository
 from main import app
 
 

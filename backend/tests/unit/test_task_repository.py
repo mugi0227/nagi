@@ -2,14 +2,12 @@
 Unit tests for Task repository.
 """
 
+
 import pytest
-from datetime import datetime, timedelta
-from uuid import uuid4
 
 from app.infrastructure.local.task_repository import SqliteTaskRepository
-from app.infrastructure.local.database import get_session_factory
+from app.models.enums import CreatedBy, EnergyLevel, Priority, TaskStatus
 from app.models.task import TaskCreate
-from app.models.enums import Priority, EnergyLevel, CreatedBy, TaskStatus
 
 
 @pytest.mark.asyncio

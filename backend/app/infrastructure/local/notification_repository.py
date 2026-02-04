@@ -4,11 +4,10 @@ SQLite implementation of notification repository.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, desc, func, update
+from sqlalchemy import desc, func, select, update
 
 from app.infrastructure.local.database import NotificationORM, get_session_factory
 from app.interfaces.notification_repository import INotificationRepository
@@ -111,7 +110,7 @@ class SqliteNotificationRepository(INotificationRepository):
             query = select(NotificationORM).where(NotificationORM.user_id == user_id)
 
             if unread_only:
-                query = query.where(NotificationORM.is_read == False)
+                query = query.where(NotificationORM.is_read.is_(False))
 
             query = query.order_by(desc(NotificationORM.created_at))
             query = query.offset(offset).limit(limit)
@@ -147,7 +146,7 @@ class SqliteNotificationRepository(INotificationRepository):
                 update(NotificationORM)
                 .where(
                     NotificationORM.user_id == user_id,
-                    NotificationORM.is_read == False,
+                    NotificationORM.is_read.is_(False),
                 )
                 .values(is_read=True, read_at=now, updated_at=now)
             )
@@ -159,7 +158,7 @@ class SqliteNotificationRepository(INotificationRepository):
             result = await session.execute(
                 select(func.count(NotificationORM.id)).where(
                     NotificationORM.user_id == user_id,
-                    NotificationORM.is_read == False,
+                    NotificationORM.is_read.is_(False),
                 )
             )
             return result.scalar() or 0

@@ -8,16 +8,16 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_, desc
+from sqlalchemy import and_, desc, select
 
 from app.infrastructure.local.database import MeetingSessionORM, get_session_factory
 from app.interfaces.meeting_session_repository import IMeetingSessionRepository
+from app.models.enums import MeetingSessionStatus
 from app.models.meeting_session import (
     MeetingSession,
     MeetingSessionCreate,
     MeetingSessionUpdate,
 )
-from app.models.enums import MeetingSessionStatus
 
 
 class SqliteMeetingSessionRepository(IMeetingSessionRepository):

@@ -5,17 +5,16 @@ SQLite implementation of Phase repository.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
-from app.interfaces.phase_repository import IPhaseRepository
-from app.models.phase import Phase, PhaseCreate, PhaseUpdate, PhaseWithTaskCount
-from app.models.enums import PhaseStatus, TaskStatus
 from app.infrastructure.local.database import PhaseORM, TaskORM, get_session_factory
+from app.interfaces.phase_repository import IPhaseRepository
+from app.models.enums import TaskStatus
+from app.models.phase import Phase, PhaseCreate, PhaseUpdate, PhaseWithTaskCount
 
 
 class SqlitePhaseRepository(IPhaseRepository):
@@ -110,8 +109,8 @@ class SqlitePhaseRepository(IPhaseRepository):
                         project_id=str(project_id),
                         target_id=None,
                         target_order=None,
-                        # Pass ignore_user_id=True to allow reordering by members if needed, 
-                        # but _reorder_in_project uses user_id. 
+                        # Pass ignore_user_id=True to allow reordering by members if needed,
+                        # but _reorder_in_project uses user_id.
                         # For now, let's fix the re-fetch query first.
                     )
                     await session.commit()
@@ -232,7 +231,7 @@ class SqlitePhaseRepository(IPhaseRepository):
                     )
                 )
             orm = result.scalar_one_or_none()
-            
+
             if not orm:
                 return False
 

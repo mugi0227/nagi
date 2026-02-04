@@ -4,29 +4,29 @@ Integration tests for AgentService.
 Tests the service layer with real repositories but mocked LLM calls.
 """
 
-import pytest
-from uuid import uuid4
 
-from app.models.chat import ChatRequest, ChatMode
-from app.services.agent_service import AgentService
-from app.infrastructure.local.task_repository import SqliteTaskRepository
-from app.infrastructure.local.memory_repository import SqliteMemoryRepository
+import pytest
+
+from app.core.config import get_settings
 from app.infrastructure.local.agent_task_repository import SqliteAgentTaskRepository
 from app.infrastructure.local.capture_repository import SqliteCaptureRepository
 from app.infrastructure.local.chat_session_repository import SqliteChatSessionRepository
-from app.infrastructure.local.gemini_api_provider import GeminiAPIProvider
-from app.infrastructure.local.phase_repository import SqlitePhaseRepository
-from app.infrastructure.local.milestone_repository import SqliteMilestoneRepository
-from app.infrastructure.local.project_member_repository import SqliteProjectMemberRepository
-from app.infrastructure.local.project_invitation_repository import SqliteProjectInvitationRepository
-from app.infrastructure.local.task_assignment_repository import SqliteTaskAssignmentRepository
-from app.infrastructure.local.meeting_agenda_repository import SqliteMeetingAgendaRepository
-from app.infrastructure.local.proposal_repository import InMemoryProposalRepository
 from app.infrastructure.local.checkin_repository import SqliteCheckinRepository
+from app.infrastructure.local.gemini_api_provider import GeminiAPIProvider
+from app.infrastructure.local.meeting_agenda_repository import SqliteMeetingAgendaRepository
+from app.infrastructure.local.memory_repository import SqliteMemoryRepository
+from app.infrastructure.local.milestone_repository import SqliteMilestoneRepository
+from app.infrastructure.local.phase_repository import SqlitePhaseRepository
+from app.infrastructure.local.project_invitation_repository import SqliteProjectInvitationRepository
+from app.infrastructure.local.project_member_repository import SqliteProjectMemberRepository
+from app.infrastructure.local.project_repository import SqliteProjectRepository
+from app.infrastructure.local.proposal_repository import InMemoryProposalRepository
 from app.infrastructure.local.recurring_meeting_repository import SqliteRecurringMeetingRepository
 from app.infrastructure.local.recurring_task_repository import SqliteRecurringTaskRepository
-from app.infrastructure.local.project_repository import SqliteProjectRepository
-from app.core.config import get_settings
+from app.infrastructure.local.task_assignment_repository import SqliteTaskAssignmentRepository
+from app.infrastructure.local.task_repository import SqliteTaskRepository
+from app.models.chat import ChatMode, ChatRequest
+from app.services.agent_service import AgentService
 
 
 def build_agent_service(session_factory, settings):

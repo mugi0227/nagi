@@ -4,26 +4,27 @@ Unit tests for agent tools.
 Tests tool functions with mocked repositories.
 """
 
-import pytest
+from datetime import datetime
 from typing import Optional
-from datetime import datetime, timedelta
 from uuid import uuid4
 
+import pytest
+
+from app.core.exceptions import NotFoundError
+from app.models.enums import EnergyLevel, Priority, TaskStatus
+from app.models.task import Task, TaskCreate
 from app.tools.task_tools import (
-    create_task,
-    create_meeting,
-    update_task,
-    delete_task,
-    search_similar_tasks,
-    CreateTaskInput,
     CreateMeetingInput,
-    UpdateTaskInput,
+    CreateTaskInput,
     DeleteTaskInput,
     SearchSimilarTasksInput,
+    UpdateTaskInput,
+    create_meeting,
+    create_task,
+    delete_task,
+    search_similar_tasks,
+    update_task,
 )
-from app.models.task import Task, TaskCreate
-from app.models.enums import Priority, EnergyLevel, CreatedBy, TaskStatus
-from app.core.exceptions import NotFoundError
 
 
 class MockTaskRepository:
@@ -118,8 +119,9 @@ class MockTaskRepository:
 
     async def find_similar(self, user_id: str, title: str, project_id=None, threshold: float = 0.8, limit: int = 5):
         """Find similar tasks within the same project."""
-        from app.models.task import SimilarTask
         from difflib import SequenceMatcher
+
+        from app.models.task import SimilarTask
 
         similar = []
         for task in self.tasks.values():

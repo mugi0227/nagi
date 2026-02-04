@@ -2,10 +2,8 @@
 Tests for RecurringTaskService occurrence calculation logic.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from uuid import uuid4
-
-import pytest
 
 from app.models.enums import EnergyLevel, Priority, RecurringTaskFrequency
 from app.models.recurring_task import RecurringTask

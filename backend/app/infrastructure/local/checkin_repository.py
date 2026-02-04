@@ -8,7 +8,7 @@ from datetime import date, datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_, delete
+from sqlalchemy import and_, delete, select
 
 from app.infrastructure.local.database import (
     CheckinItemORM,

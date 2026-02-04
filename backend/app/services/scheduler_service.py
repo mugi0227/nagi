@@ -4,27 +4,31 @@ Scheduler service for capacity-aware task scheduling.
 Handles task scheduling with capacity constraints and dependency resolution.
 """
 
-from datetime import date, datetime, timedelta
 import math
+from datetime import date, datetime, timedelta
 from typing import Optional
 from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from app.core.logger import setup_logger
+from app.models.collaboration import ProjectMember, TaskAssignment
 from app.models.enums import EnergyLevel, Priority, TaskStatus
 from app.models.schedule import (
+    ExcludedTask,
     ScheduleDay,
+    ScheduleResponse,
     TaskAllocation,
     TaskScheduleInfo,
-    ScheduleResponse,
-    TodayTasksResponse,
     TodayTaskAllocation,
+    TodayTasksResponse,
     UnscheduledTask,
-    ExcludedTask,
 )
-from app.models.collaboration import TaskAssignment, ProjectMember
 from app.models.task import Task
-from app.services.task_utils import get_effective_estimated_minutes, get_remaining_minutes, is_parent_task
+from app.services.task_utils import (
+    get_effective_estimated_minutes,
+    get_remaining_minutes,
+    is_parent_task,
+)
 
 logger = setup_logger(__name__)
 
@@ -350,14 +354,14 @@ class SchedulerService:
         if members:
             for m in members:
                 user_capacity_map[m.member_user_id] = m.capacity_hours or self.default_capacity_hours
-        
+
         # Fallback for unassigned or unknown users
         default_cap = capacity_hours or self.default_capacity_hours
 
         def get_user_capacity_minutes(user_id: str | None, day: date) -> int:
             if capacity_by_weekday:
-                # If global weekday pattern is set, applying it to base hours? 
-                # Or overriding? Let's assume global weekday override for simplicity, 
+                # If global weekday pattern is set, applying it to base hours?
+                # Or overriding? Let's assume global weekday override for simplicity,
                 # or perhaps scale individual capacity?
                 # For now, simplistic approach: use capacity_by_weekday if set globally, ignoring individual diffs
                 # unless we want complex logic.
@@ -367,11 +371,11 @@ class SchedulerService:
                     # Maybe scale by weekday factor?
                     # detailed implementation omitted for brevity, using base for now
                     return max(0, int(base * capacity_ratio * 60))
-                
+
                 weekday_index = (day.weekday() + 1) % 7
                 hours = capacity_by_weekday[weekday_index]
                 return max(0, int(hours * capacity_ratio * 60))
-            
+
             if user_id and user_id in user_capacity_map:
                 return max(0, int(user_capacity_map[user_id] * capacity_ratio * 60))
             return max(0, int(default_cap * capacity_ratio * 60))
@@ -542,11 +546,11 @@ class SchedulerService:
             )
 
         task_map = {task.id: task for task in scheduled_tasks}
-        
+
         def is_available(task_id: UUID, day: date) -> bool:
             not_before = effective_start_by_task.get(task_id)
             return not_before is None or not_before <= day
-        
+
         remaining_minutes: dict[UUID, int] = {}
         total_minutes_by_task: dict[UUID, int] = {}
         last_scheduled_day_by_task: dict[UUID, date] = {}
@@ -652,8 +656,6 @@ class SchedulerService:
                     remaining_minutes[meeting.id] = 0
 
             # Calculate total capacity for reporting (sum of all users)
-            total_capacity_minutes = sum(user_capacities.values()) # + meeting consumed?
-            # Ideally report original total.
             original_capacities = {uid: get_user_capacity_minutes(uid if uid != "unassigned" else None, day_cursor) for uid in active_users}
             capacity_minutes_today = sum(original_capacities.values())
 
@@ -711,7 +713,7 @@ class SchedulerService:
 
             # 2. Schedule Ready Tasks
             # We loop until no more tasks can be scheduled today for ANY user
-            
+
             day_scores = {
                 task_id: base_scores[task_id]
                 + self._calculate_due_bonus_for_date(
@@ -749,12 +751,12 @@ class SchedulerService:
                         if last_day and (day_cursor - last_day).days < gap_days:
                             return False
                 return True
-            
+
             while True:
                 # Find available tasks
                 available_in_progress = [tid for tid in in_progress if is_available(tid, day_cursor)]
                 available_ready = [tid for tid in ready if is_available(tid, day_cursor)]
-                
+
                 # Filter by capacity availability
                 # A task is candidate ONLY if its assignee has capacity > 0
                 def has_capacity(tid: UUID) -> bool:
@@ -788,32 +790,34 @@ class SchedulerService:
                     if low_candidates:
                         candidate_pool = low_candidates
                 next_id = self._pick_next_task(candidate_pool, day_scores, task_map, energy_minutes)
-                
+
                 minutes_left = remaining_minutes.get(next_id, 0)
                 if minutes_left <= 0:
                     # Cleanup zero duration tasks
                     remaining_minutes[next_id] = 0
                     remaining_task_ids.discard(next_id)
-                    if next_id in in_progress: in_progress.remove(next_id)
-                    if next_id in ready: ready.remove(next_id)
+                    if next_id in in_progress:
+                        in_progress.remove(next_id)
+                    if next_id in ready:
+                        ready.remove(next_id)
                     self._release_dependents(next_id, indegree, dependents, ready)
                     continue
 
                 assignee = assignment_map.get(next_id, default_assignee)
                 cap = user_capacities.get(assignee, 0)
-                
+
                 task = task_map[next_id]
                 total_minutes = total_minutes_by_task.get(next_id, self.default_task_minutes)
                 limit = get_touchpoint_limit(task, total_minutes)
                 allocation = min(cap, minutes_left)
                 if limit:
                     allocation = min(allocation, limit)
-                
+
                 if next_id not in task_start:
                     task_start[next_id] = day_cursor
 
                 allocations.append(TaskAllocation(task_id=next_id, minutes=allocation))
-                
+
                 user_capacities[assignee] -= allocation
                 remaining_minutes[next_id] -= allocation
                 allocated_minutes_total += allocation
@@ -834,12 +838,16 @@ class SchedulerService:
                 if remaining_minutes[next_id] <= 0:
                     task_end[next_id] = day_cursor
                     remaining_task_ids.discard(next_id)
-                    if next_id in in_progress: in_progress.remove(next_id)
-                    if next_id in ready: ready.remove(next_id)
+                    if next_id in in_progress:
+                        in_progress.remove(next_id)
+                    if next_id in ready:
+                        ready.remove(next_id)
                     self._release_dependents(next_id, indegree, dependents, ready)
                 else:
-                    if next_id in ready: ready.remove(next_id)
-                    if next_id not in in_progress: in_progress.append(next_id)
+                    if next_id in ready:
+                        ready.remove(next_id)
+                    if next_id not in in_progress:
+                        in_progress.append(next_id)
 
             # Force-schedule tasks that would exceed their due date if pushed to tomorrow
             # These tasks get scheduled even if over capacity, BUT respect
@@ -898,7 +906,7 @@ class SchedulerService:
                     available_minutes=sum(user_capacities.values()),
                 )
             )
-            
+
             day_cursor += timedelta(days=1)
             safety_limit -= 1
 

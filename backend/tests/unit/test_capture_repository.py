@@ -2,10 +2,10 @@
 Unit tests for Capture Repository.
 """
 
-import pytest
 from uuid import uuid4
 
-from app.infrastructure.local.database import get_session_factory, init_db
+import pytest
+
 from app.infrastructure.local.capture_repository import SqliteCaptureRepository
 from app.models.capture import CaptureCreate
 from app.models.enums import ContentType
@@ -15,9 +15,9 @@ from app.models.enums import ContentType
 async def capture_repo():
     """Create in-memory capture repository."""
     # Use in-memory SQLite
-    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
-    from sqlalchemy.ext.asyncio import AsyncSession
+
     from app.infrastructure.local.database import Base
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -143,8 +143,9 @@ async def test_delete_capture(capture_repo):
 @pytest.mark.asyncio
 async def test_text_content_property():
     """Test Capture.text_content property."""
-    from app.models.capture import Capture
     from datetime import datetime
+
+    from app.models.capture import Capture
 
     # Text capture
     text_capture = Capture(

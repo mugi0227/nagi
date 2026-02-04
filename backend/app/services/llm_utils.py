@@ -57,7 +57,7 @@ def generate_text(
 
     try:
         from google import genai
-        from google.genai.types import Content, Part, GenerateContentConfig
+        from google.genai.types import Content, GenerateContentConfig, Part
     except Exception as exc:
         logger.warning(f"GenAI import failed: {exc}")
         return None
@@ -122,7 +122,7 @@ def generate_text_with_status(
 
     try:
         from google import genai
-        from google.genai.types import Content, Part, GenerateContentConfig
+        from google.genai.types import Content, GenerateContentConfig, Part
     except Exception as exc:
         logger.warning(f"GenAI import failed: {exc}")
         return None, "genai_import_failed", _maybe_detail(exc)

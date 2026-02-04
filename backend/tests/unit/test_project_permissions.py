@@ -8,8 +8,8 @@ from app.models.collaboration import ProjectMember
 from app.models.enums import ProjectRole, ProjectStatus, ProjectVisibility
 from app.models.project import Project
 from app.services.project_permissions import (
-    ProjectAction,
     ProjectAccess,
+    ProjectAction,
     ensure_project_action,
     get_project_access,
 )

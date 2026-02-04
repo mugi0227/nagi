@@ -6,17 +6,17 @@ from __future__ import annotations
 
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, func
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import ForbiddenError
-from app.interfaces.issue_comment_repository import IIssueCommentRepository
-from app.models.issue_comment import IssueComment, IssueCommentCreate
 from app.infrastructure.local.database import (
     IssueCommentORM,
     UserORM,
     get_session_factory,
 )
+from app.interfaces.issue_comment_repository import IIssueCommentRepository
+from app.models.issue_comment import IssueComment, IssueCommentCreate
 
 
 class SqliteIssueCommentRepository(IIssueCommentRepository):

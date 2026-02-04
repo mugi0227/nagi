@@ -7,7 +7,7 @@ to propose a meeting agenda.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 from typing import Optional
 from uuid import UUID
 
@@ -125,12 +125,12 @@ async def fetch_meeting_context(
 
     # 4. Fetch Tasks (Active ones)
     all_tasks = await task_repo.list(access.owner_id, project_id=project_id)
-    
+
     active_tasks = [
-        t for t in all_tasks 
+        t for t in all_tasks
         if t.status != "DONE"
     ]
-    
+
     task_list = []
     for t in active_tasks:
         task_list.append({
@@ -193,10 +193,10 @@ def fetch_meeting_context_tool(
             dict: project_info (dict), meeting_info (dict), checkins (list), active_tasks (list)
         """
         return await fetch_meeting_context(
-            user_id, 
-            checkin_repo, 
-            task_repo, 
-            meeting_agenda_repo, 
+            user_id,
+            checkin_repo,
+            task_repo,
+            meeting_agenda_repo,
             project_repo,
             recurring_meeting_repo,
             member_repo,

@@ -7,17 +7,18 @@ These tests verify:
 3. Behavior after task deletion (physical deletion)
 """
 
-import pytest
 from datetime import datetime, timedelta
-from uuid import uuid4, UUID
+from uuid import UUID, uuid4
 
-from app.infrastructure.local.task_repository import SqliteTaskRepository
+import pytest
+
 from app.infrastructure.local.phase_repository import SqlitePhaseRepository
 from app.infrastructure.local.project_repository import SqliteProjectRepository
-from app.models.task import TaskCreate, TaskUpdate, Task
+from app.infrastructure.local.task_repository import SqliteTaskRepository
+from app.models.enums import CreatedBy, EnergyLevel, Priority, TaskStatus
 from app.models.phase import PhaseCreate
 from app.models.project import ProjectCreate
-from app.models.enums import Priority, EnergyLevel, CreatedBy, TaskStatus
+from app.models.task import Task, TaskCreate, TaskUpdate
 from app.services.kpi_calculator import _compute_task_kpis
 
 

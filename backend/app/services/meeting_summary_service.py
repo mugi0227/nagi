@@ -168,7 +168,6 @@ class MeetingSummaryService:
         prompt: str,
     ) -> MeetingSummary:
         """Run agent with retry logic for validation failures."""
-        last_error: Optional[Exception] = None
         raw_output = ""
 
         for attempt in range(1, self.MAX_RETRIES + 1):
@@ -203,7 +202,6 @@ class MeetingSummaryService:
                 return summary
 
             except ValidationError as e:
-                last_error = e
                 logger.warning(
                     f"Summary validation failed (attempt {attempt}/{self.MAX_RETRIES}): {e}"
                 )
@@ -215,7 +213,6 @@ class MeetingSummaryService:
 {prompt}"""
 
             except Exception as e:
-                last_error = e
                 logger.error(f"Transcript analysis failed: {e}")
                 break
 

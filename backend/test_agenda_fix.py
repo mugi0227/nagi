@@ -1,11 +1,11 @@
 """Test script to verify add_agenda_item works with task_id only."""
 import asyncio
-from uuid import uuid4
 from datetime import date
+from uuid import uuid4
 
 from app.infrastructure.local.database import get_session_factory
 from app.infrastructure.local.meeting_agenda_repository import SqliteMeetingAgendaRepository
-from app.tools.meeting_agenda_tools import add_agenda_item, AddAgendaItemInput
+from app.tools.meeting_agenda_tools import AddAgendaItemInput, add_agenda_item
 
 
 async def test_add_agenda_with_task_id():
@@ -60,7 +60,7 @@ async def test_add_agenda_with_task_id():
             title="Second Test Item",
             duration_minutes=10,
         )
-        result2 = await add_agenda_item(user_id, repo, input_data2)
+        await add_agenda_item(user_id, repo, input_data2)
         print("[SUCCESS] Nullable constraint verified - meeting_id can be NULL")
         return True
 

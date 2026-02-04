@@ -1,5 +1,9 @@
 """Pydantic models (schemas) for the application."""
 
+from app.models.agent_task import AgentTask, AgentTaskCreate, AgentTaskUpdate
+from app.models.capture import Capture, CaptureCreate
+from app.models.chat import ChatMode, ChatRequest, ChatResponse
+from app.models.chat_session import ChatMessage, ChatMessageCreate, ChatSession
 from app.models.enums import (
     ActionType,
     ContentType,
@@ -11,14 +15,17 @@ from app.models.enums import (
     ProjectStatus,
     TaskStatus,
 )
-from app.models.task import Task, TaskCreate, TaskUpdate
+from app.models.memory import (
+    Memory,
+    MemoryCreate,
+    MemoryUpdate,
+    ProjectMemory,
+    UserMemory,
+    WorkMemory,
+)
 from app.models.project import Project, ProjectCreate, ProjectUpdate
 from app.models.project_kpi import ProjectKpiConfig, ProjectKpiMetric, ProjectKpiTemplate
-from app.models.agent_task import AgentTask, AgentTaskCreate, AgentTaskUpdate
-from app.models.memory import Memory, MemoryCreate, MemoryUpdate, UserMemory, ProjectMemory, WorkMemory
-from app.models.capture import Capture, CaptureCreate
-from app.models.chat import ChatRequest, ChatResponse, ChatMode
-from app.models.chat_session import ChatSession, ChatMessage, ChatMessageCreate
+from app.models.task import Task, TaskCreate, TaskUpdate
 
 __all__ = [
     # Enums

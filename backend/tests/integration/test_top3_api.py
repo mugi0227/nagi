@@ -2,22 +2,22 @@
 Integration tests for Top3 API.
 """
 
-import pytest
 from datetime import datetime, timedelta
 
-from app.infrastructure.local.database import get_session_factory, init_db
+import pytest
+
 from app.infrastructure.local.task_repository import SqliteTaskRepository
+from app.models.enums import EnergyLevel, Priority
 from app.models.task import TaskCreate
-from app.models.enums import Priority, EnergyLevel
 from app.services.top3_service import Top3Service
 
 
 @pytest.fixture
 async def task_repo():
     """Create in-memory task repository."""
-    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
-    from sqlalchemy.ext.asyncio import AsyncSession
+
     from app.infrastructure.local.database import Base
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -112,7 +112,7 @@ async def test_top3_api_with_completed_tasks(task_repo, top3_service):
     user_id = "test_user"
 
     # Create tasks
-    task1 = await task_repo.create(
+    await task_repo.create(
         user_id,
         TaskCreate(
             title="Active task",
@@ -131,8 +131,8 @@ async def test_top3_api_with_completed_tasks(task_repo, top3_service):
     )
 
     # Mark second task as done
-    from app.models.task import TaskUpdate
     from app.models.enums import TaskStatus
+    from app.models.task import TaskUpdate
 
     await task_repo.update(user_id, task2.id, TaskUpdate(status=TaskStatus.DONE))
 

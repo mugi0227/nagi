@@ -11,11 +11,11 @@ import pytest
 from pydantic import ValidationError
 
 from app.models.collaboration import (
+    CheckinAgendaItems,
     CheckinCreateV2,
     CheckinItem,
     CheckinItemResponse,
     CheckinV2,
-    CheckinAgendaItems,
 )
 from app.models.enums import (
     CheckinItemCategory,

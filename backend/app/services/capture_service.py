@@ -8,9 +8,9 @@ from uuid import uuid4
 
 from app.core.exceptions import InfrastructureError
 from app.interfaces.capture_repository import ICaptureRepository
+from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.speech_provider import ISpeechToTextProvider
 from app.interfaces.storage_provider import IStorageProvider
-from app.interfaces.llm_provider import ILLMProvider
 from app.models.capture import Capture, CaptureCreate
 from app.models.enums import ContentType
 

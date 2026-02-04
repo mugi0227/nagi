@@ -7,12 +7,12 @@ Tests the following changes:
 3. Task retrieval includes purpose
 """
 
+
 import pytest
-from uuid import uuid4
 
 from app.infrastructure.local.task_repository import SqliteTaskRepository
+from app.models.enums import CreatedBy, EnergyLevel, Priority
 from app.models.task import TaskCreate, TaskUpdate
-from app.models.enums import Priority, EnergyLevel, CreatedBy, TaskStatus
 
 
 @pytest.mark.asyncio

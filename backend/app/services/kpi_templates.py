@@ -2,8 +2,7 @@
 KPI template catalog.
 """
 
-from app.models.project_kpi import ProjectKpiTemplate, ProjectKpiMetric
-
+from app.models.project_kpi import ProjectKpiMetric, ProjectKpiTemplate
 
 _TEMPLATES: list[ProjectKpiTemplate] = [
     ProjectKpiTemplate(

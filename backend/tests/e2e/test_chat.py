@@ -5,11 +5,11 @@ These tests make actual API calls to the LLM provider.
 """
 
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
 from sqlalchemy import select
 
 from app.core.config import get_settings
-from app.infrastructure.local.database import init_db, get_session_factory, TaskORM, CaptureORM
+from app.infrastructure.local.database import CaptureORM, TaskORM, get_session_factory, init_db
 from main import app
 
 
@@ -251,7 +251,7 @@ async def test_chat_session_continuity():
         # Note: This test may be flaky due to LLM behavior and tool calling issues
         message = data2["assistant_message"]
         remembers_name = "田中" in message or "太郎" in message
-        
+
         # If agent doesn't remember, at least verify the session continued without error
         # (The response should not be an error message about tool validation)
         if not remembers_name:

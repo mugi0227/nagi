@@ -6,8 +6,8 @@ This service handles agent execution, tool calling, and response generation.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -21,24 +21,23 @@ from app.core.logger import logger
 from app.interfaces.agent_task_repository import IAgentTaskRepository
 from app.interfaces.capture_repository import ICaptureRepository
 from app.interfaces.chat_session_repository import IChatSessionRepository
+from app.interfaces.checkin_repository import ICheckinRepository
 from app.interfaces.llm_provider import ILLMProvider
+from app.interfaces.meeting_agenda_repository import IMeetingAgendaRepository
 from app.interfaces.memory_repository import IMemoryRepository
+from app.interfaces.milestone_repository import IMilestoneRepository
+from app.interfaces.phase_repository import IPhaseRepository
 from app.interfaces.project_invitation_repository import IProjectInvitationRepository
 from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
-from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
-from app.interfaces.task_repository import ITaskRepository
-from app.interfaces.phase_repository import IPhaseRepository
-from app.interfaces.milestone_repository import IMilestoneRepository
-from app.interfaces.meeting_agenda_repository import IMeetingAgendaRepository
 from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
 from app.interfaces.recurring_task_repository import IRecurringTaskRepository
-from app.interfaces.checkin_repository import ICheckinRepository
+from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
+from app.interfaces.task_repository import ITaskRepository
 from app.models.capture import CaptureCreate
 from app.models.chat import ChatRequest, ChatResponse
 from app.models.enums import ContentType, ToolApprovalMode
-
 
 # Global cache for runners (keyed by user_id + session_id)
 # This allows session state to persist across requests
@@ -439,14 +438,14 @@ class AgentService:
         except Exception as e:
             logger.warning(f"Failed to load messages for session {session_id}: {e}")
             return []
-        
+
         result = []
         for msg in messages:
             content = ""
             for part in msg.parts or []:
                 if hasattr(part, "text") and part.text:
                     content += part.text
-                
+
             result.append({
                 "role": msg.role,
                 "content": content,
@@ -536,7 +535,7 @@ class AgentService:
                     if vision_description:
                         # Use vision model's description instead of raw image
                         parts.append(Part(text=f"\n\n[画像の内容（Vision Model解析結果）]\n{vision_description}"))
-                        logger.info(f"Used vision model for image analysis")
+                        logger.info("Used vision model for image analysis")
                     else:
                         # Send raw image to main model
                         parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
@@ -552,7 +551,7 @@ class AgentService:
             # Check if it's a local storage URL that we can read directly
             settings = get_settings()
             storage_prefix = f"{settings.BASE_URL}/storage/"
-            
+
             image_path = None
             if request.image_url.startswith(storage_prefix):
                 # Resolve to local file path
@@ -588,7 +587,7 @@ class AgentService:
 
                         if vision_description:
                             parts.append(Part(text=f"\n\n[画像の内容（Vision Model解析結果）]\n{vision_description}"))
-                            logger.info(f"Used vision model for local image analysis")
+                            logger.info("Used vision model for local image analysis")
                         else:
                             parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
                             logger.info(f"Loaded image successfully: {image_path} ({len(image_bytes)} bytes)")
@@ -615,7 +614,7 @@ class AgentService:
 
                             if vision_description:
                                 parts.append(Part(text=f"\n\n[画像の内容（Vision Model解析結果）]\n{vision_description}"))
-                                logger.info(f"Used vision model for external image analysis")
+                                logger.info("Used vision model for external image analysis")
                             else:
                                 parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
                                 logger.info(f"Fetched external image via HTTP: {request.image_url}")
@@ -636,12 +635,12 @@ class AgentService:
     ) -> ChatResponse:
         """
         Process a chat request with the Secretary Agent.
-        
+
         Args:
             user_id: User ID
             request: Chat request
             session_id: Optional session ID for conversation continuity
-            
+
         Returns:
             Chat response with assistant message and related tasks
         """
@@ -790,7 +789,7 @@ class AgentService:
                 new_message=new_message,
             ):
                 # ... (Tool handling logic remains same as original) ...
-                
+
                 # Check for function_call in part
                 if event.content and hasattr(event.content, "parts") and event.content.parts:
                     for part in event.content.parts:
@@ -933,6 +932,7 @@ class AgentService:
         Analyze a capture using the Secretary Agent persona.
         """
         import json
+
         from app.agents.prompts.secretary_prompt import SECRETARY_SYSTEM_PROMPT
 
         capture = await self._capture_repo.get(user_id, capture_id)
@@ -942,9 +942,9 @@ class AgentService:
         # Construct prompt embedding the Secretary Persona
         # We perform a "stateless" execution here using the same model and system prompt
         # to ensure consistency without managing a full session state for this one-off analysis.
-        
+
         system_instruction = SECRETARY_SYSTEM_PROMPT
-        
+
         prompt_text = "Analyze the following captured content and extract a Task.\n"
         prompt_text += (
             "Output MUST be a valid JSON object with 'title', 'description', 'importance', "
@@ -963,7 +963,7 @@ class AgentService:
                     text_payload = f"Metadata: {json.dumps(data, indent=2)}"
                 else:
                     text_payload = f"Text Content:\n{capture.raw_text}"
-            except:
+            except Exception:
                 text_payload = f"Text Content:\n{capture.raw_text}"
             parts.append(Part(text=text_payload))
 
@@ -1017,7 +1017,7 @@ class AgentService:
 
             if image_bytes:
                 parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
-        
+
         # Schema for structured output
         schema = {
             "type": "OBJECT",
@@ -1040,7 +1040,9 @@ class AgentService:
             settings = getattr(self._llm_provider, "_settings", None)
             if settings and getattr(settings, "LLM_PROVIDER", None) == "litellm":
                 import base64
+
                 import litellm
+
                 from app.infrastructure.local.litellm_provider import LiteLLMProvider
 
                 if not isinstance(self._llm_provider, LiteLLMProvider):
@@ -1098,7 +1100,7 @@ class AgentService:
                     system_instruction=system_instruction # Use Secretary Prompt
                 )
             )
-            
+
             if response.text:
                 return json.loads(response.text)
             return {"title": "Failed to analyze", "description": "Empty response"}

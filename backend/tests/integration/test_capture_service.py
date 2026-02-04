@@ -4,23 +4,24 @@ Integration tests for CaptureService.
 Note: Whisper tests are skipped by default as they require the model download.
 """
 
-import pytest
-from unittest.mock import AsyncMock, MagicMock
-import tempfile
 import shutil
+import tempfile
+from unittest.mock import AsyncMock, MagicMock
 
-from app.services.capture_service import CaptureService
+import pytest
+
 from app.infrastructure.local.capture_repository import SqliteCaptureRepository
 from app.infrastructure.local.storage_provider import LocalStorageProvider
 from app.models.enums import ContentType
+from app.services.capture_service import CaptureService
 
 
 @pytest.fixture
 async def capture_repo():
     """Create in-memory capture repository."""
-    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
     from sqlalchemy.orm import sessionmaker
-    from sqlalchemy.ext.asyncio import AsyncSession
+
     from app.infrastructure.local.database import Base
 
     engine = create_async_engine("sqlite+aiosqlite:///:memory:")
@@ -141,13 +142,13 @@ async def test_process_audio_with_real_whisper(capture_repo, temp_storage):
     Skipped by default - requires openai-whisper package and model download.
     Run with: pytest -k test_process_audio_with_real_whisper -v
     """
-    from app.infrastructure.local.whisper_provider import WhisperProvider
     from app.infrastructure.local.litellm_provider import LiteLLMProvider
+    from app.infrastructure.local.whisper_provider import WhisperProvider
 
     speech = WhisperProvider("tiny")
     llm = LiteLLMProvider("gemini/gemini-2.0-flash")
 
-    service = CaptureService(
+    CaptureService(
         capture_repo=capture_repo,
         storage=temp_storage,
         speech=speech,

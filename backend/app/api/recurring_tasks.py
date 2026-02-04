@@ -10,8 +10,8 @@ from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUser, RecurringTaskRepo, TaskRepo
 from app.core.exceptions import NotFoundError
-from app.models.recurring_task import RecurringTask, RecurringTaskCreate, RecurringTaskUpdate
 from app.models.enums import RecurringTaskFrequency
+from app.models.recurring_task import RecurringTask, RecurringTaskCreate, RecurringTaskUpdate
 from app.services.recurring_task_service import RecurringTaskService
 
 router = APIRouter()

@@ -13,7 +13,6 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-
 # ===========================================
 # Snapshot Detail Models
 # ===========================================
@@ -39,7 +38,7 @@ class SnapshotDayAllocation(BaseModel):
     date: date
     capacity_minutes: int
     allocated_minutes: int
-    task_allocations: list[dict] = Field(default_factory=list)  # [{task_id, minutes}]
+    task_allocations: list[dict[str, int | str]] = Field(default_factory=list)  # [{task_id, minutes}]
 
 
 class PhaseBufferInfo(BaseModel):
@@ -161,7 +160,7 @@ class ScheduleDiff(BaseModel):
     compared_at: datetime
     task_diffs: list[TaskScheduleDiff]
     phase_diffs: list[PhaseScheduleDiff]
-    summary: dict = Field(
+    summary: dict[str, int] = Field(
         default_factory=dict,
         description="Summary stats: on_track_count, delayed_count, ahead_count, etc."
     )

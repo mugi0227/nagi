@@ -23,14 +23,18 @@ from app.interfaces.notification_repository import INotificationRepository
 from app.interfaces.project_achievement_repository import IProjectAchievementRepository
 from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
+from app.interfaces.schedule_plan_repository import IDailySchedulePlanRepository
+from app.interfaces.schedule_settings_repository import IScheduleSettingsRepository
+from app.interfaces.schedule_snapshot_repository import IScheduleSnapshotRepository
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.interfaces.user_repository import IUserRepository
 from app.models.enums import GenerationType
-from app.models.notification import NotificationCreate, NotificationType
 from app.services.achievement_service import generate_achievement
+from app.services.daily_schedule_plan_service import DEFAULT_PLAN_DAYS, DailySchedulePlanService
 from app.services.project_achievement_service import generate_project_achievement
 from app.services.weekly_meeting_reminder_service import ensure_weekly_meeting_reminders
+from app.utils.datetime_utils import get_user_today
 
 
 class BackgroundScheduler:
@@ -55,6 +59,9 @@ class BackgroundScheduler:
         project_achievement_repo: IProjectAchievementRepository,
         notification_repo: INotificationRepository,
         llm_provider: ILLMProvider,
+        schedule_settings_repo: IScheduleSettingsRepository,
+        schedule_plan_repo: IDailySchedulePlanRepository,
+        schedule_snapshot_repo: IScheduleSnapshotRepository,
         task_assignment_repo: Optional[ITaskAssignmentRepository] = None,
     ):
         self._user_repo = user_repo
@@ -65,6 +72,9 @@ class BackgroundScheduler:
         self._project_achievement_repo = project_achievement_repo
         self._notification_repo = notification_repo
         self._llm_provider = llm_provider
+        self._schedule_settings_repo = schedule_settings_repo
+        self._schedule_plan_repo = schedule_plan_repo
+        self._schedule_snapshot_repo = schedule_snapshot_repo
         self._task_assignment_repo = task_assignment_repo
         self._scheduler: Optional[AsyncIOScheduler] = None
         self._last_run: Optional[datetime] = None
@@ -115,11 +125,20 @@ class BackgroundScheduler:
             replace_existing=True,
         )
 
+        self._scheduler.add_job(
+            self._run_daily_plan_generation,
+            CronTrigger(minute=5),
+            id="daily_schedule_plan_generation",
+            name="Daily Schedule Plan Generation",
+            replace_existing=True,
+        )
+
         self._scheduler.start()
         logger.info(
             "Background scheduler started:\n"
             "  - Weekly achievement generation: Friday 00:00\n"
-            "  - Weekly meeting reminder tasks: Monday 00:00"
+            "  - Weekly meeting reminder tasks: Monday 00:00\n"
+            "  - Daily schedule plan generation: every hour"
         )
 
         # Check for missed runs in background (non-blocking)
@@ -404,6 +423,39 @@ class BackgroundScheduler:
         except Exception as e:
             logger.error(f"Weekly meeting reminder task generation failed: {e}")
 
+    async def _run_daily_plan_generation(self):
+        logger.info("Starting daily schedule plan generation...")
+        users = await self._user_repo.list_all()
+        plan_service = DailySchedulePlanService(
+            task_repo=self._task_repo,
+            project_repo=self._project_repo,
+            assignment_repo=self._task_assignment_repo,
+            snapshot_repo=self._schedule_snapshot_repo,
+            user_repo=self._user_repo,
+            settings_repo=self._schedule_settings_repo,
+            plan_repo=self._schedule_plan_repo,
+        )
+
+        for user in users:
+            timezone = user.timezone or "Asia/Tokyo"
+            today = get_user_today(timezone)
+            existing = await self._schedule_plan_repo.get_by_date(str(user.id), today)
+            if existing:
+                continue
+            try:
+                await plan_service.build_plan(
+                    user_id=str(user.id),
+                    start_date=today,
+                    max_days=DEFAULT_PLAN_DAYS,
+                    from_now=False,
+                    filter_by_assignee=True,
+                    apply_plan_constraints=True,
+                )
+            except Exception as exc:
+                logger.error(f"Failed to generate daily plan for user {user.id}: {exc}")
+            await asyncio.sleep(random.uniform(0.2, 0.8))
+        logger.info("Daily schedule plan generation completed")
+
     async def _generate_weekly_for_user(self, user_id: str, last_friday: datetime) -> bool:
         """
         Generate weekly achievement for a single user.
@@ -464,15 +516,18 @@ async def get_background_scheduler() -> BackgroundScheduler:
     global _scheduler
     if _scheduler is None:
         from app.api.deps import (
-            get_user_repository,
-            get_task_repository,
             get_achievement_repository,
-            get_project_repository,
-            get_project_member_repository,
-            get_project_achievement_repository,
-            get_notification_repository,
-            get_task_assignment_repository,
+            get_daily_schedule_plan_repository,
             get_llm_provider,
+            get_notification_repository,
+            get_project_achievement_repository,
+            get_project_member_repository,
+            get_project_repository,
+            get_schedule_settings_repository,
+            get_schedule_snapshot_repository,
+            get_task_assignment_repository,
+            get_task_repository,
+            get_user_repository,
         )
 
         _scheduler = BackgroundScheduler(
@@ -484,6 +539,9 @@ async def get_background_scheduler() -> BackgroundScheduler:
             project_achievement_repo=get_project_achievement_repository(),
             notification_repo=get_notification_repository(),
             llm_provider=get_llm_provider(),
+            schedule_settings_repo=get_schedule_settings_repository(),
+            schedule_plan_repo=get_daily_schedule_plan_repository(),
+            schedule_snapshot_repo=get_schedule_snapshot_repository(),
             task_assignment_repo=get_task_assignment_repository(),
         )
     return _scheduler

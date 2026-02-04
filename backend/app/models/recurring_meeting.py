@@ -70,7 +70,7 @@ class RecurringMeeting(RecurringMeetingBase):
     updated_at: datetime
 
     @model_validator(mode="after")
-    def validate_anchor_date(self):
+    def validate_anchor_date(self) -> "RecurringMeeting":
         if self.anchor_date.weekday() != self.weekday:
             raise ValueError("anchor_date weekday must match weekday")
         return self

@@ -8,11 +8,11 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 
+from app.infrastructure.local.database import ChatMessageORM, ChatSessionORM, get_session_factory
 from app.interfaces.chat_session_repository import IChatSessionRepository
-from app.models.chat_session import ChatSession, ChatMessage
-from app.infrastructure.local.database import ChatSessionORM, ChatMessageORM, get_session_factory
+from app.models.chat_session import ChatMessage, ChatSession
 
 
 class SqliteChatSessionRepository(IChatSessionRepository):

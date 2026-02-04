@@ -4,12 +4,12 @@ from uuid import UUID
 
 from fastapi import HTTPException, status
 
-from app.core.exceptions import ForbiddenError, NotFoundError
 from app.api.deps import CurrentUser, ProjectMemberRepo, ProjectRepo
+from app.core.exceptions import ForbiddenError, NotFoundError
 from app.models.enums import ProjectRole
 from app.services.project_permissions import (
-    ProjectAction,
     ProjectAccess,
+    ProjectAction,
     ensure_project_action,
     ensure_project_role,
     get_project_access,

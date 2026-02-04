@@ -4,11 +4,10 @@ SQLite implementation of user repository.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_, or_
+from sqlalchemy import and_, or_, select
 
 from app.infrastructure.local.database import UserORM, get_session_factory
 from app.interfaces.user_repository import IUserRepository

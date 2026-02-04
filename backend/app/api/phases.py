@@ -8,11 +8,11 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, status
 
-from app.api.deps import CurrentUser, PhaseRepo, ProjectRepo, ProjectMemberRepo
+from app.api.deps import CurrentUser, PhaseRepo, ProjectMemberRepo, ProjectRepo
 from app.api.permissions import require_project_action, require_project_member
-from app.models.phase import Phase, PhaseCreate, PhaseUpdate, PhaseWithTaskCount
-from app.models.enums import PhaseStatus
 from app.core.exceptions import NotFoundError
+from app.models.enums import PhaseStatus
+from app.models.phase import Phase, PhaseCreate, PhaseUpdate, PhaseWithTaskCount
 from app.services.project_permissions import ProjectAction
 
 router = APIRouter(prefix="/phases", tags=["phases"])

@@ -6,9 +6,9 @@ Tools for managing meeting agendas.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Optional
 from uuid import UUID
-from datetime import date
 
 from google.adk.tools import FunctionTool
 from pydantic import BaseModel, Field

@@ -5,7 +5,6 @@ CRUD operations for tasks.
 """
 
 from datetime import date
-import json
 from typing import Optional
 from uuid import UUID
 
@@ -14,8 +13,10 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from app.api.deps import (
     BlockerRepo,
     CurrentUser,
+    DailySchedulePlanRepo,
     PostponeRepo,
     ProjectRepo,
+    ScheduleSettingsRepo,
     ScheduleSnapshotRepo,
     TaskAssignmentRepo,
     TaskRepo,
@@ -31,13 +32,15 @@ from app.models.collaboration import (
     TaskAssignmentsCreate,
     TaskAssignmentUpdate,
 )
+from app.models.enums import CreatedBy, ProjectVisibility, TaskStatus
 from app.models.postpone import DoTodayRequest, PostponeEvent, PostponeRequest, PostponeStats
 from app.models.schedule import ScheduleResponse, TodayTasksResponse
-from app.models.task import Task, TaskCreate, TaskUpdate, CompletionCheckResponse
-from app.models.enums import CreatedBy, ProjectVisibility, TaskStatus
+from app.models.schedule_plan import SchedulePlanResponse
+from app.models.task import CompletionCheckResponse, Task, TaskCreate, TaskUpdate
+from app.services.daily_schedule_plan_service import DEFAULT_PLAN_DAYS, DailySchedulePlanService
 from app.services.scheduler_service import SchedulerService
-from app.utils.dependency_validator import DependencyValidator
 from app.utils.datetime_utils import get_user_today
+from app.utils.dependency_validator import DependencyValidator
 
 router = APIRouter()
 
@@ -45,42 +48,6 @@ router = APIRouter()
 def get_scheduler_service() -> SchedulerService:
     """Get SchedulerService instance."""
     return SchedulerService()
-
-
-def parse_capacity_by_weekday(
-    capacity_by_weekday: Optional[str],
-) -> Optional[list[float]]:
-    """Parse capacity_by_weekday query param."""
-    if capacity_by_weekday is None:
-        return None
-    try:
-        parsed = json.loads(capacity_by_weekday)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="capacity_by_weekday must be a JSON array of 7 numbers",
-        ) from exc
-    if not isinstance(parsed, list) or len(parsed) != 7:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail="capacity_by_weekday must be a JSON array of 7 numbers",
-        )
-    result: list[float] = []
-    for entry in parsed:
-        try:
-            value = float(entry)
-        except (TypeError, ValueError) as exc:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="capacity_by_weekday must be a JSON array of 7 numbers",
-            ) from exc
-        if value < 0 or value > 24:
-            raise HTTPException(
-                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-                detail="capacity_by_weekday values must be between 0 and 24",
-            )
-        result.append(value)
-    return result
 
 
 async def load_plan_windows(
@@ -107,22 +74,6 @@ async def load_plan_windows(
                     snapshot_task.planned_end,
                 )
     return planned_windows
-
-
-def apply_capacity_buffer(
-    scheduler_service: SchedulerService,
-    capacity_hours: Optional[float],
-    buffer_hours: Optional[float],
-    capacity_by_weekday: Optional[list[float]] = None,
-) -> tuple[Optional[float], Optional[list[float]]]:
-    """Apply buffer hours to capacity hours."""
-    if buffer_hours is None:
-        return capacity_hours, capacity_by_weekday
-    base_hours = capacity_hours if capacity_hours is not None else scheduler_service.default_capacity_hours
-    adjusted_weekday = None
-    if capacity_by_weekday:
-        adjusted_weekday = [max(0.0, hours - buffer_hours) for hours in capacity_by_weekday]
-    return max(0.0, base_hours - buffer_hours), adjusted_weekday
 
 
 async def load_project_priorities(project_repo: ProjectRepo, user_id: str) -> dict[UUID, int]:
@@ -304,7 +255,7 @@ async def list_tasks(
     return tasks
 
 
-@router.get("/schedule", response_model=ScheduleResponse)
+@router.get("/schedule", response_model=SchedulePlanResponse)
 async def get_task_schedule(
     user: CurrentUser,
     repo: TaskRepo,
@@ -312,6 +263,8 @@ async def get_task_schedule(
     assignment_repo: TaskAssignmentRepo,
     snapshot_repo: ScheduleSnapshotRepo,
     user_repo: UserRepo,
+    settings_repo: ScheduleSettingsRepo,
+    plan_repo: DailySchedulePlanRepo,
     scheduler_service: SchedulerService = Depends(get_scheduler_service),
     start_date: Optional[date] = Query(None, description="Schedule start date"),
     capacity_hours: Optional[float] = Query(None, description="Daily capacity in hours (default: 8)"),
@@ -320,49 +273,64 @@ async def get_task_schedule(
         None,
         description="JSON array of 7 daily capacity values (Sun..Sat)",
     ),
-    max_days: int = Query(60, ge=1, le=365, description="Maximum days to schedule"),
+    max_days: int = Query(DEFAULT_PLAN_DAYS, ge=1, le=365, description="Maximum days to schedule"),
     filter_by_assignee: bool = Query(False, description="Only show tasks assigned to me"),
     apply_plan_constraints: bool = Query(True, description="Apply project plan windows"),
 ):
     """Build a multi-day schedule for tasks."""
-    user_timezone = "Asia/Tokyo"
-    try:
-        user_account = await user_repo.get(UUID(user.id))
-    except (TypeError, ValueError):
-        user_account = None
-    if user_account and user_account.timezone:
-        user_timezone = user_account.timezone
-    tasks = await repo.list(user.id, include_done=True, limit=1000)
-    project_priorities = await load_project_priorities(project_repo, user.id)
-    parsed_weekly = parse_capacity_by_weekday(capacity_by_weekday)
-    effective_capacity, effective_weekly = apply_capacity_buffer(
-        scheduler_service,
-        capacity_hours,
-        buffer_hours,
-        parsed_weekly,
+    plan_service = DailySchedulePlanService(
+        task_repo=repo,
+        project_repo=project_repo,
+        assignment_repo=assignment_repo,
+        snapshot_repo=snapshot_repo,
+        user_repo=user_repo,
+        settings_repo=settings_repo,
+        plan_repo=plan_repo,
+        scheduler_service=scheduler_service,
+    )
+    return await plan_service.get_plan_or_forecast(
+        user_id=user.id,
+        start_date=start_date,
+        max_days=max_days,
+        filter_by_assignee=filter_by_assignee,
+        apply_plan_constraints=apply_plan_constraints,
     )
 
-    # Load assignments if filtering by assignee
-    assignments = None
-    if filter_by_assignee:
-        assignments = await assignment_repo.list_for_assignee(user.id)
 
-    planned_window_by_task = None
-    if apply_plan_constraints:
-        planned_window_by_task = await load_plan_windows(user, tasks, project_repo, snapshot_repo)
-
-    return scheduler_service.build_schedule(
-        tasks,
-        project_priorities=project_priorities,
+@router.post("/schedule/plan", response_model=SchedulePlanResponse)
+async def recalculate_schedule_plan(
+    user: CurrentUser,
+    repo: TaskRepo,
+    project_repo: ProjectRepo,
+    assignment_repo: TaskAssignmentRepo,
+    snapshot_repo: ScheduleSnapshotRepo,
+    user_repo: UserRepo,
+    settings_repo: ScheduleSettingsRepo,
+    plan_repo: DailySchedulePlanRepo,
+    scheduler_service: SchedulerService = Depends(get_scheduler_service),
+    start_date: Optional[date] = Query(None, description="Schedule start date"),
+    max_days: int = Query(DEFAULT_PLAN_DAYS, ge=1, le=365, description="Maximum days to schedule"),
+    from_now: bool = Query(False, description="Recalculate from current time for today"),
+    filter_by_assignee: bool = Query(False, description="Only show tasks assigned to me"),
+    apply_plan_constraints: bool = Query(True, description="Apply project plan windows"),
+):
+    plan_service = DailySchedulePlanService(
+        task_repo=repo,
+        project_repo=project_repo,
+        assignment_repo=assignment_repo,
+        snapshot_repo=snapshot_repo,
+        user_repo=user_repo,
+        settings_repo=settings_repo,
+        plan_repo=plan_repo,
+        scheduler_service=scheduler_service,
+    )
+    return await plan_service.build_plan(
+        user_id=user.id,
         start_date=start_date,
-        capacity_hours=effective_capacity,
-        capacity_by_weekday=effective_weekly,
         max_days=max_days,
-        current_user_id=user.id,
-        assignments=assignments,
+        from_now=from_now,
         filter_by_assignee=filter_by_assignee,
-        planned_window_by_task=planned_window_by_task,
-        user_timezone=user_timezone,
+        apply_plan_constraints=apply_plan_constraints,
     )
 
 
@@ -374,6 +342,8 @@ async def get_today_tasks(
     assignment_repo: TaskAssignmentRepo,
     snapshot_repo: ScheduleSnapshotRepo,
     user_repo: UserRepo,
+    settings_repo: ScheduleSettingsRepo,
+    plan_repo: DailySchedulePlanRepo,
     scheduler_service: SchedulerService = Depends(get_scheduler_service),
     target_date: Optional[date] = Query(None, description="Target date (default: today)"),
     capacity_hours: Optional[float] = Query(None, description="Daily capacity in hours (default: 8)"),
@@ -394,43 +364,35 @@ async def get_today_tasks(
         user_account = None
     if user_account and user_account.timezone:
         user_timezone = user_account.timezone
-    resolved_date = target_date
-    if resolved_date is None:
-        resolved_date = get_user_today(user_timezone)
+
+    plan_service = DailySchedulePlanService(
+        task_repo=repo,
+        project_repo=project_repo,
+        assignment_repo=assignment_repo,
+        snapshot_repo=snapshot_repo,
+        user_repo=user_repo,
+        settings_repo=settings_repo,
+        plan_repo=plan_repo,
+        scheduler_service=scheduler_service,
+    )
+    schedule_plan = await plan_service.get_plan_or_forecast(
+        user_id=user.id,
+        start_date=target_date,
+        max_days=1,
+        filter_by_assignee=filter_by_assignee,
+        apply_plan_constraints=apply_plan_constraints,
+    )
     tasks = await repo.list(user.id, include_done=True, limit=1000)
     project_priorities = await load_project_priorities(project_repo, user.id)
-    parsed_weekly = parse_capacity_by_weekday(capacity_by_weekday)
-    effective_capacity, effective_weekly = apply_capacity_buffer(
-        scheduler_service,
-        capacity_hours,
-        buffer_hours,
-        parsed_weekly,
-    )
-
-    # Load assignments if filtering by assignee
-    assignments = None
-    if filter_by_assignee:
-        assignments = await assignment_repo.list_for_assignee(user.id)
-
-    planned_window_by_task = None
-    if apply_plan_constraints:
-        planned_window_by_task = await load_plan_windows(user, tasks, project_repo, snapshot_repo)
-
-    schedule = scheduler_service.build_schedule(
-        tasks,
-        project_priorities=project_priorities,
-        start_date=resolved_date,
-        capacity_hours=effective_capacity,
-        capacity_by_weekday=effective_weekly,
-        max_days=max_days,
-        current_user_id=user.id,
-        assignments=assignments,
-        filter_by_assignee=filter_by_assignee,
-        planned_window_by_task=planned_window_by_task,
-        user_timezone=user_timezone,
-    )
+    resolved_date = target_date or schedule_plan.start_date or get_user_today(user_timezone)
     return scheduler_service.get_today_tasks(
-        schedule,
+        ScheduleResponse(
+            start_date=schedule_plan.start_date,
+            days=schedule_plan.days,
+            tasks=schedule_plan.tasks,
+            unscheduled_task_ids=schedule_plan.unscheduled_task_ids,
+            excluded_tasks=schedule_plan.excluded_tasks,
+        ),
         tasks,
         project_priorities=project_priorities,
         today=resolved_date,
@@ -485,14 +447,14 @@ async def get_task(
     task = await repo.get(user.id, task_id)
     if task:
         return task
-    
+
     # If not found, try to find via projects user has access to
     projects = await project_repo.list(user.id, limit=1000)
     for project in projects:
         task = await repo.get(user.id, task_id, project_id=project.id)
         if task:
             return task
-    
+
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
         detail=f"Task {task_id} not found",

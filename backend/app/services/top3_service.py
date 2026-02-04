@@ -4,14 +4,13 @@ Top 3 service for intelligent task prioritization.
 Provides rule-based scoring with optional AI enhancement.
 """
 
-from datetime import datetime, date
-from uuid import UUID
+from datetime import date
 from typing import Optional
 
 from app.core.logger import setup_logger
 from app.interfaces.task_repository import ITaskRepository
+from app.models.enums import EnergyLevel, Priority, TaskStatus
 from app.models.task import Task
-from app.models.enums import Priority, EnergyLevel, TaskStatus
 from app.services.scheduler_service import SchedulerService
 
 logger = setup_logger(__name__)

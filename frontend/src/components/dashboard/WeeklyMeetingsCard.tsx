@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import type { CSSProperties } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tasksApi } from '../../api/tasks';
 import type { Task } from '../../api/types';
 import { useCapacitySettings } from '../../hooks/useCapacitySettings';
@@ -24,7 +24,16 @@ const TEXT = {
   viewWeek: '\u9031\u9593',
   viewWorkdays: '\u7a3c\u50cd\u65e5',
   viewToday: '\u4eca\u65e5',
-  reschedule: '\u518d\u914d\u7f6e',
+  recalc: '\u518d\u8a08\u7b97',
+  recalculating: '\u518d\u8a08\u7b97\u4e2d...',
+  recalcError: '\u518d\u8a08\u7b97\u306b\u5931\u6557\u3057\u307e\u3057\u305f',
+  planForecast: '\u30d7\u30e9\u30f3\u672a\u751f\u6210',
+  planStale: '\u672a\u53cd\u6620\u306e\u5909\u66f4',
+  pendingLabel: '\u672a\u53cd\u6620',
+  countUnit: '\u4ef6',
+  pinnedOverflowTitle: '\u30d4\u30f3\u7559\u3081\u304c\u53ce\u307e\u3089\u306a\u3044\u30bf\u30b9\u30af\u304c\u3042\u308a\u307e\u3059',
+  pinnedOverflowAction: '\u660e\u65e5\u306b\u56de\u3059',
+  pinnedOverflowError: '\u660e\u65e5\u3078\u79fb\u52d5\u306b\u5931\u6557\u3057\u307e\u3057\u305f',
   dependencyAlert: '\u4f9d\u5b58\u30bf\u30b9\u30af\u304c\u5b8c\u4e86\u3057\u3066\u3044\u306a\u3044\u305f\u3081\u5b8c\u4e86\u3067\u304d\u307e\u305b\u3093',
   statusError: '\u30b9\u30c6\u30fc\u30bf\u30b9\u5909\u66f4\u306b\u5931\u6557\u3057\u307e\u3057\u305f',
   doTodayError: '\u4eca\u65e5\u3084\u308b\u306e\u8a2d\u5b9a\u306b\u5931\u6557\u3057\u307e\u3057\u305f',
@@ -39,6 +48,7 @@ const MAX_HOUR_HEIGHT = 120;
 const DEFAULT_HOUR_HEIGHT = MAX_HOUR_HEIGHT;
 const HOUR_ZOOM_STEP = 4;
 const WARMUP_MINUTES = 15;
+const DEFAULT_PLAN_DAYS = 30;
 
 type ViewMode = 'week' | 'workdays' | 'today';
 
@@ -176,7 +186,7 @@ export function WeeklyMeetingsCard({
   const [hourHeight, setHourHeight] = useState(DEFAULT_HOUR_HEIGHT);
   const [isSubmitting, setIsSubmitting] = useState<string | null>(null);
   const [localDoneIds, setLocalDoneIds] = useState<Set<string>>(new Set());
-  const [rescheduleFromNow, setRescheduleFromNow] = useState(false);
+  const [isPostponingPinned, setIsPostponingPinned] = useState(false);
   const gridRef = useRef<HTMLDivElement | null>(null);
 
   const today = todayInTimezone(timezone);
@@ -263,6 +273,21 @@ export function WeeklyMeetingsCard({
     staleTime: 30_000,
   });
 
+  const recalcMutation = useMutation({
+    mutationFn: () => tasksApi.recalculateSchedulePlan({
+      fromNow: true,
+      maxDays: DEFAULT_PLAN_DAYS,
+      filterByAssignee: true,
+    }),
+    onSuccess: () => {
+      setLocalDoneIds(new Set());
+      queryClient.invalidateQueries({ queryKey: ['schedule'] });
+    },
+    onError: () => {
+      alert(TEXT.recalcError);
+    },
+  });
+
   const invalidateAfterChange = (includeSchedule = false) => {
     const keys = [
       ['meetings'], ['tasks'], ['subtasks'], ['top3'], ['today-tasks'],
@@ -289,6 +314,11 @@ export function WeeklyMeetingsCard({
       return;
     }
     taskModal.openTaskDetailById(taskId);
+  };
+
+  const handleRecalculate = () => {
+    if (recalcMutation.isPending) return;
+    recalcMutation.mutate();
   };
 
   const handleToggleComplete = async (taskId: string, currentStatus: Task['status'], e: React.MouseEvent) => {
@@ -348,7 +378,25 @@ export function WeeklyMeetingsCard({
     }
   };
 
-  const meetings = useMemo(() => {
+  const handlePostponePinnedOverflow = async () => {
+    if (isPostponingPinned || pinnedOverflowTasks.length === 0) return;
+    setIsPostponingPinned(true);
+    const tomorrowKey = toDateKey(today.plus({ days: 1 }).toJSDate(), timezone);
+    try {
+      await Promise.all(
+        pinnedOverflowTasks.map(task =>
+          tasksApi.postpone(task.id, { to_date: tomorrowKey, pin: true })
+        )
+      );
+      invalidateAfterChange(true);
+    } catch {
+      alert(TEXT.pinnedOverflowError);
+    } finally {
+      setIsPostponingPinned(false);
+    }
+  };
+
+  const meetingBlocksFromTasks = useMemo(() => {
     const viewStartDate = viewStart.startOf('day');
     const viewEndDate = viewEnd.startOf('day');
 
@@ -382,16 +430,54 @@ export function WeeklyMeetingsCard({
   }, [meetingTasks, viewStartKey, viewEndKey, timezone]);
 
   const meetingTaskIds = useMemo(() => new Set(meetingTasks.map(task => task.id)), [meetingTasks]);
+  const scheduleTaskMap = useMemo(
+    () => new Map((scheduleData?.tasks ?? []).map(task => [task.task_id, task])),
+    [scheduleData?.tasks],
+  );
+  const meetingTaskMap = useMemo(
+    () => new Map(meetingTasks.map(task => [task.id, task])),
+    [meetingTasks],
+  );
+  const pendingChanges = scheduleData?.pending_changes ?? [];
+  const pendingChangePreview = useMemo(() => {
+    if (pendingChanges.length === 0) return '';
+    const labels = pendingChanges.slice(0, 3).map(change => change.title);
+    const extra = pendingChanges.length - labels.length;
+    return extra > 0 ? `${labels.join(' / ')} +${extra}${TEXT.countUnit}` : labels.join(' / ');
+  }, [pendingChanges]);
+  const planState = scheduleData?.plan_state ?? 'forecast';
+  const showPlanNotice = Boolean(scheduleData) && planState !== 'planned';
+  const pinnedOverflowTasks = useMemo(() => {
+    const overflowIds = scheduleData?.pinned_overflow_task_ids ?? [];
+    if (overflowIds.length === 0) return [] as Array<{ id: string; title: string }>;
+    return overflowIds
+      .map(taskId => {
+        const info = scheduleTaskMap.get(taskId);
+        return {
+          id: taskId,
+          title: info?.title ?? '\u30bf\u30b9\u30af',
+          pinnedDate: info?.pinned_date,
+        };
+      })
+      .filter(item => item.pinnedDate && toDateKey(item.pinnedDate, timezone) === todayKey)
+      .map(({ id, title }) => ({ id, title }));
+  }, [scheduleData?.pinned_overflow_task_ids, scheduleTaskMap, timezone, todayKey]);
+  const pinnedOverflowPreview = useMemo(() => {
+    if (pinnedOverflowTasks.length === 0) return '';
+    const labels = pinnedOverflowTasks.slice(0, 3).map(task => task.title);
+    const extra = pinnedOverflowTasks.length - labels.length;
+    return extra > 0 ? `${labels.join(' / ')} +${extra}${TEXT.countUnit}` : labels.join(' / ');
+  }, [pinnedOverflowTasks]);
 
   const meetingIntervalsByDay = useMemo(() => {
     const grouped = new Map<string, TimeInterval[]>();
-    meetings.forEach(meeting => {
+    meetingBlocksFromTasks.forEach(meeting => {
       const list = grouped.get(meeting.dayKey) ?? [];
       list.push({ startMinutes: meeting.startMinutes, endMinutes: meeting.endMinutes });
       grouped.set(meeting.dayKey, list);
     });
     return grouped;
-  }, [meetings]);
+  }, [meetingBlocksFromTasks]);
 
   const workdayConfigByDay = useMemo(() => {
     const resolvedWeekly = weeklyWorkHours ?? DEFAULT_WEEKLY_WORK_HOURS;
@@ -452,9 +538,51 @@ export function WeeklyMeetingsCard({
     return () => clearInterval(interval);
   }, [timezone]);
 
-  const autoBlocks = useMemo(() => {
+  const planBlocks = useMemo(() => {
+    if (!scheduleData?.time_blocks?.length) return [] as MeetingBlock[];
+    const viewStartDate = viewStart.startOf('day');
+    const viewEndDate = viewEnd.startOf('day');
+
+    return scheduleData.time_blocks
+      .map((block, index) => {
+        const start = toDateTime(block.start, timezone);
+        const end = toDateTime(block.end, timezone);
+        if (!start.isValid || !end.isValid) return null;
+        if (start.toMillis() < viewStartDate.toMillis() || start.toMillis() >= viewEndDate.toMillis()) {
+          return null;
+        }
+        const startMinutes = start.hour * 60 + start.minute;
+        const endMinutesRaw = end.hour * 60 + end.minute;
+        const endMinutes = Math.max(startMinutes + 5, endMinutesRaw);
+        const taskInfo = scheduleTaskMap.get(block.task_id);
+        const meetingTask = meetingTaskMap.get(block.task_id);
+        const statusValue = block.status ?? taskInfo?.status ?? meetingTask?.status;
+        const normalizedStatus = statusValue === 'done' ? 'DONE' : statusValue;
+        return {
+          id: `${block.task_id}-${index}`,
+          taskId: block.task_id,
+          title: taskInfo?.title ?? meetingTask?.title ?? '\u30bf\u30b9\u30af',
+          start: start.toJSDate(),
+          end: end.toJSDate(),
+          dayKey: toLocalDateKey(start.toJSDate(), timezone),
+          startMinutes,
+          endMinutes,
+          lane: 0,
+          laneCount: 1,
+          location: meetingTask?.location,
+          status: (normalizedStatus ?? 'TODO') as Task['status'],
+          kind: block.kind,
+          pinnedDate: block.pinned_date ?? taskInfo?.pinned_date ?? undefined,
+        } satisfies MeetingBlock;
+      })
+      .filter(Boolean) as MeetingBlock[];
+  }, [scheduleData?.time_blocks, scheduleTaskMap, meetingTaskMap, viewStartKey, viewEndKey, timezone]);
+
+  const hasPlanBlocks = planBlocks.length > 0;
+
+  const autoBlocksFromSchedule = useMemo(() => {
+    if (hasPlanBlocks) return [] as MeetingBlock[];
     if (!scheduleData?.days || !scheduleData.tasks) return [] as MeetingBlock[];
-    const taskInfoMap = new Map(scheduleData.tasks.map(task => [task.task_id, task]));
     const scheduleDayMap = new Map(
       scheduleData.days.map(day => [toDateKey(day.date, timezone), day])
     );
@@ -478,22 +606,12 @@ export function WeeklyMeetingsCard({
       const meetingIntervals = meetingIntervalsByDay.get(dayKey) ?? [];
       available = subtractIntervals(available, meetingIntervals);
 
-      // Reschedule: clip today's available intervals to start from now
-      if (rescheduleFromNow && dayKey === todayKey) {
-        available = available
-          .map(interval => ({
-            startMinutes: Math.max(interval.startMinutes, nowMinutes),
-            endMinutes: interval.endMinutes,
-          }))
-          .filter(interval => interval.endMinutes > interval.startMinutes);
-      }
-
       let segmentIndex = 0;
       scheduleDay.task_allocations.forEach(allocation => {
         if (meetingTaskIds.has(allocation.task_id)) {
           return;
         }
-        const taskInfo = taskInfoMap.get(allocation.task_id);
+        const taskInfo = scheduleTaskMap.get(allocation.task_id);
         if (!taskInfo) return;
         let remaining = allocation.minutes;
         while (remaining > 0 && available.length > 0) {
@@ -519,7 +637,7 @@ export function WeeklyMeetingsCard({
             endMinutes,
             lane: 0,
             laneCount: 1,
-            status: (taskInfo.status === 'DONE' ? 'DONE' : 'TODO') as Task['status'],
+            status: ((taskInfo.status ?? '').toUpperCase() === 'DONE' ? 'DONE' : 'TODO') as Task['status'],
             kind: 'auto',
             pinnedDate: taskInfo.pinned_date ?? undefined,
           });
@@ -537,7 +655,27 @@ export function WeeklyMeetingsCard({
     });
 
     return blocks;
-  }, [days, meetingIntervalsByDay, scheduleData?.days, scheduleData?.tasks, timezone, workdayConfigByDay, rescheduleFromNow, todayKey, nowMinutes]);
+  }, [
+    hasPlanBlocks,
+    days,
+    meetingIntervalsByDay,
+    scheduleData?.days,
+    scheduleData?.tasks,
+    timezone,
+    workdayConfigByDay,
+    meetingTaskIds,
+    breakAfterTaskMinutes,
+    scheduleTaskMap,
+  ]);
+
+  const autoBlocks = useMemo(
+    () => (hasPlanBlocks ? planBlocks.filter(block => block.kind === 'auto') : autoBlocksFromSchedule),
+    [hasPlanBlocks, planBlocks, autoBlocksFromSchedule],
+  );
+  const meetingBlocks = useMemo(
+    () => (hasPlanBlocks ? planBlocks.filter(block => block.kind === 'meeting') : meetingBlocksFromTasks),
+    [hasPlanBlocks, planBlocks, meetingBlocksFromTasks],
+  );
 
   const autoBlocksByDay = useMemo(() => {
     const grouped = new Map<string, MeetingBlock[]>();
@@ -563,7 +701,7 @@ export function WeeklyMeetingsCard({
       },
       null
     );
-    const allBlocks = [...meetings, ...autoBlocks];
+    const allBlocks = [...meetingBlocks, ...autoBlocks];
     if (!allBlocks.length && !workdayBounds) {
       return { startHour: DEFAULT_START_HOUR, endHour: DEFAULT_END_HOUR };
     }
@@ -584,11 +722,11 @@ export function WeeklyMeetingsCard({
     startHour = Math.max(MIN_START_HOUR, startHour);
     endHour = Math.min(MAX_END_HOUR, Math.max(startHour + 1, endHour));
     return { startHour, endHour };
-  }, [autoBlocks, meetings, workdayConfigByDay]);
+  }, [autoBlocks, meetingBlocks, workdayConfigByDay]);
 
   const meetingsByDay = useMemo(() => {
     const grouped = new Map<string, MeetingBlock[]>();
-    meetings.forEach(meeting => {
+    meetingBlocks.forEach(meeting => {
       const list = grouped.get(meeting.dayKey) ?? [];
       list.push({ ...meeting });
       grouped.set(meeting.dayKey, list);
@@ -616,7 +754,7 @@ export function WeeklyMeetingsCard({
     });
 
     return results;
-  }, [meetings]);
+  }, [meetingBlocks]);
 
   const hourCount = timeBounds.endHour - timeBounds.startHour;
   const hours = useMemo(() => (
@@ -631,7 +769,7 @@ export function WeeklyMeetingsCard({
     return formatRangeLabel(viewStart.toJSDate(), viewEndDate.toJSDate(), timezone);
   }, [viewMode, viewStartKey, viewEndKey, timezone]);
   const gridHeight = hourCount * hourHeight;
-  const scheduleHasItems = meetings.length > 0 || autoBlocks.length > 0;
+  const scheduleHasItems = meetingBlocks.length > 0 || autoBlocks.length > 0;
 
   const currentTimeInBounds =
     nowMinutes >= timeBounds.startHour * 60 && nowMinutes < timeBounds.endHour * 60;
@@ -728,19 +866,52 @@ export function WeeklyMeetingsCard({
             )}
             <button
               type="button"
-              className={`weekly-meetings-reschedule-btn ${rescheduleFromNow ? 'active' : ''}`}
-              onClick={() => {
-                setRescheduleFromNow(prev => !prev);
-                setLocalDoneIds(new Set());
-                queryClient.invalidateQueries({ queryKey: ['schedule'] });
-              }}
-              title="今の時刻から再配置（スケジュール再計算）"
+              className="weekly-meetings-reschedule-btn"
+              onClick={handleRecalculate}
+              disabled={recalcMutation.isPending}
             >
-              {TEXT.reschedule}
+              {recalcMutation.isPending ? TEXT.recalculating : TEXT.recalc}
             </button>
           </div>
         </div>
       </div>
+
+      {showPlanNotice && (
+        <div className={`weekly-plan-banner ${planState}`}>
+          <div className="weekly-plan-banner-text">
+            <span className="weekly-plan-badge">
+              {planState === 'forecast' ? TEXT.planForecast : TEXT.planStale}
+            </span>
+            {planState === 'stale' && pendingChanges.length > 0 && (
+              <span className="weekly-plan-count">
+                {TEXT.pendingLabel}{pendingChanges.length}{TEXT.countUnit}
+              </span>
+            )}
+            {pendingChangePreview && (
+              <span className="weekly-plan-preview">{pendingChangePreview}</span>
+            )}
+          </div>
+        </div>
+      )}
+
+      {pinnedOverflowTasks.length > 0 && (
+        <div className="weekly-pinned-overflow">
+          <div className="weekly-pinned-overflow-text">
+            <span className="weekly-pinned-overflow-title">{TEXT.pinnedOverflowTitle}</span>
+            {pinnedOverflowPreview && (
+              <span className="weekly-pinned-overflow-preview">{pinnedOverflowPreview}</span>
+            )}
+          </div>
+          <button
+            type="button"
+            className="weekly-pinned-overflow-btn"
+            onClick={handlePostponePinnedOverflow}
+            disabled={isPostponingPinned}
+          >
+            {TEXT.pinnedOverflowAction}
+          </button>
+        </div>
+      )}
 
       {error && <div className="error-message">{TEXT.error}</div>}
       {isLoading && <div className="loading-state">{TEXT.loading}</div>}
@@ -825,7 +996,9 @@ export function WeeklyMeetingsCard({
                     const width = 100 / meeting.laneCount;
                     const left = width * meeting.lane;
                     const timeLabel = `${formatTime(meeting.start, timezone)} - ${formatTime(meeting.end, timezone)}`;
-                    const effectiveStatus = localDoneIds.has(meeting.taskId) ? 'DONE' : meeting.status;
+                    const effectiveStatus = localDoneIds.has(meeting.taskId)
+                      ? 'DONE'
+                      : meeting.status ?? 'TODO';
                     return (
                       <div
                         key={meeting.id}

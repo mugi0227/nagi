@@ -4,7 +4,6 @@ OpenAI Whisper speech-to-text provider (local).
 Note: Requires openai-whisper package (pip install openai-whisper)
 """
 
-from typing import Optional
 import tempfile
 from pathlib import Path
 

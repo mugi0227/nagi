@@ -4,11 +4,10 @@ SQLite implementation of blocker repository.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 
 from app.core.exceptions import NotFoundError
 from app.infrastructure.local.database import BlockerORM, TaskORM, get_session_factory

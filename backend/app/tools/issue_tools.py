@@ -7,8 +7,8 @@ These tools allow the AI to search and create issues.
 from google.adk.tools import FunctionTool
 
 from app.interfaces.issue_repository import IIssueRepository
-from app.models.issue import IssueCreate
 from app.models.enums import IssueCategory
+from app.models.issue import IssueCreate
 
 
 def search_issues_tool(

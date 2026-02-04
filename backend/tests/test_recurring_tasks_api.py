@@ -4,13 +4,14 @@ Integration tests for Recurring Tasks API endpoints.
 Tests CRUD operations via the repository layer with an in-memory SQLite database.
 """
 
-import pytest
+from datetime import date
 from uuid import uuid4
 
+import pytest
+
+from app.infrastructure.local.recurring_task_repository import SqliteRecurringTaskRepository
 from app.models.enums import RecurringTaskFrequency
 from app.models.recurring_task import RecurringTaskCreate, RecurringTaskUpdate
-from app.infrastructure.local.recurring_task_repository import SqliteRecurringTaskRepository
-from datetime import date
 
 
 @pytest.mark.asyncio

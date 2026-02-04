@@ -2,12 +2,11 @@
 Local file system storage provider.
 """
 
-import os
 from pathlib import Path
 from typing import Optional
 
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError, InfrastructureError
+from app.core.exceptions import InfrastructureError, NotFoundError
 from app.interfaces.storage_provider import IStorageProvider
 
 
@@ -25,7 +24,6 @@ class LocalStorageProvider(IStorageProvider):
         Args:
             base_path: Base directory for file storage (default: ./storage)
         """
-        settings = get_settings()
         self.base_path = Path(base_path or "./storage")
         self.base_path.mkdir(parents=True, exist_ok=True)
 

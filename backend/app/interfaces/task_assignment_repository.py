@@ -8,7 +8,12 @@ from abc import ABC, abstractmethod
 from typing import Optional
 from uuid import UUID
 
-from app.models.collaboration import TaskAssignment, TaskAssignmentCreate, TaskAssignmentsCreate, TaskAssignmentUpdate
+from app.models.collaboration import (
+    TaskAssignment,
+    TaskAssignmentCreate,
+    TaskAssignmentsCreate,
+    TaskAssignmentUpdate,
+)
 
 
 class ITaskAssignmentRepository(ABC):

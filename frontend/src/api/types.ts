@@ -826,6 +826,33 @@ export interface TaskAllocation {
   minutes: number;
 }
 
+export interface WorkBreak {
+  start: string;
+  end: string;
+}
+
+export interface WorkdayHours {
+  enabled: boolean;
+  start: string;
+  end: string;
+  breaks: WorkBreak[];
+}
+
+export interface ScheduleSettings {
+  user_id: string;
+  weekly_work_hours: WorkdayHours[];
+  buffer_hours: number;
+  break_after_task_minutes: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ScheduleSettingsUpdate {
+  weekly_work_hours?: WorkdayHours[];
+  buffer_hours?: number;
+  break_after_task_minutes?: number;
+}
+
 export interface ScheduleDay {
   date: string;
   capacity_minutes: number;
@@ -860,12 +887,33 @@ export interface ExcludedTask {
   parent_title?: string;
 }
 
+export interface PendingChange {
+  task_id: string;
+  title: string;
+  change_type: 'new' | 'updated' | 'removed';
+}
+
+export interface ScheduleTimeBlock {
+  task_id: string;
+  start: string;
+  end: string;
+  kind: 'meeting' | 'auto';
+  status?: TaskStatus;
+  pinned_date?: string;
+}
+
 export interface ScheduleResponse {
   start_date: string;
   days: ScheduleDay[];
   tasks: TaskScheduleInfo[];
   unscheduled_task_ids: { task_id: string; reason: string }[];
   excluded_tasks: ExcludedTask[];
+  plan_state?: 'planned' | 'stale' | 'forecast';
+  plan_group_id?: string;
+  plan_generated_at?: string;
+  pending_changes?: PendingChange[];
+  time_blocks?: ScheduleTimeBlock[];
+  pinned_overflow_task_ids?: string[];
 }
 
 // Capture models

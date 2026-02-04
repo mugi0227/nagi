@@ -2,21 +2,20 @@
 Unit tests for authentication API.
 """
 
-import pytest
 from datetime import datetime
 from unittest.mock import AsyncMock, MagicMock, patch
 from uuid import uuid4
 
+import pytest
 from fastapi import HTTPException
 
 from app.api.auth import (
+    RegisterRequest,
     _check_email_whitelist,
     _get_whitelist_emails,
     _normalize_email,
     register,
-    RegisterRequest,
 )
-from app.core.config import Settings
 from app.models.user import UserAccount
 
 

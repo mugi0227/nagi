@@ -6,7 +6,14 @@ Called periodically to trigger autonomous agent actions.
 
 from fastapi import APIRouter, Depends, status
 
-from app.api.deps import CheckinRepo, CurrentUser, AgentTaskRepo, RecurringMeetingRepo, RecurringTaskRepo, TaskRepo
+from app.api.deps import (
+    AgentTaskRepo,
+    CheckinRepo,
+    CurrentUser,
+    RecurringMeetingRepo,
+    RecurringTaskRepo,
+    TaskRepo,
+)
 from app.services.heartbeat_service import HeartbeatService
 from app.services.recurring_meeting_service import RecurringMeetingService
 from app.services.recurring_task_service import RecurringTaskService

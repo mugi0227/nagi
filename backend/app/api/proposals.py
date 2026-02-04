@@ -2,30 +2,30 @@
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, HTTPException
 
 from app.api.deps import (
-    CurrentUser,
-    ProposalRepo,
-    TaskRepo,
-    TaskAssignmentRepo,
-    ProjectRepo,
-    PhaseRepo,
-    MilestoneRepo,
-    ProjectMemberRepo,
-    ProjectInvitationRepo,
-    MemoryRepo,
     AgentTaskRepo,
-    MeetingAgendaRepo,
-    RecurringMeetingRepo,
+    CurrentUser,
     LLMProvider,
+    MeetingAgendaRepo,
+    MemoryRepo,
+    MilestoneRepo,
+    PhaseRepo,
+    ProjectInvitationRepo,
+    ProjectMemberRepo,
+    ProjectRepo,
+    ProposalRepo,
+    RecurringMeetingRepo,
+    TaskAssignmentRepo,
+    TaskRepo,
 )
+from app.models.memory import MemoryCreate
 from app.models.proposal import ApprovalResult, ProposalStatus, RejectionResult
-from app.tools.project_tools import CreateProjectInput
-from app.tools.task_tools import CreateTaskInput, AssignTaskInput, assign_task
 from app.tools.memory_tools import CreateSkillInput
 from app.tools.phase_tools import apply_phase_plan
-from app.models.memory import MemoryCreate
+from app.tools.project_tools import CreateProjectInput
+from app.tools.task_tools import AssignTaskInput, CreateTaskInput, assign_task
 
 router = APIRouter()
 
@@ -96,8 +96,8 @@ async def approve_proposal(
         raise HTTPException(status_code=403, detail="Forbidden")
 
     # Import necessary tools
-    from app.tools.task_tools import create_task
     from app.tools.project_tools import create_project
+    from app.tools.task_tools import create_task
 
     result = ApprovalResult()
 
@@ -205,21 +205,15 @@ async def approve_proposal(
         if not tool_name or not isinstance(args, dict):
             raise HTTPException(status_code=400, detail="Invalid tool_action payload")
 
-        from app.tools.task_tools import (
-            UpdateTaskInput,
-            DeleteTaskInput,
-            update_task,
-            delete_task,
-        )
-        from app.tools.project_tools import (
-            UpdateProjectInput,
-            InviteProjectMemberInput,
-            update_project,
-            invite_project_member,
-        )
-        from app.tools.project_memory_tools import (
-            CreateProjectSummaryInput,
-            create_project_summary,
+        from app.tools.meeting_agenda_tools import (
+            AddAgendaItemInput,
+            DeleteAgendaItemInput,
+            ReorderAgendaItemsInput,
+            UpdateAgendaItemInput,
+            add_agenda_item,
+            delete_agenda_item,
+            reorder_agenda_items,
+            update_agenda_item,
         )
         from app.tools.memory_tools import (
             AddToMemoryInput,
@@ -227,33 +221,34 @@ async def approve_proposal(
             add_to_memory,
             refresh_user_profile,
         )
+        from app.tools.phase_tools import (
+            UpdatePhaseInput,
+            create_milestone_tool,
+            create_phase_tool,
+            delete_milestone_tool,
+            delete_phase_tool,
+            update_milestone_tool,
+            update_phase,
+        )
+        from app.tools.project_memory_tools import (
+            CreateProjectSummaryInput,
+            create_project_summary,
+        )
+        from app.tools.project_tools import (
+            InviteProjectMemberInput,
+            UpdateProjectInput,
+            invite_project_member,
+            update_project,
+        )
         from app.tools.scheduler_tools import (
             ScheduleAgentTaskInput,
             schedule_agent_task,
         )
-        from app.tools.meeting_agenda_tools import (
-            AddAgendaItemInput,
-            UpdateAgendaItemInput,
-            DeleteAgendaItemInput,
-            ReorderAgendaItemsInput,
-            add_agenda_item,
-            update_agenda_item,
-            delete_agenda_item,
-            reorder_agenda_items,
-        )
-        from app.tools.phase_tools import (
-            UpdatePhaseInput,
-            CreatePhaseInput,
-            DeletePhaseInput,
-            CreateMilestoneInput,
-            UpdateMilestoneInput,
-            DeleteMilestoneInput,
-            update_phase,
-            create_phase_tool,
-            delete_phase_tool,
-            create_milestone_tool,
-            update_milestone_tool,
-            delete_milestone_tool,
+        from app.tools.task_tools import (
+            DeleteTaskInput,
+            UpdateTaskInput,
+            delete_task,
+            update_task,
         )
 
         tool_result = None

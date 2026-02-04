@@ -9,14 +9,14 @@ from difflib import SequenceMatcher
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, delete as sa_delete, func, and_, or_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, func, or_, select
+from sqlalchemy import delete as sa_delete
 
 from app.core.exceptions import NotFoundError
-from app.interfaces.task_repository import ITaskRepository
-from app.models.task import Task, TaskCreate, TaskUpdate, SimilarTask
-from app.models.enums import TaskStatus
 from app.infrastructure.local.database import TaskORM, get_session_factory
+from app.interfaces.task_repository import ITaskRepository
+from app.models.enums import TaskStatus
+from app.models.task import SimilarTask, Task, TaskCreate, TaskUpdate
 
 
 class SqliteTaskRepository(ITaskRepository):
@@ -376,11 +376,11 @@ class SqliteTaskRepository(ITaskRepository):
             if status:
                 query = query.where(TaskORM.status == status)
             else:
-                # Default behavior: exclude DONE unless specified? 
+                # Default behavior: exclude DONE unless specified?
                 # Replicating list() default behavior logic or just basic filtering?
                 # list() implementation: if not include_done: query = query.where(status != DONE)
                 # But here we stick to the args. If status is None, we return all statuses unless caller filters.
-                # Actually, list() has include_done. 
+                # Actually, list() has include_done.
                 # Let's add include_done to signature to match list().
                 pass
 

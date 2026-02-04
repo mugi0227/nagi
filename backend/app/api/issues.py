@@ -13,24 +13,24 @@ from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from app.api.deps import CurrentUser, IssueRepo, IssueCommentRepo, NotificationRepo, LLMProvider
+from app.api.deps import CurrentUser, IssueCommentRepo, IssueRepo, LLMProvider, NotificationRepo
 from app.core.config import get_settings
-from app.core.exceptions import NotFoundError, ForbiddenError
+from app.core.exceptions import ForbiddenError, NotFoundError
+from app.models.enums import IssueCategory, IssueStatus
 from app.models.issue import (
     Issue,
     IssueCreate,
-    IssueUpdate,
-    IssueStatusUpdate,
     IssueListResponse,
+    IssueStatusUpdate,
+    IssueUpdate,
 )
 from app.models.issue_comment import (
     IssueComment,
     IssueCommentCreate,
     IssueCommentListResponse,
 )
-from app.models.enums import IssueCategory, IssueStatus
-from app.services.issue_chat_service import IssueChatService
 from app.services import notification_service as notify
+from app.services.issue_chat_service import IssueChatService
 
 router = APIRouter()
 

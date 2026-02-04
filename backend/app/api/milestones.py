@@ -8,7 +8,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.deps import CurrentUser, MilestoneRepo, ProjectRepo, ProjectMemberRepo, PhaseRepo
+from app.api.deps import CurrentUser, MilestoneRepo, PhaseRepo, ProjectMemberRepo, ProjectRepo
 from app.api.permissions import require_project_action, require_project_member
 from app.core.exceptions import NotFoundError
 from app.models.milestone import Milestone, MilestoneCreate, MilestoneUpdate

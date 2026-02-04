@@ -13,7 +13,6 @@ from uuid import uuid4
 from google.adk.tools import FunctionTool
 from pydantic import BaseModel, Field
 
-
 # ===========================================
 # Tool Input Models
 # ===========================================

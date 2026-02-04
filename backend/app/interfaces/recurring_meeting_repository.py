@@ -10,7 +10,11 @@ from abc import ABC, abstractmethod
 from typing import Optional
 from uuid import UUID
 
-from app.models.recurring_meeting import RecurringMeeting, RecurringMeetingCreate, RecurringMeetingUpdate
+from app.models.recurring_meeting import (
+    RecurringMeeting,
+    RecurringMeetingCreate,
+    RecurringMeetingUpdate,
+)
 
 
 class IRecurringMeetingRepository(ABC):

@@ -18,9 +18,13 @@ from app.api.deps import (
 )
 from app.api.permissions import require_project_action
 from app.core.exceptions import NotFoundError
-from app.models.recurring_meeting import RecurringMeeting, RecurringMeetingCreate, RecurringMeetingUpdate
-from app.services.recurring_meeting_service import RecurringMeetingService
+from app.models.recurring_meeting import (
+    RecurringMeeting,
+    RecurringMeetingCreate,
+    RecurringMeetingUpdate,
+)
 from app.services.project_permissions import ProjectAction
+from app.services.recurring_meeting_service import RecurringMeetingService
 
 router = APIRouter()
 

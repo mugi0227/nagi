@@ -5,20 +5,17 @@ SQLite implementation of Memory repository.
 from __future__ import annotations
 
 import json
-from datetime import datetime
 from difflib import SequenceMatcher
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, select
 
 from app.core.exceptions import NotFoundError
-from app.interfaces.memory_repository import IMemoryRepository
-from app.models.memory import Memory, MemoryCreate, MemoryUpdate, MemorySearchResult
-from app.core.exceptions import NotFoundError
-from app.models.enums import MemoryScope, MemoryType
 from app.infrastructure.local.database import MemoryORM, get_session_factory
+from app.interfaces.memory_repository import IMemoryRepository
+from app.models.enums import MemoryScope, MemoryType
+from app.models.memory import Memory, MemoryCreate, MemorySearchResult, MemoryUpdate
 
 
 class SqliteMemoryRepository(IMemoryRepository):

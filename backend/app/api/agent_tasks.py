@@ -7,9 +7,9 @@ Endpoints for managing autonomous agent actions.
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.deps import CurrentUser, AgentTaskRepo
+from app.api.deps import AgentTaskRepo, CurrentUser
 from app.core.exceptions import NotFoundError
 from app.models.agent_task import AgentTask, AgentTaskCreate, AgentTaskUpdate
 from app.models.enums import AgentTaskStatus

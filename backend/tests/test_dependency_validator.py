@@ -4,14 +4,15 @@ Tests for task dependency validation.
 Tests circular dependency detection and parent-child consistency.
 """
 
-import pytest
 from datetime import datetime, timezone
-from uuid import uuid4, UUID
 from typing import Optional
+from uuid import UUID, uuid4
+
+import pytest
 
 from app.core.exceptions import BusinessLogicError
-from app.models.task import Task
 from app.models.enums import CreatedBy, TaskStatus
+from app.models.task import Task
 from app.utils.dependency_validator import DependencyValidator
 
 

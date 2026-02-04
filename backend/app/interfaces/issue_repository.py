@@ -11,8 +11,15 @@ from abc import ABC, abstractmethod
 from typing import Optional
 from uuid import UUID
 
-from app.models.issue import Issue, IssueCreate, IssueUpdate, IssueStatusUpdate, IssueComment, IssueCommentCreate
 from app.models.enums import IssueCategory, IssueStatus
+from app.models.issue import (
+    Issue,
+    IssueComment,
+    IssueCommentCreate,
+    IssueCreate,
+    IssueStatusUpdate,
+    IssueUpdate,
+)
 
 
 class IIssueRepository(ABC):

@@ -8,7 +8,7 @@ from datetime import date
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_, func
+from sqlalchemy import and_, func, select
 
 from app.infrastructure.local.database import PostponeEventORM, get_session_factory
 from app.interfaces.postpone_repository import IPostponeRepository

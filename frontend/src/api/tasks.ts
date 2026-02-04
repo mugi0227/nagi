@@ -114,6 +114,33 @@ export const tasksApi = {
     return api.get<ScheduleResponse>(`/tasks/schedule${suffix ? `?${suffix}` : ''}`);
   },
 
+  recalculateSchedulePlan: (query?: {
+    startDate?: string;
+    maxDays?: number;
+    fromNow?: boolean;
+    filterByAssignee?: boolean;
+    applyPlanConstraints?: boolean;
+  }) => {
+    const params = new URLSearchParams();
+    if (query?.startDate) {
+      params.set('start_date', query.startDate);
+    }
+    if (query?.maxDays !== undefined) {
+      params.set('max_days', String(query.maxDays));
+    }
+    if (query?.fromNow) {
+      params.set('from_now', 'true');
+    }
+    if (query?.filterByAssignee) {
+      params.set('filter_by_assignee', 'true');
+    }
+    if (query?.applyPlanConstraints === false) {
+      params.set('apply_plan_constraints', 'false');
+    }
+    const suffix = params.toString();
+    return api.post<ScheduleResponse>(`/tasks/schedule/plan${suffix ? `?${suffix}` : ''}`, {});
+  },
+
   getAssignment: (id: string) => api.get<TaskAssignment>(`/tasks/${id}/assignment`),
 
   listAssignments: (id: string) => api.get<TaskAssignment[]>(`/tasks/${id}/assignments`),

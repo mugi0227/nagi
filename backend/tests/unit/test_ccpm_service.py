@@ -2,11 +2,9 @@
 Unit tests for CCPM service.
 """
 
-import pytest
 from datetime import datetime
-from uuid import uuid4
-
 from typing import Optional
+from uuid import uuid4
 
 from app.models.task import Task
 from app.services.ccpm_service import CCPMService

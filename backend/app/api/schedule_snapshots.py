@@ -16,8 +16,8 @@ from app.api.deps import (
     PhaseRepo,
     ProjectMemberRepo,
     ProjectRepo,
-    TaskRepo,
     TaskAssignmentRepo,
+    TaskRepo,
 )
 from app.api.permissions import require_project_action
 from app.interfaces.schedule_snapshot_repository import IScheduleSnapshotRepository
@@ -28,9 +28,9 @@ from app.models.schedule_snapshot import (
     ScheduleSnapshotSummary,
 )
 from app.services.ccpm_service import CCPMService
+from app.services.project_permissions import ProjectAction
 from app.services.schedule_diff_service import ScheduleDiffService
 from app.services.scheduler_service import SchedulerService
-from app.services.project_permissions import ProjectAction
 
 router = APIRouter()
 
@@ -41,7 +41,9 @@ def get_schedule_snapshot_repository() -> IScheduleSnapshotRepository:
     settings = get_settings()
     if settings.is_gcp:
         raise NotImplementedError("Schedule snapshot repository not implemented for GCP")
-    from app.infrastructure.local.schedule_snapshot_repository import SqliteScheduleSnapshotRepository
+    from app.infrastructure.local.schedule_snapshot_repository import (
+        SqliteScheduleSnapshotRepository,
+    )
     return SqliteScheduleSnapshotRepository()
 
 
@@ -127,7 +129,7 @@ async def create_snapshot(
     task_lookup = {task.id: task for task in tasks}
 
     # Convert TaskScheduleInfo to SnapshotTaskScheduleInfo format
-    from app.models.schedule_snapshot import SnapshotTaskScheduleInfo, SnapshotDayAllocation
+    from app.models.schedule_snapshot import SnapshotDayAllocation, SnapshotTaskScheduleInfo
     snapshot_tasks = [
         SnapshotTaskScheduleInfo(
             task_id=t.task_id,

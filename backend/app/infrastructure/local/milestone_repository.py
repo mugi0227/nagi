@@ -12,7 +12,6 @@ from sqlalchemy import and_, select, update
 from app.core.exceptions import NotFoundError
 from app.infrastructure.local.database import MilestoneORM, TaskORM, get_session_factory
 from app.interfaces.milestone_repository import IMilestoneRepository
-from app.models.enums import MilestoneStatus
 from app.models.milestone import Milestone, MilestoneCreate, MilestoneUpdate
 
 
@@ -115,14 +114,14 @@ class SqliteMilestoneRepository(IMilestoneRepository):
             orm = result.scalar_one_or_none()
             if not orm:
                 raise NotFoundError(f"Milestone {milestone_id} not found")
-            
+
             update_data = update.model_dump(exclude_unset=True)
             for field, value in update_data.items():
                 if value is not None:
                     if hasattr(value, "value"):
                         value = value.value
                     setattr(orm, field, value)
-            
+
             orm.updated_at = datetime.utcnow()
             await session.commit()
             await session.refresh(orm)

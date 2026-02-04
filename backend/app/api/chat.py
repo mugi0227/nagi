@@ -7,28 +7,28 @@ Main interface for user interaction with the secretary agent.
 import json
 from typing import AsyncGenerator
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 from fastapi.responses import StreamingResponse
 
 from app.api.deps import (
-    CurrentUser,
-    LLMProvider,
-    TaskRepo,
-    ProjectRepo,
-    PhaseRepo,
-    MilestoneRepo,
-    ProjectMemberRepo,
-    ProjectInvitationRepo,
-    TaskAssignmentRepo,
-    ProposalRepo,
-    MemoryRepo,
     AgentTaskRepo,
-    MeetingAgendaRepo,
     CaptureRepo,
     ChatRepo,
     CheckinRepo,
+    CurrentUser,
+    LLMProvider,
+    MeetingAgendaRepo,
+    MemoryRepo,
+    MilestoneRepo,
+    PhaseRepo,
+    ProjectInvitationRepo,
+    ProjectMemberRepo,
+    ProjectRepo,
+    ProposalRepo,
     RecurringMeetingRepo,
     RecurringTaskRepo,
+    TaskAssignmentRepo,
+    TaskRepo,
 )
 from app.core.exceptions import LLMError
 from app.models.chat import ChatRequest, ChatResponse

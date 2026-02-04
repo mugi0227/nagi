@@ -39,7 +39,7 @@ class Proposal(BaseModel):
     session_id: str  # Chat session ID
     proposal_type: ProposalType
     status: ProposalStatus = ProposalStatus.PENDING
-    payload: dict  # CreateTaskInput or CreateProjectInput serialized
+    payload: dict[str, object]  # CreateTaskInput or CreateProjectInput serialized
     description: str  # AI-generated explanation of the proposal
     created_at: datetime = Field(default_factory=datetime.now)
     expires_at: datetime = Field(
@@ -58,7 +58,7 @@ class ProposalResponse(BaseModel):
     proposal_id: str
     proposal_type: ProposalType
     description: str
-    payload: dict
+    payload: dict[str, object]
 
 
 class ApprovalResult(BaseModel):
@@ -70,7 +70,7 @@ class ApprovalResult(BaseModel):
     assignment_ids: Optional[list[str]] = None
     phase_ids: Optional[list[str]] = None
     milestone_ids: Optional[list[str]] = None
-    result: Optional[dict] = None
+    result: Optional[dict[str, object]] = None
 
 
 class RejectionResult(BaseModel):

@@ -20,12 +20,12 @@ from app.models.collaboration import ProjectMemberCreate
 from app.models.enums import ProjectRole
 from app.models.project import ProjectCreate, ProjectUpdate
 from app.models.project_kpi import ProjectKpiConfig, ProjectKpiMetric
-from app.models.proposal import Proposal, ProposalResponse, ProposalType
+from app.models.proposal import Proposal, ProposalType
 from app.services.assignee_utils import make_invitation_assignee_id
 from app.services.kpi_templates import get_kpi_templates
+from app.services.llm_utils import generate_text
 from app.services.project_permissions import ProjectAction
 from app.tools.approval_tools import create_tool_action_proposal
-from app.services.llm_utils import generate_text
 from app.tools.permissions import require_project_action
 
 
@@ -921,6 +921,7 @@ async def invite_project_member(
 ) -> dict:
     """Invite a member to a project."""
     from uuid import UUID
+
     from app.models.collaboration import ProjectInvitationCreate
     from app.models.enums import ProjectRole
 

@@ -4,10 +4,9 @@ Project KPI models.
 These models define KPI templates and per-project KPI configuration.
 """
 
-from typing import Optional, Literal
+from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
-
 
 KpiDirection = Literal["up", "down", "neutral"]
 KpiStrategy = Literal["template", "ai", "custom"]

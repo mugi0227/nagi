@@ -9,7 +9,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from app.models.chat_session import ChatSession, ChatMessage
+from app.models.chat_session import ChatMessage, ChatSession
 
 
 class IChatSessionRepository(ABC):

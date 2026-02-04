@@ -6,7 +6,7 @@ Tools for creating, updating, deleting, and searching tasks.
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Optional
 from uuid import UUID
 
@@ -17,17 +17,16 @@ from app.core.config import get_settings
 from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
-from app.utils.datetime_utils import parse_iso_to_utc, ensure_utc
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.models.collaboration import TaskAssignmentCreate, TaskAssignmentsCreate
 from app.models.enums import CreatedBy, EnergyLevel, Priority
-from app.models.proposal import Proposal, ProposalResponse, ProposalType
+from app.models.proposal import Proposal, ProposalType
 from app.models.task import Task, TaskCreate, TaskUpdate, TouchpointStep
-from app.tools.approval_tools import create_tool_action_proposal
 from app.services.project_permissions import ProjectAction
+from app.tools.approval_tools import create_tool_action_proposal
 from app.tools.permissions import require_project_action, require_project_member
-
+from app.utils.datetime_utils import parse_iso_to_utc
 
 # ===========================================
 # Tool Input Models

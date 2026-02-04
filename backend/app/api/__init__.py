@@ -1,19 +1,20 @@
 """API routers."""
 
 from app.api import (
-    auth,
-    chat,
-    tasks,
-    projects,
-    phases,
-    milestones,
-    captures,
     agent_tasks,
-    memories,
+    auth,
+    captures,
+    chat,
     heartbeat,
-    today,
+    memories,
+    milestones,
+    phases,
+    projects,
     realtime,
     recurring_meetings,
+    schedule_settings,
+    tasks,
+    today,
     users,
 )
 
@@ -31,5 +32,6 @@ __all__ = [
     "today",
     "realtime",
     "recurring_meetings",
+    "schedule_settings",
     "users",
 ]

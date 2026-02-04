@@ -7,30 +7,28 @@ Endpoints for storing and retrieving user input captures.
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import (
-    CurrentUser,
-    CaptureRepo,
-    LLMProvider,
-    TaskRepo,
-    ProjectRepo,
-    PhaseRepo,
-    MilestoneRepo,
-    ProjectMemberRepo,
-    ProjectInvitationRepo,
-    TaskAssignmentRepo,
-    MemoryRepo,
-    TaskRepo,
-    MemoryRepo,
     AgentTaskRepo,
-    ProposalRepo,
-    StorageProvider,
+    CaptureRepo,
     ChatRepo,
     CheckinRepo,
+    CurrentUser,
+    LLMProvider,
     MeetingAgendaRepo,
+    MemoryRepo,
+    MilestoneRepo,
+    PhaseRepo,
+    ProjectInvitationRepo,
+    ProjectMemberRepo,
+    ProjectRepo,
+    ProposalRepo,
     RecurringMeetingRepo,
     RecurringTaskRepo,
+    StorageProvider,
+    TaskAssignmentRepo,
+    TaskRepo,
 )
 from app.core.exceptions import NotFoundError
 from app.models.capture import Capture, CaptureCreate
@@ -48,9 +46,8 @@ async def create_capture(
 ):
     """Create a new capture."""
     import base64
-    import json
     from uuid import uuid4
-    from app.models.enums import ContentType
+
 
     # Process base64 image if provided
     if capture.base64_image:
@@ -60,25 +57,25 @@ async def create_capture(
                 # Decode base64 (remove prefix "data:image/jpeg;base64,")
                 header, encoded = image_data_url.split(",", 1)
                 image_bytes = base64.b64decode(encoded)
-                
+
                 # Generate filename
                 ext = header.split(";")[0].split("/")[1]
                 filename = f"captures/{uuid4()}.{ext}"
-                
+
                 # Save to storage
-                file_path = await storage.upload(filename, image_bytes)
-                
+                await storage.upload(filename, image_bytes)
+
                 # Update capture URL
                 capture.content_url = storage.get_public_url(filename)
-                
+
                 # If content_type was TEXT but we have an image, should we update it?
-                # The extension sends TEXT with metadata. Let's keep it as is, 
-                # or maybe change to MIXED if we had such type. 
+                # The extension sends TEXT with metadata. Let's keep it as is,
+                # or maybe change to MIXED if we had such type.
                 # For now, having content_url implies it has an image.
-                
+
                 # Clear the base64 data so it's not stored or passed around in memory unnecessarily
                 capture.base64_image = None
-                
+
         except (ValueError, IndexError):
             # Invalid format, ignore image
             pass
@@ -200,7 +197,7 @@ async def analyze_capture(
         recurring_meeting_repo=recurring_meeting_repo,
         recurring_task_repo=recurring_task_repo,
     )
-    
+
     try:
         return await agent_service.analyze_capture(user.id, capture_id)
     except ValueError as e:

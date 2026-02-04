@@ -4,13 +4,13 @@ Today API endpoints.
 Smart daily features like Top 3 tasks.
 """
 
-from typing import Optional
 import json
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 
-from datetime import date
-from app.api.deps import CurrentUser, ProjectRepo, TaskRepo, TaskAssignmentRepo, UserRepo
+from app.api.deps import CurrentUser, ProjectRepo, TaskAssignmentRepo, TaskRepo, UserRepo
 from app.models.task import Task
 from app.services.scheduler_service import SchedulerService
 from app.utils.datetime_utils import get_user_today

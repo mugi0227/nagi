@@ -530,6 +530,42 @@ class ScheduleSnapshotORM(Base):
     updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
+class ScheduleSettingsORM(Base):
+    """Schedule settings ORM model."""
+
+    __tablename__ = "schedule_settings"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, unique=True, index=True)
+    weekly_work_hours_json = Column(JSON, nullable=False, default=list)
+    buffer_hours = Column(Float, default=1.0)
+    break_after_task_minutes = Column(Integer, default=5)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+
+class DailySchedulePlanORM(Base):
+    """Daily schedule plan ORM model."""
+
+    __tablename__ = "daily_schedule_plans"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    plan_date = Column(Date, nullable=False, index=True)
+    timezone = Column(String(50), nullable=False)
+    plan_group_id = Column(String(36), nullable=False, index=True)
+    schedule_day_json = Column(JSON, nullable=False)
+    tasks_json = Column(JSON, nullable=False, default=list)
+    unscheduled_json = Column(JSON, nullable=False, default=list)
+    excluded_json = Column(JSON, nullable=False, default=list)
+    time_blocks_json = Column(JSON, nullable=False, default=list)
+    task_snapshots_json = Column(JSON, nullable=False, default=list)
+    pinned_overflow_json = Column(JSON, nullable=False, default=list)
+    plan_params_json = Column(JSON, nullable=False, default=dict)
+    generated_at = Column(DateTime, nullable=False)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+
 class AchievementORM(Base):
     """Achievement ORM model for storing AI-generated achievement summaries."""
 

@@ -8,14 +8,13 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import delete, select, and_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, select
 
 from app.core.exceptions import NotFoundError
 from app.infrastructure.local.database import ProjectMemberORM, get_session_factory
+from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.models.collaboration import ProjectMember, ProjectMemberCreate, ProjectMemberUpdate
 from app.models.enums import ProjectRole
-from app.interfaces.project_member_repository import IProjectMemberRepository
 
 
 class SqliteProjectMemberRepository(IProjectMemberRepository):

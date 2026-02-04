@@ -2,14 +2,15 @@
 Unit tests for Top3Service.
 """
 
-import pytest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock
 from uuid import uuid4
 
-from app.services.top3_service import Top3Service
+import pytest
+
+from app.models.enums import CreatedBy, EnergyLevel, Priority, TaskStatus
 from app.models.task import Task
-from app.models.enums import TaskStatus, Priority, EnergyLevel, CreatedBy
+from app.services.top3_service import Top3Service
 
 
 @pytest.fixture

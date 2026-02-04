@@ -4,18 +4,16 @@ SQLite implementation of Capture repository.
 
 from __future__ import annotations
 
-from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, select
 
 from app.core.exceptions import NotFoundError
+from app.infrastructure.local.database import CaptureORM, get_session_factory
 from app.interfaces.capture_repository import ICaptureRepository
 from app.models.capture import Capture, CaptureCreate
 from app.models.enums import ContentType
-from app.infrastructure.local.database import CaptureORM, get_session_factory
 
 
 class SqliteCaptureRepository(ICaptureRepository):

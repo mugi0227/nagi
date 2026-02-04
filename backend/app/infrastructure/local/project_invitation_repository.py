@@ -8,7 +8,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 
 from app.core.exceptions import NotFoundError
 from app.infrastructure.local.database import ProjectInvitationORM, get_session_factory

@@ -3,8 +3,6 @@ Create mock projects with proper UTF-8 encoding.
 """
 import asyncio
 import sys
-from datetime import datetime
-from uuid import uuid4
 
 sys.path.insert(0, ".")
 
@@ -19,8 +17,9 @@ async def create_mock_projects():
 
     # Delete existing projects first
     print("Deleting existing projects...")
-    from app.infrastructure.local.database import get_session_factory
     from sqlalchemy import text
+
+    from app.infrastructure.local.database import get_session_factory
     session_factory = get_session_factory()
     async with session_factory() as session:
         await session.execute(text("DELETE FROM projects WHERE user_id = :user_id"), {"user_id": user_id})

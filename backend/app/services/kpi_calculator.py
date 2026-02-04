@@ -17,7 +17,6 @@ from app.models.project_kpi import ProjectKpiConfig, ProjectKpiMetric
 from app.models.task import Task
 from app.services.kpi_templates import get_kpi_templates
 
-
 TProject = TypeVar("TProject", Project, ProjectWithTaskCount)
 
 

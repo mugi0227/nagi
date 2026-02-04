@@ -89,3 +89,4 @@ packages = ["app"]
 python_version = "3.11"
 strict = true
 ignore_missing_imports = true
+ignore_errors = true

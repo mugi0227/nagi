@@ -12,7 +12,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID
 
-from app.models.task import Task, TaskCreate, TaskUpdate, SimilarTask
+from app.models.task import SimilarTask, Task, TaskCreate, TaskUpdate
 
 
 class ITaskRepository(ABC):

@@ -2,14 +2,15 @@
 Unit tests for Storage Provider.
 """
 
-import pytest
-from pathlib import Path
-import tempfile
 import shutil
+import tempfile
+from pathlib import Path
 
-from app.infrastructure.local.storage_provider import LocalStorageProvider
+import pytest
+
 from app.core.config import get_settings
 from app.core.exceptions import NotFoundError
+from app.infrastructure.local.storage_provider import LocalStorageProvider
 
 
 @pytest.fixture
@@ -87,7 +88,7 @@ async def test_get_public_url(temp_storage):
     data = b"Public file"
     path = "test/public.txt"
 
-    url = await temp_storage.upload(path, data)
+    await temp_storage.upload(path, data)
     public_url = temp_storage.get_public_url(path)
 
     settings = get_settings()

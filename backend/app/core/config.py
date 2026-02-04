@@ -116,7 +116,7 @@ class Settings(BaseSettings):
 
     # URL for accessing the backend (for storage and callbacks)
     BASE_URL: str = "http://localhost:8000"
-    
+
     # ===========================================
     # Scheduler (Quiet Hours)
     # ===========================================

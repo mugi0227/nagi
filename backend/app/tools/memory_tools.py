@@ -17,11 +17,10 @@ from app.interfaces.memory_repository import IMemoryRepository
 from app.interfaces.proposal_repository import IProposalRepository
 from app.models.enums import MemoryScope, MemoryType
 from app.models.memory import MemoryCreate, MemoryUpdate
-from app.models.proposal import Proposal, ProposalResponse, ProposalType
+from app.models.proposal import Proposal, ProposalType
 from app.services.llm_utils import generate_text
 from app.services.skills_service import get_skill_by_id, get_skills_index
 from app.tools.approval_tools import create_tool_action_proposal
-
 
 # ===========================================
 # Tool Input Models

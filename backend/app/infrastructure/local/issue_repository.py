@@ -7,19 +7,26 @@ from __future__ import annotations
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, func, and_
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.exceptions import NotFoundError, ForbiddenError
-from app.interfaces.issue_repository import IIssueRepository
-from app.models.issue import Issue, IssueCreate, IssueUpdate, IssueStatusUpdate, IssueComment, IssueCommentCreate
-from app.models.enums import IssueCategory, IssueStatus
+from app.core.exceptions import ForbiddenError, NotFoundError
 from app.infrastructure.local.database import (
-    IssueORM,
-    IssueLikeORM,
     IssueCommentORM,
+    IssueLikeORM,
+    IssueORM,
     UserORM,
     get_session_factory,
+)
+from app.interfaces.issue_repository import IIssueRepository
+from app.models.enums import IssueCategory, IssueStatus
+from app.models.issue import (
+    Issue,
+    IssueComment,
+    IssueCommentCreate,
+    IssueCreate,
+    IssueStatusUpdate,
+    IssueUpdate,
 )
 
 

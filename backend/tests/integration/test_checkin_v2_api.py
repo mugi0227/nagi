@@ -5,25 +5,24 @@ Tests the full API flow for structured check-ins.
 """
 
 from datetime import date
-from uuid import uuid4
 
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import sessionmaker
 
-from app.infrastructure.local.database import Base
 from app.infrastructure.local.checkin_repository import SqliteCheckinRepository
+from app.infrastructure.local.database import Base
 from app.infrastructure.local.project_repository import SqliteProjectRepository
 from app.models.collaboration import (
     CheckinCreateV2,
     CheckinItem,
 )
-from app.models.project import ProjectCreate
 from app.models.enums import (
     CheckinItemCategory,
     CheckinItemUrgency,
     CheckinMood,
 )
+from app.models.project import ProjectCreate
 
 
 @pytest.fixture

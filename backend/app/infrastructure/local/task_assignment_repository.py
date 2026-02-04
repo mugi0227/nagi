@@ -8,12 +8,17 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_
+from sqlalchemy import and_, select
 
 from app.core.exceptions import NotFoundError
 from app.infrastructure.local.database import TaskAssignmentORM, TaskORM, get_session_factory
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
-from app.models.collaboration import TaskAssignment, TaskAssignmentCreate, TaskAssignmentsCreate, TaskAssignmentUpdate
+from app.models.collaboration import (
+    TaskAssignment,
+    TaskAssignmentCreate,
+    TaskAssignmentsCreate,
+    TaskAssignmentUpdate,
+)
 from app.models.enums import TaskStatus
 
 

@@ -7,12 +7,12 @@ Endpoints for managing AI memories (user facts, project context, work rules).
 from typing import Optional
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, status
 
 from app.api.deps import CurrentUser, MemoryRepo
 from app.core.exceptions import NotFoundError
-from app.models.memory import Memory, MemoryCreate, MemoryUpdate, MemorySearchResult
 from app.models.enums import MemoryScope, MemoryType
+from app.models.memory import Memory, MemoryCreate, MemorySearchResult, MemoryUpdate
 
 router = APIRouter()
 

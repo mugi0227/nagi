@@ -11,7 +11,7 @@ from datetime import date, datetime
 from typing import Literal, Optional
 from uuid import UUID
 
-from app.models.schedule import ScheduleResponse, TaskScheduleInfo
+from app.models.schedule import ScheduleResponse
 from app.models.schedule_snapshot import (
     PhaseScheduleDiff,
     ScheduleDiff,

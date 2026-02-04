@@ -5,7 +5,6 @@ import argparse
 import sqlite3
 from pathlib import Path
 
-
 PROJECT_NAMES = [
     "加西DXプロジェクト",
     "結婚プロジェクト",

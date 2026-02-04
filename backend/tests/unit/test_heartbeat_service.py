@@ -2,14 +2,15 @@
 Unit tests for HeartbeatService.
 """
 
-import pytest
 from datetime import datetime, time, timedelta
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
-from app.services.heartbeat_service import HeartbeatService
+import pytest
+
 from app.models.agent_task import AgentTask, AgentTaskPayload
-from app.models.enums import AgentTaskStatus, ActionType
+from app.models.enums import ActionType, AgentTaskStatus
+from app.services.heartbeat_service import HeartbeatService
 
 
 @pytest.fixture

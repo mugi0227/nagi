@@ -30,7 +30,10 @@ async def lifespan(app: FastAPI):
         await init_db()  # This also runs migrations
 
     # Start background scheduler for periodic jobs
-    from app.services.background_scheduler import start_background_scheduler, stop_background_scheduler
+    from app.services.background_scheduler import (
+        start_background_scheduler,
+        stop_background_scheduler,
+    )
 
     await start_background_scheduler()
 
@@ -54,18 +57,18 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.DEBUG else None,
     )
 
-    from app.services.realtime_service import realtime_manager
     from app.api.deps import (
         get_blocker_repository,
         get_meeting_agenda_repository,
-        get_recurring_meeting_repository,
         get_milestone_repository,
         get_phase_repository,
         get_project_member_repository,
         get_project_repository,
+        get_recurring_meeting_repository,
         get_task_assignment_repository,
         get_task_repository,
     )
+    from app.services.realtime_service import realtime_manager
 
     async def resolve_task_project_id(user_id: str, task_id: UUID) -> UUID | None:
         task_repo = get_task_repository()
@@ -278,6 +281,7 @@ def create_app() -> FastAPI:
         realtime,
         recurring_meetings,
         recurring_tasks,
+        schedule_settings,
         tasks,
         today,
         users,
@@ -299,6 +303,7 @@ def create_app() -> FastAPI:
     app.include_router(meeting_sessions.router, prefix="/api", tags=["meeting_sessions"])
     app.include_router(heartbeat.router, prefix="/api/heartbeat", tags=["heartbeat"])
     app.include_router(today.router, prefix="/api/today", tags=["today"])
+    app.include_router(schedule_settings.router, prefix="/api", tags=["schedule_settings"])
     app.include_router(users.router, prefix="/api/users", tags=["users"])
     app.include_router(issues.router, prefix="/api/issues", tags=["issues"])
     app.include_router(achievements.router, prefix="/api/achievements", tags=["achievements"])
@@ -310,7 +315,7 @@ def create_app() -> FastAPI:
     storage_path = settings.STORAGE_BASE_PATH
     if not os.path.isabs(storage_path):
         storage_path = os.path.join(os.getcwd(), storage_path)
-    
+
     if os.path.exists(storage_path):
         app.mount("/storage", StaticFiles(directory=storage_path), name="storage")
 

@@ -20,7 +20,9 @@ import { setStoredTimezone } from '../../utils/dateTime';
 import { userStorage } from '../../utils/userStorage';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { usersApi } from '../../api/users';
+import { scheduleSettingsApi } from '../../api/scheduleSettings';
 import { ApiError } from '../../api/client';
+import { useScheduleSettings } from '../../hooks/useScheduleSettings';
 import './SettingsModal.css';
 
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -107,6 +109,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const { theme, toggleTheme } = useTheme();
   const queryClient = useQueryClient();
   const { data: currentUser } = useCurrentUser();
+  const { data: scheduleSettings } = useScheduleSettings();
   const authMode = (import.meta.env.VITE_AUTH_MODE as string | undefined)?.toLowerCase() || '';
   const isLocalAuth = authMode === 'local';
   const [userName, setUserName] = useState('');
@@ -149,6 +152,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     () => userStorage.get('quietHoursEnd') || '07:00'
   );
   const [enableWeeklyMeetingReminder, setEnableWeeklyMeetingReminder] = useState(false);
+  const [hasSyncedScheduleSettings, setHasSyncedScheduleSettings] = useState(false);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -160,6 +164,36 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     setStoredTimezone(currentUser.timezone || 'Asia/Tokyo');
     setEnableWeeklyMeetingReminder(currentUser.enable_weekly_meeting_reminder ?? false);
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!scheduleSettings || hasSyncedScheduleSettings) return;
+    setHasSyncedScheduleSettings(true);
+    setDailyBufferHours(scheduleSettings.buffer_hours);
+    setBreakAfterTaskMinutes(scheduleSettings.break_after_task_minutes);
+    setWeeklyWorkHours(scheduleSettings.weekly_work_hours);
+    userStorage.set('dailyBufferHours', String(scheduleSettings.buffer_hours));
+    userStorage.set('breakAfterTaskMinutes', String(scheduleSettings.break_after_task_minutes));
+    userStorage.set('weeklyWorkHours', JSON.stringify(scheduleSettings.weekly_work_hours));
+    const derivedWeekly = scheduleSettings.weekly_work_hours.map(computeWorkdayCapacityHours);
+    userStorage.set('weeklyCapacityHours', JSON.stringify(derivedWeekly));
+    window.dispatchEvent(new Event('capacity-settings-updated'));
+  }, [scheduleSettings, hasSyncedScheduleSettings]);
+
+  useEffect(() => {
+    if (!hasSyncedScheduleSettings) return;
+    const handle = window.setTimeout(() => {
+      scheduleSettingsApi.update({
+        weekly_work_hours: weeklyWorkHours,
+        buffer_hours: dailyBufferHours,
+        break_after_task_minutes: breakAfterTaskMinutes,
+      }).then((updated) => {
+        queryClient.setQueryData(['schedule-settings'], updated);
+      }).catch(() => {
+        return;
+      });
+    }, 500);
+    return () => window.clearTimeout(handle);
+  }, [weeklyWorkHours, dailyBufferHours, breakAfterTaskMinutes, hasSyncedScheduleSettings, queryClient]);
 
   const handleUserNameChange = (value: string) => {
     setUserName(value);

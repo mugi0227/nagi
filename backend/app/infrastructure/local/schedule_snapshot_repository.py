@@ -9,7 +9,6 @@ from typing import Optional
 from uuid import UUID, uuid4
 
 from sqlalchemy import select, update
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.infrastructure.local.database import ScheduleSnapshotORM, get_session_factory
 from app.interfaces.schedule_snapshot_repository import IScheduleSnapshotRepository
@@ -123,7 +122,7 @@ class SqliteScheduleSnapshotRepository(IScheduleSnapshotRepository):
                 .where(
                     ScheduleSnapshotORM.user_id == user_id,
                     ScheduleSnapshotORM.project_id == str(project_id),
-                    ScheduleSnapshotORM.is_active == True,
+                    ScheduleSnapshotORM.is_active.is_(True),
                 )
                 .values(is_active=False, updated_at=datetime.utcnow())
             )
@@ -178,7 +177,7 @@ class SqliteScheduleSnapshotRepository(IScheduleSnapshotRepository):
                 select(ScheduleSnapshotORM).where(
                     ScheduleSnapshotORM.user_id == user_id,
                     ScheduleSnapshotORM.project_id == str(project_id),
-                    ScheduleSnapshotORM.is_active == True,
+                    ScheduleSnapshotORM.is_active.is_(True),
                 )
             )
             orm = result.scalar_one_or_none()
@@ -205,7 +204,7 @@ class SqliteScheduleSnapshotRepository(IScheduleSnapshotRepository):
                 .where(
                     ScheduleSnapshotORM.user_id == user_id,
                     ScheduleSnapshotORM.project_id == orm.project_id,
-                    ScheduleSnapshotORM.is_active == True,
+                    ScheduleSnapshotORM.is_active.is_(True),
                 )
                 .values(is_active=False, updated_at=datetime.utcnow())
             )

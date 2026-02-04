@@ -5,7 +5,7 @@ Custom exceptions for the application.
 from typing import Any, Optional
 
 
-class SecretaryException(Exception):
+class SecretaryError(Exception):
     """Base exception for Secretary Partner AI."""
 
     def __init__(self, message: str, details: Optional[Any] = None):
@@ -14,25 +14,25 @@ class SecretaryException(Exception):
         super().__init__(message)
 
 
-class NotFoundError(SecretaryException):
+class NotFoundError(SecretaryError):
     """Resource not found."""
 
     pass
 
 
-class DuplicateError(SecretaryException):
+class DuplicateError(SecretaryError):
     """Duplicate resource detected."""
 
     pass
 
 
-class ValidationError(SecretaryException):
+class ValidationError(SecretaryError):
     """Validation error."""
 
     pass
 
 
-class LLMError(SecretaryException):
+class LLMError(SecretaryError):
     """LLM-related error."""
 
     pass
@@ -47,13 +47,13 @@ class LLMValidationError(LLMError):
         self.attempts = attempts
 
 
-class AuthenticationError(SecretaryException):
+class AuthenticationError(SecretaryError):
     """Authentication failed."""
 
     pass
 
 
-class AuthorizationError(SecretaryException):
+class AuthorizationError(SecretaryError):
     """Authorization failed."""
 
     pass
@@ -65,13 +65,13 @@ class ForbiddenError(AuthorizationError):
     pass
 
 
-class InfrastructureError(SecretaryException):
+class InfrastructureError(SecretaryError):
     """Infrastructure-related error (DB, external services, etc.)."""
 
     pass
 
 
-class BusinessLogicError(SecretaryException):
+class BusinessLogicError(SecretaryError):
     """Business logic constraint violation."""
 
     pass

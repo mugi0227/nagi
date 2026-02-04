@@ -10,7 +10,11 @@ from abc import ABC, abstractmethod
 from typing import Optional
 from uuid import UUID
 
-from app.models.schedule_snapshot import ScheduleSnapshot, ScheduleSnapshotCreate, ScheduleSnapshotSummary
+from app.models.schedule_snapshot import (
+    ScheduleSnapshot,
+    ScheduleSnapshotCreate,
+    ScheduleSnapshotSummary,
+)
 
 
 class IScheduleSnapshotRepository(ABC):

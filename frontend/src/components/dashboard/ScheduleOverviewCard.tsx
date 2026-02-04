@@ -15,6 +15,7 @@ import { formatDate, toDateKey, toDateTime, todayInTimezone } from '../../utils/
 import './ScheduleOverviewCard.css';
 
 const HORIZON_OPTIONS = [7, 14, 30];
+const DEFAULT_PLAN_DAYS = 30;
 const LOCK_STORAGE_KEY = 'todayTasksLock';
 
 const TEXT = {
@@ -26,6 +27,7 @@ const TEXT = {
   dayUnit: '\u65e5',
   recalculating: '\u518d\u8a08\u7b97\u4e2d...',
   recalc: '\u518d\u8a08\u7b97',
+  recalcError: '\u518d\u8a08\u7b97\u306b\u5931\u6557\u3057\u307e\u3057\u305f',
   summaryDays: '\u8868\u793a\u65e5\u6570',
   summaryUnscheduled: '\u672a\u5272\u5f53',
   summaryExcluded: '\u9664\u5916',
@@ -54,6 +56,9 @@ const TEXT = {
   viewList: '\u30ea\u30b9\u30c8\u30d3\u30e5\u30fc',
   viewGantt: '\u30ac\u30f3\u30c8\u30c1\u30e3\u30fc\u30c8',
   viewCalendar: '\u30ab\u30ec\u30f3\u30c0\u30fc',
+  planForecast: '\u30d7\u30e9\u30f3\u672a\u751f\u6210',
+  planStale: '\u672a\u53cd\u6620\u306e\u5909\u66f4',
+  pendingLabel: '\u672a\u53cd\u6620',
 };
 
 const formatMinutes = (minutes: number) => {
@@ -139,7 +144,7 @@ export function ScheduleOverviewCard({
   const timezone = useTimezone();
   const [horizon, setHorizon] = useState(14);
   const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode ?? 'calendar');
-  const { data, isLoading, error, refetch, isFetching } = useSchedule(horizon);
+  const { data, isLoading, error } = useSchedule(horizon);
   const { getCapacityForDate } = useCapacitySettings();
   const { projects } = useProjects();
   const [isExcludedOpen, setIsExcludedOpen] = useState(false);
@@ -176,6 +181,21 @@ export function ScheduleOverviewCard({
       }
     },
   });
+
+  const recalcMutation = useMutation({
+    mutationFn: () => tasksApi.recalculateSchedulePlan({
+      fromNow: true,
+      maxDays: DEFAULT_PLAN_DAYS,
+      filterByAssignee: true,
+    }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['schedule'] });
+    },
+    onError: () => {
+      alert(TEXT.recalcError);
+    },
+  });
+  const isRecalculating = recalcMutation.isPending;
 
   useEffect(() => {
     if (lockInfo) return;
@@ -252,6 +272,15 @@ export function ScheduleOverviewCard({
       excluded_tasks: filteredExcluded,
     };
   }, [data, projectId, filteredTasks, filteredDays, filteredUnscheduled, filteredExcluded]);
+  const pendingChanges = scheduleData?.pending_changes ?? [];
+  const pendingChangePreview = useMemo(() => {
+    if (pendingChanges.length === 0) return '';
+    const labels = pendingChanges.slice(0, 3).map(change => change.title);
+    const extra = pendingChanges.length - labels.length;
+    return extra > 0 ? `${labels.join(' / ')} +${extra}${TEXT.countUnit}` : labels.join(' / ');
+  }, [pendingChanges]);
+  const planState = scheduleData?.plan_state ?? 'forecast';
+  const showPlanNotice = !isCalendarView && Boolean(scheduleData) && planState !== 'planned';
 
   const activeLockInfo = useMemo(() => {
     if (!lockInfo) return null;
@@ -535,15 +564,33 @@ export function ScheduleOverviewCard({
               <button
                 className="refresh-btn"
                 type="button"
-                onClick={() => refetch()}
-                disabled={isFetching}
+                onClick={() => recalcMutation.mutate()}
+                disabled={isRecalculating}
               >
-                {isFetching ? TEXT.recalculating : TEXT.recalc}
+                {isRecalculating ? TEXT.recalculating : TEXT.recalc}
               </button>
             </>
           )}
         </div>
       </div>
+
+      {showPlanNotice && (
+        <div className={`schedule-plan-banner ${planState}`}>
+          <div className="schedule-plan-text">
+            <span className="schedule-plan-badge">
+              {planState === 'forecast' ? TEXT.planForecast : TEXT.planStale}
+            </span>
+            {planState === 'stale' && pendingChanges.length > 0 && (
+              <span className="schedule-plan-count">
+                {TEXT.pendingLabel}{pendingChanges.length}{TEXT.countUnit}
+              </span>
+            )}
+            {pendingChangePreview && (
+              <span className="schedule-plan-preview">{pendingChangePreview}</span>
+            )}
+          </div>
+        </div>
+      )}
 
       {!isCalendarView && (
         <div className="schedule-summary">

@@ -16,7 +16,11 @@ from app.interfaces.recurring_meeting_repository import IRecurringMeetingReposit
 from app.interfaces.task_repository import ITaskRepository
 from app.models.collaboration import Checkin
 from app.models.enums import CheckinType
-from app.models.recurring_meeting import RecurrenceFrequency, RecurringMeeting, RecurringMeetingUpdate
+from app.models.recurring_meeting import (
+    RecurrenceFrequency,
+    RecurringMeeting,
+    RecurringMeetingUpdate,
+)
 from app.tools.task_tools import CreateMeetingInput, create_meeting
 
 

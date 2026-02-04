@@ -8,14 +8,19 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, func, and_, or_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import NotFoundError
+from app.infrastructure.local.database import (
+    ProjectMemberORM,
+    ProjectORM,
+    TaskAssignmentORM,
+    TaskORM,
+    get_session_factory,
+)
 from app.interfaces.project_repository import IProjectRepository
-from app.models.project import Project, ProjectCreate, ProjectUpdate, ProjectWithTaskCount
 from app.models.enums import ProjectStatus, ProjectVisibility, TaskStatus
-from app.infrastructure.local.database import ProjectORM, ProjectMemberORM, TaskORM, TaskAssignmentORM, get_session_factory
+from app.models.project import Project, ProjectCreate, ProjectUpdate, ProjectWithTaskCount
 
 
 class SqliteProjectRepository(IProjectRepository):
@@ -143,9 +148,6 @@ class SqliteProjectRepository(IProjectRepository):
 
         async with self._session_factory() as session:
             for project in projects:
-                # Use project.user_id for task queries (tasks belong to project owner)
-                project_owner_id = project.user_id
-
                 # Total tasks
                 total = await session.execute(
                     select(func.count(TaskORM.id)).where(

@@ -1,19 +1,17 @@
 """
-Unit tests for schedule API helpers.
+Unit tests for schedule capacity helpers.
 """
 
-from app.api.tasks import apply_capacity_buffer, get_scheduler_service
+from app.services.daily_schedule_plan_service import _apply_capacity_buffer
 
 
 def test_apply_capacity_buffer_uses_default():
-    scheduler_service = get_scheduler_service()
-    capacity_hours, capacity_by_weekday = apply_capacity_buffer(scheduler_service, None, 1.0)
-    assert capacity_hours == scheduler_service.default_capacity_hours - 1.0
-    assert capacity_by_weekday is None
+    capacity_by_weekday = [8.0] * 7
+    adjusted = _apply_capacity_buffer(capacity_by_weekday, 1.0)
+    assert adjusted == [7.0] * 7
 
 
 def test_apply_capacity_buffer_with_explicit_capacity():
-    scheduler_service = get_scheduler_service()
-    capacity_hours, capacity_by_weekday = apply_capacity_buffer(scheduler_service, 6.0, 1.5)
-    assert capacity_hours == 4.5
-    assert capacity_by_weekday is None
+    capacity_by_weekday = [6.0, 7.5, 4.0, 2.0, 0.5, 8.0, 9.0]
+    adjusted = _apply_capacity_buffer(capacity_by_weekday, 1.5)
+    assert adjusted == [4.5, 6.0, 2.5, 0.5, 0.0, 6.5, 7.5]

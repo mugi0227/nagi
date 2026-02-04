@@ -2,8 +2,9 @@
 Unit tests for meeting agenda repository.
 """
 
-import pytest
 from uuid import uuid4
+
+import pytest
 
 from app.infrastructure.local.meeting_agenda_repository import SqliteMeetingAgendaRepository
 from app.models.meeting_agenda import MeetingAgendaItemCreate, MeetingAgendaItemUpdate

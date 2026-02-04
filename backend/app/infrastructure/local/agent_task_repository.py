@@ -9,14 +9,13 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import and_, select
 
 from app.core.exceptions import NotFoundError
-from app.interfaces.agent_task_repository import IAgentTaskRepository
-from app.models.agent_task import AgentTask, AgentTaskCreate, AgentTaskUpdate, AgentTaskPayload
-from app.models.enums import AgentTaskStatus, ActionType
 from app.infrastructure.local.database import AgentTaskORM, get_session_factory
+from app.interfaces.agent_task_repository import IAgentTaskRepository
+from app.models.agent_task import AgentTask, AgentTaskCreate, AgentTaskPayload, AgentTaskUpdate
+from app.models.enums import ActionType, AgentTaskStatus
 
 
 class SqliteAgentTaskRepository(IAgentTaskRepository):

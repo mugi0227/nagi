@@ -4,11 +4,11 @@ SQLite implementation of meeting agenda repository.
 
 from __future__ import annotations
 
-from datetime import datetime, date
+from datetime import date, datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_, update
+from sqlalchemy import and_, select, update
 
 from app.core.exceptions import NotFoundError
 from app.infrastructure.local.database import MeetingAgendaItemORM, get_session_factory
@@ -98,7 +98,7 @@ class SqliteMeetingAgendaRepository(IMeetingAgendaRepository):
             ]
             if event_date:
                 conditions.append(MeetingAgendaItemORM.event_date == event_date)
-            
+
             query = (
                 select(MeetingAgendaItemORM)
                 .where(and_(*conditions))

@@ -15,7 +15,7 @@ from google.adk import Agent
 from app.agents.prompts.issue_prompt import get_issue_agent_prompt
 from app.interfaces.issue_repository import IIssueRepository
 from app.interfaces.llm_provider import ILLMProvider
-from app.tools.issue_tools import search_issues_tool, create_issue_tool
+from app.tools.issue_tools import create_issue_tool, search_issues_tool
 from app.tools.user_interaction_tools import ask_user_questions_tool
 
 logger = logging.getLogger(__name__)

@@ -15,6 +15,7 @@ from app.api.deps import (
     TaskAssignmentRepo,
     TaskRepo,
 )
+from app.models.enums import CreatedBy, EnergyLevel, MeetingSessionStatus, Priority
 from app.models.meeting_session import (
     MeetingSession,
     MeetingSessionCreate,
@@ -25,7 +26,6 @@ from app.models.meeting_summary import (
     CreateTasksFromActionsRequest,
     MeetingSummary,
 )
-from app.models.enums import CreatedBy, EnergyLevel, MeetingSessionStatus, Priority
 from app.models.task import TaskCreate
 from app.services.meeting_summary_service import MeetingSummaryService
 from app.utils.datetime_utils import now_utc

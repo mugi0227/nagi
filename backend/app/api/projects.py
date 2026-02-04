@@ -4,60 +4,65 @@ Projects API endpoints.
 CRUD operations for projects.
 """
 
-from datetime import date, datetime
+from datetime import date
 from typing import Optional
 from uuid import UUID
 
 from fastapi import APIRouter, HTTPException, Query, status
 
-from app.api.permissions import require_project_action, require_project_member
 from app.api.deps import (
     BlockerRepo,
     CheckinRepo,
     CurrentUser,
     LLMProvider,
-    MilestoneRepo,
+    MemoryRepo,
     NotificationRepo,
-    ProjectMemberRepo,
     ProjectInvitationRepo,
+    ProjectMemberRepo,
     ProjectRepo,
-    PhaseRepo,
     TaskAssignmentRepo,
     TaskRepo,
-    MemoryRepo,
     UserRepo,
 )
+from app.api.permissions import require_project_action, require_project_member
 from app.core.config import get_settings
 from app.core.exceptions import ForbiddenError, NotFoundError
-from app.utils.datetime_utils import ensure_utc, now_utc
 from app.models.collaboration import (
     Blocker,
     Checkin,
     CheckinAgendaItems,
     CheckinCreate,
     CheckinCreateV2,
+    CheckinSummary,
     CheckinSummaryRequest,
     CheckinSummarySave,
-    CheckinSummary,
     CheckinUpdateV2,
     CheckinV2,
-    ProjectMember,
-    ProjectMemberCreate,
-    ProjectMemberUpdate,
     ProjectInvitation,
     ProjectInvitationCreate,
     ProjectInvitationUpdate,
+    ProjectMember,
+    ProjectMemberCreate,
+    ProjectMemberUpdate,
     TaskAssignment,
 )
+from app.models.enums import (
+    CheckinType,
+    InvitationStatus,
+    MemoryScope,
+    MemoryType,
+    ProjectRole,
+    ProjectVisibility,
+)
+from app.models.memory import Memory, MemoryCreate
 from app.models.project import Project, ProjectCreate, ProjectUpdate, ProjectWithTaskCount
 from app.models.project_kpi import ProjectKpiTemplate
-from app.models.enums import CheckinType, InvitationStatus, MemoryScope, MemoryType, ProjectRole, ProjectVisibility
-from app.models.memory import Memory, MemoryCreate
+from app.services import notification_service as notify
 from app.services.kpi_calculator import apply_project_kpis
 from app.services.kpi_templates import get_kpi_templates
 from app.services.llm_utils import generate_text, generate_text_with_status
 from app.services.project_permissions import ProjectAction
-from app.services import notification_service as notify
+from app.utils.datetime_utils import ensure_utc, now_utc
 
 router = APIRouter()
 
@@ -394,7 +399,7 @@ async def list_project_members(
         ProjectAction.MEMBER_READ,
     )
     owner_id = access.owner_id
-    
+
     members = await member_repo.list(owner_id, project_id)
     if owner_id == user.id and not any(m.member_user_id == user.id for m in members):
         await member_repo.create(

@@ -21,7 +21,6 @@ from app.models.agent_task import AgentTaskCreate, AgentTaskPayload
 from app.models.enums import ActionType
 from app.tools.approval_tools import create_tool_action_proposal
 
-
 # ===========================================
 # Tool Input Models
 # ===========================================

@@ -8,7 +8,7 @@ from typing import Any
 from uuid import UUID
 
 from app.interfaces.proposal_repository import IProposalRepository
-from app.models.proposal import Proposal, ProposalResponse, ProposalType
+from app.models.proposal import Proposal, ProposalType
 
 
 def _read_str(value: Any) -> str | None:

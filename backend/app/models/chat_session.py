@@ -5,7 +5,6 @@ These models persist chat history for session restore.
 """
 
 from datetime import datetime
-from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field

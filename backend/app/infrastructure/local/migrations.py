@@ -304,6 +304,8 @@ async def run_migrations():
 
         # Ensure username has UNIQUE constraint
         await _ensure_username_unique(conn)
+        await _ensure_schedule_settings(conn)
+        await _ensure_daily_schedule_plans(conn)
 
         # Create meeting_sessions table if missing
         session_result = await conn.execute(
@@ -840,3 +842,71 @@ async def _ensure_username_unique(conn):
     )
 
     await conn.execute(text("PRAGMA foreign_keys=ON"))
+
+
+async def _ensure_schedule_settings(conn):
+    result = await conn.execute(
+        text("SELECT name FROM sqlite_master WHERE type='table' AND name='schedule_settings'")
+    )
+    if result.scalar():
+        return
+
+    await conn.execute(
+        text(
+            """
+            CREATE TABLE schedule_settings (
+                id VARCHAR(36) PRIMARY KEY,
+                user_id VARCHAR(255) NOT NULL UNIQUE,
+                weekly_work_hours_json JSON NOT NULL,
+                buffer_hours FLOAT DEFAULT 1.0,
+                break_after_task_minutes INTEGER DEFAULT 5,
+                created_at DATETIME,
+                updated_at DATETIME
+            )
+            """
+        )
+    )
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_schedule_settings_user_id ON schedule_settings(user_id)")
+    )
+
+
+async def _ensure_daily_schedule_plans(conn):
+    result = await conn.execute(
+        text("SELECT name FROM sqlite_master WHERE type='table' AND name='daily_schedule_plans'")
+    )
+    if result.scalar():
+        return
+
+    await conn.execute(
+        text(
+            """
+            CREATE TABLE daily_schedule_plans (
+                id VARCHAR(36) PRIMARY KEY,
+                user_id VARCHAR(255) NOT NULL,
+                plan_date DATE NOT NULL,
+                timezone VARCHAR(50) NOT NULL,
+                plan_group_id VARCHAR(36) NOT NULL,
+                schedule_day_json JSON NOT NULL,
+                tasks_json JSON NOT NULL,
+                unscheduled_json JSON NOT NULL,
+                excluded_json JSON NOT NULL,
+                time_blocks_json JSON NOT NULL,
+                task_snapshots_json JSON NOT NULL,
+                pinned_overflow_json JSON NOT NULL,
+                plan_params_json JSON NOT NULL,
+                generated_at DATETIME NOT NULL,
+                updated_at DATETIME
+            )
+            """
+        )
+    )
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_daily_schedule_plans_user_id ON daily_schedule_plans(user_id)")
+    )
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_daily_schedule_plans_plan_date ON daily_schedule_plans(plan_date)")
+    )
+    await conn.execute(
+        text("CREATE INDEX IF NOT EXISTS idx_daily_schedule_plans_group_id ON daily_schedule_plans(plan_group_id)")
+    )

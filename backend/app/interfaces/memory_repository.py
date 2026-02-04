@@ -10,8 +10,8 @@ from abc import ABC, abstractmethod
 from typing import Optional
 from uuid import UUID
 
-from app.models.memory import Memory, MemoryCreate, MemoryUpdate, MemorySearchResult
 from app.models.enums import MemoryScope, MemoryType
+from app.models.memory import Memory, MemoryCreate, MemorySearchResult, MemoryUpdate
 
 
 class IMemoryRepository(ABC):

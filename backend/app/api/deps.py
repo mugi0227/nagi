@@ -10,38 +10,39 @@ from typing import Annotated
 
 from fastapi import Depends, Header, HTTPException, Request, status
 
-from app.core.config import Settings, get_settings
-from app.interfaces.auth_provider import IAuthProvider, User
-from app.interfaces.task_repository import ITaskRepository
-from app.interfaces.project_repository import IProjectRepository
-from app.interfaces.phase_repository import IPhaseRepository
-from app.interfaces.milestone_repository import IMilestoneRepository
-from app.interfaces.proposal_repository import IProposalRepository
+from app.core.config import get_settings
+from app.interfaces.achievement_repository import IAchievementRepository
 from app.interfaces.agent_task_repository import IAgentTaskRepository
-from app.interfaces.memory_repository import IMemoryRepository
+from app.interfaces.auth_provider import IAuthProvider, User
+from app.interfaces.blocker_repository import IBlockerRepository
 from app.interfaces.capture_repository import ICaptureRepository
 from app.interfaces.chat_session_repository import IChatSessionRepository
-from app.interfaces.project_member_repository import IProjectMemberRepository
-from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.checkin_repository import ICheckinRepository
-from app.interfaces.blocker_repository import IBlockerRepository
-from app.interfaces.postpone_repository import IPostponeRepository
-from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
-from app.interfaces.recurring_task_repository import IRecurringTaskRepository
+from app.interfaces.issue_comment_repository import IIssueCommentRepository
+from app.interfaces.issue_repository import IIssueRepository
+from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.meeting_agenda_repository import IMeetingAgendaRepository
 from app.interfaces.meeting_session_repository import IMeetingSessionRepository
-from app.interfaces.user_repository import IUserRepository
-from app.interfaces.project_invitation_repository import IProjectInvitationRepository
-from app.interfaces.schedule_snapshot_repository import IScheduleSnapshotRepository
-from app.interfaces.issue_repository import IIssueRepository
-from app.interfaces.achievement_repository import IAchievementRepository
-from app.interfaces.project_achievement_repository import IProjectAchievementRepository
+from app.interfaces.memory_repository import IMemoryRepository
+from app.interfaces.milestone_repository import IMilestoneRepository
 from app.interfaces.notification_repository import INotificationRepository
-from app.interfaces.issue_comment_repository import IIssueCommentRepository
-from app.interfaces.llm_provider import ILLMProvider
+from app.interfaces.phase_repository import IPhaseRepository
+from app.interfaces.postpone_repository import IPostponeRepository
+from app.interfaces.project_achievement_repository import IProjectAchievementRepository
+from app.interfaces.project_invitation_repository import IProjectInvitationRepository
+from app.interfaces.project_member_repository import IProjectMemberRepository
+from app.interfaces.project_repository import IProjectRepository
+from app.interfaces.proposal_repository import IProposalRepository
+from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
+from app.interfaces.recurring_task_repository import IRecurringTaskRepository
+from app.interfaces.schedule_plan_repository import IDailySchedulePlanRepository
+from app.interfaces.schedule_settings_repository import IScheduleSettingsRepository
+from app.interfaces.schedule_snapshot_repository import IScheduleSnapshotRepository
 from app.interfaces.speech_provider import ISpeechToTextProvider
 from app.interfaces.storage_provider import IStorageProvider
-
+from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
+from app.interfaces.task_repository import ITaskRepository
+from app.interfaces.user_repository import IUserRepository
 
 # ===========================================
 # Repository Dependencies
@@ -177,7 +178,9 @@ def get_project_invitation_repository() -> IProjectInvitationRepository:
     if settings.is_gcp:
         raise NotImplementedError("Project invitation repository not implemented for GCP")
     else:
-        from app.infrastructure.local.project_invitation_repository import SqliteProjectInvitationRepository
+        from app.infrastructure.local.project_invitation_repository import (
+            SqliteProjectInvitationRepository,
+        )
         return SqliteProjectInvitationRepository()
 
 
@@ -188,7 +191,9 @@ def get_task_assignment_repository() -> ITaskAssignmentRepository:
     if settings.is_gcp:
         raise NotImplementedError("Task assignment repository not implemented for GCP")
     else:
-        from app.infrastructure.local.task_assignment_repository import SqliteTaskAssignmentRepository
+        from app.infrastructure.local.task_assignment_repository import (
+            SqliteTaskAssignmentRepository,
+        )
         return SqliteTaskAssignmentRepository()
 
 
@@ -232,7 +237,9 @@ def get_recurring_meeting_repository() -> IRecurringMeetingRepository:
     if settings.is_gcp:
         raise NotImplementedError("Recurring meeting repository not implemented for GCP")
     else:
-        from app.infrastructure.local.recurring_meeting_repository import SqliteRecurringMeetingRepository
+        from app.infrastructure.local.recurring_meeting_repository import (
+            SqliteRecurringMeetingRepository,
+        )
         return SqliteRecurringMeetingRepository()
 
 
@@ -254,8 +261,36 @@ def get_schedule_snapshot_repository() -> IScheduleSnapshotRepository:
     if settings.is_gcp:
         raise NotImplementedError("Schedule snapshot repository not implemented for GCP")
     else:
-        from app.infrastructure.local.schedule_snapshot_repository import SqliteScheduleSnapshotRepository
+        from app.infrastructure.local.schedule_snapshot_repository import (
+            SqliteScheduleSnapshotRepository,
+        )
         return SqliteScheduleSnapshotRepository()
+
+
+@lru_cache()
+def get_schedule_settings_repository() -> IScheduleSettingsRepository:
+    """Get schedule settings repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Schedule settings repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.schedule_settings_repository import (
+            SqliteScheduleSettingsRepository,
+        )
+        return SqliteScheduleSettingsRepository()
+
+
+@lru_cache()
+def get_daily_schedule_plan_repository() -> IDailySchedulePlanRepository:
+    """Get daily schedule plan repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Daily schedule plan repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.schedule_plan_repository import (
+            SqliteDailySchedulePlanRepository,
+        )
+        return SqliteDailySchedulePlanRepository()
 
 
 @lru_cache()
@@ -276,7 +311,9 @@ def get_meeting_session_repository() -> IMeetingSessionRepository:
     if settings.is_gcp:
         raise NotImplementedError("Meeting session repository not implemented for GCP")
     else:
-        from app.infrastructure.local.meeting_session_repository import SqliteMeetingSessionRepository
+        from app.infrastructure.local.meeting_session_repository import (
+            SqliteMeetingSessionRepository,
+        )
         return SqliteMeetingSessionRepository()
 
 
@@ -309,7 +346,9 @@ def get_project_achievement_repository() -> IProjectAchievementRepository:
     if settings.is_gcp:
         raise NotImplementedError("Project achievement repository not implemented for GCP")
     else:
-        from app.infrastructure.local.project_achievement_repository import SqliteProjectAchievementRepository
+        from app.infrastructure.local.project_achievement_repository import (
+            SqliteProjectAchievementRepository,
+        )
         return SqliteProjectAchievementRepository()
 
 
@@ -494,6 +533,8 @@ LLMProvider = Annotated[ILLMProvider, Depends(get_llm_provider)]
 StorageProvider = Annotated[IStorageProvider, Depends(get_storage_provider)]
 SpeechProvider = Annotated[ISpeechToTextProvider, Depends(get_speech_provider)]
 ScheduleSnapshotRepo = Annotated[IScheduleSnapshotRepository, Depends(get_schedule_snapshot_repository)]
+ScheduleSettingsRepo = Annotated[IScheduleSettingsRepository, Depends(get_schedule_settings_repository)]
+DailySchedulePlanRepo = Annotated[IDailySchedulePlanRepository, Depends(get_daily_schedule_plan_repository)]
 IssueRepo = Annotated[IIssueRepository, Depends(get_issue_repository)]
 IssueCommentRepo = Annotated[IIssueCommentRepository, Depends(get_issue_comment_repository)]
 AchievementRepo = Annotated[IAchievementRepository, Depends(get_achievement_repository)]
