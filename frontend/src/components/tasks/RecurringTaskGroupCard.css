@@ -1,0 +1,258 @@
+/* RecurringTaskGroupCard */
+.rtg-card {
+  background: var(--bg-card, #fff);
+  border-radius: var(--radius-md, 8px);
+  padding: 0.75rem 1rem;
+  box-shadow: var(--shadow-card, 0 1px 3px rgba(0, 0, 0, 0.08));
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  border-left: 3px solid #7c3aed;
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  margin-bottom: 0.5rem;
+}
+
+.rtg-card:hover {
+  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.15);
+  transform: translateY(-1px);
+}
+
+/* Header */
+.rtg-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rtg-icon {
+  color: #7c3aed;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.rtg-title {
+  font-weight: 600;
+  font-size: 0.9rem;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rtg-chevron {
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.7rem;
+  flex-shrink: 0;
+}
+
+/* Meta row */
+.rtg-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.rtg-status-pills {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.rtg-status-pill {
+  font-size: 0.7rem;
+  padding: 0.1rem 0.4rem;
+  border-radius: 4px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.rtg-status-pill.todo {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+
+.rtg-status-pill.in-progress {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.rtg-status-pill.waiting {
+  background: rgba(148, 163, 184, 0.15);
+  color: #64748b;
+}
+
+.rtg-status-pill.done {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+}
+
+.rtg-next-due {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #94a3b8);
+  white-space: nowrap;
+}
+
+/* Instances (expanded) */
+.rtg-instances {
+  margin-top: 0.5rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.15);
+  padding-top: 0.4rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rtg-instance-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s ease;
+  font-size: 0.8rem;
+}
+
+.rtg-instance-item:hover {
+  background: rgba(148, 163, 184, 0.08);
+}
+
+.rtg-instance-item.done {
+  opacity: 0.5;
+}
+
+.rtg-instance-status {
+  font-size: 0.65rem;
+  padding: 0.05rem 0.3rem;
+  border-radius: 3px;
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 2rem;
+  text-align: center;
+}
+
+.rtg-instance-status.todo {
+  background: rgba(59, 130, 246, 0.12);
+  color: #3b82f6;
+}
+
+.rtg-instance-status.in-progress {
+  background: rgba(245, 158, 11, 0.12);
+  color: #d97706;
+}
+
+.rtg-instance-status.waiting {
+  background: rgba(148, 163, 184, 0.15);
+  color: #64748b;
+}
+
+.rtg-instance-status.done {
+  background: rgba(34, 197, 94, 0.12);
+  color: #16a34a;
+}
+
+.rtg-instance-title {
+  flex: 1;
+  color: var(--text-primary, #334155);
+}
+
+.rtg-instance-due {
+  color: var(--text-secondary, #94a3b8);
+  font-size: 0.75rem;
+  white-space: nowrap;
+}
+
+.rtg-instance-complete-btn {
+  background: none;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 4px;
+  color: #16a34a;
+  cursor: pointer;
+  padding: 0.15rem 0.3rem;
+  font-size: 0.65rem;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.rtg-instance-item:hover .rtg-instance-complete-btn {
+  opacity: 1;
+}
+
+.rtg-instance-complete-btn:hover {
+  background: rgba(34, 197, 94, 0.12);
+}
+
+/* Delete all button */
+.rtg-delete-all-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #94a3b8);
+  cursor: pointer;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.rtg-card:hover .rtg-delete-all-btn {
+  opacity: 1;
+}
+
+.rtg-delete-all-btn:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.08);
+}
+
+.rtg-delete-all-btn.compact {
+  font-size: 0.6rem;
+  padding: 0.15rem 0.25rem;
+}
+
+/* Compact mode */
+.rtg-card.compact {
+  padding: 0.4rem 0.6rem;
+}
+
+.rtg-compact-header {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.82rem;
+}
+
+.rtg-compact-header .rtg-icon {
+  font-size: 0.7rem;
+}
+
+.rtg-compact-header .rtg-title {
+  font-size: 0.82rem;
+}
+
+.rtg-compact-count {
+  font-size: 0.7rem;
+  color: #7c3aed;
+  font-weight: 600;
+  background: rgba(139, 92, 246, 0.1);
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.rtg-compact-due {
+  font-size: 0.7rem;
+  color: var(--text-secondary, #94a3b8);
+  flex-shrink: 0;
+}
+
+.rtg-card.compact .rtg-instances {
+  margin-top: 0.3rem;
+  padding-top: 0.3rem;
+}
+
+.rtg-card.compact .rtg-instance-item {
+  font-size: 0.75rem;
+  padding: 0.2rem 0.3rem;
+}

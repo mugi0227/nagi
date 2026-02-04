@@ -465,6 +465,60 @@ async def run_migrations():
             )
 
 
+        # Multi-member completion flag
+        if "requires_all_completion" not in columns:
+            await conn.execute(
+                text("ALTER TABLE tasks ADD COLUMN requires_all_completion BOOLEAN DEFAULT 0 NOT NULL")
+            )
+
+        # Add recurring_task_id to tasks table
+        if "recurring_task_id" not in columns:
+            await conn.execute(text("ALTER TABLE tasks ADD COLUMN recurring_task_id VARCHAR(36)"))
+            await conn.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_tasks_recurring_task_id ON tasks(recurring_task_id)")
+            )
+
+        # Create recurring_tasks table if missing
+        recurring_tasks_result = await conn.execute(
+            text("SELECT name FROM sqlite_master WHERE type='table' AND name='recurring_tasks'")
+        )
+        if not recurring_tasks_result.scalar():
+            await conn.execute(
+                text(
+                    """
+                    CREATE TABLE recurring_tasks (
+                        id VARCHAR(36) PRIMARY KEY,
+                        user_id VARCHAR(255) NOT NULL,
+                        project_id VARCHAR(36),
+                        phase_id VARCHAR(36),
+                        title VARCHAR(500) NOT NULL,
+                        description TEXT,
+                        purpose TEXT,
+                        frequency VARCHAR(20) NOT NULL DEFAULT 'weekly',
+                        weekday INTEGER,
+                        day_of_month INTEGER,
+                        custom_interval_days INTEGER,
+                        start_time VARCHAR(10),
+                        estimated_minutes INTEGER,
+                        importance VARCHAR(10) DEFAULT 'MEDIUM',
+                        urgency VARCHAR(10) DEFAULT 'MEDIUM',
+                        energy_level VARCHAR(10) DEFAULT 'LOW',
+                        anchor_date DATE NOT NULL,
+                        last_generated_date DATE,
+                        is_active BOOLEAN DEFAULT 1,
+                        created_at DATETIME,
+                        updated_at DATETIME
+                    )
+                    """
+                )
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_recurring_tasks_user_id ON recurring_tasks(user_id)")
+            )
+            await conn.execute(
+                text("CREATE INDEX idx_recurring_tasks_project_id ON recurring_tasks(project_id)")
+            )
+
         # Create issue_comments table if missing
         issue_comments_result = await conn.execute(
             text("SELECT name FROM sqlite_master WHERE type='table' AND name='issue_comments'")

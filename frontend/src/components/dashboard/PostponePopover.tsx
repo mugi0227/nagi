@@ -10,9 +10,10 @@ import './PostponePopover.css';
 interface PostponePopoverProps {
   taskId: string;
   className?: string;
+  onSuccess?: () => void;
 }
 
-export function PostponePopover({ taskId, className }: PostponePopoverProps) {
+export function PostponePopover({ taskId, className, onSuccess }: PostponePopoverProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [reason, setReason] = useState('');
@@ -76,7 +77,11 @@ export function PostponePopover({ taskId, className }: PostponePopoverProps) {
         pin,
         reason: reason.trim() || undefined,
       });
-      invalidateAll();
+      if (onSuccess) {
+        onSuccess();
+      } else {
+        invalidateAll();
+      }
       setIsOpen(false);
       setShowDatePicker(false);
       setReason('');

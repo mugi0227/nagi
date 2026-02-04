@@ -104,6 +104,9 @@ export interface Task {
   completion_note?: string;
   completed_at?: string;
   completed_by?: string;
+
+  // Multi-member completion
+  requires_all_completion: boolean;
 }
 
 export interface TouchpointStep {
@@ -146,6 +149,9 @@ export interface TaskCreate {
 
   // Subtask guide field
   guide?: string;
+
+  // Multi-member completion
+  requires_all_completion?: boolean;
 }
 
 export interface TaskUpdate {
@@ -187,6 +193,15 @@ export interface TaskUpdate {
 
   // Completion fields
   completion_note?: string;
+
+  // Multi-member completion
+  requires_all_completion?: boolean;
+}
+
+export interface CompletionCheckResponse {
+  task: Task;
+  checked_count: number;
+  total_count: number;
 }
 
 export interface TaskWithSubtasks extends Task {
@@ -833,6 +848,8 @@ export interface TaskScheduleInfo {
   planned_end?: string;
   total_minutes: number;
   priority_score: number;
+  status?: string;
+  pinned_date?: string;
 }
 
 export interface ExcludedTask {

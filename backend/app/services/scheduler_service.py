@@ -320,6 +320,7 @@ class SchedulerService:
         members: Optional[list[ProjectMember]] = None,
         filter_by_assignee: bool = False,
         planned_window_by_task: Optional[dict[UUID, tuple[Optional[date], Optional[date]]]] = None,
+        user_timezone: str = "Asia/Tokyo",
     ) -> ScheduleResponse:
         """
         Build a capacity-aware schedule across multiple days.
@@ -446,7 +447,7 @@ class SchedulerService:
             task
             for task in tasks
             if task.status != TaskStatus.DONE
-            and task.status != TaskStatus.WAITING
+            and (task.status != TaskStatus.WAITING or task.requires_all_completion)
             and not is_parent_task(task, tasks)
             and not task.is_fixed_time
         ]
@@ -466,7 +467,17 @@ class SchedulerService:
                 assignees = assignees_by_task.get(task.id)
                 if not assignees:
                     return False  # Unassigned project tasks excluded
-                return current_user_id in assignees  # Include if I'm one of the assignees
+                if current_user_id not in assignees:
+                    return False
+                # Exclude requires_all_completion tasks where I already checked
+                if task.requires_all_completion and task.status == TaskStatus.WAITING:
+                    my_assignment = next(
+                        (a for a in assignments if a.task_id == task.id and a.assignee_id == current_user_id),
+                        None,
+                    )
+                    if my_assignment and my_assignment.status == TaskStatus.DONE:
+                        return False
+                return True
 
             # Pinned tasks bypass assignee filter — the user explicitly chose
             # to pin this task to a date, so it must appear in the schedule.
@@ -514,6 +525,7 @@ class SchedulerService:
                     planned_end=None,
                     total_minutes=get_effective_estimated_minutes(task, tasks) or self.default_task_minutes,
                     priority_score=self._calculate_task_score(task, project_priorities, start),
+                    pinned_date=task.pinned_date.date() if task.pinned_date else None,
                 )
                 for task in candidate_tasks
             ]
@@ -927,6 +939,51 @@ class SchedulerService:
                         project_priorities,
                         task_start.get(task.id, start),
                     ),
+                    status=task.status.value if hasattr(task.status, 'value') else str(task.status),
+                    pinned_date=task.pinned_date.date() if task.pinned_date else None,
+                )
+            )
+
+        # Include tasks completed on each scheduled day so they remain
+        # visible in the calendar (same pattern as get_today_tasks).
+        scheduled_task_ids = {ti.task_id for ti in tasks_info}
+        tz = ZoneInfo(user_timezone)
+        day_map = {day.date: day for day in days}
+        for task in tasks:
+            if (
+                task.status != TaskStatus.DONE
+                or not task.completed_at
+                or task.id in scheduled_task_ids
+                or task.is_fixed_time
+                or is_parent_task(task, tasks)
+            ):
+                continue
+            completed_dt = task.completed_at
+            if completed_dt.tzinfo is None:
+                completed_dt = completed_dt.replace(tzinfo=ZoneInfo("UTC"))
+            completed_date = completed_dt.astimezone(tz).date()
+            day = day_map.get(completed_date)
+            if day is None:
+                continue
+            task_mins = get_effective_estimated_minutes(task, tasks)
+            if task_mins <= 0:
+                task_mins = self.default_task_minutes
+            day.task_allocations.append(TaskAllocation(task_id=task.id, minutes=task_mins))
+            tasks_info.append(
+                TaskScheduleInfo(
+                    task_id=task.id,
+                    title=task.title,
+                    project_id=task.project_id,
+                    parent_id=get_parent_info(task)[0],
+                    parent_title=get_parent_info(task)[1],
+                    order_in_parent=task.order_in_parent,
+                    due_date=effective_due_by_task.get(task.id, task.due_date),
+                    planned_start=completed_date,
+                    planned_end=completed_date,
+                    total_minutes=task_mins,
+                    priority_score=0.0,
+                    status="done",
+                    pinned_date=task.pinned_date.date() if task.pinned_date else None,
                 )
             )
 

@@ -18,6 +18,8 @@ import { ProjectDetailModal } from '../components/projects/ProjectDetailModal';
 import { ProjectTasksView } from '../components/projects/ProjectTasksView';
 import { ProjectAchievementsSection } from '../components/projects/ProjectAchievementsSection';
 import { RecurringMeetingsPanel } from '../components/projects/RecurringMeetingsPanel';
+import { RecurringTaskList } from '../components/tasks/RecurringTaskList';
+import { useRecurringTasks } from '../hooks/useRecurringTasks';
 import { useTaskModal } from '../hooks/useTaskModal';
 import { useTasks } from '../hooks/useTasks';
 import { useTimezone } from '../hooks/useTimezone';
@@ -28,6 +30,7 @@ export function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const timezone = useTimezone();
+  const { deleteGeneratedTasks } = useRecurringTasks(projectId);
   const [project, setProject] = useState<ProjectWithTaskCount | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1211,6 +1214,8 @@ export function ProjectDetailPage() {
 
           <RecurringMeetingsPanel projectId={projectId!} />
 
+          <RecurringTaskList projectId={projectId} />
+
           <div className="detail-section members-section">
             <div className="section-header">
               <FaUsers className="section-icon" />
@@ -1440,6 +1445,7 @@ export function ProjectDetailPage() {
               refetchTasks();
             }}
             onRefreshTasks={refetchTasks}
+            onDeleteGeneratedTasks={deleteGeneratedTasks}
           />
         )}
       </div>

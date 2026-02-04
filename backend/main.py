@@ -277,6 +277,7 @@ def create_app() -> FastAPI:
         proposals,
         realtime,
         recurring_meetings,
+        recurring_tasks,
         tasks,
         today,
         users,
@@ -293,6 +294,7 @@ def create_app() -> FastAPI:
     app.include_router(agent_tasks.router, prefix="/api/agent-tasks", tags=["agent_tasks"])
     app.include_router(memories.router, prefix="/api/memories", tags=["memories"])
     app.include_router(recurring_meetings.router, prefix="/api/recurring-meetings", tags=["recurring_meetings"])
+    app.include_router(recurring_tasks.router, prefix="/api/recurring-tasks", tags=["recurring_tasks"])
     app.include_router(meeting_agendas.router, prefix="/api", tags=["meeting_agendas"])
     app.include_router(meeting_sessions.router, prefix="/api", tags=["meeting_sessions"])
     app.include_router(heartbeat.router, prefix="/api/heartbeat", tags=["heartbeat"])

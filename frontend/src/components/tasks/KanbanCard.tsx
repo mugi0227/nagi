@@ -1,11 +1,12 @@
 import { type DateTime } from 'luxon';
 import { useMemo } from 'react';
 import { FaCalendarAlt, FaCheckCircle, FaCircle } from 'react-icons/fa';
-import { FaBatteryFull, FaBatteryQuarter, FaClock, FaFire, FaHourglass, FaLeaf, FaListCheck, FaLock, FaLockOpen, FaPen, FaTrash, FaUser } from 'react-icons/fa6';
-import type { Task, TaskStatus } from '../../api/types';
+import { FaBatteryFull, FaBatteryQuarter, FaClock, FaFire, FaHourglass, FaLeaf, FaListCheck, FaLock, FaLockOpen, FaPen, FaRepeat, FaTrash, FaUser } from 'react-icons/fa6';
+import type { Task, TaskAssignment, TaskStatus } from '../../api/types';
 import type { DraftCardData } from '../chat/DraftCard';
 import { AssigneeSelect } from '../common/AssigneeSelect';
 import { StepNumber } from '../common/StepNumber';
+import { CompletionChecklist } from './CompletionChecklist';
 import './KanbanCard.css';
 import { MeetingBadge } from './MeetingBadge';
 import { useTimezone } from '../../hooks/useTimezone';
@@ -23,6 +24,10 @@ interface KanbanCardProps {
   onDelete?: (id: string) => void;
   onClick?: (task: Task) => void;
   onUpdateTask?: (id: string, status: TaskStatus) => void;
+  // Multi-member completion
+  taskAssignments?: TaskAssignment[];
+  currentUserId?: string;
+  onCheckCompletion?: (taskId: string) => void;
   // Selection mode
   selectionMode?: boolean;
   isSelected?: boolean;
@@ -43,6 +48,9 @@ export function KanbanCard({
   onDelete,
   onClick,
   onUpdateTask,
+  taskAssignments,
+  currentUserId,
+  onCheckCompletion,
   selectionMode = false,
   isSelected = false,
   onSelect,
@@ -101,6 +109,16 @@ export function KanbanCard({
   const completedSubtasks = subtasks.filter(st => st.status === 'DONE').length;
   const totalSubtasks = subtasks.length;
   const isDone = task.status === 'DONE';
+
+  // Multi-member completion
+  const isAllCompletionTask = task.requires_all_completion && taskAssignments && taskAssignments.length > 1;
+  const handleDoneClick = () => {
+    if (isAllCompletionTask && onCheckCompletion) {
+      onCheckCompletion(task.id);
+    } else if (onUpdateTask) {
+      onUpdateTask(task.id, 'DONE');
+    }
+  };
 
   // Deadline status: overdue or approaching
   const deadlineStatus = useMemo(() => {
@@ -291,11 +309,11 @@ export function KanbanCard({
             </span>
           )}
           <div className="card-actions">
-            {onUpdateTask && (
+            {(onUpdateTask || (isAllCompletionTask && onCheckCompletion)) && (
               <button
                 className="card-action-btn check"
-                onClick={(e) => handleActionClick(e, () => onUpdateTask(task.id, 'DONE'))}
-                title="完了にする"
+                onClick={(e) => handleActionClick(e, handleDoneClick)}
+                title={isAllCompletionTask ? '確認する' : '完了にする'}
               >
                 <FaCircle />
               </button>
@@ -312,6 +330,16 @@ export function KanbanCard({
           </div>
         </div>
         <div className="compact-row-2">
+          {isAllCompletionTask && (
+            <CompletionChecklist
+              assignments={taskAssignments}
+              memberOptions={memberOptions || []}
+              currentUserId={currentUserId}
+              onCheck={onCheckCompletion}
+              taskId={task.id}
+              compact
+            />
+          )}
           {assigneeName && (
             <span className="compact-assignee">
               <FaUser className="compact-meta-icon" />
@@ -326,6 +354,11 @@ export function KanbanCard({
           )}
           {task.is_fixed_time && (
             <MeetingBadge task={task} showDetails={false} />
+          )}
+          {task.recurring_task_id && (
+            <span className="compact-recurring-badge" title="定期タスク">
+              <FaRepeat className="compact-meta-icon" />
+            </span>
           )}
         </div>
       </div>
@@ -367,11 +400,11 @@ export function KanbanCard({
         ) : null}
         <h4 className="card-title">{task.title}</h4>
         <div className="card-actions">
-          {onUpdateTask && (
+          {(onUpdateTask || (isAllCompletionTask && onCheckCompletion)) && (
             <button
               className={`card-action-btn check ${isDone ? 'done' : ''}`}
-              onClick={(e) => handleActionClick(e, () => onUpdateTask(task.id, 'DONE'))}
-              title={isDone ? '完了済み' : '完了にする'}
+              onClick={(e) => handleActionClick(e, handleDoneClick)}
+              title={isDone ? '完了済み' : isAllCompletionTask ? '確認する' : '完了にする'}
               aria-pressed={isDone}
               disabled={isDone}
             >
@@ -409,6 +442,22 @@ export function KanbanCard({
       )}
 
       <div className="card-meta">
+        {isAllCompletionTask && (
+          <CompletionChecklist
+            assignments={taskAssignments}
+            memberOptions={memberOptions || []}
+            currentUserId={currentUserId}
+            onCheck={onCheckCompletion}
+            taskId={task.id}
+            compact
+          />
+        )}
+        {task.recurring_task_id && (
+          <span className="meta-badge recurring" title="定期タスク">
+            <FaRepeat />
+            <span>定期</span>
+          </span>
+        )}
         {assigneeName && (
           <span className="meta-badge assignee" title="担当者">
             <FaUser />

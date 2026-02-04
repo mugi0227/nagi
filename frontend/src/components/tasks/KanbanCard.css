@@ -287,6 +287,19 @@
   white-space: nowrap;
 }
 
+/* Recurring task badge */
+.meta-badge.recurring {
+  background: rgba(139, 92, 246, 0.12);
+  color: #7c3aed;
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.compact-recurring-badge {
+  color: #7c3aed;
+  font-size: 0.7rem;
+}
+
 .card-footer {
   padding-top: 0.5rem;
   border-top: 1px solid rgba(148, 163, 184, 0.1);

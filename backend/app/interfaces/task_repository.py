@@ -226,6 +226,46 @@ class ITaskRepository(ABC):
         pass
 
     @abstractmethod
+    async def list_by_recurring_task(
+        self,
+        user_id: str,
+        recurring_task_id: UUID,
+        start_after: Optional[datetime] = None,
+        end_before: Optional[datetime] = None,
+    ) -> list[Task]:
+        """
+        List tasks generated from a recurring task definition.
+
+        Args:
+            user_id: Owner user ID
+            recurring_task_id: RecurringTask definition ID
+            start_after: Filter tasks with due_date after this time
+            end_before: Filter tasks with due_date before this time
+
+        Returns:
+            List of tasks linked to the recurring task definition
+        """
+        pass
+
+    @abstractmethod
+    async def delete_by_recurring_task(
+        self,
+        user_id: str,
+        recurring_task_id: UUID,
+    ) -> int:
+        """
+        Delete all tasks generated from a recurring task definition.
+
+        Args:
+            user_id: Owner user ID
+            recurring_task_id: RecurringTask definition ID
+
+        Returns:
+            Number of tasks deleted
+        """
+        pass
+
+    @abstractmethod
     async def list_completed_in_period(
         self,
         user_id: str,

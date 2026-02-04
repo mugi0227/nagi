@@ -16,6 +16,7 @@ from app.agents.prompts.issue_prompt import get_issue_agent_prompt
 from app.interfaces.issue_repository import IIssueRepository
 from app.interfaces.llm_provider import ILLMProvider
 from app.tools.issue_tools import search_issues_tool, create_issue_tool
+from app.tools.user_interaction_tools import ask_user_questions_tool
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ def create_issue_agent(
     tools = [
         search_issues_tool(issue_repo, user_id),
         create_issue_tool(issue_repo, user_id),
+        ask_user_questions_tool(),
     ]
 
     # Create agent

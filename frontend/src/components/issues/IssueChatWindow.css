@@ -445,11 +445,96 @@
 /* Input Area */
 .issue-chat-input-area {
   display: flex;
-  gap: 0.75rem;
+  flex-direction: column;
+  gap: 0.5rem;
   padding: 1rem 1.25rem;
   border-top: 1px solid rgba(148, 163, 184, 0.1);
   background: rgba(148, 163, 184, 0.03);
   border-radius: 0 0 var(--radius-lg) var(--radius-lg);
+}
+
+.issue-chat-input-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-end;
+}
+
+/* Image Preview */
+.issue-chat-image-preview {
+  position: relative;
+  display: inline-block;
+  max-width: 200px;
+}
+
+.issue-chat-image-preview img {
+  max-width: 100%;
+  max-height: 120px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  object-fit: cover;
+}
+
+.issue-chat-image-remove {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+  font-size: 0.625rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.issue-chat-image-remove:hover {
+  background: #ef4444;
+}
+
+/* Image Attach Button */
+.issue-chat-image-btn {
+  width: 40px;
+  height: 40px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: var(--radius-md);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.issue-chat-image-btn:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(14, 165, 233, 0.05);
+}
+
+.issue-chat-image-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+/* Message Image */
+.issue-message-image {
+  margin-bottom: 0.25rem;
+}
+
+.issue-message-image img {
+  max-width: 100%;
+  max-height: 200px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(148, 163, 184, 0.15);
+  object-fit: contain;
 }
 
 .issue-chat-textarea {

@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState, useEffect } from 'react';
+import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
 import type { CSSProperties } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { tasksApi } from '../../api/tasks';
@@ -6,8 +6,9 @@ import type { Task } from '../../api/types';
 import { useCapacitySettings } from '../../hooks/useCapacitySettings';
 import { useTaskModal } from '../../hooks/useTaskModal';
 import { useTimezone } from '../../hooks/useTimezone';
-import { formatDate, toDateKey, toDateTime, todayInTimezone } from '../../utils/dateTime';
+import { formatDate, toDateKey, toDateTime, todayInTimezone, nowInTimezone } from '../../utils/dateTime';
 import { DEFAULT_WEEKLY_WORK_HOURS } from '../../utils/capacitySettings';
+import { PostponePopover } from './PostponePopover';
 import './WeeklyMeetingsCard.css';
 
 const TEXT = {
@@ -23,15 +24,19 @@ const TEXT = {
   viewWeek: '\u9031\u9593',
   viewWorkdays: '\u7a3c\u50cd\u65e5',
   viewToday: '\u4eca\u65e5',
+  reschedule: '\u518d\u914d\u7f6e',
+  dependencyAlert: '\u4f9d\u5b58\u30bf\u30b9\u30af\u304c\u5b8c\u4e86\u3057\u3066\u3044\u306a\u3044\u305f\u3081\u5b8c\u4e86\u3067\u304d\u307e\u305b\u3093',
+  statusError: '\u30b9\u30c6\u30fc\u30bf\u30b9\u5909\u66f4\u306b\u5931\u6557\u3057\u307e\u3057\u305f',
+  doTodayError: '\u4eca\u65e5\u3084\u308b\u306e\u8a2d\u5b9a\u306b\u5931\u6557\u3057\u307e\u3057\u305f',
 };
 
 const DEFAULT_START_HOUR = 8;
 const DEFAULT_END_HOUR = 20;
 const MIN_START_HOUR = 6;
 const MAX_END_HOUR = 22;
-const DEFAULT_HOUR_HEIGHT = 44;
 const MIN_HOUR_HEIGHT = 28;
 const MAX_HOUR_HEIGHT = 120;
+const DEFAULT_HOUR_HEIGHT = MAX_HOUR_HEIGHT;
 const HOUR_ZOOM_STEP = 4;
 const WARMUP_MINUTES = 15;
 
@@ -80,6 +85,7 @@ type MeetingBlock = {
   location?: string;
   status: Task['status'];
   kind: 'meeting' | 'auto';
+  pinnedDate?: string;
 };
 
 const formatTime = (date: Date, timezone: string) => (
@@ -168,6 +174,9 @@ export function WeeklyMeetingsCard({
   const [weekOffset, setWeekOffset] = useState(0);
   const [dayOffset, setDayOffset] = useState(0);
   const [hourHeight, setHourHeight] = useState(DEFAULT_HOUR_HEIGHT);
+  const [isSubmitting, setIsSubmitting] = useState<string | null>(null);
+  const [localDoneIds, setLocalDoneIds] = useState<Set<string>>(new Set());
+  const [rescheduleFromNow, setRescheduleFromNow] = useState(false);
   const gridRef = useRef<HTMLDivElement | null>(null);
 
   const today = todayInTimezone(timezone);
@@ -244,7 +253,7 @@ export function WeeklyMeetingsCard({
       capacityByWeekday,
       filterByAssignee: true,
     }),
-    staleTime: 30_000,
+    staleTime: Infinity,
     enabled: scheduleDaysCount > 0,
   });
 
@@ -254,11 +263,13 @@ export function WeeklyMeetingsCard({
     staleTime: 30_000,
   });
 
-  const invalidateAfterChange = () => {
-    for (const key of [
-      ['meetings'], ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
+  const invalidateAfterChange = (includeSchedule = false) => {
+    const keys = [
+      ['meetings'], ['tasks'], ['subtasks'], ['top3'], ['today-tasks'],
       ['task-detail'], ['task-assignments'], ['project'],
-    ]) {
+    ];
+    if (includeSchedule) keys.push(['schedule']);
+    for (const key of keys) {
       queryClient.invalidateQueries({ queryKey: key });
     }
   };
@@ -268,7 +279,7 @@ export function WeeklyMeetingsCard({
     tasks: meetingTasks,
     onRefetch: () => {
       refetch();
-      invalidateAfterChange();
+      invalidateAfterChange(true);
     },
   });
   const showTitle = !embedded;
@@ -278,6 +289,63 @@ export function WeeklyMeetingsCard({
       return;
     }
     taskModal.openTaskDetailById(taskId);
+  };
+
+  const handleToggleComplete = async (taskId: string, currentStatus: Task['status'], e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isSubmitting) return;
+
+    if (currentStatus === 'DONE') {
+      setIsSubmitting(taskId);
+      try {
+        setLocalDoneIds(prev => { const next = new Set(prev); next.delete(taskId); return next; });
+        await tasksApi.update(taskId, { status: 'TODO' });
+        invalidateAfterChange(true);
+      } catch {
+        alert(TEXT.statusError);
+      } finally {
+        setIsSubmitting(null);
+      }
+      return;
+    }
+
+    setIsSubmitting(taskId);
+    try {
+      const task = await tasksApi.getById(taskId);
+      if (task.dependency_ids && task.dependency_ids.length > 0) {
+        const deps = await Promise.all(
+          task.dependency_ids.map(depId => tasksApi.getById(depId).catch(() => null))
+        );
+        const hasPending = deps.some(dep => !dep || dep.status !== 'DONE');
+        if (hasPending) {
+          alert(TEXT.dependencyAlert);
+          setIsSubmitting(null);
+          return;
+        }
+      }
+      setLocalDoneIds(prev => new Set(prev).add(taskId));
+      await tasksApi.update(taskId, { status: 'DONE' });
+      invalidateAfterChange(true);
+    } catch {
+      setLocalDoneIds(prev => { const next = new Set(prev); next.delete(taskId); return next; });
+      alert(TEXT.statusError);
+    } finally {
+      setIsSubmitting(null);
+    }
+  };
+
+  const handleDoToday = async (taskId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isSubmitting) return;
+    setIsSubmitting(taskId);
+    try {
+      await tasksApi.doToday(taskId, { pin: true });
+      invalidateAfterChange(true);
+    } catch {
+      alert(TEXT.doTodayError);
+    } finally {
+      setIsSubmitting(null);
+    }
   };
 
   const meetings = useMemo(() => {
@@ -369,6 +437,21 @@ export function WeeklyMeetingsCard({
     return map;
   }, [days, timezone, weeklyWorkHours]);
 
+  // Current time indicator state (updates every minute)
+  const [nowMinutes, setNowMinutes] = useState(() => {
+    const now = nowInTimezone(timezone);
+    return now.hour * 60 + now.minute;
+  });
+
+  useEffect(() => {
+    const tick = () => {
+      const now = nowInTimezone(timezone);
+      setNowMinutes(now.hour * 60 + now.minute);
+    };
+    const interval = setInterval(tick, 60_000);
+    return () => clearInterval(interval);
+  }, [timezone]);
+
   const autoBlocks = useMemo(() => {
     if (!scheduleData?.days || !scheduleData.tasks) return [] as MeetingBlock[];
     const taskInfoMap = new Map(scheduleData.tasks.map(task => [task.task_id, task]));
@@ -394,6 +477,16 @@ export function WeeklyMeetingsCard({
 
       const meetingIntervals = meetingIntervalsByDay.get(dayKey) ?? [];
       available = subtractIntervals(available, meetingIntervals);
+
+      // Reschedule: clip today's available intervals to start from now
+      if (rescheduleFromNow && dayKey === todayKey) {
+        available = available
+          .map(interval => ({
+            startMinutes: Math.max(interval.startMinutes, nowMinutes),
+            endMinutes: interval.endMinutes,
+          }))
+          .filter(interval => interval.endMinutes > interval.startMinutes);
+      }
 
       let segmentIndex = 0;
       scheduleDay.task_allocations.forEach(allocation => {
@@ -426,8 +519,9 @@ export function WeeklyMeetingsCard({
             endMinutes,
             lane: 0,
             laneCount: 1,
-            status: 'TODO',
+            status: (taskInfo.status === 'DONE' ? 'DONE' : 'TODO') as Task['status'],
             kind: 'auto',
+            pinnedDate: taskInfo.pinned_date ?? undefined,
           });
           segmentIndex += 1;
           remaining -= duration;
@@ -443,7 +537,7 @@ export function WeeklyMeetingsCard({
     });
 
     return blocks;
-  }, [days, meetingIntervalsByDay, scheduleData?.days, scheduleData?.tasks, timezone, workdayConfigByDay]);
+  }, [days, meetingIntervalsByDay, scheduleData?.days, scheduleData?.tasks, timezone, workdayConfigByDay, rescheduleFromNow, todayKey, nowMinutes]);
 
   const autoBlocksByDay = useMemo(() => {
     const grouped = new Map<string, MeetingBlock[]>();
@@ -539,6 +633,31 @@ export function WeeklyMeetingsCard({
   const gridHeight = hourCount * hourHeight;
   const scheduleHasItems = meetings.length > 0 || autoBlocks.length > 0;
 
+  const currentTimeInBounds =
+    nowMinutes >= timeBounds.startHour * 60 && nowMinutes < timeBounds.endHour * 60;
+
+  // Auto-scroll to current time at ~30% from top
+  const hasAutoScrolled = useRef(false);
+  const scrollToCurrentTime = useCallback(() => {
+    const grid = gridRef.current;
+    if (!grid || !currentTimeInBounds) return;
+    const startBound = timeBounds.startHour * 60;
+    const currentOffset = ((nowMinutes - startBound) / 60) * hourHeight;
+    const viewportHeight = grid.clientHeight;
+    const targetScroll = currentOffset - viewportHeight * 0.3;
+    grid.scrollTop = Math.max(0, targetScroll);
+  }, [currentTimeInBounds, timeBounds.startHour, nowMinutes, hourHeight]);
+
+  useEffect(() => {
+    if (!hasAutoScrolled.current && scheduleHasItems) {
+      // Small delay to ensure DOM is rendered
+      requestAnimationFrame(() => {
+        scrollToCurrentTime();
+        hasAutoScrolled.current = true;
+      });
+    }
+  }, [scheduleHasItems, scrollToCurrentTime]);
+
   useEffect(() => {
     const handleWheel = (event: WheelEvent) => {
       if (!event.ctrlKey) return;
@@ -607,6 +726,18 @@ export function WeeklyMeetingsCard({
                 {viewMode === 'today' ? TEXT.today : TEXT.thisWeek}
               </button>
             )}
+            <button
+              type="button"
+              className={`weekly-meetings-reschedule-btn ${rescheduleFromNow ? 'active' : ''}`}
+              onClick={() => {
+                setRescheduleFromNow(prev => !prev);
+                setLocalDoneIds(new Set());
+                queryClient.invalidateQueries({ queryKey: ['schedule'] });
+              }}
+              title="今の時刻から再配置（スケジュール再計算）"
+            >
+              {TEXT.reschedule}
+            </button>
           </div>
         </div>
       </div>
@@ -621,11 +752,15 @@ export function WeeklyMeetingsCard({
         <div className="weekly-meetings-grid" ref={gridRef}>
           <div className="weekly-meetings-header-row" style={{ '--days': days.length } as CSSProperties}>
             <div className="weekly-meetings-time-header" />
-            {days.map(day => (
-              <div key={toLocalDateKey(day.toJSDate(), timezone)} className="weekly-meetings-day-header">
-                {formatDayLabel(day.toJSDate(), timezone)}
-              </div>
-            ))}
+            {days.map(day => {
+              const dayKey = toLocalDateKey(day.toJSDate(), timezone);
+              const isToday = dayKey === todayKey;
+              return (
+                <div key={dayKey} className={`weekly-meetings-day-header ${isToday ? 'today' : ''}`}>
+                  {formatDayLabel(day.toJSDate(), timezone)}
+                </div>
+              );
+            })}
           </div>
           <div className="weekly-meetings-body" style={{ '--days': days.length, '--hour-height': `${hourHeight}px` } as CSSProperties}>
             <div className="weekly-meetings-time-col">
@@ -637,6 +772,7 @@ export function WeeklyMeetingsCard({
             </div>
             {days.map(day => {
               const dayKey = toLocalDateKey(day.toJSDate(), timezone);
+              const isToday = dayKey === todayKey;
               const dayMeetings = meetingsByDay.get(dayKey) ?? [];
               const dayAutoBlocks = autoBlocksByDay.get(dayKey) ?? [];
               const dayBlocks = [...dayAutoBlocks, ...dayMeetings];
@@ -649,7 +785,7 @@ export function WeeklyMeetingsCard({
                 endBound,
               );
               return (
-                <div key={dayKey} className="weekly-meetings-day-col" style={{ height: `${gridHeight}px` }}>
+                <div key={dayKey} className={`weekly-meetings-day-col ${isToday ? 'today' : ''}`} style={{ height: `${gridHeight}px` }}>
                   <div className="weekly-workhours-layer">
                     {nonWorkIntervals.map(interval => {
                       const clampedStart = Math.max(startBound, interval.startMinutes);
@@ -671,6 +807,14 @@ export function WeeklyMeetingsCard({
                       <span key={hour} className="weekly-meetings-hour-line" />
                     ))}
                   </div>
+                  {isToday && currentTimeInBounds && (
+                    <div
+                      className="weekly-current-time-line"
+                      style={{
+                        top: `${((nowMinutes - startBound) / 60) * hourHeight}px`,
+                      }}
+                    />
+                  )}
                   {dayBlocks.map(meeting => {
                     const startBound = timeBounds.startHour * 60;
                     const endBound = timeBounds.endHour * 60;
@@ -681,11 +825,12 @@ export function WeeklyMeetingsCard({
                     const width = 100 / meeting.laneCount;
                     const left = width * meeting.lane;
                     const timeLabel = `${formatTime(meeting.start, timezone)} - ${formatTime(meeting.end, timezone)}`;
+                    const effectiveStatus = localDoneIds.has(meeting.taskId) ? 'DONE' : meeting.status;
                     return (
                       <div
                         key={meeting.id}
                         className={`weekly-meeting-block ${meeting.kind === 'auto' ? 'auto-slot' : ''} ${
-                          meeting.status === 'DONE' ? 'done' : ''
+                          effectiveStatus === 'DONE' ? 'done' : ''
                         }`}
                         style={{ top: `${top}px`, height: `${height}px`, left: `${left}%`, width: `${width}%` }}
                         title={`${meeting.title} (${timeLabel})`}
@@ -699,7 +844,43 @@ export function WeeklyMeetingsCard({
                           }
                         }}
                       >
-                        <div className="weekly-meeting-title">{meeting.title}</div>
+                        <div className="weekly-block-actions">
+                          <button
+                            type="button"
+                            className={`weekly-block-check ${effectiveStatus === 'DONE' ? 'checked' : ''}`}
+                            onClick={(e) => handleToggleComplete(meeting.taskId, effectiveStatus, e)}
+                            disabled={isSubmitting === meeting.taskId}
+                            title={effectiveStatus === 'DONE' ? '未完了に戻す' : '完了にする'}
+                          >
+                            {effectiveStatus === 'DONE' ? '✓' : ''}
+                          </button>
+                          {meeting.kind === 'auto' && effectiveStatus !== 'DONE' && !isToday && (
+                            <button
+                              type="button"
+                              className="weekly-block-do-today"
+                              onClick={(e) => handleDoToday(meeting.taskId, e)}
+                              disabled={isSubmitting === meeting.taskId}
+                              title="今日やる"
+                            >
+                              ←
+                            </button>
+                          )}
+                          {meeting.kind === 'auto' && effectiveStatus !== 'DONE' && (
+                            <PostponePopover
+                              taskId={meeting.taskId}
+                              className="weekly-block-postpone"
+                              onSuccess={() => invalidateAfterChange()}
+                            />
+                          )}
+                        </div>
+                        <div className="weekly-meeting-title">
+                          {meeting.title}
+                          {meeting.pinnedDate && (
+                            <span className="weekly-pin-badge" title={`${meeting.pinnedDate} に固定中`}>
+                              📌{new Date(meeting.pinnedDate + 'T00:00:00').getMonth() + 1}/{new Date(meeting.pinnedDate + 'T00:00:00').getDate()}
+                            </span>
+                          )}
+                        </div>
                         <div className="weekly-meeting-time">{timeLabel}</div>
                         {meeting.location && <div className="weekly-meeting-location">{meeting.location}</div>}
                       </div>

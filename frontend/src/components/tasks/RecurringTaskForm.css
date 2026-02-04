@@ -1,0 +1,204 @@
+/* RecurringTaskForm modal */
+
+.recurring-task-form-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.recurring-task-form-content {
+  background: var(--bg-card, #fff);
+  border-radius: 12px;
+  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1),
+    0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  max-width: 520px;
+  width: 92%;
+  max-height: 85vh;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.recurring-task-form-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px 0;
+}
+
+.recurring-task-form-header h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary, #1a1a2e);
+}
+
+.recurring-task-form-close {
+  background: none;
+  border: none;
+  font-size: 18px;
+  cursor: pointer;
+  color: var(--text-muted, #9ca3af);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.recurring-task-form-close:hover {
+  background: var(--bg-hover, #f3f4f6);
+  color: var(--text-primary, #1a1a2e);
+}
+
+/* Form body */
+.recurring-task-form-body {
+  padding: 20px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rt-form-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rt-form-row label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #6b7280);
+  letter-spacing: 0.02em;
+}
+
+.rt-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: end;
+}
+
+/* Input styles */
+.recurring-task-form-body input[type="text"],
+.recurring-task-form-body input[type="number"],
+.recurring-task-form-body textarea,
+.recurring-task-form-body select {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  background: var(--bg-input, #fff);
+  color: var(--text-primary, #1a1a2e);
+  transition: border-color 0.15s ease;
+  box-sizing: border-box;
+}
+
+.recurring-task-form-body input:focus,
+.recurring-task-form-body textarea:focus,
+.recurring-task-form-body select:focus {
+  outline: none;
+  border-color: var(--primary, #3b82f6);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
+.recurring-task-form-body textarea {
+  resize: vertical;
+  min-height: 56px;
+}
+
+/* Weekday buttons */
+.rt-weekday-group {
+  display: flex;
+  gap: 4px;
+}
+
+.rt-weekday-btn {
+  flex: 1;
+  padding: 6px 0;
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  background: var(--bg-input, #fff);
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.rt-weekday-btn:hover {
+  background: var(--bg-hover, #f3f4f6);
+}
+
+.rt-weekday-btn.active {
+  background: var(--primary, #3b82f6);
+  color: #fff;
+  border-color: var(--primary, #3b82f6);
+}
+
+/* Error */
+.rt-form-error {
+  color: #ef4444;
+  font-size: 13px;
+  margin: 0;
+  padding: 8px 12px;
+  background: #fef2f2;
+  border-radius: 6px;
+  border: 1px solid #fecaca;
+}
+
+/* Actions */
+.rt-form-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-color, #e5e7eb);
+}
+
+.rt-submit-btn {
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--primary, #3b82f6);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.rt-submit-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.rt-submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.rt-cancel-btn {
+  padding: 8px 20px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
+  background: var(--bg-hover, #f3f4f6);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.rt-cancel-btn:hover {
+  background: var(--bg-input, #e5e7eb);
+}
+
+/* Dark mode */
+[data-theme="dark"] .rt-form-error {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: rgba(239, 68, 68, 0.3);
+}

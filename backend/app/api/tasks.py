@@ -33,8 +33,8 @@ from app.models.collaboration import (
 )
 from app.models.postpone import DoTodayRequest, PostponeEvent, PostponeRequest, PostponeStats
 from app.models.schedule import ScheduleResponse, TodayTasksResponse
-from app.models.task import Task, TaskCreate, TaskUpdate
-from app.models.enums import CreatedBy, ProjectVisibility
+from app.models.task import Task, TaskCreate, TaskUpdate, CompletionCheckResponse
+from app.models.enums import CreatedBy, ProjectVisibility, TaskStatus
 from app.services.scheduler_service import SchedulerService
 from app.utils.dependency_validator import DependencyValidator
 from app.utils.datetime_utils import get_user_today
@@ -311,6 +311,7 @@ async def get_task_schedule(
     project_repo: ProjectRepo,
     assignment_repo: TaskAssignmentRepo,
     snapshot_repo: ScheduleSnapshotRepo,
+    user_repo: UserRepo,
     scheduler_service: SchedulerService = Depends(get_scheduler_service),
     start_date: Optional[date] = Query(None, description="Schedule start date"),
     capacity_hours: Optional[float] = Query(None, description="Daily capacity in hours (default: 8)"),
@@ -324,6 +325,13 @@ async def get_task_schedule(
     apply_plan_constraints: bool = Query(True, description="Apply project plan windows"),
 ):
     """Build a multi-day schedule for tasks."""
+    user_timezone = "Asia/Tokyo"
+    try:
+        user_account = await user_repo.get(UUID(user.id))
+    except (TypeError, ValueError):
+        user_account = None
+    if user_account and user_account.timezone:
+        user_timezone = user_account.timezone
     tasks = await repo.list(user.id, include_done=True, limit=1000)
     project_priorities = await load_project_priorities(project_repo, user.id)
     parsed_weekly = parse_capacity_by_weekday(capacity_by_weekday)
@@ -354,6 +362,7 @@ async def get_task_schedule(
         assignments=assignments,
         filter_by_assignee=filter_by_assignee,
         planned_window_by_task=planned_window_by_task,
+        user_timezone=user_timezone,
     )
 
 
@@ -418,6 +427,7 @@ async def get_today_tasks(
         assignments=assignments,
         filter_by_assignee=filter_by_assignee,
         planned_window_by_task=planned_window_by_task,
+        user_timezone=user_timezone,
     )
     return scheduler_service.get_today_tasks(
         schedule,
@@ -496,12 +506,13 @@ async def update_task(
     user: CurrentUser,
     repo: TaskRepo,
     project_repo: ProjectRepo,
+    assignment_repo: TaskAssignmentRepo,
 ):
     """Update a task."""
     # Find task - try personal access first, then project-based
     current_task = await repo.get(user.id, task_id)
     task_project_id = None
-    
+
     if not current_task:
         # Try to find via projects user has access to
         projects = await project_repo.list(user.id, limit=1000)
@@ -512,12 +523,25 @@ async def update_task(
                 break
     else:
         task_project_id = current_task.project_id
-    
+
     if not current_task:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Task {task_id} not found",
         )
+
+    # Guard: requires_all_completion tasks cannot be directly set to DONE
+    if update.status == TaskStatus.DONE and current_task.requires_all_completion:
+        owner_user_id = task_project_id and (await project_repo.get(user.id, task_project_id))
+        lookup_uid = owner_user_id.user_id if owner_user_id else user.id
+        assignments = await assignment_repo.list_by_task(lookup_uid, task_id)
+        if len(assignments) > 1:
+            all_checked = all(a.status == TaskStatus.DONE for a in assignments)
+            if not all_checked:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="全員の確認が完了するまでタスクを完了にできません",
+                )
 
     # Validate dependencies before updating
     if update.dependency_ids is not None or update.parent_id is not None:
@@ -648,6 +672,60 @@ async def create_action_items(
         created_subtasks.append(created)
 
     return created_subtasks
+
+
+@router.post("/{task_id}/check-completion", response_model=CompletionCheckResponse)
+async def check_completion(
+    task_id: UUID,
+    user: CurrentUser,
+    repo: TaskRepo,
+    project_repo: ProjectRepo,
+    assignment_repo: TaskAssignmentRepo,
+):
+    """Toggle the current user's completion check on a requires_all_completion task."""
+    task, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+    if not task.requires_all_completion:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="このタスクは全員確認が必要なタスクではありません",
+        )
+
+    assignments = await assignment_repo.list_by_task(owner_user_id, task_id)
+    my_assignment = next((a for a in assignments if a.assignee_id == user.id), None)
+    if not my_assignment:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="このタスクにアサインされていません",
+        )
+
+    # Toggle my assignment status
+    new_status = None if my_assignment.status == TaskStatus.DONE else TaskStatus.DONE
+    await assignment_repo.update(
+        owner_user_id, my_assignment.id, TaskAssignmentUpdate(status=new_status)
+    )
+
+    # Re-fetch and evaluate
+    assignments = await assignment_repo.list_by_task(owner_user_id, task_id)
+    checked_count = sum(1 for a in assignments if a.status == TaskStatus.DONE)
+    total_count = len(assignments)
+
+    # Auto-manage task status
+    if total_count > 0 and checked_count == total_count:
+        await repo.update(owner_user_id, task_id, TaskUpdate(status=TaskStatus.DONE))
+    elif checked_count > 0:
+        if task.status != TaskStatus.WAITING:
+            await repo.update(owner_user_id, task_id, TaskUpdate(status=TaskStatus.WAITING))
+    else:
+        # All unchecked — revert to TODO if it was WAITING/DONE from this feature
+        if task.status in (TaskStatus.WAITING, TaskStatus.DONE):
+            await repo.update(owner_user_id, task_id, TaskUpdate(status=TaskStatus.TODO))
+
+    updated_task = await repo.get(owner_user_id, task_id, project_id=task.project_id)
+    return CompletionCheckResponse(
+        task=updated_task,
+        checked_count=checked_count,
+        total_count=total_count,
+    )
 
 
 @router.get("/{task_id}/assignment", response_model=TaskAssignment)

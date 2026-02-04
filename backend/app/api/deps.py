@@ -27,6 +27,7 @@ from app.interfaces.checkin_repository import ICheckinRepository
 from app.interfaces.blocker_repository import IBlockerRepository
 from app.interfaces.postpone_repository import IPostponeRepository
 from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
+from app.interfaces.recurring_task_repository import IRecurringTaskRepository
 from app.interfaces.meeting_agenda_repository import IMeetingAgendaRepository
 from app.interfaces.meeting_session_repository import IMeetingSessionRepository
 from app.interfaces.user_repository import IUserRepository
@@ -233,6 +234,17 @@ def get_recurring_meeting_repository() -> IRecurringMeetingRepository:
     else:
         from app.infrastructure.local.recurring_meeting_repository import SqliteRecurringMeetingRepository
         return SqliteRecurringMeetingRepository()
+
+
+@lru_cache()
+def get_recurring_task_repository() -> IRecurringTaskRepository:
+    """Get recurring task repository instance."""
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Recurring task repository not implemented for GCP")
+    else:
+        from app.infrastructure.local.recurring_task_repository import SqliteRecurringTaskRepository
+        return SqliteRecurringTaskRepository()
 
 
 @lru_cache()
@@ -471,6 +483,7 @@ CheckinRepo = Annotated[ICheckinRepository, Depends(get_checkin_repository)]
 BlockerRepo = Annotated[IBlockerRepository, Depends(get_blocker_repository)]
 PostponeRepo = Annotated[IPostponeRepository, Depends(get_postpone_repository)]
 RecurringMeetingRepo = Annotated[IRecurringMeetingRepository, Depends(get_recurring_meeting_repository)]
+RecurringTaskRepo = Annotated[IRecurringTaskRepository, Depends(get_recurring_task_repository)]
 MeetingAgendaRepo = Annotated[IMeetingAgendaRepository, Depends(get_meeting_agenda_repository)]
 MeetingSessionRepo = Annotated[IMeetingSessionRepository, Depends(get_meeting_session_repository)]
 UserRepo = Annotated[IUserRepository, Depends(get_user_repository)]

@@ -1,9 +1,20 @@
 import { useMemo } from 'react';
-import type { Task, TaskStatus } from '../../api/types';
+import type { Task, TaskAssignment, TaskStatus } from '../../api/types';
 import { KanbanColumn } from './KanbanColumn';
 import { sortTasksByStepNumber } from '../../utils/taskSort';
 import { todayInTimezone } from '../../utils/dateTime';
 import './KanbanBoard.css';
+
+export type KanbanItem =
+  | { type: 'task'; task: Task }
+  | { type: 'recurring-group'; recurringTaskId: string; title: string; tasks: Task[] };
+
+const STATUS_PRIORITY: TaskStatus[] = ['IN_PROGRESS', 'TODO', 'WAITING', 'DONE'];
+
+function getPrimaryStatus(tasks: Task[]): TaskStatus {
+  const statusSet = new Set(tasks.map(t => t.status));
+  return STATUS_PRIORITY.find(s => statusSet.has(s)) ?? 'TODO';
+}
 
 interface KanbanBoardProps {
   tasks: Task[];
@@ -25,6 +36,11 @@ interface KanbanBoardProps {
   onSingleDragStart?: (taskId: string) => void;
   // View mode
   compact?: boolean;
+  // Multi-member completion
+  taskAssignments?: TaskAssignment[];
+  currentUserId?: string;
+  onCheckCompletion?: (taskId: string) => void;
+  onDeleteGeneratedTasks?: (recurringTaskId: string) => void;
 }
 
 const COLUMNS: { status: TaskStatus; title: string }[] = [
@@ -51,6 +67,10 @@ export function KanbanBoard({
   onDragSelectedStart,
   onSingleDragStart,
   compact = false,
+  taskAssignments,
+  currentUserId,
+  onCheckCompletion,
+  onDeleteGeneratedTasks,
 }: KanbanBoardProps) {
   // Group tasks: parent tasks only (no parent_id)
   const parentTasks = useMemo(() => {
@@ -75,16 +95,56 @@ export function KanbanBoard({
     return map;
   }, [tasks]);
 
-  const tasksByStatus = useMemo(() => {
-    const grouped: Record<TaskStatus, Task[]> = {
+  // Separate regular tasks from recurring task groups
+  const { regularTasks, recurringGroups } = useMemo(() => {
+    const regular: Task[] = [];
+    const groupMap = new Map<string, Task[]>();
+
+    parentTasks.forEach(task => {
+      if (task.recurring_task_id) {
+        const existing = groupMap.get(task.recurring_task_id) || [];
+        existing.push(task);
+        groupMap.set(task.recurring_task_id, existing);
+      } else {
+        regular.push(task);
+      }
+    });
+
+    // Single-instance groups are treated as regular tasks
+    const groups: { recurringTaskId: string; title: string; tasks: Task[] }[] = [];
+    groupMap.forEach((groupTasks, recurringTaskId) => {
+      if (groupTasks.length === 1) {
+        regular.push(groupTasks[0]);
+      } else {
+        groups.push({ recurringTaskId, title: groupTasks[0].title, tasks: groupTasks });
+      }
+    });
+
+    return { regularTasks: regular, recurringGroups: groups };
+  }, [parentTasks]);
+
+  const itemsByStatus = useMemo(() => {
+    const grouped: Record<TaskStatus, KanbanItem[]> = {
       TODO: [],
       IN_PROGRESS: [],
       WAITING: [],
       DONE: [],
     };
 
-    parentTasks.forEach((task) => {
-      grouped[task.status].push(task);
+    // Add regular tasks
+    regularTasks.forEach((task) => {
+      grouped[task.status].push({ type: 'task', task });
+    });
+
+    // Add recurring groups at their primary status column
+    recurringGroups.forEach(group => {
+      const status = getPrimaryStatus(group.tasks);
+      grouped[status].push({
+        type: 'recurring-group',
+        recurringTaskId: group.recurringTaskId,
+        title: group.title,
+        tasks: group.tasks,
+      });
     });
 
     if (sortBy === 'dueDate') {
@@ -92,19 +152,32 @@ export function KanbanBoard({
       const isActionable = (t: Task) =>
         !t.start_not_before || new Date(t.start_not_before).getTime() <= todayMs;
 
-      const smartSort = (a: Task, b: Task) => {
-        const aOk = isActionable(a);
-        const bOk = isActionable(b);
+      const getItemSortKey = (item: KanbanItem) => {
+        if (item.type === 'task') return item.task;
+        // For groups, use the earliest non-DONE task
+        const upcoming = item.tasks
+          .filter(t => t.status !== 'DONE')
+          .sort((a, b) => {
+            if (!a.due_date) return 1;
+            if (!b.due_date) return -1;
+            return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+          });
+        return upcoming[0] ?? item.tasks[0];
+      };
+
+      const smartSort = (a: KanbanItem, b: KanbanItem) => {
+        const aTask = getItemSortKey(a);
+        const bTask = getItemSortKey(b);
+        const aOk = isActionable(aTask);
+        const bOk = isActionable(bTask);
         if (aOk !== bOk) return aOk ? -1 : 1;
-        // Not-yet-actionable group: sort by start_not_before ASC
         if (!aOk && !bOk) {
-          return new Date(a.start_not_before!).getTime() - new Date(b.start_not_before!).getTime();
+          return new Date(aTask.start_not_before!).getTime() - new Date(bTask.start_not_before!).getTime();
         }
-        // Actionable group: sort by due_date ASC (nulls last)
-        if (!a.due_date && !b.due_date) return 0;
-        if (!a.due_date) return 1;
-        if (!b.due_date) return -1;
-        return new Date(a.due_date).getTime() - new Date(b.due_date).getTime();
+        if (!aTask.due_date && !bTask.due_date) return 0;
+        if (!aTask.due_date) return 1;
+        if (!bTask.due_date) return -1;
+        return new Date(aTask.due_date).getTime() - new Date(bTask.due_date).getTime();
       };
       (Object.keys(grouped) as TaskStatus[]).forEach((status) => {
         grouped[status].sort(smartSort);
@@ -112,7 +185,7 @@ export function KanbanBoard({
     }
 
     return grouped;
-  }, [parentTasks, sortBy]);
+  }, [regularTasks, recurringGroups, sortBy]);
 
   const handleDrop = (taskId: string, newStatus: TaskStatus) => {
     onUpdateTask(taskId, newStatus);
@@ -125,7 +198,7 @@ export function KanbanBoard({
           key={column.status}
           status={column.status}
           title={column.title}
-          tasks={tasksByStatus[column.status]}
+          items={itemsByStatus[column.status]}
           allTasks={tasks}
           subtasksMap={subtasksMap}
           assigneeByTaskId={assigneeByTaskId}
@@ -143,6 +216,10 @@ export function KanbanBoard({
           onDragSelectedStart={onDragSelectedStart}
           onSingleDragStart={onSingleDragStart}
           compact={compact}
+          taskAssignments={taskAssignments}
+          currentUserId={currentUserId}
+          onCheckCompletion={onCheckCompletion}
+          onDeleteGeneratedTasks={onDeleteGeneratedTasks}
         />
       ))}
     </div>

@@ -2,10 +2,13 @@ import { useState, useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { FaPlus, FaFilter } from 'react-icons/fa';
 import { KanbanBoard } from '../components/tasks/KanbanBoard';
+import { RecurringTaskList } from '../components/tasks/RecurringTaskList';
 import { ViewModeToggle, getStoredViewMode, setStoredViewMode, type ViewMode } from '../components/common/ViewModeToggle';
 import { useTaskModal } from '../hooks/useTaskModal';
+import { useRecurringTasks } from '../hooks/useRecurringTasks';
+import { useCurrentUser } from '../hooks/useCurrentUser';
 import { tasksApi } from '../api/tasks';
-import type { Task, TaskStatus, TaskUpdate } from '../api/types';
+import type { Task, TaskAssignment, TaskStatus, TaskUpdate } from '../api/types';
 import './TasksPage.css';
 
 const PAGE_SIZE = 100;
@@ -59,6 +62,26 @@ export function TasksPage() {
     },
   });
 
+  const { deleteGeneratedTasks } = useRecurringTasks();
+  const { data: currentUser } = useCurrentUser();
+
+  // Fetch assignments for tasks with requires_all_completion
+  const allCompletionTaskIds = useMemo(
+    () => tasks.filter(t => t.requires_all_completion).map(t => t.id),
+    [tasks],
+  );
+  const { data: taskAssignments = [] } = useQuery<TaskAssignment[]>({
+    queryKey: ['task-assignments', 'all-completion', allCompletionTaskIds],
+    queryFn: async () => {
+      if (allCompletionTaskIds.length === 0) return [];
+      const results = await Promise.all(
+        allCompletionTaskIds.map(id => tasksApi.listAssignments(id).catch(() => [])),
+      );
+      return results.flat();
+    },
+    enabled: allCompletionTaskIds.length > 0,
+  });
+
   const invalidateTaskQueries = () => {
     for (const key of [
       ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
@@ -79,10 +102,23 @@ export function TasksPage() {
     onSuccess: invalidateTaskQueries,
   });
 
+  const handleCheckCompletion = async (taskId: string) => {
+    try {
+      await tasksApi.checkCompletion(taskId);
+      invalidateTaskQueries();
+    } catch {
+      alert('確認の切り替えに失敗しました');
+    }
+  };
+
   const handleUpdateStatus = async (taskId: string, newStatus: TaskStatus) => {
-    // Prevent completing a task if it has incomplete dependencies
+    // Intercept DONE for requires_all_completion tasks → route to check-completion
     if (newStatus === 'DONE') {
       const task = tasks.find(t => t.id === taskId);
+      if (task?.requires_all_completion) {
+        handleCheckCompletion(taskId);
+        return;
+      }
       if (task?.dependency_ids && task.dependency_ids.length > 0) {
         const missingDeps = task.dependency_ids.filter(depId => !tasks.find(t => t.id === depId));
         const fetchedDeps = missingDeps.length
@@ -178,13 +214,19 @@ export function TasksPage() {
         </div>
       </div>
 
+      <RecurringTaskList />
+
       <KanbanBoard
         tasks={tasks}
         onUpdateTask={handleUpdateStatus}
         onDeleteTask={(taskId) => deleteMutation.mutate(taskId)}
         onTaskClick={taskModal.openTaskDetail}
+        onDeleteGeneratedTasks={deleteGeneratedTasks}
         sortBy={sortBy}
         compact={viewMode === 'compact'}
+        taskAssignments={taskAssignments}
+        currentUserId={currentUser?.id}
+        onCheckCompletion={handleCheckCompletion}
       />
 
       {taskModal.renderModals()}

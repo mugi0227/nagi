@@ -396,6 +396,12 @@ export function ScheduleOverviewCard({
     return map;
   }, [scheduleTaskIds, taskDetailsCache, statusOverrides]);
 
+  const getEffectiveStatus = (taskId: string, fallback?: TaskScheduleInfo) => {
+    return statusOverrides[taskId]
+      ?? taskDetailsCache[taskId]?.status
+      ?? fallback?.status;
+  };
+
   const handleTaskClick = (taskId: string) => {
     onTaskClick?.(taskId);
   };
@@ -771,7 +777,10 @@ export function ScheduleOverviewCard({
                                 </span>
                               )}
                               {(() => {
-                                const isDone = statusOverrides[item.allocation.task_id] === 'DONE';
+                                const isDone = getEffectiveStatus(
+                                  item.allocation.task_id,
+                                  item.info
+                                ) === 'DONE';
                                 return (
                                   <button
                                     type="button"
@@ -821,7 +830,10 @@ export function ScheduleOverviewCard({
                               {item.dueTag && (
                                 <span className="schedule-task-tag warn">{item.dueTag}</span>
                               )}
-                            {!isToday && !isMeeting && statusOverrides[item.allocation.task_id] !== 'DONE' && (
+                            {!isToday && !isMeeting && getEffectiveStatus(
+                              item.allocation.task_id,
+                              item.info
+                            ) !== 'DONE' && (
                               <button
                                 type="button"
                                 className="do-today-btn"
@@ -852,7 +864,10 @@ export function ScheduleOverviewCard({
                             </span>
                           )}
                           {(() => {
-                            const isDone = statusOverrides[item.allocation.task_id] === 'DONE';
+                            const isDone = getEffectiveStatus(
+                              item.allocation.task_id,
+                              item.info
+                            ) === 'DONE';
                             return (
                               <button
                                 type="button"
@@ -903,7 +918,10 @@ export function ScheduleOverviewCard({
                           </div>
                           {item.dayCount > 1 && <span className="schedule-task-tag">{TEXT.split}</span>}
                           {item.dueTag && <span className="schedule-task-tag warn">{item.dueTag}</span>}
-                          {!isToday && !isMeeting && statusOverrides[item.allocation.task_id] !== 'DONE' && (
+                          {!isToday && !isMeeting && getEffectiveStatus(
+                            item.allocation.task_id,
+                            item.info
+                          ) !== 'DONE' && (
                             <button
                               type="button"
                               className="do-today-btn"

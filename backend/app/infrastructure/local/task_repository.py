@@ -9,7 +9,7 @@ from difflib import SequenceMatcher
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, func, and_, or_
+from sqlalchemy import select, delete as sa_delete, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
@@ -70,6 +70,7 @@ class SqliteTaskRepository(ITaskRepository):
             attendees=orm.attendees or [],
             meeting_notes=orm.meeting_notes,
             recurring_meeting_id=UUID(orm.recurring_meeting_id) if orm.recurring_meeting_id else None,
+            recurring_task_id=UUID(orm.recurring_task_id) if hasattr(orm, 'recurring_task_id') and orm.recurring_task_id else None,
             milestone_id=UUID(orm.milestone_id) if orm.milestone_id else None,
             touchpoint_count=orm.touchpoint_count if hasattr(orm, 'touchpoint_count') else None,
             touchpoint_minutes=orm.touchpoint_minutes if hasattr(orm, 'touchpoint_minutes') else None,
@@ -79,6 +80,7 @@ class SqliteTaskRepository(ITaskRepository):
             completed_at=orm.completed_at if hasattr(orm, 'completed_at') else None,
             completed_by=orm.completed_by if hasattr(orm, 'completed_by') else None,
             guide=orm.guide if hasattr(orm, 'guide') else None,
+            requires_all_completion=bool(orm.requires_all_completion) if hasattr(orm, 'requires_all_completion') and orm.requires_all_completion is not None else False,
         )
 
     async def create(self, user_id: str, task: TaskCreate) -> Task:
@@ -113,6 +115,7 @@ class SqliteTaskRepository(ITaskRepository):
                 location=task.location,
                 attendees=task.attendees,
                 meeting_notes=task.meeting_notes,
+                recurring_task_id=str(task.recurring_task_id) if hasattr(task, 'recurring_task_id') and task.recurring_task_id else None,
                 milestone_id=str(task.milestone_id) if task.milestone_id else None,
                 touchpoint_count=task.touchpoint_count,
                 touchpoint_minutes=task.touchpoint_minutes,
@@ -120,6 +123,7 @@ class SqliteTaskRepository(ITaskRepository):
                 touchpoint_steps=[step.model_dump(mode="json") for step in task.touchpoint_steps],
                 completion_note=task.completion_note if hasattr(task, 'completion_note') else None,
                 guide=task.guide if hasattr(task, 'guide') else None,
+                requires_all_completion=task.requires_all_completion,
             )
             session.add(orm)
             await session.commit()
@@ -430,6 +434,49 @@ class SqliteTaskRepository(ITaskRepository):
 
             result = await session.execute(query)
             return [self._orm_to_model(orm) for orm in result.scalars().all()]
+
+    async def list_by_recurring_task(
+        self,
+        user_id: str,
+        recurring_task_id: UUID,
+        start_after: Optional[datetime] = None,
+        end_before: Optional[datetime] = None,
+    ) -> list["Task"]:
+        """List tasks generated from a recurring task definition."""
+        async with self._session_factory() as session:
+            query = select(TaskORM).where(
+                and_(
+                    TaskORM.user_id == user_id,
+                    TaskORM.recurring_task_id == str(recurring_task_id),
+                )
+            )
+
+            if start_after:
+                query = query.where(TaskORM.due_date >= start_after)
+            if end_before:
+                query = query.where(TaskORM.due_date < end_before)
+
+            query = query.order_by(TaskORM.due_date.asc())
+
+            result = await session.execute(query)
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]
+
+    async def delete_by_recurring_task(
+        self,
+        user_id: str,
+        recurring_task_id: UUID,
+    ) -> int:
+        """Delete all tasks generated from a recurring task definition."""
+        async with self._session_factory() as session:
+            stmt = sa_delete(TaskORM).where(
+                and_(
+                    TaskORM.user_id == user_id,
+                    TaskORM.recurring_task_id == str(recurring_task_id),
+                )
+            )
+            result = await session.execute(stmt)
+            await session.commit()
+            return result.rowcount
 
     async def list_completed_in_period(
         self,

@@ -24,6 +24,7 @@ from app.infrastructure.local.meeting_agenda_repository import SqliteMeetingAgen
 from app.infrastructure.local.proposal_repository import InMemoryProposalRepository
 from app.infrastructure.local.checkin_repository import SqliteCheckinRepository
 from app.infrastructure.local.recurring_meeting_repository import SqliteRecurringMeetingRepository
+from app.infrastructure.local.recurring_task_repository import SqliteRecurringTaskRepository
 from app.infrastructure.local.project_repository import SqliteProjectRepository
 from app.core.config import get_settings
 
@@ -44,6 +45,7 @@ def build_agent_service(session_factory, settings):
     proposal_repo = InMemoryProposalRepository()
     checkin_repo = SqliteCheckinRepository(session_factory=session_factory)
     recurring_meeting_repo = SqliteRecurringMeetingRepository(session_factory=session_factory)
+    recurring_task_repo = SqliteRecurringTaskRepository(session_factory=session_factory)
     llm_provider = GeminiAPIProvider(settings.GEMINI_MODEL)
 
     return AgentService(
@@ -63,6 +65,7 @@ def build_agent_service(session_factory, settings):
         proposal_repo=proposal_repo,
         checkin_repo=checkin_repo,
         recurring_meeting_repo=recurring_meeting_repo,
+        recurring_task_repo=recurring_task_repo,
     )
 
 

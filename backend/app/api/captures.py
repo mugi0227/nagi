@@ -30,6 +30,7 @@ from app.api.deps import (
     CheckinRepo,
     MeetingAgendaRepo,
     RecurringMeetingRepo,
+    RecurringTaskRepo,
 )
 from app.core.exceptions import NotFoundError
 from app.models.capture import Capture, CaptureCreate
@@ -173,10 +174,11 @@ async def analyze_capture(
     checkin_repo: CheckinRepo,
     meeting_agenda_repo: MeetingAgendaRepo,
     recurring_meeting_repo: RecurringMeetingRepo,
+    recurring_task_repo: RecurringTaskRepo,
 ):
     """
     Analyze a capture using AI to suggest task details.
-    
+
     Returns a TaskCreate-compatible JSON object.
     """
     agent_service = AgentService(
@@ -196,6 +198,7 @@ async def analyze_capture(
         checkin_repo=checkin_repo,
         meeting_agenda_repo=meeting_agenda_repo,
         recurring_meeting_repo=recurring_meeting_repo,
+        recurring_task_repo=recurring_task_repo,
     )
     
     try:

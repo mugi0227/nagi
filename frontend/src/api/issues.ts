@@ -77,10 +77,16 @@ export const issuesApi = {
   // Chat Stream
   chatStream: async function* (
     message: string,
-    sessionId?: string
+    sessionId?: string,
+    imageBase64?: string
   ): AsyncGenerator<IssueChatChunk> {
     const baseUrl = getBaseUrl();
     const headers = getAuthHeaders();
+
+    const body: Record<string, unknown> = { message, session_id: sessionId };
+    if (imageBase64) {
+      body.image_base64 = imageBase64;
+    }
 
     const response = await fetch(`${baseUrl}/issues/chat/stream`, {
       method: 'POST',
@@ -88,7 +94,7 @@ export const issuesApi = {
         ...headers,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ message, session_id: sessionId }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {

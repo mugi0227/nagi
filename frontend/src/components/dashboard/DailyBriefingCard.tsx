@@ -79,7 +79,7 @@ export function DailyBriefingCard({ onFocusTaskClick, onFinish }: DailyBriefingC
       capacityByWeekday,
       maxDays: 1,
     }),
-    staleTime: 30_000,
+    staleTime: Infinity,
   });
 
   // top3_idsの最初のタスクをフォーカスタスクとして取得

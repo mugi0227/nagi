@@ -28,6 +28,7 @@ from app.api.deps import (
     ChatRepo,
     CheckinRepo,
     RecurringMeetingRepo,
+    RecurringTaskRepo,
 )
 from app.core.exceptions import LLMError
 from app.models.chat import ChatRequest, ChatResponse
@@ -56,6 +57,7 @@ async def chat(
     chat_repo: ChatRepo,
     checkin_repo: CheckinRepo,
     recurring_meeting_repo: RecurringMeetingRepo,
+    recurring_task_repo: RecurringTaskRepo,
     session_id: str | None = Query(None, description="Session ID for conversation continuity"),
 ):
     """
@@ -95,6 +97,7 @@ async def chat(
         proposal_repo=proposal_repo,
         checkin_repo=checkin_repo,
         recurring_meeting_repo=recurring_meeting_repo,
+        recurring_task_repo=recurring_task_repo,
     )
 
     try:
@@ -139,6 +142,7 @@ async def chat_stream(
     chat_repo: ChatRepo,
     checkin_repo: CheckinRepo,
     recurring_meeting_repo: RecurringMeetingRepo,
+    recurring_task_repo: RecurringTaskRepo,
     session_id: str | None = Query(None, description="Session ID for conversation continuity"),
 ):
     """
@@ -164,6 +168,7 @@ async def chat_stream(
         proposal_repo=proposal_repo,
         checkin_repo=checkin_repo,
         recurring_meeting_repo=recurring_meeting_repo,
+        recurring_task_repo=recurring_task_repo,
     )
 
     async def event_generator() -> AsyncGenerator[str, None]:
@@ -214,6 +219,7 @@ async def list_sessions(
     chat_repo: ChatRepo,
     checkin_repo: CheckinRepo,
     recurring_meeting_repo: RecurringMeetingRepo,
+    recurring_task_repo: RecurringTaskRepo,
 ):
     """List chat sessions for the current user."""
     agent_service = AgentService(
@@ -233,6 +239,7 @@ async def list_sessions(
         proposal_repo=proposal_repo,
         checkin_repo=checkin_repo,
         recurring_meeting_repo=recurring_meeting_repo,
+        recurring_task_repo=recurring_task_repo,
     )
     return await agent_service.list_user_sessions(user.id)
 
@@ -257,6 +264,7 @@ async def get_history(
     chat_repo: ChatRepo,
     checkin_repo: CheckinRepo,
     recurring_meeting_repo: RecurringMeetingRepo,
+    recurring_task_repo: RecurringTaskRepo,
 ):
     """Get message history for a specific session."""
     agent_service = AgentService(
@@ -276,6 +284,7 @@ async def get_history(
         proposal_repo=proposal_repo,
         checkin_repo=checkin_repo,
         recurring_meeting_repo=recurring_meeting_repo,
+        recurring_task_repo=recurring_task_repo,
     )
     return await agent_service.get_session_messages(user.id, session_id)
 

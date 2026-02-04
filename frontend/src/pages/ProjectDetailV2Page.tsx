@@ -46,7 +46,9 @@ import { MeetingsTab } from '../components/meetings/MeetingsTab';
 import { ProjectAchievementsSection } from '../components/projects/ProjectAchievementsSection';
 import { ProjectDetailModal } from '../components/projects/ProjectDetailModal';
 import { ProjectTasksView } from '../components/projects/ProjectTasksView';
+import { RecurringTaskList } from '../components/tasks/RecurringTaskList';
 import { useCurrentUser } from '../hooks/useCurrentUser';
+import { useRecurringTasks } from '../hooks/useRecurringTasks';
 import { useTaskModal } from '../hooks/useTaskModal';
 import { useTasks } from '../hooks/useTasks';
 import { useTimezone } from '../hooks/useTimezone';
@@ -147,6 +149,7 @@ export function ProjectDetailV2Page() {
   };
 
   const [activeTab, setActiveTab] = useState<TabId>(getInitialTab);
+  const { deleteGeneratedTasks } = useRecurringTasks(projectId);
   const queryClient = useQueryClient();
   const {
     data: project = null,
@@ -1106,6 +1109,20 @@ export function ProjectDetailV2Page() {
     taskAssignments: assignments,
     onAssigneeChange: handleAssignMultiple,
   });
+
+  const handleCheckCompletion = async (taskId: string) => {
+    try {
+      await tasksApi.checkCompletion(taskId);
+      refetchTasks();
+      // Refresh assignments to update check status
+      if (projectId) {
+        const assignmentsData = await projectsApi.listAssignments(projectId);
+        setAssignments(Array.isArray(assignmentsData) ? assignmentsData : []);
+      }
+    } catch {
+      alert('確認の切り替えに失敗しました');
+    }
+  };
 
   const handleOpenCreateTask = (phaseId: string | null) => {
     taskModal.openCreateForm({
@@ -2215,6 +2232,7 @@ export function ProjectDetailV2Page() {
 
         {activeTab === 'board' && (
           <div className="project-v2-section">
+            <RecurringTaskList projectId={projectId} />
             <div className="project-v2-card">
               {tasksLoading ? (
                 <p className="project-v2-muted">タスクを読み込み中...</p>
@@ -2237,6 +2255,10 @@ export function ProjectDetailV2Page() {
                   }}
                   onRefreshTasks={refetchTasks}
                   onCreateTask={handleOpenCreateTask}
+                  onDeleteGeneratedTasks={deleteGeneratedTasks}
+                  taskAssignments={assignments}
+                  currentUserId={currentUser?.id}
+                  onCheckCompletion={handleCheckCompletion}
                 />
               )}
             </div>

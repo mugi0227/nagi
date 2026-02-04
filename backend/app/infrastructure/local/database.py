@@ -77,6 +77,7 @@ class TaskORM(Base):
     attendees = Column(JSON, nullable=True, default=list)
     meeting_notes = Column(Text, nullable=True)
     recurring_meeting_id = Column(String(36), nullable=True, index=True)
+    recurring_task_id = Column(String(36), nullable=True, index=True)
     milestone_id = Column(String(36), nullable=True, index=True)
     touchpoint_count = Column(Integer, nullable=True)
     touchpoint_minutes = Column(Integer, nullable=True)
@@ -90,6 +91,9 @@ class TaskORM(Base):
 
     # Subtask guide field
     guide = Column(Text, nullable=True)
+
+    # Multi-member completion
+    requires_all_completion = Column(Boolean, default=False, nullable=False)
 
 
 class ProjectORM(Base):
@@ -323,6 +327,34 @@ class RecurringMeetingORM(Base):
     agenda_window_days = Column(Integer, nullable=False, default=7)
     anchor_date = Column(Date, nullable=False)
     last_occurrence = Column(DateTime, nullable=True)
+    is_active = Column(Boolean, default=True)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+
+class RecurringTaskORM(Base):
+    """Recurring task ORM model."""
+
+    __tablename__ = "recurring_tasks"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    project_id = Column(String(36), nullable=True, index=True)
+    phase_id = Column(String(36), nullable=True, index=True)
+    title = Column(String(500), nullable=False)
+    description = Column(Text, nullable=True)
+    purpose = Column(Text, nullable=True)
+    frequency = Column(String(20), nullable=False, default="weekly")
+    weekday = Column(Integer, nullable=True)  # 0-6 for WEEKLY/BIWEEKLY
+    day_of_month = Column(Integer, nullable=True)  # 1-31 for MONTHLY/BIMONTHLY
+    custom_interval_days = Column(Integer, nullable=True)  # for CUSTOM
+    start_time = Column(String(10), nullable=True)  # HH:MM
+    estimated_minutes = Column(Integer, nullable=True)
+    importance = Column(String(10), default="MEDIUM")
+    urgency = Column(String(10), default="MEDIUM")
+    energy_level = Column(String(10), default="LOW")
+    anchor_date = Column(Date, nullable=False)
+    last_generated_date = Column(Date, nullable=True)
     is_active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=now_utc)
     updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)

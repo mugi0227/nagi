@@ -48,6 +48,7 @@ import { EditableSection } from '../common/EditableSection';
 import { EditableSegment } from '../common/EditableSegment';
 import { EditableSelect } from '../common/EditableSelect';
 import { StepNumber } from '../common/StepNumber';
+import { CompletionChecklist } from './CompletionChecklist';
 import './TaskDetailModal.css';
 
 interface MemberOption {
@@ -75,6 +76,9 @@ interface TaskDetailModalProps {
   memberOptions?: MemberOption[];
   taskAssignments?: TaskAssignment[];
   onAssigneeChange?: (taskId: string, memberIds: string[]) => void;
+  // Multi-member completion
+  currentUserId?: string;
+  onCheckCompletion?: (taskId: string) => void;
 }
 
 function extractGuide(description?: string | null, guide?: string | null): { mainDescription: string; guide: string } {
@@ -124,6 +128,8 @@ export function TaskDetailModal({
   memberOptions = [],
   taskAssignments = [],
   onAssigneeChange,
+  currentUserId,
+  onCheckCompletion,
 }: TaskDetailModalProps) {
   const timezone = useTimezone();
   const { data: currentUser } = useCurrentUser();
@@ -954,7 +960,11 @@ ${filledSummary}${emptySummary}
                   className={`status-badge-lg status-${localStatus.toLowerCase()} ${isParentCompleted ? 'disabled' : 'clickable'}`}
                   onClick={() => {
                     if (isParentCompleted) return; // Parent is completed, subtask must stay DONE
-                    const statusOrder = ['TODO', 'IN_PROGRESS', 'WAITING', 'DONE'];
+                    // Skip DONE for requires_all_completion tasks (use check-completion instead)
+                    const isAllCompletion = task.requires_all_completion && taskAssignments.filter(a => a.task_id === task.id).length > 1;
+                    const statusOrder = isAllCompletion
+                      ? ['TODO', 'IN_PROGRESS', 'WAITING']
+                      : ['TODO', 'IN_PROGRESS', 'WAITING', 'DONE'];
                     const currentIndex = statusOrder.indexOf(localStatus);
                     const nextIndex = (currentIndex + 1) % statusOrder.length;
                     const nextStatus = statusOrder[nextIndex];
@@ -1005,6 +1015,35 @@ ${filledSummary}${emptySummary}
                     options={memberOptions}
                     onChange={onAssigneeChange}
                   />
+                </div>
+              )}
+
+              {/* Multi-member completion checklist */}
+              {task.requires_all_completion && taskAssignments.filter(a => a.task_id === task.id).length > 1 && (
+                <div className="sidebar-group">
+                  <h3 className="sidebar-label">全員確認状況</h3>
+                  <CompletionChecklist
+                    assignments={taskAssignments.filter(a => a.task_id === task.id)}
+                    memberOptions={memberOptions}
+                    currentUserId={currentUserId || currentUser?.id}
+                    onCheck={onCheckCompletion}
+                    taskId={task.id}
+                  />
+                </div>
+              )}
+
+              {/* Toggle for requires_all_completion */}
+              {onUpdateTask && taskAssignments.filter(a => a.task_id === task.id).length > 1 && (
+                <div className="sidebar-group">
+                  <h3 className="sidebar-label">完了条件</h3>
+                  <label className="toggle-label-row">
+                    <input
+                      type="checkbox"
+                      checked={localTask.requires_all_completion ?? false}
+                      onChange={(e) => handleFieldUpdate('requires_all_completion', e.target.checked)}
+                    />
+                    <span>全員確認が必要</span>
+                  </label>
                 </div>
               )}
 

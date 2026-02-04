@@ -310,6 +310,16 @@ export function useTaskModal(options: UseTaskModalOptions): UseTaskModalReturn {
     updateMutation.mutate({ id: taskId, data: { status: newStatus } });
   }, [taskLookup, subtasks, updateMutation]);
 
+  const handleCheckCompletion = useCallback(async (taskId: string) => {
+    try {
+      const result = await tasksApi.checkCompletion(taskId);
+      setTaskCache(prev => ({ ...prev, [result.task.id]: result.task }));
+      invalidateTaskQueries();
+    } catch {
+      alert('確認の切り替えに失敗しました');
+    }
+  }, []);
+
   const handleDelete = useCallback(async (task: Task) => {
     if (window.confirm(`${task.title} を削除してもよろしいですか？`)) {
       await deleteMutation.mutateAsync(task.id);
@@ -351,6 +361,7 @@ export function useTaskModal(options: UseTaskModalOptions): UseTaskModalReturn {
             memberOptions={memberOptions}
             taskAssignments={taskAssignments}
             onAssigneeChange={onAssigneeChange}
+            onCheckCompletion={handleCheckCompletion}
           />
         )}
       </AnimatePresence>
@@ -372,6 +383,7 @@ export function useTaskModal(options: UseTaskModalOptions): UseTaskModalReturn {
     memberOptions,
     taskAssignments,
     onAssigneeChange,
+    handleCheckCompletion,
   ]);
 
   return {

@@ -14,6 +14,7 @@ import type {
   BlockerUpdate,
   PostponeRequest,
   DoTodayRequest,
+  CompletionCheckResponse,
 } from './types';
 
 export const tasksApi = {
@@ -144,4 +145,7 @@ export const tasksApi = {
 
   doToday: (id: string, data?: DoTodayRequest) =>
     api.post<Task>(`/tasks/${id}/do-today`, data ?? {}),
+
+  checkCompletion: (id: string) =>
+    api.post<CompletionCheckResponse>(`/tasks/${id}/check-completion`, {}),
 };

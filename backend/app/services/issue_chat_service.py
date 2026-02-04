@@ -4,6 +4,7 @@ Issue Chat Service.
 Handles chat interactions with the Issue Partner agent.
 """
 
+import base64
 import logging
 from typing import AsyncGenerator
 from uuid import uuid4
@@ -61,11 +62,37 @@ class IssueChatService:
                 session_id=session_id,
             )
 
+    @staticmethod
+    def _build_user_content(message: str, image_base64: str | None = None) -> Content:
+        """Build user Content with optional image."""
+        parts: list[Part] = []
+
+        if image_base64:
+            try:
+                # Parse data URI: "data:image/png;base64,..."
+                if image_base64.startswith("data:"):
+                    header, data = image_base64.split(",", 1)
+                    mime_type = header.split(":")[1].split(";")[0]
+                else:
+                    data = image_base64
+                    mime_type = "image/png"
+
+                image_bytes = base64.b64decode(data)
+                parts.append(Part.from_bytes(data=image_bytes, mime_type=mime_type))
+            except Exception as e:
+                logger.warning(f"Failed to process image: {e}")
+
+        if message:
+            parts.append(Part(text=message))
+
+        return Content(role="user", parts=parts)
+
     async def process_chat_stream(
         self,
         user_id: str,
         message: str,
         session_id: str | None = None,
+        image_base64: str | None = None,
     ) -> AsyncGenerator[dict, None]:
         """
         Process a chat message and yield streaming chunks.
@@ -74,6 +101,7 @@ class IssueChatService:
             user_id: User ID
             message: User message
             session_id: Session ID for conversation continuity
+            image_base64: Optional base64 encoded image (data URI format)
 
         Yields:
             Streaming chunks with tool calls and text
@@ -92,7 +120,7 @@ class IssueChatService:
 
         try:
             # Run agent
-            user_message = Content(role="user", parts=[Part(text=message)])
+            user_message = self._build_user_content(message, image_base64)
             async for event in runner.run_async(
                 user_id=user_id,
                 session_id=session_id,
@@ -112,11 +140,21 @@ class IssueChatService:
                                 "tool_args": dict(part.function_call.args) if part.function_call.args else {},
                             }
                         elif hasattr(part, "function_response") and part.function_response:
+                            result = part.function_response.response
                             yield {
                                 "chunk_type": "tool_end",
                                 "tool_name": part.function_response.name,
-                                "tool_result": part.function_response.response,
+                                "tool_result": result,
                             }
+                            # Detect ask_user_questions response
+                            if isinstance(result, dict) and result.get("status") == "awaiting_response":
+                                questions = result.get("questions", [])
+                                if questions:
+                                    yield {
+                                        "chunk_type": "questions",
+                                        "questions": questions,
+                                        "context": result.get("context"),
+                                    }
 
             yield {
                 "chunk_type": "done",

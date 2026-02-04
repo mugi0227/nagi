@@ -13,6 +13,7 @@ from app.interfaces.agent_task_repository import IAgentTaskRepository
 from app.models.agent_task import AgentTask
 from app.models.enums import ActionType
 from app.services.recurring_meeting_service import RecurringMeetingService
+from app.services.recurring_task_service import RecurringTaskService
 
 logger = setup_logger(__name__)
 
@@ -32,9 +33,11 @@ class HeartbeatService:
         self,
         agent_task_repo: IAgentTaskRepository,
         recurring_meeting_service: RecurringMeetingService | None = None,
+        recurring_task_service: RecurringTaskService | None = None,
     ):
         self.agent_task_repo = agent_task_repo
         self.recurring_meeting_service = recurring_meeting_service
+        self.recurring_task_service = recurring_task_service
         settings = get_settings()
 
         # Parse quiet hours from config
@@ -75,6 +78,10 @@ class HeartbeatService:
         if self.recurring_meeting_service:
             recurring_result = await self.recurring_meeting_service.ensure_upcoming_meetings(user_id)
 
+        recurring_tasks_result = None
+        if self.recurring_task_service:
+            recurring_tasks_result = await self.recurring_task_service.ensure_upcoming_tasks(user_id)
+
         # Check quiet hours
         if self._is_quiet_hours(now.time()):
             logger.info(f"Heartbeat skipped for {user_id}: quiet hours")
@@ -83,6 +90,7 @@ class HeartbeatService:
                 "processed": 0,
                 "failed": 0,
                 "recurring_meetings": recurring_result,
+                "recurring_tasks": recurring_tasks_result,
             }
 
         # Get pending tasks
@@ -99,6 +107,7 @@ class HeartbeatService:
                 "processed": 0,
                 "failed": 0,
                 "recurring_meetings": recurring_result,
+                "recurring_tasks": recurring_tasks_result,
             }
 
         logger.info(f"Processing {len(pending_tasks)} pending tasks for {user_id}")
@@ -136,6 +145,7 @@ class HeartbeatService:
             "processed": processed,
             "failed": failed,
             "recurring_meetings": recurring_result,
+            "recurring_tasks": recurring_tasks_result,
         }
 
     async def _execute_agent_task(self, user_id: str, task: AgentTask) -> dict[str, Any]:

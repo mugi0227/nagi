@@ -75,6 +75,7 @@ class TaskBase(BaseModel):
     attendees: list[str] = Field(default_factory=list, description="参加者リスト")
     meeting_notes: Optional[str] = Field(None, max_length=5000, description="議事録・メモ")
     recurring_meeting_id: Optional[UUID] = Field(None, description="定例会議ID（定例から生成された場合）")
+    recurring_task_id: Optional[UUID] = Field(None, description="定期タスクID（定期タスクから生成された場合）")
     milestone_id: Optional[UUID] = Field(None, description="関連マイルストーンID")
 
     # Achievement-related fields
@@ -108,6 +109,12 @@ class TaskBase(BaseModel):
         None,
         max_length=2000,
         description="詳細な進め方ガイド（Markdown形式、サブタスク用）",
+    )
+
+    # Multi-member completion
+    requires_all_completion: bool = Field(
+        False,
+        description="全員確認が必要（複数担当者がいる場合、全員がDONEにするまでタスクは完了しない）",
     )
 
     @model_validator(mode='after')
@@ -185,6 +192,7 @@ class TaskUpdate(BaseModel):
     attendees: Optional[list[str]] = None
     meeting_notes: Optional[str] = Field(None, max_length=5000)
     recurring_meeting_id: Optional[UUID] = None
+    recurring_task_id: Optional[UUID] = None
     milestone_id: Optional[UUID] = None
     touchpoint_count: Optional[int] = Field(None, ge=1)
     touchpoint_minutes: Optional[int] = Field(None, ge=1)
@@ -192,6 +200,7 @@ class TaskUpdate(BaseModel):
     touchpoint_steps: Optional[list[TouchpointStep]] = None
     completion_note: Optional[str] = Field(None, max_length=2000)
     guide: Optional[str] = Field(None, max_length=2000)
+    requires_all_completion: Optional[bool] = None
 
 
 class Task(TaskBase):
@@ -222,3 +231,11 @@ class SimilarTask(BaseModel):
 
     task: Task
     similarity_score: float = Field(..., ge=0.0, le=1.0, description="類似度スコア")
+
+
+class CompletionCheckResponse(BaseModel):
+    """Response for check-completion endpoint."""
+
+    task: Task
+    checked_count: int
+    total_count: int

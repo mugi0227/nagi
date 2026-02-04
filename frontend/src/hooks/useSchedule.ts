@@ -17,6 +17,6 @@ export function useSchedule(maxDays: number) {
       capacityByWeekday,
       filterByAssignee: true,
     }),
-    staleTime: 30_000,
+    staleTime: Infinity,
   });
 }

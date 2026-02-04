@@ -33,6 +33,7 @@ from app.interfaces.phase_repository import IPhaseRepository
 from app.interfaces.milestone_repository import IMilestoneRepository
 from app.interfaces.meeting_agenda_repository import IMeetingAgendaRepository
 from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
+from app.interfaces.recurring_task_repository import IRecurringTaskRepository
 from app.interfaces.checkin_repository import ICheckinRepository
 from app.models.capture import CaptureCreate
 from app.models.chat import ChatRequest, ChatResponse
@@ -69,6 +70,7 @@ class AgentService:
         proposal_repo: IProposalRepository,
         checkin_repo: ICheckinRepository,
         recurring_meeting_repo: IRecurringMeetingRepository,
+        recurring_task_repo: IRecurringTaskRepository,
     ):
         """
         Initialize Agent Service.
@@ -103,6 +105,7 @@ class AgentService:
         self._proposal_repo = proposal_repo
         self._checkin_repo = checkin_repo
         self._recurring_meeting_repo = recurring_meeting_repo
+        self._recurring_task_repo = recurring_task_repo
 
     async def _get_or_create_runner(
         self,
@@ -139,6 +142,7 @@ class AgentService:
             agent_task_repo=self._agent_task_repo,
             meeting_agenda_repo=self._meeting_agenda_repo,
             recurring_meeting_repo=self._recurring_meeting_repo,
+            recurring_task_repo=self._recurring_task_repo,
             checkin_repo=self._checkin_repo,
             user_id=user_id,
             proposal_repo=self._proposal_repo,

@@ -230,3 +230,14 @@ class GenerationType(str, Enum):
 
     AUTO = "AUTO"  # 週次自動生成
     MANUAL = "MANUAL"  # 手動生成
+
+
+class RecurringTaskFrequency(str, Enum):
+    """Supported recurrence frequencies for tasks."""
+
+    DAILY = "daily"
+    WEEKLY = "weekly"
+    BIWEEKLY = "biweekly"
+    MONTHLY = "monthly"
+    BIMONTHLY = "bimonthly"
+    CUSTOM = "custom"  # every N days

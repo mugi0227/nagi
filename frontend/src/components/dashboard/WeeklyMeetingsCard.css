@@ -163,6 +163,11 @@
   color: var(--text-muted);
 }
 
+.weekly-meetings-day-header.today {
+  color: var(--primary);
+  font-weight: 700;
+}
+
 .weekly-meetings-body {
   display: grid;
   grid-template-columns: 70px repeat(var(--days), minmax(0, 1fr));
@@ -190,6 +195,32 @@
   border-radius: var(--radius-sm);
   border: 1px solid rgba(148, 163, 184, 0.2);
   overflow: hidden;
+}
+
+.weekly-meetings-day-col.today {
+  background: rgba(59, 130, 246, 0.04);
+  border-color: rgba(59, 130, 246, 0.3);
+}
+
+.weekly-current-time-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: #3b82f6;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.weekly-current-time-line::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3b82f6;
 }
 
 .weekly-workhours-layer {
@@ -261,6 +292,22 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.weekly-pin-badge {
+  flex-shrink: 0;
+  font-size: 0.6rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  background: rgba(251, 191, 36, 0.15);
+  border: 1px solid rgba(251, 191, 36, 0.4);
+  border-radius: 999px;
+  padding: 0 0.35rem;
+  line-height: 1.5;
+  white-space: nowrap;
 }
 
 .weekly-meeting-time {
@@ -274,4 +321,122 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Block action overlay - visible on hover */
+.weekly-block-actions {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  display: flex;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 4;
+}
+
+.weekly-meeting-block:hover .weekly-block-actions {
+  opacity: 1;
+}
+
+.weekly-block-check {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 2px solid rgba(100, 116, 139, 0.5);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  color: transparent;
+  font-size: 0.6rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+  line-height: 1;
+}
+
+.weekly-block-check:hover {
+  border-color: #10b981;
+  color: #10b981;
+}
+
+.weekly-block-check.checked {
+  background: #10b981;
+  border-color: #10b981;
+  color: white;
+  opacity: 1;
+}
+
+.weekly-block-check:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.weekly-block-do-today {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-muted);
+  font-size: 0.65rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  padding: 0;
+}
+
+.weekly-block-do-today:hover {
+  background: #dbeafe;
+  color: #3b82f6;
+  border-color: #3b82f6;
+}
+
+.weekly-block-do-today:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Postpone popover trigger inside calendar block */
+.weekly-block-postpone .postpone-trigger-btn {
+  width: 18px;
+  height: 18px;
+  border: 1px solid rgba(100, 116, 139, 0.3);
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.9);
+  color: var(--text-muted);
+}
+
+.weekly-block-postpone .postpone-trigger-btn:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
+/* Reschedule toggle button */
+.weekly-meetings-reschedule-btn {
+  padding: 0.25rem 0.6rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.weekly-meetings-reschedule-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.weekly-meetings-reschedule-btn.active {
+  background: var(--primary-light);
+  color: var(--primary);
+  border-color: var(--primary);
 }

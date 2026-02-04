@@ -1,11 +1,13 @@
-import type { Task, TaskStatus } from '../../api/types';
+import type { Task, TaskAssignment, TaskStatus } from '../../api/types';
+import type { KanbanItem } from './KanbanBoard';
 import { KanbanCard } from './KanbanCard';
+import { RecurringTaskGroupCard } from './RecurringTaskGroupCard';
 import './KanbanColumn.css';
 
 interface KanbanColumnProps {
   status: TaskStatus;
   title: string;
-  tasks: Task[];
+  items: KanbanItem[];
   allTasks: Task[];
   subtasksMap: Record<string, Task[]>;
   assigneeByTaskId?: Record<string, string>;
@@ -26,12 +28,17 @@ interface KanbanColumnProps {
   onSingleDragStart?: (taskId: string) => void;
   // View mode
   compact?: boolean;
+  // Multi-member completion
+  taskAssignments?: TaskAssignment[];
+  currentUserId?: string;
+  onCheckCompletion?: (taskId: string) => void;
+  onDeleteGeneratedTasks?: (recurringTaskId: string) => void;
 }
 
 export function KanbanColumn({
   status,
   title,
-  tasks,
+  items,
   allTasks,
   subtasksMap,
   assigneeByTaskId,
@@ -49,6 +56,10 @@ export function KanbanColumn({
   onDragSelectedStart,
   onSingleDragStart,
   compact = false,
+  taskAssignments,
+  currentUserId,
+  onCheckCompletion,
+  onDeleteGeneratedTasks,
 }: KanbanColumnProps) {
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -88,35 +99,56 @@ export function KanbanColumn({
     >
       <div className="column-header">
         <h3 className="column-title">{title}</h3>
-        <span className="task-count">{tasks.length}</span>
+        <span className="task-count">{items.length}</span>
       </div>
       <div className="column-cards">
-        {tasks.map((task) => (
-          <div
-            key={task.id}
-            draggable
-            onDragStart={(e) => handleDragStart(e, task.id)}
-          >
-            <KanbanCard
-              task={task}
-              subtasks={subtasksMap[task.id] || []}
-              allTasks={allTasks}
-              assigneeName={assigneeByTaskId?.[task.id]}
-              assignedMemberIds={assignedMemberIdsByTaskId?.[task.id] || []}
-              memberOptions={memberOptions}
-              onAssignMultiple={onAssignMultiple}
-              onEdit={onEditTask}
-              onDelete={onDeleteTask}
-              onClick={onTaskClick}
-              onUpdateTask={onUpdateTask}
-              selectionMode={selectionMode}
-              isSelected={selectedTaskIds?.has(task.id) ?? false}
-              onSelect={onSelectTask}
-              compact={compact}
-            />
-          </div>
-        ))}
-        {tasks.length === 0 && (
+        {items.map((item) => {
+          if (item.type === 'recurring-group') {
+            return (
+              <div key={`rtg-${item.recurringTaskId}`}>
+                <RecurringTaskGroupCard
+                  recurringTaskId={item.recurringTaskId}
+                  title={item.title}
+                  tasks={item.tasks}
+                  onTaskClick={onTaskClick}
+                  onUpdateTask={onUpdateTask}
+                  onDeleteAll={onDeleteGeneratedTasks}
+                  compact={compact}
+                />
+              </div>
+            );
+          }
+          const task = item.task;
+          return (
+            <div
+              key={task.id}
+              draggable
+              onDragStart={(e) => handleDragStart(e, task.id)}
+            >
+              <KanbanCard
+                task={task}
+                subtasks={subtasksMap[task.id] || []}
+                allTasks={allTasks}
+                assigneeName={assigneeByTaskId?.[task.id]}
+                assignedMemberIds={assignedMemberIdsByTaskId?.[task.id] || []}
+                memberOptions={memberOptions}
+                onAssignMultiple={onAssignMultiple}
+                onEdit={onEditTask}
+                onDelete={onDeleteTask}
+                onClick={onTaskClick}
+                onUpdateTask={onUpdateTask}
+                selectionMode={selectionMode}
+                isSelected={selectedTaskIds?.has(task.id) ?? false}
+                onSelect={onSelectTask}
+                compact={compact}
+                taskAssignments={taskAssignments?.filter(a => a.task_id === task.id)}
+                currentUserId={currentUserId}
+                onCheckCompletion={onCheckCompletion}
+              />
+            </div>
+          );
+        })}
+        {items.length === 0 && (
           <div className="empty-column">
             <p>タスクなし</p>
           </div>

@@ -5,6 +5,7 @@ import { tasksApi } from '../../api/tasks';
 import type {
   PhaseWithTaskCount,
   Task,
+  TaskAssignment,
   TaskStatus,
 } from '../../api/types';
 import { ViewModeToggle, getStoredViewMode, setStoredViewMode, type ViewMode } from '../common/ViewModeToggle';
@@ -24,6 +25,11 @@ interface ProjectTasksViewProps {
   onAssignMultiple: (taskId: string, memberUserIds: string[]) => Promise<void>;
   onRefreshTasks?: () => void;
   onCreateTask?: (phaseId: string | null) => void;
+  onDeleteGeneratedTasks?: (recurringTaskId: string) => void;
+  // Multi-member completion
+  taskAssignments?: TaskAssignment[];
+  currentUserId?: string;
+  onCheckCompletion?: (taskId: string) => void;
 }
 
 export function ProjectTasksView({
@@ -38,6 +44,10 @@ export function ProjectTasksView({
   onAssignMultiple,
   onRefreshTasks,
   onCreateTask,
+  onDeleteGeneratedTasks,
+  taskAssignments,
+  currentUserId,
+  onCheckCompletion,
 }: ProjectTasksViewProps) {
   const [phases, setPhases] = useState<PhaseWithTaskCount[]>([]);
   const [isPhasesLoading, setIsPhasesLoading] = useState(false);
@@ -263,6 +273,10 @@ export function ProjectTasksView({
               onDragSelectedStart={handleDragSelectedStart}
               onSingleDragStart={handleSingleDragStart}
               compact={viewMode === 'compact'}
+              onDeleteGeneratedTasks={onDeleteGeneratedTasks}
+              taskAssignments={taskAssignments}
+              currentUserId={currentUserId}
+              onCheckCompletion={onCheckCompletion}
             />
           </div>
         )}

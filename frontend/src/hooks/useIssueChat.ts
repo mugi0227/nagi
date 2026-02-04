@@ -6,6 +6,7 @@ export interface IssueChatMessage {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  imageBase64?: string;
   timestamp: Date;
   isStreaming?: boolean;
   toolCalls?: Array<{
@@ -47,14 +48,15 @@ export function useIssueChat() {
     }
   }, [pendingQuestionsData]);
 
-  const sendMessage = useCallback(async (text: string) => {
-    if (!text.trim() || isStreaming) return;
+  const sendMessage = useCallback(async (text: string, imageBase64?: string) => {
+    if ((!text.trim() && !imageBase64) || isStreaming) return;
 
     // Add user message
     const userMessage: IssueChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
       content: text,
+      imageBase64,
       timestamp: new Date(),
     };
     setMessages((prev) => [...prev, userMessage]);
@@ -76,7 +78,7 @@ export function useIssueChat() {
     setMessages((prev) => [...prev, assistantMessage]);
 
     try {
-      for await (const chunk of issuesApi.chatStream(text, sessionId)) {
+      for await (const chunk of issuesApi.chatStream(text, sessionId, imageBase64)) {
         handleChunk(chunk, assistantMessageId);
       }
     } catch (error) {

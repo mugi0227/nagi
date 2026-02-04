@@ -23,6 +23,7 @@ from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
 from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
+from app.interfaces.recurring_task_repository import IRecurringTaskRepository
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.services.skills_service import get_skills_index, format_skills_index_for_prompt
@@ -72,6 +73,10 @@ from app.tools import (
     reorder_agenda_items_tool,
     fetch_meeting_context_tool,
     list_recurring_meetings_tool,
+    create_recurring_task_tool,
+    list_recurring_tasks_tool,
+    update_recurring_task_tool,
+    delete_recurring_task_tool,
     ask_user_questions_tool,
 )
 
@@ -138,6 +143,7 @@ async def create_secretary_agent(
     agent_task_repo: IAgentTaskRepository,
     meeting_agenda_repo: IMeetingAgendaRepository,
     recurring_meeting_repo: IRecurringMeetingRepository,
+    recurring_task_repo: IRecurringTaskRepository,
     checkin_repo: ICheckinRepository,
     user_id: str,
     proposal_repo: IProposalRepository,
@@ -443,6 +449,10 @@ async def create_secretary_agent(
             user_id,
         ),
         list_recurring_meetings_tool(recurring_meeting_repo, project_repo, project_member_repo, user_id),
+        create_recurring_task_tool(recurring_task_repo, task_repo, user_id),
+        list_recurring_tasks_tool(recurring_task_repo, user_id),
+        update_recurring_task_tool(recurring_task_repo, user_id),
+        delete_recurring_task_tool(recurring_task_repo, user_id),
         load_skill_tool(memory_repo, user_id),
         list_skills_index_tool(memory_repo, user_id),
         ask_user_questions_tool(),

@@ -61,6 +61,12 @@ from app.tools.meeting_context_tools import (
     fetch_meeting_context_tool,
     list_recurring_meetings_tool,
 )
+from app.tools.recurring_task_tools import (
+    create_recurring_task_tool,
+    list_recurring_tasks_tool,
+    update_recurring_task_tool,
+    delete_recurring_task_tool,
+)
 from app.tools.user_interaction_tools import (
     ask_user_questions_tool,
 )
@@ -112,4 +118,8 @@ __all__ = [
     "fetch_meeting_context_tool",
     "list_recurring_meetings_tool",
     "ask_user_questions_tool",
+    "create_recurring_task_tool",
+    "list_recurring_tasks_tool",
+    "update_recurring_task_tool",
+    "delete_recurring_task_tool",
 ]

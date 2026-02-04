@@ -61,6 +61,7 @@ class IssueChatRequest(BaseModel):
     """Request for issue chat."""
     message: str
     session_id: Optional[str] = None
+    image_base64: Optional[str] = None
 
 
 @router.post("/chat/stream")
@@ -88,6 +89,7 @@ async def issue_chat_stream(
                 user_id=user.id,
                 message=request.message,
                 session_id=request.session_id,
+                image_base64=request.image_base64,
             ):
                 yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
         except Exception as e:

@@ -46,6 +46,8 @@ class TaskScheduleInfo(BaseModel):
     planned_end: Optional[date] = None
     total_minutes: int
     priority_score: float
+    status: Optional[str] = None
+    pinned_date: Optional[date] = None
 
 
 class UnscheduledTask(BaseModel):
