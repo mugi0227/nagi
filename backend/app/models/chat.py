@@ -42,8 +42,9 @@ class PendingQuestion(BaseModel):
 
     id: str = Field(..., description="質問ID（回答と紐付け用）")
     question: str = Field(..., description="質問文")
-    options: list[str] = Field(..., description="選択肢（UIで「その他」は自動追加）")
+    options: list[str] = Field(default_factory=list, description="選択肢（UIで「その他」は自動追加）。空の場合は自由入力UI。")
     allow_multiple: bool = Field(False, description="複数選択可能か（True: チェックボックス, False: ラジオボタン）")
+    placeholder: Optional[str] = Field(None, description="自由入力時のプレースホルダー")
 
 
 class PendingQuestions(BaseModel):

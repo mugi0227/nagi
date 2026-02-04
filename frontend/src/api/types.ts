@@ -90,6 +90,7 @@ export interface Task {
   attendees: string[];
   meeting_notes?: string;
   recurring_meeting_id?: string;
+  recurring_task_id?: string;
   milestone_id?: string;
   touchpoint_count?: number;
   touchpoint_minutes?: number;
@@ -659,6 +660,71 @@ export interface RecurringMeetingUpdate {
   is_active?: boolean;
 }
 
+// Recurring Task models
+export type RecurringTaskFrequency = 'daily' | 'weekly' | 'biweekly' | 'monthly' | 'bimonthly' | 'custom';
+
+export interface RecurringTask {
+  id: string;
+  user_id: string;
+  title: string;
+  description?: string;
+  purpose?: string;
+  project_id?: string;
+  phase_id?: string;
+  frequency: RecurringTaskFrequency;
+  weekday?: number;
+  day_of_month?: number;
+  custom_interval_days?: number;
+  start_time?: string;
+  estimated_minutes?: number;
+  importance: Priority;
+  urgency: Priority;
+  energy_level: EnergyLevel;
+  is_active: boolean;
+  anchor_date: string;
+  last_generated_date?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface RecurringTaskCreate {
+  title: string;
+  description?: string;
+  purpose?: string;
+  project_id?: string;
+  phase_id?: string;
+  frequency: RecurringTaskFrequency;
+  weekday?: number;
+  day_of_month?: number;
+  custom_interval_days?: number;
+  start_time?: string;
+  estimated_minutes?: number;
+  importance?: Priority;
+  urgency?: Priority;
+  energy_level?: EnergyLevel;
+  anchor_date?: string;
+  is_active?: boolean;
+}
+
+export interface RecurringTaskUpdate {
+  title?: string;
+  description?: string;
+  purpose?: string;
+  project_id?: string;
+  phase_id?: string;
+  frequency?: RecurringTaskFrequency;
+  weekday?: number;
+  day_of_month?: number;
+  custom_interval_days?: number;
+  start_time?: string;
+  estimated_minutes?: number;
+  importance?: Priority;
+  urgency?: Priority;
+  energy_level?: EnergyLevel;
+  anchor_date?: string;
+  is_active?: boolean;
+}
+
 export interface Blocker {
   id: string;
   user_id: string;
@@ -960,6 +1026,7 @@ export interface PendingQuestion {
   question: string;
   options: string[];
   allow_multiple: boolean;
+  placeholder?: string;
 }
 
 export interface PendingQuestions {

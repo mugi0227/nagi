@@ -27,13 +27,16 @@ class QuestionInput(BaseModel):
         description="質問文。明確で具体的に。",
     )
     options: list[str] = Field(
-        ...,
-        min_length=1,
-        description="選択肢のリスト。UIでは自動的に「その他（自由入力）」が追加される。",
+        default_factory=list,
+        description="選択肢のリスト。UIでは自動的に「その他（自由入力）」が追加される。空の場合は自由入力のみのUIになる。",
     )
     allow_multiple: bool = Field(
         False,
         description="複数選択を許可するか。Trueならチェックボックス、Falseならラジオボタン。",
+    )
+    placeholder: Optional[str] = Field(
+        None,
+        description="自由入力欄のプレースホルダー。optionsが空の場合に表示される。例: '2025-02-10 14:00'",
     )
 
 
@@ -72,15 +75,17 @@ async def ask_user_questions(
     Returns:
         A response with questions awaiting user input
     """
-    questions = [
-        {
+    questions = []
+    for q in input_data.questions:
+        item: dict = {
             "id": str(uuid4())[:8],  # Short unique ID
             "question": q.question,
             "options": q.options,
             "allow_multiple": q.allow_multiple,
         }
-        for q in input_data.questions
-    ]
+        if q.placeholder:
+            item["placeholder"] = q.placeholder
+        questions.append(item)
 
     response = {
         "status": "awaiting_response",
@@ -117,18 +122,21 @@ def ask_user_questions_tool() -> FunctionTool:
         各質問には選択肢を設定でき、UIではラジオボタン（またはチェックボックス）と
         「その他」の自由入力欄が表示されます。
 
+        **選択肢あり（options指定）**: ボタンやラジオボタンで選択するUI
+        **選択肢なし（options空）**: テキスト入力欄のみのUI（日時や自由記述など）
+
         使用例:
-        - アジェンダ作成時のトピック・時間配分の確認
-        - タスク作成時の詳細（優先度、期限、担当者など）の確認
-        - フェーズ分解時の分割方針の確認
-        - 曖昧な指示を具体化するための確認
+        - Yes/No確認 → options: ["はい", "いいえ"]
+        - 選択式 → options: ["30分", "1時間", "1時間半"]
+        - 自由入力 → options: []（空）, placeholder: "例: 2025-02-10 14:00"
 
         Args:
             input_data: 質問パラメータ
                 - questions (list[QuestionInput], required): 質問リスト
                     - question (str): 質問文
-                    - options (list[str]): 選択肢
+                    - options (list[str]): 選択肢（空なら自由入力UI）
                     - allow_multiple (bool): 複数選択可能か（デフォルト: False）
+                    - placeholder (str, optional): 自由入力時のプレースホルダー
                 - context (str, optional): 質問全体の背景
         """
         validated = AskUserQuestionsInput(**input_data)
