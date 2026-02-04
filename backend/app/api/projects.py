@@ -17,6 +17,7 @@ from app.api.deps import (
     CurrentUser,
     LLMProvider,
     MilestoneRepo,
+    NotificationRepo,
     ProjectMemberRepo,
     ProjectInvitationRepo,
     ProjectRepo,
@@ -50,12 +51,13 @@ from app.models.collaboration import (
 )
 from app.models.project import Project, ProjectCreate, ProjectUpdate, ProjectWithTaskCount
 from app.models.project_kpi import ProjectKpiTemplate
-from app.models.enums import CheckinType, InvitationStatus, MemoryScope, MemoryType, ProjectRole
+from app.models.enums import CheckinType, InvitationStatus, MemoryScope, MemoryType, ProjectRole, ProjectVisibility
 from app.models.memory import Memory, MemoryCreate
 from app.services.kpi_calculator import apply_project_kpis
 from app.services.kpi_templates import get_kpi_templates
 from app.services.llm_utils import generate_text, generate_text_with_status
 from app.services.project_permissions import ProjectAction
+from app.services import notification_service as notify
 
 router = APIRouter()
 
@@ -336,12 +338,18 @@ async def update_project(
     )
     owner_id = access.owner_id
     try:
-        return await repo.update(owner_id, project_id, update)
+        result = await repo.update(owner_id, project_id, update)
     except NotFoundError as e:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=str(e),
         )
+
+    # TEAM → PRIVATE: remove non-owner members
+    if update.visibility == ProjectVisibility.PRIVATE and access.project.visibility != ProjectVisibility.PRIVATE:
+        await member_repo.delete_non_owner_members(project_id, owner_id)
+
+    return result
 
 
 @router.delete("/{project_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -436,6 +444,12 @@ async def add_project_member(
         ProjectAction.MEMBER_MANAGE,
     )
     owner_id = access.owner_id
+
+    if access.project.visibility == ProjectVisibility.PRIVATE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="個人プロジェクトにはメンバーを追加できません。チームプロジェクトに変更してください。",
+        )
 
     # Validate that the member user exists
     try:
@@ -568,6 +582,13 @@ async def create_project_invitation(
         ProjectAction.INVITATION_MANAGE,
     )
     project = access.project
+
+    if project.visibility == ProjectVisibility.PRIVATE:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="個人プロジェクトにはメンバーを招待できません。チームプロジェクトに変更してください。",
+        )
+
     normalized_email = _normalize_email(invitation.email)
     existing_invitation = await invitation_repo.get_by_email(project_id, normalized_email)
 
@@ -946,6 +967,7 @@ async def create_project_checkin_v2(
     repo: ProjectRepo,
     checkin_repo: CheckinRepo,
     member_repo: ProjectMemberRepo,
+    notification_repo: NotificationRepo,
 ):
     """Create a structured check-in (V2)."""
     access = await require_project_action(
@@ -961,7 +983,17 @@ async def create_project_checkin_v2(
             detail="Members can only create check-ins for themselves",
         )
     owner_id = access.owner_id
-    return await checkin_repo.create_v2(owner_id, project_id, checkin)
+    result = await checkin_repo.create_v2(owner_id, project_id, checkin)
+
+    # Notify project members
+    members = await member_repo.list_by_project(project_id)
+    member_ids = {m.member_user_id for m in members}
+    member_ids.add(access.owner_id)
+    await notify.notify_checkin_change(
+        notification_repo, project_id, access.project.name,
+        user.id, user.display_name or "", member_ids, is_update=False,
+    )
+    return result
 
 
 @router.get("/{project_id}/checkins/v2", response_model=list[CheckinV2])
@@ -1002,6 +1034,7 @@ async def update_project_checkin_v2(
     repo: ProjectRepo,
     checkin_repo: CheckinRepo,
     member_repo: ProjectMemberRepo,
+    notification_repo: NotificationRepo,
 ):
     """Update a structured check-in (V2). Only the creator can update."""
     access = await require_project_action(
@@ -1036,6 +1069,15 @@ async def update_project_checkin_v2(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Check-in {checkin_id} not found",
         )
+
+    # Notify project members
+    members = await member_repo.list_by_project(project_id)
+    member_ids = {m.member_user_id for m in members}
+    member_ids.add(access.owner_id)
+    await notify.notify_checkin_change(
+        notification_repo, project_id, access.project.name,
+        user.id, user.display_name or "", member_ids, is_update=True,
+    )
     return result
 
 

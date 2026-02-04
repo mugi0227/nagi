@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
-from sqlalchemy import select, and_
+from sqlalchemy import delete, select, and_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.exceptions import NotFoundError
@@ -140,3 +140,20 @@ class SqliteProjectMemberRepository(IProjectMemberRepository):
             await session.delete(orm)
             await session.commit()
             return True
+
+    async def delete_non_owner_members(self, project_id: UUID, owner_user_id: str) -> int:
+        """Delete all members except the owner. Returns count of deleted members."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(ProjectMemberORM).where(
+                    and_(
+                        ProjectMemberORM.project_id == str(project_id),
+                        ProjectMemberORM.member_user_id != owner_user_id,
+                    )
+                )
+            )
+            members = result.scalars().all()
+            for member in members:
+                await session.delete(member)
+            await session.commit()
+            return len(members)

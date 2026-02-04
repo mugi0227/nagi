@@ -278,6 +278,16 @@
   opacity: 1;
 }
 
+.project-subitem-icon {
+  font-size: 0.7rem;
+  flex-shrink: 0;
+  opacity: 0.6;
+}
+
+.project-subitem.active .project-subitem-icon {
+  opacity: 1;
+}
+
 .project-subitem-name {
   overflow: hidden;
   text-overflow: ellipsis;

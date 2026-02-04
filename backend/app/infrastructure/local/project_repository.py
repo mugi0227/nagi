@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import NotFoundError
 from app.interfaces.project_repository import IProjectRepository
 from app.models.project import Project, ProjectCreate, ProjectUpdate, ProjectWithTaskCount
-from app.models.enums import ProjectStatus, TaskStatus
+from app.models.enums import ProjectStatus, ProjectVisibility, TaskStatus
 from app.infrastructure.local.database import ProjectORM, ProjectMemberORM, TaskORM, TaskAssignmentORM, get_session_factory
 
 
@@ -32,6 +32,7 @@ class SqliteProjectRepository(IProjectRepository):
             name=orm.name,
             description=orm.description,
             status=ProjectStatus(orm.status),
+            visibility=ProjectVisibility(orm.visibility) if orm.visibility else ProjectVisibility.PRIVATE,
             context_summary=orm.context_summary,
             context=orm.context,
             priority=orm.priority if orm.priority is not None else 5,

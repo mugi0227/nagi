@@ -54,3 +54,8 @@ class IProjectMemberRepository(ABC):
     async def delete(self, user_id: str, member_id: UUID) -> bool:
         """Delete a project member."""
         pass
+
+    @abstractmethod
+    async def delete_non_owner_members(self, project_id: UUID, owner_user_id: str) -> int:
+        """Delete all members except the owner. Returns count of deleted members."""
+        pass

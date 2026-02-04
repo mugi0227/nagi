@@ -40,6 +40,26 @@
   font-weight: 700;
 }
 
+.project-v2-visibility-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: var(--radius-full);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.project-v2-visibility-badge.private {
+  background: rgba(148, 163, 184, 0.1);
+  color: var(--text-muted);
+}
+
+.project-v2-visibility-badge.team {
+  background: rgba(139, 92, 246, 0.1);
+  color: #7c3aed;
+}
+
 .project-v2-header-actions {
   display: flex;
   flex-wrap: wrap;

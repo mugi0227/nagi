@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaStar, FaPlus } from 'react-icons/fa6';
+import { FaStar, FaPlus, FaLock, FaUsers } from 'react-icons/fa6';
 import { useProjects } from '../hooks/useProjects';
 import { ProjectCreateModal } from '../components/projects/ProjectCreateModal';
 import './ProjectsPage.css';
@@ -71,11 +71,19 @@ export function ProjectsPage() {
             >
               <div className="project-header">
                 <h3 className="project-name">{project.name}</h3>
-                <span
-                  className={`project-status status-${project.status.toLowerCase()}`}
-                >
-                  {project.status}
-                </span>
+                <div className="project-badges">
+                  <span
+                    className={`project-visibility visibility-${project.visibility?.toLowerCase() || 'private'}`}
+                  >
+                    {project.visibility === 'TEAM' ? <FaUsers /> : <FaLock />}
+                    {project.visibility === 'TEAM' ? 'チーム' : '個人'}
+                  </span>
+                  <span
+                    className={`project-status status-${project.status.toLowerCase()}`}
+                  >
+                    {project.status}
+                  </span>
+                </div>
               </div>
 
               {project.description && (

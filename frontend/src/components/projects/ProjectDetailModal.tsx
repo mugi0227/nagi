@@ -6,6 +6,7 @@ import remarkBreaks from 'remark-breaks';
 import type {
   ProjectWithTaskCount,
   ProjectUpdate,
+  ProjectVisibility,
   ProjectKpiConfig,
   ProjectKpiMetric,
   ProjectKpiTemplate,
@@ -39,11 +40,13 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [showVisibilityConfirm, setShowVisibilityConfirm] = useState(false);
   const [activeTab, setActiveTab] = useState<'general' | 'roadmap' | 'kpi' | 'context' | 'members'>('general');
 
   // Form state
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description || '');
+  const [visibility, setVisibility] = useState<ProjectVisibility>(project.visibility || 'PRIVATE');
   const [context, setContext] = useState(project.context || '');
   const [priority, setPriority] = useState(project.priority);
   const [goals, setGoals] = useState<string[]>(project.goals || []);
@@ -70,6 +73,7 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
   useEffect(() => {
     setName(project.name);
     setDescription(project.description || '');
+    setVisibility(project.visibility || 'PRIVATE');
     setContext(project.context || '');
     setPriority(project.priority);
     setGoals(project.goals || []);
@@ -148,12 +152,13 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
     };
   }, []);
 
-  const handleSave = async () => {
+  const executeSave = async () => {
     setIsSaving(true);
     try {
       const updates: ProjectUpdate = {
         name,
         description,
+        visibility,
         context,
         priority,
         goals,
@@ -169,6 +174,14 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleSave = () => {
+    if (project.visibility === 'TEAM' && visibility === 'PRIVATE') {
+      setShowVisibilityConfirm(true);
+      return;
+    }
+    executeSave();
   };
 
   const addGoal = () => {
@@ -379,12 +392,14 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
             >
               <FaPlus className="nav-item-icon" /> README
             </button>
-            <button
-              className={`nav-item ${activeTab === 'members' ? 'active' : ''}`}
-              onClick={() => setActiveTab('members')}
-            >
-              <FaUsers className="nav-item-icon" /> Members
-            </button>
+            {visibility === 'TEAM' && (
+              <button
+                className={`nav-item ${activeTab === 'members' ? 'active' : ''}`}
+                onClick={() => setActiveTab('members')}
+              >
+                <FaUsers className="nav-item-icon" /> Members
+              </button>
+            )}
           </nav>
         </aside>
 
@@ -418,6 +433,39 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
                     }}
                     rows={4}
                   />
+                </div>
+                <div className="section">
+                  <label className="field-label">公開設定</label>
+                  <div className="visibility-selector">
+                    <label className={`visibility-option ${visibility === 'PRIVATE' ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="edit-visibility"
+                        value="PRIVATE"
+                        checked={visibility === 'PRIVATE'}
+                        onChange={() => {
+                          setVisibility('PRIVATE');
+                          setIsEditing(true);
+                        }}
+                      />
+                      <span className="visibility-label">🔒 個人</span>
+                      <span className="visibility-desc">自分だけのプロジェクト</span>
+                    </label>
+                    <label className={`visibility-option ${visibility === 'TEAM' ? 'selected' : ''}`}>
+                      <input
+                        type="radio"
+                        name="edit-visibility"
+                        value="TEAM"
+                        checked={visibility === 'TEAM'}
+                        onChange={() => {
+                          setVisibility('TEAM');
+                          setIsEditing(true);
+                        }}
+                      />
+                      <span className="visibility-label">👥 チーム</span>
+                      <span className="visibility-desc">メンバーを招待して共同作業</span>
+                    </label>
+                  </div>
                 </div>
                 <div className="section">
                   <label className="field-label">優先度 ({priority}/10)</label>
@@ -868,6 +916,35 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
           </div>
         </div>
       </div>
+
+      {showVisibilityConfirm && (
+        <div className="confirm-overlay" onMouseDown={(e) => e.target === e.currentTarget && setShowVisibilityConfirm(false)}>
+          <div className="confirm-dialog">
+            <div className="confirm-icon">⚠️</div>
+            <h3 className="confirm-title">個人プロジェクトに変更</h3>
+            <p className="confirm-message">
+              個人プロジェクトに変更すると、オーナー以外のメンバーが<strong>全員削除</strong>されます。この操作は取り消せません。
+            </p>
+            <div className="confirm-actions">
+              <button
+                className="button button-secondary"
+                onClick={() => setShowVisibilityConfirm(false)}
+              >
+                キャンセル
+              </button>
+              <button
+                className="button button-danger"
+                onClick={() => {
+                  setShowVisibilityConfirm(false);
+                  executeSave();
+                }}
+              >
+                変更する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

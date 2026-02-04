@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear, FaMoon, FaSun, FaRightFromBracket, FaRightToBracket, FaBookOpen, FaComments, FaChevronLeft, FaChevronRight, FaChevronDown } from 'react-icons/fa6';
+import { FaChartPie, FaListCheck, FaFolderOpen, FaTrophy, FaGear, FaMoon, FaSun, FaRightFromBracket, FaRightToBracket, FaBookOpen, FaComments, FaChevronLeft, FaChevronRight, FaChevronDown, FaLock, FaUsers } from 'react-icons/fa6';
 import { useTheme } from '../../context/ThemeContext';
 import { clearAuthToken, getAuthToken } from '../../api/auth';
 import { SettingsModal } from '../settings/SettingsModal';
@@ -144,7 +144,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                           className={`project-subitem ${isActive ? 'active' : ''}`}
                           title={project.name}
                         >
-                          <span className="project-subitem-dot" />
+                          {project.visibility === 'TEAM'
+                            ? <FaUsers className="project-subitem-icon" />
+                            : <FaLock className="project-subitem-icon" />
+                          }
                           <span className="project-subitem-name">{project.name}</span>
                         </Link>
                       );

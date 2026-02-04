@@ -6,6 +6,7 @@ import {
   FaChartBar,
   FaCheck,
   FaCheckCircle,
+  FaChevronDown,
   FaColumns,
   FaEdit,
   FaLock,
@@ -204,6 +205,20 @@ export function ProjectDetailV2Page() {
     linkedTaskCount: number;
   } | null>(null);
   const [isDeletingMilestone, setIsDeletingMilestone] = useState(false);
+
+  // Team accordion state
+  const [expandedMemberIds, setExpandedMemberIds] = useState<Set<string>>(new Set());
+  const toggleMemberExpand = useCallback((memberId: string) => {
+    setExpandedMemberIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(memberId)) {
+        next.delete(memberId);
+      } else {
+        next.add(memberId);
+      }
+      return next;
+    });
+  }, []);
 
   // Project edit/delete state
   const [isProjectModalOpen, setIsProjectModalOpen] = useState(false);
