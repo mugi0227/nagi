@@ -59,11 +59,12 @@ export function PostponePopover({ taskId, className }: PostponePopoverProps) {
   }, [isOpen, updatePosition]);
 
   const invalidateAll = () => {
-    queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    queryClient.invalidateQueries({ queryKey: ['subtasks'] });
-    queryClient.invalidateQueries({ queryKey: ['top3'] });
-    queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
-    queryClient.invalidateQueries({ queryKey: ['schedule'] });
+    for (const key of [
+      ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
+      ['task-detail'], ['task-assignments'], ['project'],
+    ]) {
+      queryClient.invalidateQueries({ queryKey: key });
+    }
   };
 
   const handlePostpone = async (dateStr: string, pin: boolean) => {

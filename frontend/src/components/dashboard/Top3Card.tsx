@@ -43,10 +43,12 @@ export function Top3Card() {
       await tasksApi.update(id, data);
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
-      queryClient.invalidateQueries({ queryKey: ['top3'] });
-      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
+      for (const key of [
+        ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
+        ['task-detail'], ['task-assignments'], ['project'],
+      ]) {
+        queryClient.invalidateQueries({ queryKey: key });
+      }
     },
   });
 

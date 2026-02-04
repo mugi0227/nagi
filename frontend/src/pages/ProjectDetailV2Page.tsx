@@ -1,5 +1,6 @@
 ﻿import type { ReactElement } from 'react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   FaCalendarAlt,
   FaChartBar,
@@ -7,6 +8,7 @@ import {
   FaCheckCircle,
   FaColumns,
   FaEdit,
+  FaLock,
   FaPlus,
   FaStream,
   FaTasks,
@@ -145,9 +147,17 @@ export function ProjectDetailV2Page() {
   };
 
   const [activeTab, setActiveTab] = useState<TabId>(getInitialTab);
-  const [project, setProject] = useState<ProjectWithTaskCount | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const {
+    data: project = null,
+    isLoading,
+    error: projectError,
+  } = useQuery({
+    queryKey: ['project', projectId],
+    queryFn: () => getProject(projectId!),
+    enabled: !!projectId,
+  });
+  const error = projectError ? 'プロジェクトの取得に失敗しました。' : (!projectId ? 'プロジェクトIDが不正です。' : null);
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [invitations, setInvitations] = useState<ProjectInvitation[]>([]);
   const [blockers, setBlockers] = useState<Blocker[]>([]);
@@ -220,40 +230,9 @@ export function ProjectDetailV2Page() {
     }
   }, [searchParams]);
 
-  useEffect(() => {
-    let isActive = true;
-    if (!projectId) {
-      setError('プロジェクトIDが不正です。');
-      setIsLoading(false);
-      return () => {
-        isActive = false;
-      };
-    }
-
-    const loadProject = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const data = await getProject(projectId);
-        if (!isActive) return;
-        setProject(data ?? null);
-      } catch (err) {
-        if (!isActive) return;
-        console.error('Failed to fetch project:', err);
-        setError('プロジェクトの取得に失敗しました。');
-      } finally {
-        if (isActive) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadProject();
-
-    return () => {
-      isActive = false;
-    };
-  }, [projectId]);
+  const refetchProject = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['project', projectId] });
+  }, [queryClient, projectId]);
 
   useEffect(() => {
     if (!projectId) return;
@@ -1114,14 +1093,8 @@ export function ProjectDetailV2Page() {
     setIsProjectModalOpen(false);
   };
 
-  const handleProjectUpdate = async () => {
-    if (!projectId) return;
-    try {
-      const data = await getProject(projectId);
-      setProject(data ?? null);
-    } catch (err) {
-      console.error('Failed to refresh project:', err);
-    }
+  const handleProjectUpdate = () => {
+    refetchProject();
   };
 
   const handleOpenDeleteConfirm = () => {
@@ -1186,7 +1159,9 @@ export function ProjectDetailV2Page() {
             </button>
             <h1 className="project-v2-title">
               {project?.name || 'プロジェクト'}
-              <span className="project-v2-badge">V2</span>
+              <span className={`project-v2-visibility-badge ${project?.visibility === 'TEAM' ? 'team' : 'private'}`}>
+                {project?.visibility === 'TEAM' ? <><FaUsers /> チーム</> : <><FaLock /> 個人</>}
+              </span>
             </h1>
           </div>
           <div className="project-v2-header-actions">
@@ -1253,17 +1228,20 @@ export function ProjectDetailV2Page() {
       )}
 
       <nav className="project-v2-tabs">
-        {(Object.keys(TAB_LABELS) as TabId[]).map((tabId) => (
-          <button
-            key={tabId}
-            type="button"
-            className={`project-v2-tab ${activeTab === tabId ? 'is-active' : ''}`}
-            onClick={() => setActiveTab(tabId)}
-          >
-            <span className="project-v2-tab-icon">{TAB_ICONS[tabId]}</span>
-            <span>{TAB_LABELS[tabId]}</span>
-          </button>
-        ))}
+        {(Object.keys(TAB_LABELS) as TabId[]).map((tabId) => {
+          if (tabId === 'team' && project?.visibility !== 'TEAM') return null;
+          return (
+            <button
+              key={tabId}
+              type="button"
+              className={`project-v2-tab ${activeTab === tabId ? 'is-active' : ''}`}
+              onClick={() => setActiveTab(tabId)}
+            >
+              <span className="project-v2-tab-icon">{TAB_ICONS[tabId]}</span>
+              <span>{TAB_LABELS[tabId]}</span>
+            </button>
+          );
+        })}
       </nav>
 
       <section className="project-v2-panel">

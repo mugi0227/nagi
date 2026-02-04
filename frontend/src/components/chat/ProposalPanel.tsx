@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FaCheckCircle, FaTimesCircle, FaSpinner } from 'react-icons/fa';
 import { FaChevronLeft, FaChevronRight, FaCheckDouble, FaXmark } from 'react-icons/fa6';
-import { proposalsApi } from '../../api/proposals';
+import { proposalsApi, type ApprovalResult } from '../../api/proposals';
 import type { ProposalInfo } from '../../hooks/useChat';
 import type {
   TaskCreate,
@@ -15,9 +15,9 @@ import './ProposalPanel.css';
 
 interface ProposalPanelProps {
   proposals: ProposalInfo[];
-  onApproved: (proposalId: string, proposal: ProposalInfo) => void;
+  onApproved: (proposalId: string, proposal: ProposalInfo, result: ApprovalResult) => void;
   onRejected: (proposalId: string) => void;
-  onAllApproved: (approvedProposals: ProposalInfo[]) => void;
+  onAllApproved: (approvedProposals: ProposalInfo[], results: Record<string, ApprovalResult>) => void;
   onAllRejected: () => void;
 }
 
@@ -71,8 +71,8 @@ export function ProposalPanel({
     setProcessingId(currentProposal.proposalId);
     setError(null);
     try {
-      await proposalsApi.approve(currentProposal.proposalId);
-      onApproved(currentProposal.proposalId, currentProposal);
+      const result = await proposalsApi.approve(currentProposal.proposalId);
+      onApproved(currentProposal.proposalId, currentProposal, result);
       // Move to next or adjust index
       if (currentIndex >= proposals.length - 1 && currentIndex > 0) {
         setCurrentIndex(currentIndex - 1);
@@ -107,10 +107,11 @@ export function ProposalPanel({
     setProcessingAll('approve');
     setError(null);
     try {
+      const results: Record<string, ApprovalResult> = {};
       for (const proposal of proposals) {
-        await proposalsApi.approve(proposal.proposalId);
+        results[proposal.proposalId] = await proposalsApi.approve(proposal.proposalId);
       }
-      onAllApproved(proposals);
+      onAllApproved(proposals, results);
     } catch (err) {
       setError('一部の承諾に失敗しました');
       console.error('Failed to approve all proposals:', err);

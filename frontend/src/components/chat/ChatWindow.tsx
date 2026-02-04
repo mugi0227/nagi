@@ -1,9 +1,12 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FaClock, FaComments, FaFolder, FaImage, FaPlus, FaRobot, FaXmark } from 'react-icons/fa6';
 import { tasksApi } from '../../api/tasks';
-import type { Task } from '../../api/types';
+import { projectsApi } from '../../api/projects';
+import type { Task, TaskAssignment, TaskAssignmentsCreate } from '../../api/types';
+import type { ApprovalResult } from '../../api/proposals';
 import { useChat, type ProposalInfo } from '../../hooks/useChat';
+import { useTaskModal } from '../../hooks/useTaskModal';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/dateTime';
 import { ChatInput } from './ChatInput';
@@ -32,6 +35,7 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     sendMessageStream,
     cancelStream,
     clearChat,
+    updateProposalResult,
     isLoading,
     isStreaming,
     sessions,
@@ -60,6 +64,66 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     enabled: isOpen,
   });
 
+  // Task modal for viewing created tasks inline
+  const [modalProjectId, setModalProjectId] = useState<string | null>(null);
+
+  const { data: projectMembers = [] } = useQuery({
+    queryKey: ['project-members', modalProjectId],
+    queryFn: () => projectsApi.listMembers(modalProjectId!),
+    enabled: !!modalProjectId,
+    staleTime: 5 * 60_000,
+  });
+
+  const { data: projectAssignments = [] } = useQuery<TaskAssignment[]>({
+    queryKey: ['project-assignments', modalProjectId],
+    queryFn: () => projectsApi.listAssignments(modalProjectId!),
+    enabled: !!modalProjectId,
+    staleTime: 30_000,
+  });
+
+  const memberOptions = useMemo(
+    () => projectMembers.map((m) => ({
+      id: m.member_user_id,
+      label: m.member_display_name || m.member_user_id,
+    })),
+    [projectMembers],
+  );
+
+  const assignMutation = useMutation({
+    mutationFn: ({ taskId, data }: { taskId: string; data: TaskAssignmentsCreate }) =>
+      tasksApi.assignTaskMultiple(taskId, data),
+    onSuccess: () => {
+      for (const key of [
+        ['project-assignments', modalProjectId],
+        ['tasks'], ['task-detail'], ['task-assignments'], ['project'],
+      ]) {
+        queryClient.invalidateQueries({ queryKey: key });
+      }
+    },
+  });
+
+  const handleAssigneeChange = useCallback(
+    (taskId: string, memberIds: string[]) => {
+      assignMutation.mutate({ taskId, data: { assignee_ids: memberIds } });
+    },
+    [assignMutation],
+  );
+
+  const taskModal = useTaskModal({
+    tasks: [],
+    memberOptions,
+    taskAssignments: projectAssignments,
+    onAssigneeChange: handleAssigneeChange,
+    onRefetch: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+
+  // Sync project ID when selected task changes
+  useEffect(() => {
+    setModalProjectId(taskModal.selectedTask?.project_id ?? null);
+  }, [taskModal.selectedTask?.project_id]);
+
   // Extract pending proposals from messages
   const pendingProposals = useMemo(() => {
     const allProposals = messages.flatMap((msg) => msg.proposals || []);
@@ -67,10 +131,13 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
   }, [messages, processedProposalIds]);
 
   const invalidateAfterProposal = () => {
-    queryClient.invalidateQueries({ queryKey: ['tasks'] });
-    queryClient.invalidateQueries({ queryKey: ['top3'] });
-    queryClient.invalidateQueries({ queryKey: ['projects'] });
-    queryClient.invalidateQueries({ queryKey: ['meeting-agendas'] });
+    for (const key of [
+      ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
+      ['task-detail'], ['task-assignments'],
+      ['projects'], ['project'], ['meeting-agendas'],
+    ]) {
+      queryClient.invalidateQueries({ queryKey: key });
+    }
   };
 
   // Generate approval confirmation message for AI
@@ -82,7 +149,8 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     return `（以下を承諾しました:\n${descriptions}）`;
   };
 
-  const handleProposalApproved = (proposalId: string, proposal: ProposalInfo) => {
+  const handleProposalApproved = (proposalId: string, proposal: ProposalInfo, result: ApprovalResult) => {
+    updateProposalResult(proposalId, result);
     setProcessedProposalIds((prev) => new Set([...prev, proposalId]));
     invalidateAfterProposal();
     approvedProposalsRef.current = [
@@ -110,7 +178,10 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     }
   };
 
-  const handleAllProposalsApproved = (approvedProposals: { description: string }[]) => {
+  const handleAllProposalsApproved = (approvedProposals: ProposalInfo[], results: Record<string, ApprovalResult>) => {
+    for (const [proposalId, result] of Object.entries(results)) {
+      updateProposalResult(proposalId, result);
+    }
     const allIds = pendingProposals.map((p) => p.proposalId);
     setProcessedProposalIds((prev) => new Set([...prev, ...allIds]));
     invalidateAfterProposal();
@@ -382,6 +453,7 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
             imageUrl={message.imageUrl}
             toolPlacement={message.toolPlacement}
             timeline={message.timeline}
+            onTaskClick={taskModal.openTaskDetailById}
           />
         ))}
         <div ref={messagesEndRef} />
@@ -424,6 +496,8 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
           onInitialValueConsumed={onInitialMessageConsumed}
         />
       )}
+
+      {taskModal.renderModals()}
     </div>
   );
 }

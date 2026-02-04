@@ -2,13 +2,30 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tasksApi } from '../api/tasks';
 import type { TaskCreate, TaskUpdate } from '../api/types';
 
+/** Invalidation keys shared across all task mutations. */
+const TASK_INVALIDATION_KEYS: string[][] = [
+  ['tasks'],
+  ['subtasks'],
+  ['top3'],
+  ['today-tasks'],
+  ['schedule'],
+  ['task-detail'],
+  ['task-assignments'],
+  ['project'],
+];
+
 export function useTasks(projectId?: string) {
   const queryClient = useQueryClient();
+
+  const invalidateAll = () => {
+    for (const key of TASK_INVALIDATION_KEYS) {
+      queryClient.invalidateQueries({ queryKey: key });
+    }
+  };
 
   const query = useQuery({
     queryKey: projectId ? ['tasks', 'project', projectId] : ['tasks'],
     queryFn: async () => {
-      // Pass projectId to API so backend can do project-based filtering
       const tasks = await tasksApi.getAll({ projectId });
       return tasks;
     },
@@ -16,36 +33,25 @@ export function useTasks(projectId?: string) {
 
   const createMutation = useMutation({
     mutationFn: tasksApi.create,
-    onSuccess: () => {
-      // Invalidate all task related queries
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
-      queryClient.invalidateQueries({ queryKey: ['top3'] });
-      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['schedule'] });
-    },
+    onSuccess: invalidateAll,
   });
 
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: TaskUpdate }) =>
       tasksApi.update(id, data),
     onMutate: async ({ id, data }) => {
-      // Cancel any outgoing refetches
       await queryClient.cancelQueries({ queryKey: ['tasks'] });
       await queryClient.cancelQueries({ queryKey: ['today-tasks'] });
       await queryClient.cancelQueries({ queryKey: ['subtasks'] });
 
-      // Snapshot the previous values
       const previousTasks = queryClient.getQueryData(['tasks']);
       const previousSubtasks = queryClient.getQueryData(['subtasks']);
 
-      // Optimistically update tasks
       queryClient.setQueryData(['tasks'], (old: any) => {
         if (!old) return old;
         return old.map((t: any) => (t.id === id ? { ...t, ...data } : t));
       });
 
-      // Optimistically update subtasks
       queryClient.setQueryData(['subtasks'], (old: any) => {
         if (!old) return old;
         return old.map((t: any) => (t.id === id ? { ...t, ...data } : t));
@@ -54,7 +60,6 @@ export function useTasks(projectId?: string) {
       return { previousTasks, previousSubtasks };
     },
     onError: (_err, _newTodo, context) => {
-      // Rollback
       if (context?.previousTasks) {
         queryClient.setQueryData(['tasks'], context.previousTasks);
       }
@@ -62,25 +67,12 @@ export function useTasks(projectId?: string) {
         queryClient.setQueryData(['subtasks'], context.previousSubtasks);
       }
     },
-    onSuccess: () => {
-      // Final synchronization
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
-      queryClient.invalidateQueries({ queryKey: ['top3'] });
-      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['schedule'] });
-    },
+    onSuccess: invalidateAll,
   });
 
   const deleteMutation = useMutation({
     mutationFn: tasksApi.delete,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
-      queryClient.invalidateQueries({ queryKey: ['top3'] });
-      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['schedule'] });
-    },
+    onSuccess: invalidateAll,
   });
 
   return {

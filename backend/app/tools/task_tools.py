@@ -680,14 +680,41 @@ async def create_task(
     assigned = []
     # Assign task to members if assignee_ids provided
     if input_data.assignee_ids and assignment_repo:
-        for assignee_id in input_data.assignee_ids:
+        # Resolve assignee IDs: AI may provide member record IDs instead of member_user_id
+        resolved_ids = list(input_data.assignee_ids)
+        if project_id and member_repo:
+            try:
+                members = await member_repo.list_by_project(project_id)
+                user_id_set = {m.member_user_id for m in members}
+                record_to_user = {str(m.id): m.member_user_id for m in members}
+                resolved_ids = []
+                for aid in input_data.assignee_ids:
+                    if not aid or not aid.strip():
+                        continue
+                    aid = aid.strip()
+                    if aid in user_id_set:
+                        resolved_ids.append(aid)
+                    elif aid in record_to_user:
+                        resolved_ids.append(record_to_user[aid])
+                    else:
+                        import logging
+                        logging.getLogger(__name__).warning(
+                            "Skipping unknown assignee_id %s (not a member of project %s)", aid, project_id,
+                        )
+            except Exception:
+                pass  # Fall back to using original IDs
+
+        for assignee_id in resolved_ids:
             if assignee_id and assignee_id.strip():
-                assignment = await assignment_repo.assign(
-                    owner_id,
-                    task.id,
-                    TaskAssignmentCreate(assignee_id=assignee_id),
-                )
-                assigned.append(assignment.model_dump(mode="json"))
+                try:
+                    assignment = await assignment_repo.assign(
+                        owner_id,
+                        task.id,
+                        TaskAssignmentCreate(assignee_id=assignee_id),
+                    )
+                    assigned.append(assignment.model_dump(mode="json"))
+                except Exception:
+                    pass
 
     if not assigned and assignment_repo and parent_id and not input_data.assignee_ids:
         parent_assignments = await assignment_repo.list_by_task(owner_id, parent_id)
@@ -705,17 +732,28 @@ async def create_task(
                 )
                 assigned.append(created.model_dump(mode="json"))
 
-    # Auto-assign to the requester (current user) when no assignee specified
-    if not assigned and assignment_repo:
+    # Auto-assign to the requester (current user) for project tasks
+    if not assigned and assignment_repo and project_id and member_repo:
         try:
-            created = await assignment_repo.assign(
-                owner_id,
-                task.id,
-                TaskAssignmentCreate(assignee_id=user_id),
-            )
-            assigned.append(created.model_dump(mode="json"))
-        except Exception:
-            pass  # Non-critical, skip on error
+            members = await member_repo.list_by_project(project_id)
+            member_ids = {m.member_user_id for m in members}
+            if user_id in member_ids:
+                created = await assignment_repo.assign(
+                    owner_id,
+                    task.id,
+                    TaskAssignmentCreate(assignee_id=user_id),
+                )
+                assigned.append(created.model_dump(mode="json"))
+            elif len(members) == 1:
+                created = await assignment_repo.assign(
+                    owner_id,
+                    task.id,
+                    TaskAssignmentCreate(assignee_id=members[0].member_user_id),
+                )
+                assigned.append(created.model_dump(mode="json"))
+        except Exception as exc:
+            import logging
+            logging.getLogger(__name__).warning("Auto-assign failed: %s", exc, exc_info=True)
 
     if assigned:
         result["assignments"] = assigned

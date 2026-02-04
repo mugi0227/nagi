@@ -8,6 +8,7 @@ import { FaLock } from 'react-icons/fa6';
 import { FaCalendarAlt, FaList, FaChartBar } from 'react-icons/fa';
 import type { Task, TaskScheduleInfo, TaskStatus } from '../../api/types';
 import { GanttChartView } from './GanttChartView';
+import { WeeklyMeetingsCard } from './WeeklyMeetingsCard';
 import { userStorage } from '../../utils/userStorage';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, toDateKey, toDateTime, todayInTimezone } from '../../utils/dateTime';
@@ -17,8 +18,8 @@ const HORIZON_OPTIONS = [7, 14, 30];
 const LOCK_STORAGE_KEY = 'todayTasksLock';
 
 const TEXT = {
-  scheduleTitle: '\u30b9\u30b1\u30b8\u30e5\u30fc\u30eb\u5168\u4f53',
-  scheduleTag: '\u30b9\u30b1\u30b8\u30e5\u30fc\u30eb',
+  scheduleTitle: '\u30b9\u30b1\u30b8\u30e5\u30fc\u30eb',
+  scheduleTag: '\u5168\u4f53',
   scheduleFetchError: '\u30b9\u30b1\u30b8\u30e5\u30fc\u30eb\u306e\u53d6\u5f97\u306b\u5931\u6557\u3057\u307e\u3057\u305f',
   loading: '\u8aad\u307f\u8fbc\u307f\u4e2d...',
   recentPrefix: '\u76f4\u8fd1',
@@ -50,6 +51,9 @@ const TEXT = {
   toggleDone: '\u5b8c\u4e86\u306b\u3059\u308b',
   toggleUndone: '\u672a\u5b8c\u4e86\u306b\u623b\u3059',
   checkMark: '\u2713',
+  viewList: '\u30ea\u30b9\u30c8\u30d3\u30e5\u30fc',
+  viewGantt: '\u30ac\u30f3\u30c8\u30c1\u30e3\u30fc\u30c8',
+  viewCalendar: '\u30ab\u30ec\u30f3\u30c0\u30fc',
 };
 
 const formatMinutes = (minutes: number) => {
@@ -119,8 +123,10 @@ interface ScheduleOverviewCardProps {
   title?: string;
   tag?: string;
   onTaskClick?: (taskId: string) => void;
-  defaultViewMode?: 'list' | 'gantt';
+  defaultViewMode?: 'list' | 'gantt' | 'calendar';
 }
+
+type ViewMode = 'list' | 'gantt' | 'calendar';
 
 export function ScheduleOverviewCard({
   projectId,
@@ -132,13 +138,14 @@ export function ScheduleOverviewCard({
 }: ScheduleOverviewCardProps) {
   const timezone = useTimezone();
   const [horizon, setHorizon] = useState(14);
-  const [viewMode, setViewMode] = useState<'list' | 'gantt'>(defaultViewMode ?? 'list');
+  const [viewMode, setViewMode] = useState<ViewMode>(defaultViewMode ?? 'calendar');
   const { data, isLoading, error, refetch, isFetching } = useSchedule(horizon);
   const { getCapacityForDate } = useCapacitySettings();
   const { projects } = useProjects();
   const [isExcludedOpen, setIsExcludedOpen] = useState(false);
   const displayTitle = title ?? TEXT.scheduleTitle;
   const displayTag = tag ?? TEXT.scheduleTag;
+  const isCalendarView = viewMode === 'calendar';
   const todayIso = toDateKey(todayInTimezone(timezone).toJSDate(), timezone);
   const lockInfo = useMemo(() => {
     const raw = userStorage.get(LOCK_STORAGE_KEY);
@@ -161,9 +168,12 @@ export function ScheduleOverviewCard({
     mutationFn: ({ id, data }: { id: string; data: { status: TaskStatus } }) =>
       tasksApi.update(id, data),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['top3'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      for (const key of [
+        ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
+        ['task-detail'], ['task-assignments'], ['project'],
+      ]) {
+        queryClient.invalidateQueries({ queryKey: key });
+      }
     },
   });
 
@@ -394,11 +404,12 @@ export function ScheduleOverviewCard({
     e.stopPropagation();
     try {
       await tasksApi.doToday(taskId, { pin: true });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
-      queryClient.invalidateQueries({ queryKey: ['top3'] });
-      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['schedule'] });
+      for (const key of [
+        ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
+        ['task-detail'], ['task-assignments'], ['project'],
+      ]) {
+        queryClient.invalidateQueries({ queryKey: key });
+      }
     } catch {
       alert('今日やるの設定に失敗しました');
     }
@@ -470,15 +481,25 @@ export function ScheduleOverviewCard({
             <h3>{displayTitle}</h3>
             {activeLockInfo && <span className="schedule-lock-badge">{TEXT.locked}</span>}
           </div>
-          <span className="schedule-subtitle">{TEXT.recentPrefix}{horizon}{TEXT.dayUnit}</span>
+          {!isCalendarView && (
+            <span className="schedule-subtitle">{TEXT.recentPrefix}{horizon}{TEXT.dayUnit}</span>
+          )}
         </div>
         <div className="schedule-actions">
           <div className="view-mode-tabs">
             <button
+              className={`view-mode-tab ${viewMode === 'calendar' ? 'active' : ''}`}
+              onClick={() => setViewMode('calendar')}
+              type="button"
+              title={TEXT.viewCalendar}
+            >
+              <FaCalendarAlt />
+            </button>
+            <button
               className={`view-mode-tab ${viewMode === 'list' ? 'active' : ''}`}
               onClick={() => setViewMode('list')}
               type="button"
-              title="リストビュー"
+              title={TEXT.viewList}
             >
               <FaList />
             </button>
@@ -486,54 +507,60 @@ export function ScheduleOverviewCard({
               className={`view-mode-tab ${viewMode === 'gantt' ? 'active' : ''}`}
               onClick={() => setViewMode('gantt')}
               type="button"
-              title="ガントチャート"
+              title={TEXT.viewGantt}
             >
               <FaChartBar />
             </button>
           </div>
-          <div className="range-tabs">
-            {HORIZON_OPTIONS.map(option => (
+          {!isCalendarView && (
+            <>
+              <div className="range-tabs">
+                {HORIZON_OPTIONS.map(option => (
+                  <button
+                    key={option}
+                    className={`range-tab ${horizon === option ? 'active' : ''}`}
+                    onClick={() => setHorizon(option)}
+                    type="button"
+                  >
+                    {option}{TEXT.dayUnit}
+                  </button>
+                ))}
+              </div>
               <button
-                key={option}
-                className={`range-tab ${horizon === option ? 'active' : ''}`}
-                onClick={() => setHorizon(option)}
+                className="refresh-btn"
                 type="button"
+                onClick={() => refetch()}
+                disabled={isFetching}
               >
-                {option}{TEXT.dayUnit}
+                {isFetching ? TEXT.recalculating : TEXT.recalc}
               </button>
-            ))}
+            </>
+          )}
+        </div>
+      </div>
+
+      {!isCalendarView && (
+        <div className="schedule-summary">
+          <div className="summary-item">
+            <span className="summary-label">{TEXT.summaryDays}</span>
+            <span className="summary-value">{days.length}{TEXT.dayUnit}</span>
           </div>
-          <button
-            className="refresh-btn"
-            type="button"
-            onClick={() => refetch()}
-            disabled={isFetching}
-          >
-            {isFetching ? TEXT.recalculating : TEXT.recalc}
-          </button>
+          <div className="summary-item">
+            <span className="summary-label">{TEXT.summaryUnscheduled}</span>
+            <span className={`summary-value ${unscheduledCount > 0 ? 'warn' : ''}`}>
+              {unscheduledCount}{TEXT.countUnit}
+            </span>
+          </div>
+          <div className="summary-item">
+            <span className="summary-label">{TEXT.summaryExcluded}</span>
+            <span className={`summary-value ${excludedCount > 0 ? 'warn' : ''}`}>
+              {excludedCount}{TEXT.countUnit}
+            </span>
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="schedule-summary">
-        <div className="summary-item">
-          <span className="summary-label">{TEXT.summaryDays}</span>
-          <span className="summary-value">{days.length}{TEXT.dayUnit}</span>
-        </div>
-        <div className="summary-item">
-          <span className="summary-label">{TEXT.summaryUnscheduled}</span>
-          <span className={`summary-value ${unscheduledCount > 0 ? 'warn' : ''}`}>
-            {unscheduledCount}{TEXT.countUnit}
-          </span>
-        </div>
-        <div className="summary-item">
-          <span className="summary-label">{TEXT.summaryExcluded}</span>
-          <span className={`summary-value ${excludedCount > 0 ? 'warn' : ''}`}>
-            {excludedCount}{TEXT.countUnit}
-          </span>
-        </div>
-      </div>
-
-      {unscheduledCount > 0 && (
+      {!isCalendarView && unscheduledCount > 0 && (
         <div className="unscheduled-reasons">
           {unscheduledReasons.dependency_unresolved && (
             <span className="reason-chip">{TEXT.dependencyUnresolved} {unscheduledReasons.dependency_unresolved}{TEXT.countUnit}</span>
@@ -553,7 +580,7 @@ export function ScheduleOverviewCard({
         </div>
       )}
 
-      {excludedCount > 0 && (
+      {!isCalendarView && excludedCount > 0 && (
         <div className="excluded-inline">
           <button
             type="button"
@@ -581,7 +608,15 @@ export function ScheduleOverviewCard({
         </div>
       )}
 
-      {days.length === 0 ? (
+      {isCalendarView ? (
+        <div className="schedule-calendar-view">
+          <WeeklyMeetingsCard
+            embedded
+            defaultViewMode="workdays"
+            onTaskClick={onTaskClick}
+          />
+        </div>
+      ) : days.length === 0 ? (
         <div className="schedule-empty">
           <p>{TEXT.emptySchedule}</p>
         </div>

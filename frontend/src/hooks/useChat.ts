@@ -499,10 +499,13 @@ export function useChat() {
                 setSessionId(chunk.session_id);
               }
 
-              queryClient.invalidateQueries({ queryKey: ['tasks'] });
-              queryClient.invalidateQueries({ queryKey: ['top3'] });
-              queryClient.invalidateQueries({ queryKey: ['projects'] });
-              queryClient.invalidateQueries({ queryKey: ['meeting-agendas'] });
+              for (const key of [
+                ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
+                ['task-detail'], ['task-assignments'],
+                ['projects'], ['project'], ['meeting-agendas'],
+              ]) {
+                queryClient.invalidateQueries({ queryKey: key });
+              }
               break;
 
             case 'proposal':
@@ -628,12 +631,45 @@ export function useChat() {
     setSessionId(undefined);
   }, [setSessionId]);
 
+  /** Patch a toolCall result after proposal approval (inject task_id etc.) */
+  const updateProposalResult = useCallback(
+    (proposalId: string, approvalResult: { task_id?: string; project_id?: string }) => {
+      setMessages((prev) =>
+        prev.map((msg) => {
+          if (!msg.toolCalls) return msg;
+          let changed = false;
+          const updatedToolCalls = msg.toolCalls.map((tc) => {
+            if (!tc.result) return tc;
+            try {
+              const parsed = JSON.parse(tc.result);
+              if (parsed.proposal_id === proposalId) {
+                changed = true;
+                return {
+                  ...tc,
+                  result: JSON.stringify({
+                    ...parsed,
+                    ...approvalResult,
+                    status: 'approved',
+                  }),
+                };
+              }
+            } catch { /* ignore */ }
+            return tc;
+          });
+          return changed ? { ...msg, toolCalls: updatedToolCalls } : msg;
+        })
+      );
+    },
+    [],
+  );
+
   return {
     messages,
     sendMessage,
     sendMessageStream,
     cancelStream,
     clearChat,
+    updateProposalResult,
     sessions,
     fetchSessions,
     loadHistory,

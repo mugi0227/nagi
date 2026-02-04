@@ -98,6 +98,16 @@ export function useTaskModal(options: UseTaskModalOptions): UseTaskModalReturn {
   const [isCreating, setIsCreating] = useState(false);
   const [taskCache, setTaskCache] = useState<Record<string, Task>>({});
 
+  const invalidateTaskQueries = () => {
+    for (const key of [
+      ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
+      ['task-detail'], ['task-assignments'], ['project'],
+    ]) {
+      queryClient.invalidateQueries({ queryKey: key });
+    }
+    onRefetch?.();
+  };
+
   // Mutations for inline updates
   const updateMutation = useMutation({
     mutationFn: async ({ id, data }: { id: string; data: TaskUpdate }): Promise<void> => {
@@ -107,47 +117,24 @@ export function useTaskModal(options: UseTaskModalOptions): UseTaskModalReturn {
         await tasksApi.update(id, data);
       }
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
-      queryClient.invalidateQueries({ queryKey: ['top3'] });
-      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['schedule'] });
-      onRefetch?.();
-    },
+    onSuccess: invalidateTaskQueries,
   });
 
   const createMutation = useMutation({
     mutationFn: async (data: TaskCreate): Promise<Task> => {
-      // Always use tasksApi.create to get the created task back
       const created = await tasksApi.create(data);
-      // Also call onCreateTask if provided (for any additional handling)
       if (onCreateTask) {
         await onCreateTask(data);
       }
       return created;
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
-      queryClient.invalidateQueries({ queryKey: ['top3'] });
-      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['schedule'] });
-      onRefetch?.();
-    },
+    onSuccess: invalidateTaskQueries,
   });
 
   const deleteMutation = useMutation({
     mutationFn: (taskId: string) =>
       onDeleteTask ? onDeleteTask(taskId) : tasksApi.delete(taskId),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['subtasks'] });
-      queryClient.invalidateQueries({ queryKey: ['top3'] });
-      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['schedule'] });
-      onRefetch?.();
-    },
+    onSuccess: invalidateTaskQueries,
   });
 
   // Task lookup combining cache and tasks list
@@ -360,11 +347,7 @@ export function useTaskModal(options: UseTaskModalOptions): UseTaskModalReturn {
               await updateMutation.mutateAsync({ id: taskId, data: updates });
             }}
             onCreateSubtask={openCreateSubtaskForm}
-            onActionItemsCreated={() => {
-              queryClient.invalidateQueries({ queryKey: ['tasks'] });
-              queryClient.invalidateQueries({ queryKey: ['subtasks'] });
-              onRefetch?.();
-            }}
+            onActionItemsCreated={invalidateTaskQueries}
             memberOptions={memberOptions}
             taskAssignments={taskAssignments}
             onAssigneeChange={onAssigneeChange}

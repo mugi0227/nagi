@@ -59,25 +59,24 @@ export function TasksPage() {
     },
   });
 
+  const invalidateTaskQueries = () => {
+    for (const key of [
+      ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
+      ['task-detail'], ['task-assignments'], ['project'],
+    ]) {
+      queryClient.invalidateQueries({ queryKey: key });
+    }
+  };
+
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: TaskUpdate }) =>
       tasksApi.update(id, data),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['top3'] });
-      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['schedule'] });
-    },
+    onSuccess: invalidateTaskQueries,
   });
 
   const deleteMutation = useMutation({
     mutationFn: tasksApi.delete,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['top3'] });
-      queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
-      queryClient.invalidateQueries({ queryKey: ['schedule'] });
-    },
+    onSuccess: invalidateTaskQueries,
   });
 
   const handleUpdateStatus = async (taskId: string, newStatus: TaskStatus) => {
