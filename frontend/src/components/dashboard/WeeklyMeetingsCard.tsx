@@ -186,8 +186,10 @@ export function WeeklyMeetingsCard({
   const [hourHeight, setHourHeight] = useState(DEFAULT_HOUR_HEIGHT);
   const [isSubmitting, setIsSubmitting] = useState<string | null>(null);
   const [localDoneIds, setLocalDoneIds] = useState<Set<string>>(new Set());
+  const [doneOverrides, setDoneOverrides] = useState<Record<string, MeetingBlock[]>>({});
   const [isPostponingPinned, setIsPostponingPinned] = useState(false);
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const blocksRef = useRef<MeetingBlock[]>([]);
 
   const today = todayInTimezone(timezone);
   const todayKey = toDateKey(today.toJSDate(), timezone);
@@ -243,6 +245,10 @@ export function WeeklyMeetingsCard({
       return viewStart.plus({ days: index });
     })
   ), [viewStartKey, viewDaysCount]);
+  const visibleDayKeys = useMemo(
+    () => new Set(days.map(day => toLocalDateKey(day.toJSDate(), timezone))),
+    [days, timezone],
+  );
 
   const { data: scheduleData } = useQuery({
     queryKey: [
@@ -281,6 +287,7 @@ export function WeeklyMeetingsCard({
     }),
     onSuccess: () => {
       setLocalDoneIds(new Set());
+      setDoneOverrides({});
       queryClient.invalidateQueries({ queryKey: ['schedule'] });
     },
     onError: () => {
@@ -321,6 +328,22 @@ export function WeeklyMeetingsCard({
     recalcMutation.mutate();
   };
 
+  const captureDoneBlocks = useCallback((taskId: string) => {
+    const blocks = blocksRef.current.filter(block => block.taskId === taskId);
+    if (!blocks.length) return false;
+    setDoneOverrides(prev => ({ ...prev, [taskId]: blocks.map(block => ({ ...block })) }));
+    return true;
+  }, []);
+
+  const removeDoneOverride = useCallback((taskId: string) => {
+    setDoneOverrides(prev => {
+      if (!prev[taskId]) return prev;
+      const next = { ...prev };
+      delete next[taskId];
+      return next;
+    });
+  }, []);
+
   const handleToggleComplete = async (taskId: string, currentStatus: Task['status'], e: React.MouseEvent) => {
     e.stopPropagation();
     if (isSubmitting) return;
@@ -330,6 +353,7 @@ export function WeeklyMeetingsCard({
       try {
         setLocalDoneIds(prev => { const next = new Set(prev); next.delete(taskId); return next; });
         await tasksApi.update(taskId, { status: 'TODO' });
+        removeDoneOverride(taskId);
         invalidateAfterChange(true);
       } catch {
         alert(TEXT.statusError);
@@ -340,6 +364,7 @@ export function WeeklyMeetingsCard({
     }
 
     setIsSubmitting(taskId);
+    const captured = captureDoneBlocks(taskId);
     try {
       const task = await tasksApi.getById(taskId);
       if (task.dependency_ids && task.dependency_ids.length > 0) {
@@ -349,6 +374,9 @@ export function WeeklyMeetingsCard({
         const hasPending = deps.some(dep => !dep || dep.status !== 'DONE');
         if (hasPending) {
           alert(TEXT.dependencyAlert);
+          if (captured) {
+            removeDoneOverride(taskId);
+          }
           setIsSubmitting(null);
           return;
         }
@@ -357,6 +385,9 @@ export function WeeklyMeetingsCard({
       await tasksApi.update(taskId, { status: 'DONE' });
       invalidateAfterChange(true);
     } catch {
+      if (captured) {
+        removeDoneOverride(taskId);
+      }
       setLocalDoneIds(prev => { const next = new Set(prev); next.delete(taskId); return next; });
       alert(TEXT.statusError);
     } finally {
@@ -676,16 +707,53 @@ export function WeeklyMeetingsCard({
     () => (hasPlanBlocks ? planBlocks.filter(block => block.kind === 'meeting') : meetingBlocksFromTasks),
     [hasPlanBlocks, planBlocks, meetingBlocksFromTasks],
   );
+  const doneOverrideBlocks = useMemo(() => {
+    const overrides = Object.values(doneOverrides).flat();
+    if (!overrides.length) {
+      return { auto: [] as MeetingBlock[], meeting: [] as MeetingBlock[] };
+    }
+    const auto: MeetingBlock[] = [];
+    const meeting: MeetingBlock[] = [];
+    overrides.forEach(block => {
+      if (!visibleDayKeys.has(block.dayKey)) return;
+      if (block.kind === 'meeting') {
+        meeting.push(block);
+      } else {
+        auto.push(block);
+      }
+    });
+    return { auto, meeting };
+  }, [doneOverrides, visibleDayKeys]);
+  const renderAutoBlocks = useMemo(() => {
+    if (!doneOverrideBlocks.auto.length) return autoBlocks;
+    const overrideIds = new Set(doneOverrideBlocks.auto.map(block => block.taskId));
+    return [
+      ...autoBlocks.filter(block => !overrideIds.has(block.taskId)),
+      ...doneOverrideBlocks.auto,
+    ];
+  }, [autoBlocks, doneOverrideBlocks.auto]);
+  const renderMeetingBlocks = useMemo(() => {
+    if (!doneOverrideBlocks.meeting.length) return meetingBlocks;
+    const overrideIds = new Set(doneOverrideBlocks.meeting.map(block => block.taskId));
+    return [
+      ...meetingBlocks.filter(block => !overrideIds.has(block.taskId)),
+      ...doneOverrideBlocks.meeting,
+    ];
+  }, [meetingBlocks, doneOverrideBlocks.meeting]);
+
+  useEffect(() => {
+    blocksRef.current = [...renderAutoBlocks, ...renderMeetingBlocks];
+  }, [renderAutoBlocks, renderMeetingBlocks]);
 
   const autoBlocksByDay = useMemo(() => {
     const grouped = new Map<string, MeetingBlock[]>();
-    autoBlocks.forEach(block => {
+    renderAutoBlocks.forEach(block => {
       const list = grouped.get(block.dayKey) ?? [];
       list.push(block);
       grouped.set(block.dayKey, list);
     });
     return grouped;
-  }, [autoBlocks]);
+  }, [renderAutoBlocks]);
 
   const timeBounds = useMemo(() => {
     const workdayBounds = Array.from(workdayConfigByDay.values()).reduce<TimeInterval | null>(
@@ -701,7 +769,7 @@ export function WeeklyMeetingsCard({
       },
       null
     );
-    const allBlocks = [...meetingBlocks, ...autoBlocks];
+    const allBlocks = [...renderMeetingBlocks, ...renderAutoBlocks];
     if (!allBlocks.length && !workdayBounds) {
       return { startHour: DEFAULT_START_HOUR, endHour: DEFAULT_END_HOUR };
     }
@@ -722,11 +790,11 @@ export function WeeklyMeetingsCard({
     startHour = Math.max(MIN_START_HOUR, startHour);
     endHour = Math.min(MAX_END_HOUR, Math.max(startHour + 1, endHour));
     return { startHour, endHour };
-  }, [autoBlocks, meetingBlocks, workdayConfigByDay]);
+  }, [renderAutoBlocks, renderMeetingBlocks, workdayConfigByDay]);
 
   const meetingsByDay = useMemo(() => {
     const grouped = new Map<string, MeetingBlock[]>();
-    meetingBlocks.forEach(meeting => {
+    renderMeetingBlocks.forEach(meeting => {
       const list = grouped.get(meeting.dayKey) ?? [];
       list.push({ ...meeting });
       grouped.set(meeting.dayKey, list);
@@ -754,7 +822,7 @@ export function WeeklyMeetingsCard({
     });
 
     return results;
-  }, [meetingBlocks]);
+  }, [renderMeetingBlocks]);
 
   const hourCount = timeBounds.endHour - timeBounds.startHour;
   const hours = useMemo(() => (
@@ -769,7 +837,7 @@ export function WeeklyMeetingsCard({
     return formatRangeLabel(viewStart.toJSDate(), viewEndDate.toJSDate(), timezone);
   }, [viewMode, viewStartKey, viewEndKey, timezone]);
   const gridHeight = hourCount * hourHeight;
-  const scheduleHasItems = meetingBlocks.length > 0 || autoBlocks.length > 0;
+  const scheduleHasItems = renderMeetingBlocks.length > 0 || renderAutoBlocks.length > 0;
 
   const currentTimeInBounds =
     nowMinutes >= timeBounds.startHour * 60 && nowMinutes < timeBounds.endHour * 60;
