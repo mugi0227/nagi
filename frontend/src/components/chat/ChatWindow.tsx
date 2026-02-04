@@ -1,5 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { FaClock, FaComments, FaFolder, FaImage, FaPlus, FaRobot, FaXmark } from 'react-icons/fa6';
 import { tasksApi } from '../../api/tasks';
 import { projectsApi } from '../../api/projects';
@@ -497,7 +498,7 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
         />
       )}
 
-      {taskModal.renderModals()}
+      {createPortal(taskModal.renderModals(), document.body)}
     </div>
   );
 }
