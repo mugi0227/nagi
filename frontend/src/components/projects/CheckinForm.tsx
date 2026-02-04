@@ -10,6 +10,7 @@ import type {
   CheckinItem,
   CheckinItemCategory,
   CheckinMood,
+  CheckinV2,
   Task,
   ProjectMember,
 } from '../../api/types';
@@ -26,6 +27,7 @@ interface CheckinFormProps {
   isSubmitting?: boolean;
   hideCancel?: boolean;
   compact?: boolean;
+  editData?: CheckinV2;
 }
 
 const MOOD_OPTIONS: { value: CheckinMood; label: string; emoji: string; color: string; bgColor: string }[] = [
@@ -44,20 +46,27 @@ export function CheckinForm({
   isSubmitting = false,
   hideCancel = false,
   compact = false,
+  editData,
 }: CheckinFormProps) {
   const timezone = useTimezone();
+  const isEditing = Boolean(editData);
   const currentMember = members.find(m => m.member_user_id === currentUserId);
   const memberUserId = currentMember?.member_user_id || currentUserId;
 
+  // Parse editData items into form fields
+  const editBlocker = editData?.items?.find(i => i.category === 'blocker');
+  const editDiscussion = editData?.items?.find(i => i.category === 'discussion');
+  const editRequest = editData?.items?.find(i => i.category === 'request');
+
   // Form state
-  const [hasBlocker, setHasBlocker] = useState(false);
-  const [blockerContent, setBlockerContent] = useState('');
-  const [blockerTaskId, setBlockerTaskId] = useState<string | undefined>();
-  const [discussionContent, setDiscussionContent] = useState('');
-  const [hasRequest, setHasRequest] = useState(false);
-  const [requestContent, setRequestContent] = useState('');
-  const [mood, setMood] = useState<CheckinMood | undefined>();
-  const [freeComment, setFreeComment] = useState('');
+  const [hasBlocker, setHasBlocker] = useState(Boolean(editBlocker));
+  const [blockerContent, setBlockerContent] = useState(editBlocker?.content ?? '');
+  const [blockerTaskId, setBlockerTaskId] = useState<string | undefined>(editBlocker?.related_task_id);
+  const [discussionContent, setDiscussionContent] = useState(editDiscussion?.content ?? '');
+  const [hasRequest, setHasRequest] = useState(Boolean(editRequest));
+  const [requestContent, setRequestContent] = useState(editRequest?.content ?? '');
+  const [mood, setMood] = useState<CheckinMood | undefined>(editData?.mood as CheckinMood | undefined);
+  const [freeComment, setFreeComment] = useState(editData?.free_comment ?? '');
   const [formError, setFormError] = useState<string | null>(null);
 
   const getTaskTitle = (taskId: string | undefined): string | undefined => {
@@ -174,7 +183,7 @@ export function CheckinForm({
       }}>
         <h3 style={{ fontSize: compact ? '16px' : '20px', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
           <span style={{ fontSize: compact ? '18px' : '24px' }}>📋</span>
-          Check-in
+          {isEditing ? 'Check-in 編集' : 'Check-in'}
         </h3>
         <p style={{ fontSize: compact ? '12px' : '14px', opacity: 0.9, marginTop: '2px' }}>
           {formatDate(
@@ -454,7 +463,7 @@ export function CheckinForm({
               width: hideCancel ? '100%' : 'auto',
             }}
           >
-            {isSubmitting ? '保存中...' : '保存する'}
+            {isSubmitting ? '保存中...' : isEditing ? '更新する' : '保存する'}
           </button>
         </div>
       </div>

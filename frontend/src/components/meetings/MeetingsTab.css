@@ -620,6 +620,31 @@
     overflow-y: auto;
 }
 
+.checkin-item-edit-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 4px;
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0;
+    transition: opacity 0.2s, color 0.2s, background 0.2s;
+}
+
+.checkin-list-item:hover .checkin-item-edit-btn {
+    opacity: 1;
+}
+
+.checkin-item-edit-btn:hover {
+    color: #3b82f6;
+    background: rgba(59, 130, 246, 0.1);
+}
+
 /* Check-in Panel Styles */
 .checkin-panel-header {
     display: flex;

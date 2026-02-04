@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { FaCalendarAlt, FaList, FaPlus, FaArrowLeft, FaCog, FaTrash, FaRobot } from 'react-icons/fa';
+import { FaCalendarAlt, FaList, FaPlus, FaArrowLeft, FaCog, FaTrash, FaRobot, FaEdit } from 'react-icons/fa';
 import { api as client } from '../../api/client';
 import { projectsApi } from '../../api/projects';
 import { tasksApi } from '../../api/tasks';
-import type { CheckinCreateV2, CheckinV2, ProjectMember, RecurringMeeting, Task, TaskUpdate } from '../../api/types';
+import type { CheckinCreateV2, CheckinUpdateV2, CheckinV2, ProjectMember, RecurringMeeting, Task, TaskUpdate } from '../../api/types';
 import type { DraftCardData } from '../chat/DraftCard';
 import { CreateMeetingModal } from './CreateMeetingModal';
 import { CheckinForm } from '../projects/CheckinForm';
@@ -41,6 +41,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
     const [isLoading, setIsLoading] = useState(true);
     const [isCheckinSaving, setIsCheckinSaving] = useState(false);
     const [showCheckinForm, setShowCheckinForm] = useState(false);
+    const [editingCheckin, setEditingCheckin] = useState<CheckinV2 | null>(null);
     const [checkinsV2, setCheckinsV2] = useState<CheckinV2[]>([]);
 
     // Auto-open CheckinForm when navigated with ?checkin=true (e.g. from dashboard alert)
@@ -132,6 +133,34 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
         }
     };
 
+    const handleUpdateCheckinV2 = async (data: CheckinCreateV2) => {
+        if (!editingCheckin) return;
+        setIsCheckinSaving(true);
+        try {
+            const updateData: CheckinUpdateV2 = {
+                items: data.items,
+                mood: data.mood,
+                free_comment: data.free_comment,
+            };
+            await projectsApi.updateCheckinV2(projectId, editingCheckin.id, updateData);
+            const response = await projectsApi.listCheckinsV2(projectId);
+            setCheckinsV2(response || []);
+            setShowCheckinForm(false);
+            setEditingCheckin(null);
+        } catch (err) {
+            console.error('Failed to update checkin:', err);
+            throw err;
+        } finally {
+            setIsCheckinSaving(false);
+        }
+    };
+
+    const handleEditCheckin = (checkin: CheckinV2, e: React.MouseEvent) => {
+        e.stopPropagation();
+        setEditingCheckin(checkin);
+        setShowCheckinForm(true);
+    };
+
     const handleDeleteCheckin = async (checkinId: string, e: React.MouseEvent) => {
         e.stopPropagation();
         if (!confirm('このチェックインを削除しますか？')) return;
@@ -145,11 +174,13 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
     };
 
     const invalidateMeetingQueries = () => {
-        queryClient.invalidateQueries({ queryKey: ['meetings', 'project', projectId] });
-        queryClient.invalidateQueries({ queryKey: ['meetings', 'week'] });
-        queryClient.invalidateQueries({ queryKey: ['tasks'] });
-        queryClient.invalidateQueries({ queryKey: ['schedule'] });
-        queryClient.invalidateQueries({ queryKey: ['today-tasks'] });
+        for (const key of [
+            ['meetings', 'project', projectId], ['meetings', 'week'], ['meetings'],
+            ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
+            ['task-detail'], ['task-assignments'], ['project'],
+        ]) {
+            queryClient.invalidateQueries({ queryKey: key });
+        }
     };
 
     const handleMeetingCreated = () => {
@@ -254,21 +285,23 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
                                 <div className="checkin-panel-header">
                                     <button
                                         className="checkin-back-btn"
-                                        onClick={() => setShowCheckinForm(false)}
+                                        onClick={() => { setShowCheckinForm(false); setEditingCheckin(null); }}
                                     >
                                         <FaArrowLeft /> 戻る
                                     </button>
                                 </div>
                                 <CheckinForm
+                                    key={editingCheckin?.id ?? 'new'}
                                     projectId={projectId}
                                     members={members}
                                     tasks={tasks}
                                     currentUserId={currentUserId}
-                                    onSubmit={handleSubmitCheckinV2}
-                                    onCancel={() => setShowCheckinForm(false)}
+                                    onSubmit={editingCheckin ? handleUpdateCheckinV2 : handleSubmitCheckinV2}
+                                    onCancel={() => { setShowCheckinForm(false); setEditingCheckin(null); }}
                                     isSubmitting={isCheckinSaving}
                                     hideCancel
                                     compact
+                                    editData={editingCheckin ?? undefined}
                                 />
                             </>
                         ) : (
@@ -280,7 +313,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
                                     </div>
                                     <button
                                         className="checkin-add-btn"
-                                        onClick={() => setShowCheckinForm(true)}
+                                        onClick={() => { setEditingCheckin(null); setShowCheckinForm(true); }}
                                     >
                                         <FaPlus /> 新規
                                     </button>
@@ -317,6 +350,15 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
                                                             <span className="checkin-item-mood">
                                                                 {checkin.mood === 'good' ? '😊' : checkin.mood === 'okay' ? '😐' : '😰'}
                                                             </span>
+                                                        )}
+                                                        {checkin.member_user_id === currentUserId && (
+                                                            <button
+                                                                className="checkin-item-edit-btn"
+                                                                onClick={(e) => handleEditCheckin(checkin, e)}
+                                                                title="編集"
+                                                            >
+                                                                <FaEdit />
+                                                            </button>
                                                         )}
                                                         {(canDeleteAnyCheckin || checkin.member_user_id === currentUserId) && (
                                                             <button
@@ -384,21 +426,23 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
                                 <div className="checkin-panel-header">
                                     <button
                                         className="checkin-back-btn"
-                                        onClick={() => setShowCheckinForm(false)}
+                                        onClick={() => { setShowCheckinForm(false); setEditingCheckin(null); }}
                                     >
                                         <FaArrowLeft /> 戻る
                                     </button>
                                 </div>
                                 <CheckinForm
+                                    key={editingCheckin?.id ?? 'new'}
                                     projectId={projectId}
                                     members={members}
                                     tasks={tasks}
                                     currentUserId={currentUserId}
-                                    onSubmit={handleSubmitCheckinV2}
-                                    onCancel={() => setShowCheckinForm(false)}
+                                    onSubmit={editingCheckin ? handleUpdateCheckinV2 : handleSubmitCheckinV2}
+                                    onCancel={() => { setShowCheckinForm(false); setEditingCheckin(null); }}
                                     isSubmitting={isCheckinSaving}
                                     hideCancel
                                     compact
+                                    editData={editingCheckin ?? undefined}
                                 />
                             </>
                         ) : (
@@ -410,7 +454,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
                                     </div>
                                     <button
                                         className="checkin-add-btn"
-                                        onClick={() => setShowCheckinForm(true)}
+                                        onClick={() => { setEditingCheckin(null); setShowCheckinForm(true); }}
                                     >
                                         <FaPlus /> 新規
                                     </button>
@@ -447,6 +491,15 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
                                                             <span className="checkin-item-mood">
                                                                 {checkin.mood === 'good' ? '😊' : checkin.mood === 'okay' ? '😐' : '😰'}
                                                             </span>
+                                                        )}
+                                                        {checkin.member_user_id === currentUserId && (
+                                                            <button
+                                                                className="checkin-item-edit-btn"
+                                                                onClick={(e) => handleEditCheckin(checkin, e)}
+                                                                title="編集"
+                                                            >
+                                                                <FaEdit />
+                                                            </button>
                                                         )}
                                                         {(canDeleteAnyCheckin || checkin.member_user_id === currentUserId) && (
                                                             <button
