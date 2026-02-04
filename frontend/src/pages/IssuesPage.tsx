@@ -1,4 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { issuesApi } from '../api/issues';
 import type { Issue, IssueCategory, IssueStatus, IssueComment, IssueStatusUpdate } from '../api/types';
 import { useTimezone } from '../hooks/useTimezone';
@@ -373,11 +375,19 @@ export function IssuesPage() {
                   )}
 
                   <h3 className="issue-title">{issue.title}</h3>
-                  <p className="issue-content">{issue.content}</p>
+                  <div className="issue-content markdown-content">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                      {issue.content}
+                    </ReactMarkdown>
+                  </div>
                   {issue.admin_response && (
                     <div className="admin-response">
                       <span className="admin-label">開発者からの回答:</span>
-                      <p>{issue.admin_response}</p>
+                      <div className="markdown-content">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          {issue.admin_response}
+                        </ReactMarkdown>
+                      </div>
                     </div>
                   )}
                   <div className="issue-footer">
@@ -429,7 +439,11 @@ export function IssuesPage() {
                                   </button>
                                 )}
                               </div>
-                              <p className="comment-content">{comment.content}</p>
+                              <div className="comment-content markdown-content">
+                                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                                  {comment.content}
+                                </ReactMarkdown>
+                              </div>
                             </div>
                           ))}
                         </div>
