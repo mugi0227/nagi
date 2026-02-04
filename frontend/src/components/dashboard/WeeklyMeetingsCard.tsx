@@ -187,6 +187,14 @@ export function WeeklyMeetingsCard({
   const viewEnd = viewStart.plus({ days: viewDaysCount });
   const viewStartKey = toDateKey(viewStart.toJSDate(), timezone);
   const viewEndKey = toDateKey(viewEnd.toJSDate(), timezone);
+  const todayStart = today.startOf('day');
+  const viewStartDay = viewStart.startOf('day');
+  const scheduleStart = viewStartDay < todayStart ? todayStart : viewStartDay;
+  const scheduleStartKey = toDateKey(scheduleStart.toJSDate(), timezone);
+  const pastDaysCount = viewStartDay < todayStart
+    ? Math.round(todayStart.diff(viewStartDay, 'days').days)
+    : 0;
+  const scheduleDaysCount = Math.max(0, viewDaysCount - pastDaysCount);
 
   const isCurrentView = viewMode === 'today' ? dayOffset === 0 : weekOffset === 0;
   const goToPrevRange = () => {
@@ -218,16 +226,26 @@ export function WeeklyMeetingsCard({
   ), [viewStartKey, viewDaysCount]);
 
   const { data: scheduleData } = useQuery({
-    queryKey: ['schedule', 'view', viewMode, viewStartKey, viewDaysCount, capacityHours, bufferHours, capacityByWeekday],
+    queryKey: [
+      'schedule',
+      'view',
+      viewMode,
+      scheduleStartKey,
+      scheduleDaysCount,
+      capacityHours,
+      bufferHours,
+      capacityByWeekday,
+    ],
     queryFn: () => tasksApi.getSchedule({
-      startDate: viewStartKey,
-      maxDays: viewDaysCount,
+      startDate: scheduleStartKey,
+      maxDays: scheduleDaysCount,
       capacityHours,
       bufferHours,
       capacityByWeekday,
       filterByAssignee: true,
     }),
     staleTime: 30_000,
+    enabled: scheduleDaysCount > 0,
   });
 
   const { data: meetingTasks = [], isLoading, error, refetch } = useQuery({

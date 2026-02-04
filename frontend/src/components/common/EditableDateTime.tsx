@@ -1,7 +1,7 @@
 import { AnimatePresence, motion } from 'framer-motion';
 import { DateTime } from 'luxon';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FaCheck, FaEdit, FaTimes, FaTrash } from 'react-icons/fa';
+import { FaCheck, FaClock, FaEdit, FaTimes, FaTrash } from 'react-icons/fa';
 import './EditableDateTime.css';
 
 interface EditableDateTimeProps {
@@ -97,6 +97,14 @@ export function EditableDateTime({
     }
   }, [onSave, isSaving]);
 
+  const handleNow = useCallback(() => {
+    const now = DateTime.now().setZone(timezone);
+    const formatted = showTime
+      ? now.toFormat("yyyy-MM-dd'T'HH:mm")
+      : now.toFormat('yyyy-MM-dd');
+    setPendingValue(formatted);
+  }, [timezone, showTime]);
+
   const handleCancel = useCallback(() => {
     setIsEditing(false);
     setPendingValue('');
@@ -139,6 +147,15 @@ export function EditableDateTime({
               disabled={isSaving}
             />
             <div className="datetime-actions">
+              <button
+                type="button"
+                className="datetime-btn now"
+                onClick={handleNow}
+                disabled={isSaving}
+                title="今"
+              >
+                <FaClock />
+              </button>
               <button
                 type="button"
                 className="datetime-btn save"
