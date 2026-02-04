@@ -150,6 +150,10 @@
   margin-bottom: 1rem;
 }
 
+.schedule-calendar-view {
+  margin-top: 0.5rem;
+}
+
 .summary-item {
   background: var(--primary-light);
   border-radius: var(--radius-md);

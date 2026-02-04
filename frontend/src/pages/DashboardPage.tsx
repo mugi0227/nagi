@@ -5,7 +5,6 @@ import { DailyBriefingCard } from '../components/dashboard/DailyBriefingCard';
 import { TodayTasksCard } from '../components/dashboard/TodayTasksCard';
 import { OverdueCheckinCard } from '../components/dashboard/OverdueCheckinCard';
 import { ScheduleOverviewCard } from '../components/dashboard/ScheduleOverviewCard';
-import { WeeklyMeetingsCard } from '../components/dashboard/WeeklyMeetingsCard';
 import { useTaskModal } from '../hooks/useTaskModal';
 import { useTasks } from '../hooks/useTasks';
 import './DashboardPage.css';
@@ -77,8 +76,10 @@ export function DashboardPage() {
         variants={itemVariants}
         className="dashboard-bottom-section"
       >
-        <ScheduleOverviewCard onTaskClick={taskModal.openTaskDetailById} />
-        <WeeklyMeetingsCard />
+        <ScheduleOverviewCard
+          onTaskClick={taskModal.openTaskDetailById}
+          defaultViewMode="calendar"
+        />
       </motion.div>
 
       {isBriefingOpen && (
