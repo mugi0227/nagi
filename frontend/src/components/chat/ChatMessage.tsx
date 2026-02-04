@@ -1,4 +1,4 @@
-import type { CSSProperties } from 'react';
+import { type CSSProperties, useMemo } from 'react';
 import { FaSpinner, FaCheck, FaTriangleExclamation } from 'react-icons/fa6';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
@@ -6,6 +6,7 @@ import type { ToolCall, ProposalInfo, TimelineEvent } from '../../hooks/useChat'
 import type { Task } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, toDateKey, toDateTime } from '../../utils/dateTime';
+import { CreatedTaskCards } from './CreatedTaskCards';
 import './ChatMessage.css';
 
 const PREVIEW_DEFAULT_START = 8;
@@ -203,6 +204,28 @@ const buildCombinedMeetingPreview = (
   };
 };
 
+const TASK_CREATION_TOOLS = new Set(['create_task', 'create_meeting']);
+
+function extractCreatedTaskIds(toolCalls?: ToolCall[]): string[] {
+  if (!toolCalls) return [];
+  const ids: string[] = [];
+  for (const tc of toolCalls) {
+    if (tc.status !== 'completed' || !tc.result) continue;
+    if (!TASK_CREATION_TOOLS.has(tc.name)) continue;
+    try {
+      const parsed = JSON.parse(tc.result);
+      if (parsed.status === 'pending_approval') continue;
+      const taskId = parsed.id ?? parsed.task_id;
+      if (typeof taskId === 'string' && taskId) {
+        ids.push(taskId);
+      }
+    } catch {
+      // ignore parse errors
+    }
+  }
+  return ids;
+}
+
 interface ChatMessageProps {
   role: 'user' | 'assistant';
   content: string;
@@ -214,6 +237,7 @@ interface ChatMessageProps {
   imageUrl?: string;
   toolPlacement?: 'before' | 'after';
   timeline?: TimelineEvent[];
+  onTaskClick?: (taskId: string) => void;
 }
 
 export function ChatMessage({
@@ -227,9 +251,11 @@ export function ChatMessage({
   imageUrl,
   toolPlacement = 'before',
   timeline,
+  onTaskClick,
 }: ChatMessageProps) {
   const timezone = useTimezone();
   const combinedPreview = buildCombinedMeetingPreview(proposals, meetingTasks, timezone);
+  const createdTaskIds = useMemo(() => extractCreatedTaskIds(toolCalls), [toolCalls]);
 
   const formatTime = (date: Date) => {
     return formatDate(date, { hour: '2-digit', minute: '2-digit' }, timezone);
@@ -430,6 +456,10 @@ export function ChatMessage({
         {/* Questions are now handled by QuestionsPanel in ChatWindow */}
 
         {messageText}
+
+        {createdTaskIds.length > 0 && onTaskClick && (
+          <CreatedTaskCards taskIds={createdTaskIds} onTaskClick={onTaskClick} />
+        )}
 
         {toolPlacement === 'after' && toolChips}
 
