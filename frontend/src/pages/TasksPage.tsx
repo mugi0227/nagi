@@ -62,7 +62,7 @@ export function TasksPage() {
     },
   });
 
-  const { deleteGeneratedTasks } = useRecurringTasks();
+  const { deleteGeneratedTasks, generateTasks } = useRecurringTasks();
   const { data: currentUser } = useCurrentUser();
 
   // Fetch assignments for tasks with requires_all_completion
@@ -222,6 +222,7 @@ export function TasksPage() {
         onDeleteTask={(taskId) => deleteMutation.mutate(taskId)}
         onTaskClick={taskModal.openTaskDetail}
         onDeleteGeneratedTasks={deleteGeneratedTasks}
+        onGenerateTasks={generateTasks}
         sortBy={sortBy}
         compact={viewMode === 'compact'}
         taskAssignments={taskAssignments}

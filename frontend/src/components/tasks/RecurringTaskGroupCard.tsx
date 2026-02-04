@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { FaRepeat, FaChevronDown, FaChevronRight, FaCheck } from 'react-icons/fa6';
-import { FaTrash } from 'react-icons/fa';
+import { FaTrash, FaSyncAlt } from 'react-icons/fa';
 import type { Task, TaskStatus } from '../../api/types';
 import { formatDate } from '../../utils/dateTime';
 import './RecurringTaskGroupCard.css';
@@ -19,6 +19,7 @@ interface RecurringTaskGroupCardProps {
   onTaskClick?: (task: Task) => void;
   onUpdateTask?: (id: string, status: TaskStatus) => void;
   onDeleteAll?: (recurringTaskId: string) => void;
+  onGenerate?: (recurringTaskId: string) => void;
   compact?: boolean;
 }
 
@@ -29,6 +30,7 @@ export function RecurringTaskGroupCard({
   onTaskClick,
   onUpdateTask,
   onDeleteAll,
+  onGenerate,
   compact = false,
 }: RecurringTaskGroupCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -69,6 +71,15 @@ export function RecurringTaskGroupCard({
             <span className="rtg-compact-due">
               ~{formatDate(nextDueDate, { month: 'numeric', day: 'numeric' })}
             </span>
+          )}
+          {onGenerate && (
+            <button
+              className="rtg-action-btn compact"
+              onClick={(e) => { e.stopPropagation(); onGenerate(recurringTaskId); }}
+              title="タスクを再生成"
+            >
+              <FaSyncAlt />
+            </button>
           )}
           {onDeleteAll && (
             <button
@@ -113,6 +124,15 @@ export function RecurringTaskGroupCard({
       <div className="rtg-header">
         <FaRepeat className="rtg-icon" />
         <span className="rtg-title">{title}</span>
+        {onGenerate && (
+          <button
+            className="rtg-action-btn"
+            onClick={(e) => { e.stopPropagation(); onGenerate(recurringTaskId); }}
+            title="タスクを再生成"
+          >
+            <FaSyncAlt />
+          </button>
+        )}
         {onDeleteAll && (
           <button
             className="rtg-delete-all-btn"

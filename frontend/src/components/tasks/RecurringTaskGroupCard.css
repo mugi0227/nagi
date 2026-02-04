@@ -183,6 +183,34 @@
   background: rgba(34, 197, 94, 0.12);
 }
 
+/* Action buttons (generate, delete) */
+.rtg-action-btn {
+  background: none;
+  border: none;
+  color: var(--text-secondary, #94a3b8);
+  cursor: pointer;
+  padding: 0.2rem 0.3rem;
+  font-size: 0.7rem;
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease, color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.rtg-card:hover .rtg-action-btn {
+  opacity: 1;
+}
+
+.rtg-action-btn:hover {
+  color: #7c3aed;
+  background: rgba(124, 58, 237, 0.08);
+}
+
+.rtg-action-btn.compact {
+  font-size: 0.6rem;
+  padding: 0.15rem 0.25rem;
+}
+
 /* Delete all button */
 .rtg-delete-all-btn {
   background: none;

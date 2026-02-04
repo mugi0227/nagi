@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { FaPlus, FaRepeat } from 'react-icons/fa6';
-import { FaPen, FaTrash, FaToggleOn, FaToggleOff, FaEraser } from 'react-icons/fa';
+import { FaPen, FaTrash, FaToggleOn, FaToggleOff, FaEraser, FaSyncAlt } from 'react-icons/fa';
 import type { RecurringTask, RecurringTaskCreate, RecurringTaskUpdate } from '../../api/types';
 import { useRecurringTasks } from '../../hooks/useRecurringTasks';
 import { RecurringTaskForm } from './RecurringTaskForm';
@@ -43,6 +43,7 @@ export function RecurringTaskList({ projectId }: RecurringTaskListProps = {}) {
     updateRecurringTask,
     deleteRecurringTask,
     deleteGeneratedTasks,
+    generateTasks,
   } = useRecurringTasks(projectId, showInactive);
 
   const handleCreate = async (data: RecurringTaskCreate | RecurringTaskUpdate) => {
@@ -73,6 +74,11 @@ export function RecurringTaskList({ projectId }: RecurringTaskListProps = {}) {
     if (!confirm(`「${task.title}」の生成済みタスクをすべて削除しますか？`)) return;
     const result = await deleteGeneratedTasks(task.id);
     alert(`${result.deleted_count}件のタスクを削除しました。`);
+  };
+
+  const handleGenerate = async (task: RecurringTask) => {
+    const result = await generateTasks(task.id);
+    alert(`${result.created_count}件作成、${result.skipped_count}件スキップ`);
   };
 
   if (isLoading) {
@@ -128,6 +134,13 @@ export function RecurringTaskList({ projectId }: RecurringTaskListProps = {}) {
                   title={task.is_active ? '無効にする' : '有効にする'}
                 >
                   {task.is_active ? <FaToggleOn className="rt-toggle-on" /> : <FaToggleOff />}
+                </button>
+                <button
+                  className="rt-item-btn"
+                  onClick={() => handleGenerate(task)}
+                  title="タスクを再生成"
+                >
+                  <FaSyncAlt />
                 </button>
                 <button
                   className="rt-item-btn"

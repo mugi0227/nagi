@@ -33,6 +33,7 @@ interface KanbanColumnProps {
   currentUserId?: string;
   onCheckCompletion?: (taskId: string) => void;
   onDeleteGeneratedTasks?: (recurringTaskId: string) => void;
+  onGenerateTasks?: (recurringTaskId: string) => void;
 }
 
 export function KanbanColumn({
@@ -60,6 +61,7 @@ export function KanbanColumn({
   currentUserId,
   onCheckCompletion,
   onDeleteGeneratedTasks,
+  onGenerateTasks,
 }: KanbanColumnProps) {
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -113,6 +115,7 @@ export function KanbanColumn({
                   onTaskClick={onTaskClick}
                   onUpdateTask={onUpdateTask}
                   onDeleteAll={onDeleteGeneratedTasks}
+                  onGenerate={onGenerateTasks}
                   compact={compact}
                 />
               </div>

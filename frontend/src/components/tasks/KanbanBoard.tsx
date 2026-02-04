@@ -41,6 +41,7 @@ interface KanbanBoardProps {
   currentUserId?: string;
   onCheckCompletion?: (taskId: string) => void;
   onDeleteGeneratedTasks?: (recurringTaskId: string) => void;
+  onGenerateTasks?: (recurringTaskId: string) => void;
 }
 
 const COLUMNS: { status: TaskStatus; title: string }[] = [
@@ -71,6 +72,7 @@ export function KanbanBoard({
   currentUserId,
   onCheckCompletion,
   onDeleteGeneratedTasks,
+  onGenerateTasks,
 }: KanbanBoardProps) {
   // Group tasks: parent tasks only (no parent_id)
   const parentTasks = useMemo(() => {
@@ -220,6 +222,7 @@ export function KanbanBoard({
           currentUserId={currentUserId}
           onCheckCompletion={onCheckCompletion}
           onDeleteGeneratedTasks={onDeleteGeneratedTasks}
+          onGenerateTasks={onGenerateTasks}
         />
       ))}
     </div>

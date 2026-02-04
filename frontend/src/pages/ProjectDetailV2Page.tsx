@@ -149,7 +149,7 @@ export function ProjectDetailV2Page() {
   };
 
   const [activeTab, setActiveTab] = useState<TabId>(getInitialTab);
-  const { deleteGeneratedTasks } = useRecurringTasks(projectId);
+  const { deleteGeneratedTasks, generateTasks } = useRecurringTasks(projectId);
   const queryClient = useQueryClient();
   const {
     data: project = null,
@@ -2256,6 +2256,7 @@ export function ProjectDetailV2Page() {
                   onRefreshTasks={refetchTasks}
                   onCreateTask={handleOpenCreateTask}
                   onDeleteGeneratedTasks={deleteGeneratedTasks}
+                  onGenerateTasks={generateTasks}
                   taskAssignments={assignments}
                   currentUserId={currentUser?.id}
                   onCheckCompletion={handleCheckCompletion}

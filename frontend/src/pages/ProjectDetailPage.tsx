@@ -30,7 +30,7 @@ export function ProjectDetailPage() {
   const { projectId } = useParams<{ projectId: string }>();
   const navigate = useNavigate();
   const timezone = useTimezone();
-  const { deleteGeneratedTasks } = useRecurringTasks(projectId);
+  const { deleteGeneratedTasks, generateTasks } = useRecurringTasks(projectId);
   const [project, setProject] = useState<ProjectWithTaskCount | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -1446,6 +1446,7 @@ export function ProjectDetailPage() {
             }}
             onRefreshTasks={refetchTasks}
             onDeleteGeneratedTasks={deleteGeneratedTasks}
+            onGenerateTasks={generateTasks}
           />
         )}
       </div>

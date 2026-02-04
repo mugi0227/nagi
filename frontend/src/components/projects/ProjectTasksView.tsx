@@ -26,6 +26,7 @@ interface ProjectTasksViewProps {
   onRefreshTasks?: () => void;
   onCreateTask?: (phaseId: string | null) => void;
   onDeleteGeneratedTasks?: (recurringTaskId: string) => void;
+  onGenerateTasks?: (recurringTaskId: string) => void;
   // Multi-member completion
   taskAssignments?: TaskAssignment[];
   currentUserId?: string;
@@ -45,6 +46,7 @@ export function ProjectTasksView({
   onRefreshTasks,
   onCreateTask,
   onDeleteGeneratedTasks,
+  onGenerateTasks,
   taskAssignments,
   currentUserId,
   onCheckCompletion,
@@ -274,6 +276,7 @@ export function ProjectTasksView({
               onSingleDragStart={handleSingleDragStart}
               compact={viewMode === 'compact'}
               onDeleteGeneratedTasks={onDeleteGeneratedTasks}
+              onGenerateTasks={onGenerateTasks}
               taskAssignments={taskAssignments}
               currentUserId={currentUserId}
               onCheckCompletion={onCheckCompletion}
