@@ -3,7 +3,19 @@ import { FaTimes, FaMoon, FaSun, FaBell, FaUser, FaClock, FaCog } from 'react-ic
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../../context/ThemeContext';
-import { DEFAULT_DAILY_BUFFER_HOURS, DEFAULT_DAILY_CAPACITY_HOURS } from '../../utils/capacitySettings';
+import {
+  DEFAULT_BREAK_END,
+  DEFAULT_BREAK_START,
+  DEFAULT_BREAK_AFTER_TASK_MINUTES,
+  DEFAULT_DAILY_BUFFER_HOURS,
+  DEFAULT_WEEKLY_WORK_HOURS,
+  DEFAULT_WORKDAY_END,
+  DEFAULT_WORKDAY_START,
+  computeWorkdayCapacityHours,
+  parseWeeklyWorkHours,
+  type WorkBreak,
+  type WorkdayHours,
+} from '../../utils/capacitySettings';
 import { setStoredTimezone } from '../../utils/dateTime';
 import { userStorage } from '../../utils/userStorage';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
@@ -13,21 +25,56 @@ import './SettingsModal.css';
 
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
 
-const CAPACITY_TEMPLATES = [
+const createWorkday = (value: Partial<WorkdayHours>) => ({
+  enabled: value.enabled ?? true,
+  start: value.start ?? DEFAULT_WORKDAY_START,
+  end: value.end ?? DEFAULT_WORKDAY_END,
+  breaks: value.breaks ? value.breaks.map(item => ({ ...item })) : [
+    { start: DEFAULT_BREAK_START, end: DEFAULT_BREAK_END },
+  ],
+});
+
+const cloneWorkday = (value: WorkdayHours) => ({
+  ...value,
+  breaks: value.breaks.map(item => ({ ...item })),
+});
+
+const buildWeeklyWorkHours = (weekday: WorkdayHours, weekend: WorkdayHours) => (
+  Array.from({ length: 7 }, (_, index) => {
+    const source = (index === 0 || index === 6) ? weekend : weekday;
+    return cloneWorkday(source);
+  })
+);
+
+const STANDARD_WORKDAY = createWorkday({});
+const OFF_WORKDAY = createWorkday({ enabled: false, breaks: [] });
+
+const WORK_HOURS_TEMPLATES = [
   {
-    id: 'weekdays',
-    label: '平日8時間/週末0時間',
-    hours: [0, 8, 8, 8, 8, 8, 0],
+    id: 'weekday-standard',
+    label: '平日 9:00-18:00 / 週末休み',
+    hours: buildWeeklyWorkHours(STANDARD_WORKDAY, OFF_WORKDAY),
   },
   {
-    id: 'everyday',
-    label: '全曜日8時間',
-    hours: [8, 8, 8, 8, 8, 8, 8],
+    id: 'weekday-late',
+    label: '平日 10:00-19:00 / 週末休み',
+    hours: buildWeeklyWorkHours(
+      createWorkday({ start: '10:00', end: '19:00' }),
+      OFF_WORKDAY
+    ),
   },
   {
-    id: 'light',
-    label: '平日6時間/週末0時間',
-    hours: [0, 6, 6, 6, 6, 6, 0],
+    id: 'weekday-short',
+    label: '平日 10:00-17:00 / 週末休み',
+    hours: buildWeeklyWorkHours(
+      createWorkday({ start: '10:00', end: '17:00' }),
+      OFF_WORKDAY
+    ),
+  },
+  {
+    id: 'everyday-standard',
+    label: '毎日 9:00-18:00',
+    hours: buildWeeklyWorkHours(STANDARD_WORKDAY, STANDARD_WORKDAY),
   },
 ];
 
@@ -36,23 +83,9 @@ const parseStoredNumber = (value: string | null, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
-const loadWeeklyCapacity = (fallback: number) => {
-  const savedWeeklyCapacityHours = userStorage.get('weeklyCapacityHours');
-  if (!savedWeeklyCapacityHours) {
-    return Array(7).fill(fallback);
-  }
-  try {
-    const parsed = JSON.parse(savedWeeklyCapacityHours);
-    if (Array.isArray(parsed) && parsed.length === 7) {
-      return parsed.map((value: unknown) => {
-        const numeric = Number(value);
-        return Number.isFinite(numeric) ? numeric : fallback;
-      });
-    }
-  } catch {
-    return Array(7).fill(fallback);
-  }
-  return Array(7).fill(fallback);
+const formatCapacityHours = (hours: number) => {
+  const rounded = Math.round(hours * 10) / 10;
+  return `${rounded}h`;
 };
 
 const getErrorMessage = (error: unknown, fallback: string) => {
@@ -87,22 +120,25 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const [accountSuccess, setAccountSuccess] = useState<string | null>(null);
   const [isUpdatingAccount, setIsUpdatingAccount] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
-  const [dailyCapacityHours, setDailyCapacityHours] = useState(() =>
-    parseStoredNumber(userStorage.get('dailyCapacityHours'), DEFAULT_DAILY_CAPACITY_HOURS)
-  );
   const [dailyBufferHours, setDailyBufferHours] = useState(() =>
     parseStoredNumber(userStorage.get('dailyBufferHours'), DEFAULT_DAILY_BUFFER_HOURS)
   );
-  const [weeklyCapacityHours, setWeeklyCapacityHours] = useState(() => {
-    const baseHours = parseStoredNumber(
-      userStorage.get('dailyCapacityHours'),
-      DEFAULT_DAILY_CAPACITY_HOURS
-    );
-    return loadWeeklyCapacity(baseHours);
-  });
-  const [capacityTemplateId, setCapacityTemplateId] = useState(
-    () => userStorage.get('capacityTemplateId') || 'custom'
+  const [breakAfterTaskMinutes, setBreakAfterTaskMinutes] = useState(() =>
+    parseStoredNumber(userStorage.get('breakAfterTaskMinutes'), DEFAULT_BREAK_AFTER_TASK_MINUTES)
   );
+  const [weeklyWorkHours, setWeeklyWorkHours] = useState(() =>
+    parseWeeklyWorkHours(userStorage.get('weeklyWorkHours'), DEFAULT_WEEKLY_WORK_HOURS)
+  );
+  const [workHoursTemplateId, setWorkHoursTemplateId] = useState(
+    () => userStorage.get('workHoursTemplateId') || 'custom'
+  );
+  const [bulkTarget, setBulkTarget] = useState<'all' | 'weekdays' | 'weekends'>('weekdays');
+  const [bulkEnabled, setBulkEnabled] = useState(true);
+  const [bulkStart, setBulkStart] = useState(DEFAULT_WORKDAY_START);
+  const [bulkEnd, setBulkEnd] = useState(DEFAULT_WORKDAY_END);
+  const [bulkBreakEnabled, setBulkBreakEnabled] = useState(true);
+  const [bulkBreakStart, setBulkBreakStart] = useState(DEFAULT_BREAK_START);
+  const [bulkBreakEnd, setBulkBreakEnd] = useState(DEFAULT_BREAK_END);
   const [quietHoursEnabled, setQuietHoursEnabled] = useState(
     () => userStorage.get('quietHoursEnabled') === 'true'
   );
@@ -131,18 +167,55 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     setAccountSuccess(null);
   };
 
-  const handleDailyCapacityChange = (value: string) => {
-    const hours = parseFloat(value);
-    if (!isNaN(hours) && hours > 0 && hours <= 24) {
-      setDailyCapacityHours(hours);
-      userStorage.set('dailyCapacityHours', String(hours));
-      const updatedWeekly = Array(7).fill(hours);
-      setWeeklyCapacityHours(updatedWeekly);
-      userStorage.set('weeklyCapacityHours', JSON.stringify(updatedWeekly));
-      userStorage.set('capacityTemplateId', 'custom');
-      setCapacityTemplateId('custom');
-      window.dispatchEvent(new Event('capacity-settings-updated'));
-    }
+  const persistWeeklyWorkHours = (next: WorkdayHours[]) => {
+    setWeeklyWorkHours(next);
+    userStorage.set('weeklyWorkHours', JSON.stringify(next));
+    const derivedWeekly = next.map(day => computeWorkdayCapacityHours(day));
+    userStorage.set('weeklyCapacityHours', JSON.stringify(derivedWeekly));
+    window.dispatchEvent(new Event('capacity-settings-updated'));
+  };
+
+  const markWorkHoursCustom = () => {
+    setWorkHoursTemplateId('custom');
+    userStorage.set('workHoursTemplateId', 'custom');
+  };
+
+  const updateWorkday = (index: number, updater: (value: WorkdayHours) => WorkdayHours) => {
+    const next = weeklyWorkHours.map((day, dayIndex) => {
+      if (dayIndex !== index) return day;
+      const updated = updater(day);
+      return cloneWorkday(updated);
+    });
+    persistWeeklyWorkHours(next);
+    markWorkHoursCustom();
+  };
+
+  const handleWorkdayToggle = (index: number) => {
+    updateWorkday(index, day => ({ ...day, enabled: !day.enabled }));
+  };
+
+  const handleWorkdayTimeChange = (index: number, field: 'start' | 'end', value: string) => {
+    updateWorkday(index, day => ({ ...day, [field]: value }));
+  };
+
+  const handleBreakTimeChange = (index: number, field: 'start' | 'end', value: string) => {
+    updateWorkday(index, day => {
+      const nextBreaks = day.breaks.length > 0
+        ? [{ ...day.breaks[0], [field]: value } as WorkBreak]
+        : [{ start: DEFAULT_BREAK_START, end: DEFAULT_BREAK_END }];
+      return { ...day, breaks: nextBreaks };
+    });
+  };
+
+  const handleAddBreak = (index: number) => {
+    updateWorkday(index, day => {
+      if (day.breaks.length > 0) return day;
+      return { ...day, breaks: [{ start: DEFAULT_BREAK_START, end: DEFAULT_BREAK_END }] };
+    });
+  };
+
+  const handleRemoveBreak = (index: number) => {
+    updateWorkday(index, day => ({ ...day, breaks: [] }));
   };
 
   const handleDailyBufferChange = (value: string) => {
@@ -154,32 +227,46 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     }
   };
 
-  const handleWeeklyCapacityChange = (dayIndex: number, value: string) => {
-    const hours = parseFloat(value);
-    if (!isNaN(hours) && hours >= 0 && hours <= 24) {
-      const updated = [...weeklyCapacityHours];
-      updated[dayIndex] = hours;
-      setWeeklyCapacityHours(updated);
-      userStorage.set('weeklyCapacityHours', JSON.stringify(updated));
-      userStorage.set('capacityTemplateId', 'custom');
-      setCapacityTemplateId('custom');
-      window.dispatchEvent(new Event('capacity-settings-updated'));
-    }
+  const handleBreakAfterTaskMinutesChange = (value: string) => {
+    const minutes = Number(value);
+    if (!Number.isFinite(minutes)) return;
+    const clamped = Math.min(60, Math.max(0, Math.round(minutes)));
+    setBreakAfterTaskMinutes(clamped);
+    userStorage.set('breakAfterTaskMinutes', String(clamped));
+    window.dispatchEvent(new Event('capacity-settings-updated'));
   };
 
-  const handleCapacityTemplateChange = (templateId: string) => {
-    setCapacityTemplateId(templateId);
-    userStorage.set('capacityTemplateId', templateId);
-    const template = CAPACITY_TEMPLATES.find(item => item.id === templateId);
+  const handleWorkHoursTemplateChange = (templateId: string) => {
+    setWorkHoursTemplateId(templateId);
+    userStorage.set('workHoursTemplateId', templateId);
+    const template = WORK_HOURS_TEMPLATES.find(item => item.id === templateId);
     if (!template) {
       return;
     }
-    setWeeklyCapacityHours(template.hours);
-    userStorage.set('weeklyCapacityHours', JSON.stringify(template.hours));
-    const baseHours = template.hours[1] ?? template.hours[0] ?? DEFAULT_DAILY_CAPACITY_HOURS;
-    setDailyCapacityHours(baseHours);
-    userStorage.set('dailyCapacityHours', String(baseHours));
-    window.dispatchEvent(new Event('capacity-settings-updated'));
+    persistWeeklyWorkHours(template.hours);
+  };
+
+  const handleBulkApply = () => {
+    const targetIndices = bulkTarget === 'all'
+      ? [0, 1, 2, 3, 4, 5, 6]
+      : bulkTarget === 'weekdays'
+        ? [1, 2, 3, 4, 5]
+        : [0, 6];
+    const nextBreaks = bulkEnabled && bulkBreakEnabled
+      ? [{ start: bulkBreakStart, end: bulkBreakEnd }]
+      : [];
+    const next = weeklyWorkHours.map((day, index) => {
+      if (!targetIndices.includes(index)) return day;
+      return {
+        ...day,
+        enabled: bulkEnabled,
+        start: bulkStart,
+        end: bulkEnd,
+        breaks: nextBreaks.map(item => ({ ...item })),
+      };
+    });
+    persistWeeklyWorkHours(next);
+    markWorkHoursCustom();
   };
 
   const handleQuietHoursToggle = () => {
@@ -527,25 +614,197 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           <div className="settings-section">
             <h3 className="section-title">
               <FaClock />
-              稼働時間
+              勤務時間
             </h3>
             <div className="setting-item">
-              <label htmlFor="dailyCapacityHours" className="setting-label">
-                1日の稼働時間（全曜日一括）
+              <label htmlFor="workHoursTemplate" className="setting-label">
+                勤務時間テンプレート
               </label>
-              <input
-                type="number"
-                id="dailyCapacityHours"
-                value={dailyCapacityHours}
-                onChange={(event) => handleDailyCapacityChange(event.target.value)}
-                className="setting-input capacity-input"
-                placeholder="8"
-                min="1"
-                max="24"
-                step="0.5"
-              />
+              <select
+                id="workHoursTemplate"
+                value={workHoursTemplateId}
+                onChange={(event) => handleWorkHoursTemplateChange(event.target.value)}
+                className="setting-select"
+              >
+                <option value="custom">カスタム</option>
+                {WORK_HOURS_TEMPLATES.map(template => (
+                  <option key={template.id} value={template.id}>
+                    {template.label}
+                  </option>
+                ))}
+              </select>
               <p className="setting-description">
-                まとめて入力すると全曜日に反映されます（デフォルト: 8時間）。
+                開始/終了と休憩をまとめて反映します。
+              </p>
+            </div>
+            <div className="setting-item">
+              <span className="setting-label">まとめて設定</span>
+              <div className="workhours-bulk">
+                <div className="workhours-bulk-row">
+                  <select
+                    value={bulkTarget}
+                    onChange={(event) => setBulkTarget(event.target.value as 'all' | 'weekdays' | 'weekends')}
+                    className="setting-select workhours-select"
+                  >
+                    <option value="all">全曜日</option>
+                    <option value="weekdays">平日</option>
+                    <option value="weekends">週末</option>
+                  </select>
+                  <label className="workhours-toggle">
+                    <input
+                      type="checkbox"
+                      checked={bulkEnabled}
+                      onChange={(event) => setBulkEnabled(event.target.checked)}
+                    />
+                    稼働する
+                  </label>
+                </div>
+                <div className="workhours-bulk-row">
+                  <div className="workhours-time-range">
+                    <input
+                      type="time"
+                      value={bulkStart}
+                      onChange={(event) => setBulkStart(event.target.value)}
+                      className="setting-input workhours-time-input"
+                      disabled={!bulkEnabled}
+                    />
+                    <span className="workhours-separator">-</span>
+                    <input
+                      type="time"
+                      value={bulkEnd}
+                      onChange={(event) => setBulkEnd(event.target.value)}
+                      className="setting-input workhours-time-input"
+                      disabled={!bulkEnabled}
+                    />
+                  </div>
+                  <label className="workhours-toggle">
+                    <input
+                      type="checkbox"
+                      checked={bulkBreakEnabled}
+                      onChange={(event) => setBulkBreakEnabled(event.target.checked)}
+                      disabled={!bulkEnabled}
+                    />
+                    休憩
+                  </label>
+                  <div className="workhours-time-range">
+                    <input
+                      type="time"
+                      value={bulkBreakStart}
+                      onChange={(event) => setBulkBreakStart(event.target.value)}
+                      className="setting-input workhours-time-input"
+                      disabled={!bulkEnabled || !bulkBreakEnabled}
+                    />
+                    <span className="workhours-separator">-</span>
+                    <input
+                      type="time"
+                      value={bulkBreakEnd}
+                      onChange={(event) => setBulkBreakEnd(event.target.value)}
+                      className="setting-input workhours-time-input"
+                      disabled={!bulkEnabled || !bulkBreakEnabled}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    className="setting-action-btn secondary workhours-apply-btn"
+                    onClick={handleBulkApply}
+                  >
+                    適用
+                  </button>
+                </div>
+              </div>
+              <p className="setting-description">
+                曜日まとめて開始/終了と休憩を設定できます。
+              </p>
+            </div>
+            <div className="setting-item">
+              <span className="setting-label">曜日別の勤務時間</span>
+              <div className="workhours-grid">
+                {WEEKDAY_LABELS.map((label, index) => {
+                  const day = weeklyWorkHours[index] ?? DEFAULT_WEEKLY_WORK_HOURS[index];
+                  const capacityHours = computeWorkdayCapacityHours(day);
+                  return (
+                    <div
+                      key={label}
+                      className={`weekday-item workhours-item ${index === 0 ? 'sun' : ''} ${
+                        index === 6 ? 'sat' : ''
+                      }`}
+                    >
+                      <div className="workhours-day-row">
+                        <label className="workhours-toggle">
+                          <input
+                            type="checkbox"
+                            checked={day.enabled}
+                            onChange={() => handleWorkdayToggle(index)}
+                          />
+                          <span className="weekday-label">{label}</span>
+                        </label>
+                        <span className="workhours-capacity">
+                          {day.enabled ? formatCapacityHours(capacityHours) : '休み'}
+                        </span>
+                      </div>
+                      <div className="workhours-time-row">
+                        <input
+                          type="time"
+                          value={day.start}
+                          onChange={(event) => handleWorkdayTimeChange(index, 'start', event.target.value)}
+                          className="setting-input workhours-time-input"
+                          disabled={!day.enabled}
+                        />
+                        <span className="workhours-separator">-</span>
+                        <input
+                          type="time"
+                          value={day.end}
+                          onChange={(event) => handleWorkdayTimeChange(index, 'end', event.target.value)}
+                          className="setting-input workhours-time-input"
+                          disabled={!day.enabled}
+                        />
+                      </div>
+                      <div className="workhours-break-row">
+                        {day.breaks.length > 0 ? (
+                          <>
+                            <div className="workhours-time-range">
+                              <input
+                                type="time"
+                                value={day.breaks[0].start}
+                                onChange={(event) => handleBreakTimeChange(index, 'start', event.target.value)}
+                                className="setting-input workhours-time-input"
+                                disabled={!day.enabled}
+                              />
+                              <span className="workhours-separator">-</span>
+                              <input
+                                type="time"
+                                value={day.breaks[0].end}
+                                onChange={(event) => handleBreakTimeChange(index, 'end', event.target.value)}
+                                className="setting-input workhours-time-input"
+                                disabled={!day.enabled}
+                              />
+                            </div>
+                            <button
+                              type="button"
+                              className="workhours-link-btn"
+                              onClick={() => handleRemoveBreak(index)}
+                              disabled={!day.enabled}
+                            >
+                              休憩なし
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            type="button"
+                            className="workhours-link-btn"
+                            onClick={() => handleAddBreak(index)}
+                            disabled={!day.enabled}
+                          >
+                            休憩を追加
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="setting-description">
+                1日の稼働時間は開始/終了と休憩から自動計算されます。
               </p>
             </div>
             <div className="setting-item">
@@ -564,58 +823,30 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                 step="0.5"
               />
               <p className="setting-description">
-                稼働時間から差し引いて計算します（例: 8時間 - 1時間 = 7時間）。
+                稼働時間から差し引いて計算します。
               </p>
             </div>
             <div className="setting-item">
-              <label htmlFor="capacityTemplate" className="setting-label">
-                稼働時間テンプレート
+              <label htmlFor="breakAfterTaskMinutes" className="setting-label">
+                {'\u30bf\u30b9\u30af\u9593\u4f11\u61a9\uff08\u5206\uff09'}
               </label>
-              <select
-                id="capacityTemplate"
-                value={capacityTemplateId}
-                onChange={(event) => handleCapacityTemplateChange(event.target.value)}
-                className="setting-select"
-              >
-                <option value="custom">カスタム</option>
-                {CAPACITY_TEMPLATES.map(template => (
-                  <option key={template.id} value={template.id}>
-                    {template.label}
-                  </option>
-                ))}
-              </select>
+              <input
+                type="number"
+                id="breakAfterTaskMinutes"
+                value={breakAfterTaskMinutes}
+                onChange={(event) => handleBreakAfterTaskMinutesChange(event.target.value)}
+                className="setting-input capacity-input"
+                placeholder="5"
+                min="0"
+                max="60"
+                step="1"
+              />
               <p className="setting-description">
-                用途に合わせた稼働時間をまとめて設定できます。
-              </p>
-            </div>
-            <div className="setting-item">
-              <span className="setting-label">曜日別の稼働時間</span>
-              <div className="weekday-grid">
-                {WEEKDAY_LABELS.map((label, index) => (
-                  <div
-                    key={label}
-                    className={`weekday-item ${index === 0 ? 'sun' : ''} ${
-                      index === 6 ? 'sat' : ''
-                    }`}
-                  >
-                    <span className="weekday-label">{label}</span>
-                    <input
-                      type="number"
-                      value={weeklyCapacityHours[index] ?? 0}
-                      onChange={(event) => handleWeeklyCapacityChange(index, event.target.value)}
-                      className="setting-input capacity-input weekday-input"
-                      min="0"
-                      max="24"
-                      step="0.5"
-                    />
-                  </div>
-                ))}
-              </div>
-              <p className="setting-description">
-                0時間にすると、その曜日はスケジュール対象外になります。
+                {'\u30bf\u30b9\u30af\u7d42\u4e86\u3054\u3068\u306b\u6307\u5b9a\u5206\u306e\u7a7a\u767d\u3092\u5165\u308c\u307e\u3059'}
               </p>
             </div>
           </div>
+
 
           <div className="settings-section">
             <h3 className="section-title">

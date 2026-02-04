@@ -6,6 +6,14 @@
   margin-top: 1.5rem;
 }
 
+.weekly-meetings-card.embedded {
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 0;
+  margin-top: 0;
+}
+
 .weekly-meetings-header {
   align-items: flex-start;
   gap: 1rem;
@@ -14,7 +22,44 @@
 .weekly-meetings-title-row {
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.weekly-meetings-title-group {
+  display: flex;
+  align-items: center;
   gap: 0.5rem;
+}
+
+.weekly-meetings-view-tabs {
+  display: flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.weekly-meetings-view-tab {
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 0.2rem 0.65rem;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.weekly-meetings-view-tab:hover {
+  color: var(--text-main);
+  border-color: var(--primary);
+}
+
+.weekly-meetings-view-tab.active {
+  background: var(--primary-light);
+  color: var(--primary);
+  border-color: var(--primary);
 }
 
 .weekly-meetings-card .tag {
@@ -91,6 +136,8 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
 .weekly-meetings-header-row {
@@ -100,6 +147,10 @@
   gap: 0.4rem;
   padding-bottom: 0.4rem;
   border-bottom: 1px solid var(--border-color);
+  position: sticky;
+  top: 0;
+  background: var(--bg-card);
+  z-index: 4;
 }
 
 .weekly-meetings-time-header {
@@ -135,10 +186,31 @@
 
 .weekly-meetings-day-col {
   position: relative;
-  background: rgba(255, 255, 255, 0.65);
+  background: #fff;
   border-radius: var(--radius-sm);
   border: 1px solid rgba(148, 163, 184, 0.2);
   overflow: hidden;
+}
+
+.weekly-workhours-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.weekly-nonwork-block {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: rgba(148, 163, 184, 0.2);
+}
+
+.weekly-break-block {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: rgba(148, 163, 184, 0.35);
 }
 
 .weekly-meetings-hour-lines {
@@ -147,6 +219,7 @@
   display: flex;
   flex-direction: column;
   pointer-events: none;
+  z-index: 2;
 }
 
 .weekly-meetings-hour-line {
@@ -157,7 +230,7 @@
 .weekly-meeting-block {
   position: absolute;
   padding: 0.35rem 0.4rem;
-  background: linear-gradient(135deg, rgba(102, 126, 234, 0.2), rgba(118, 75, 162, 0.2));
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.28), rgba(118, 75, 162, 0.28));
   border-left: 3px solid #667eea;
   border-radius: 6px;
   box-shadow: var(--shadow-sm);
@@ -166,6 +239,12 @@
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  z-index: 3;
+}
+
+.weekly-meeting-block.auto-slot {
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.18), rgba(45, 212, 191, 0.18));
+  border-left-color: #10b981;
 }
 
 .weekly-meeting-block.done {
