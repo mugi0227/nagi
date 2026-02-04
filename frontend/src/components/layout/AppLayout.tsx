@@ -1,6 +1,8 @@
+import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { projectsApi } from '../../api/projects';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { userStorage } from '../../utils/userStorage';
 import { ChatWidget } from '../chat/ChatWidget';
@@ -32,6 +34,23 @@ export function AppLayout() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(() =>
     userStorage.getJson<boolean>(SIDEBAR_STORAGE_KEY, false)
   );
+
+  // Detect project page from URL
+  const currentProjectId = useMemo(() => {
+    const match = location.pathname.match(/\/projects\/([^/]+)/);
+    return match ? match[1] : null;
+  }, [location.pathname]);
+
+  const { data: scopedProject } = useQuery({
+    queryKey: ['project', currentProjectId],
+    queryFn: () => projectsApi.getById(currentProjectId!),
+    enabled: !!currentProjectId,
+    staleTime: 60_000,
+  });
+
+  const projectContext = currentProjectId && scopedProject
+    ? { projectId: currentProjectId, projectName: scopedProject.name }
+    : null;
 
   const isResizing = useRef(false);
 
@@ -145,6 +164,7 @@ export function AppLayout() {
               onInitialMessageConsumed={() => setPendingMessage(null)}
               draftCard={pendingDraftCard}
               onDraftCardConsumed={() => setPendingDraftCard(null)}
+              projectContext={projectContext}
             />
           </aside>
         </>

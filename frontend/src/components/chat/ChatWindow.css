@@ -167,6 +167,13 @@
   background: rgba(14, 165, 233, 0.08);
 }
 
+.chat-title-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
 .chat-title {
   display: flex;
   align-items: center;
@@ -179,6 +186,31 @@
 .chat-title svg {
   font-size: 1.5rem;
   color: var(--primary);
+}
+
+.chat-project-scope {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.7rem;
+  color: var(--primary);
+  background: rgba(14, 165, 233, 0.08);
+  padding: 0.15rem 0.5rem;
+  border-radius: 999px;
+  font-weight: 600;
+  max-width: 200px;
+  width: fit-content;
+}
+
+.chat-project-scope span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-project-scope svg {
+  font-size: 0.6rem;
+  flex-shrink: 0;
 }
 
 .chat-header-actions {

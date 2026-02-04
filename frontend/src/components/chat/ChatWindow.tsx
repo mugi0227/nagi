@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { FaClock, FaComments, FaImage, FaPlus, FaRobot, FaXmark } from 'react-icons/fa6';
+import { FaClock, FaComments, FaFolder, FaImage, FaPlus, FaRobot, FaXmark } from 'react-icons/fa6';
 import { tasksApi } from '../../api/tasks';
 import type { Task } from '../../api/types';
 import { useChat, type ProposalInfo } from '../../hooks/useChat';
@@ -21,9 +21,10 @@ interface ChatWindowProps {
   onInitialMessageConsumed?: () => void;
   draftCard?: DraftCardData | null;
   onDraftCardConsumed?: () => void;
+  projectContext?: { projectId: string; projectName: string } | null;
 }
 
-export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageConsumed, draftCard, onDraftCardConsumed }: ChatWindowProps) {
+export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageConsumed, draftCard, onDraftCardConsumed, projectContext }: ChatWindowProps) {
   const queryClient = useQueryClient();
   const timezone = useTimezone();
   const {
@@ -93,7 +94,7 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     if (remainingCount === 0) {
       const approvedBatch = approvedProposalsRef.current;
       if (approvedBatch.length > 0) {
-        sendMessageStream(generateApprovalMessage(approvedBatch));
+        sendMessageStream(generateApprovalMessage(approvedBatch), undefined, undefined, projectContext);
       }
       approvedProposalsRef.current = [];
     }
@@ -104,7 +105,7 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     invalidateAfterProposal();
     const remainingCount = pendingProposals.filter((p) => p.proposalId !== proposalId).length;
     if (remainingCount === 0 && approvedProposalsRef.current.length > 0) {
-      sendMessageStream(generateApprovalMessage(approvedProposalsRef.current));
+      sendMessageStream(generateApprovalMessage(approvedProposalsRef.current), undefined, undefined, projectContext);
       approvedProposalsRef.current = [];
     }
   };
@@ -114,7 +115,7 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     setProcessedProposalIds((prev) => new Set([...prev, ...allIds]));
     invalidateAfterProposal();
     // Send confirmation to AI for all approved proposals
-    sendMessageStream(generateApprovalMessage(approvedProposals));
+    sendMessageStream(generateApprovalMessage(approvedProposals), undefined, undefined, projectContext);
     approvedProposalsRef.current = [];
   };
 
@@ -138,7 +139,7 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
   const handleQuestionsSubmit = (answer: string) => {
     if (pendingQuestionsData) {
       setProcessedQuestionMessageIds((prev) => new Set([...prev, pendingQuestionsData.messageId]));
-      sendMessageStream(answer);
+      sendMessageStream(answer, undefined, undefined, projectContext);
     }
   };
 
@@ -280,9 +281,17 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
         </div>
       )}
       <div className="chat-header">
-        <div className="chat-title">
-          <FaRobot />
-          <span>Secretary Partner</span>
+        <div className="chat-title-area">
+          <div className="chat-title">
+            <FaRobot />
+            <span>Secretary Partner</span>
+          </div>
+          {projectContext && (
+            <div className="chat-project-scope">
+              <FaFolder />
+              <span>{projectContext.projectName}</span>
+            </div>
+          )}
         </div>
         <div className="chat-header-controls">
           <div className="chat-approval-toggle" role="group" aria-label="Approval mode">
@@ -383,7 +392,7 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
         <DraftCard
           data={activeDraftCard}
           onSend={(message) => {
-            sendMessageStream(message);
+            sendMessageStream(message, undefined, undefined, projectContext);
             setActiveDraftCard(null);
           }}
           onCancel={() => setActiveDraftCard(null)}
@@ -405,7 +414,7 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
         />
       ) : (
         <ChatInput
-          onSend={sendMessageStream}
+          onSend={(message, imageBase64) => sendMessageStream(message, imageBase64, undefined, projectContext)}
           onCancel={cancelStream}
           disabled={isLoading}
           isStreaming={isStreaming}

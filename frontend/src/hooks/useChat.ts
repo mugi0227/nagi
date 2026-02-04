@@ -263,7 +263,12 @@ export function useChat() {
   }, []);
 
   const sendMessageStream = useCallback(
-    async (text: string, imageBase64?: string, mode?: ChatMode) => {
+    async (
+      text: string,
+      imageBase64?: string,
+      mode?: ChatMode,
+      projectContext?: { projectId: string; projectName: string } | null,
+    ) => {
       // Cancel any ongoing stream
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
@@ -298,6 +303,11 @@ export function useChat() {
         const approvalMode = (userStorage.get('aiApprovalMode') as 'manual' | 'auto') || 'auto';
         const manualApproval = approvalMode === 'manual';
 
+        const context: Record<string, unknown> | undefined =
+          projectContext
+            ? { project_id: projectContext.projectId, project_name: projectContext.projectName }
+            : undefined;
+
         for await (const chunk of chatApi.streamMessage({
           text,
           image_base64: imageBase64,
@@ -305,6 +315,7 @@ export function useChat() {
           session_id: sessionId,
           approval_mode: approvalMode,
           proposal_mode: approvalMode === 'manual',
+          context,
         }, abortControllerRef.current.signal)) {
           switch (chunk.chunk_type) {
             case 'tool_start': {

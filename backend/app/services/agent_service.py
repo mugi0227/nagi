@@ -493,6 +493,20 @@ class AgentService:
         is added to the message instead of the raw image.
         """
         parts = []
+
+        # Inject project context if provided from project detail page
+        if request.context and request.context.get("project_id"):
+            project_id = request.context["project_id"]
+            project_name = request.context.get("project_name", "Unknown")
+            context_preamble = (
+                f"[自動コンテキスト] ユーザーは現在プロジェクト「{project_name}」"
+                f"（ID: {project_id}）を閲覧中です。"
+                f"このプロジェクトに関連する作業として扱ってください。"
+                f"ただし、ユーザーの発言が明らかにこのプロジェクトと無関係な場合は、"
+                f"プロジェクトスコープを無視して構いません。"
+            )
+            parts.append(Part(text=context_preamble))
+
         if request.text:
             parts.append(Part(text=request.text))
 
