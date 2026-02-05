@@ -346,6 +346,7 @@ class RecurringTaskORM(Base):
     purpose = Column(Text, nullable=True)
     frequency = Column(String(20), nullable=False, default="weekly")
     weekday = Column(Integer, nullable=True)  # 0-6 for WEEKLY/BIWEEKLY
+    weekdays = Column(JSON, nullable=True)  # list of 0-6 for DAILY frequency filter
     day_of_month = Column(Integer, nullable=True)  # 1-31 for MONTHLY/BIMONTHLY
     custom_interval_days = Column(Integer, nullable=True)  # for CUSTOM
     start_time = Column(String(10), nullable=True)  # HH:MM

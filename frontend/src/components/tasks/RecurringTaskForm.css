@@ -140,6 +140,31 @@
   border-color: var(--primary, #3b82f6);
 }
 
+/* Preset button (e.g. 平日のみ) */
+.rt-preset-btn {
+  margin-top: 6px;
+  padding: 4px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 6px;
+  background: var(--bg-input, #fff);
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  align-self: flex-start;
+}
+
+.rt-preset-btn:hover {
+  background: var(--bg-hover, #f3f4f6);
+}
+
+.rt-preset-btn.active {
+  background: var(--primary, #3b82f6);
+  color: #fff;
+  border-color: var(--primary, #3b82f6);
+}
+
 /* Error */
 .rt-form-error {
   color: #ef4444;

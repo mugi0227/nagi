@@ -520,6 +520,12 @@ async def run_migrations():
             await conn.execute(
                 text("CREATE INDEX idx_recurring_tasks_project_id ON recurring_tasks(project_id)")
             )
+        else:
+            # Add weekdays column if missing (for daily frequency day-of-week filter)
+            rt_cols_result = await conn.execute(text("PRAGMA table_info(recurring_tasks)"))
+            rt_columns = {row[1] for row in rt_cols_result}
+            if "weekdays" not in rt_columns:
+                await conn.execute(text("ALTER TABLE recurring_tasks ADD COLUMN weekdays JSON"))
 
         # Create issue_comments table if missing
         issue_comments_result = await conn.execute(

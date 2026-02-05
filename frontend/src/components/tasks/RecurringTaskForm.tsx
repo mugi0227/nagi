@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { FaRepeat } from 'react-icons/fa6';
 import type { RecurringTask, RecurringTaskCreate, RecurringTaskFrequency, RecurringTaskUpdate } from '../../api/types';
 import './RecurringTaskForm.css';
@@ -26,6 +26,7 @@ interface FormState {
   description: string;
   frequency: RecurringTaskFrequency;
   weekday: number;
+  weekdays: number[];
   dayOfMonth: number;
   customIntervalDays: number;
   estimatedMinutes: string;
@@ -40,6 +41,7 @@ export function RecurringTaskForm({ initial, projectId, onSubmit, onCancel }: Re
     description: initial?.description ?? '',
     frequency: initial?.frequency ?? 'weekly',
     weekday: initial?.weekday ?? 0,
+    weekdays: initial?.weekdays ?? [],
     dayOfMonth: initial?.day_of_month ?? 1,
     customIntervalDays: initial?.custom_interval_days ?? 7,
     estimatedMinutes: initial?.estimated_minutes?.toString() ?? '',
@@ -49,6 +51,7 @@ export function RecurringTaskForm({ initial, projectId, onSubmit, onCancel }: Re
   });
   const [error, setError] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const mouseDownTargetRef = useRef<EventTarget | null>(null);
 
   const updateField = <K extends keyof FormState>(field: K, value: FormState[K]) => {
     setForm(prev => ({ ...prev, [field]: value }));
@@ -58,6 +61,23 @@ export function RecurringTaskForm({ initial, projectId, onSubmit, onCancel }: Re
   const needsWeekday = form.frequency === 'weekly' || form.frequency === 'biweekly';
   const needsDayOfMonth = form.frequency === 'monthly' || form.frequency === 'bimonthly';
   const needsCustomInterval = form.frequency === 'custom';
+  const showDailyWeekdays = form.frequency === 'daily';
+
+  const WEEKDAYS_ONLY = [0, 1, 2, 3, 4]; // Mon-Fri
+
+  const toggleWeekday = (day: number) => {
+    setForm(prev => {
+      const current = prev.weekdays;
+      const next = current.includes(day)
+        ? current.filter(d => d !== day)
+        : [...current, day].sort();
+      return { ...prev, weekdays: next };
+    });
+    setError('');
+  };
+
+  const isWeekdaysOnly = WEEKDAYS_ONLY.every(d => form.weekdays.includes(d))
+    && form.weekdays.length === 5;
 
   const validate = (): string | null => {
     if (!form.title.trim()) return 'タイトルを入力してください';
@@ -85,6 +105,7 @@ export function RecurringTaskForm({ initial, projectId, onSubmit, onCancel }: Re
         project_id: projectId || initial?.project_id || undefined,
         frequency: form.frequency,
         weekday: needsWeekday ? form.weekday : undefined,
+        weekdays: showDailyWeekdays && form.weekdays.length > 0 ? form.weekdays : undefined,
         day_of_month: needsDayOfMonth ? form.dayOfMonth : undefined,
         custom_interval_days: needsCustomInterval ? form.customIntervalDays : undefined,
         estimated_minutes: form.estimatedMinutes ? Number(form.estimatedMinutes) : undefined,
@@ -101,8 +122,16 @@ export function RecurringTaskForm({ initial, projectId, onSubmit, onCancel }: Re
   };
 
   return (
-    <div className="recurring-task-form-overlay" onClick={onCancel}>
-      <div className="recurring-task-form-content" onClick={e => e.stopPropagation()}>
+    <div
+      className="recurring-task-form-overlay"
+      onMouseDown={e => { mouseDownTargetRef.current = e.target; }}
+      onClick={e => {
+        if (e.target === e.currentTarget && mouseDownTargetRef.current === e.currentTarget) {
+          onCancel();
+        }
+      }}
+    >
+      <div className="recurring-task-form-content">
         <div className="recurring-task-form-header">
           <h2><FaRepeat style={{ marginRight: 8, verticalAlign: 'middle' }} />{initial ? '定期タスクを編集' : '定期タスクを作成'}</h2>
           <button className="recurring-task-form-close" onClick={onCancel}>✕</button>
@@ -147,6 +176,32 @@ export function RecurringTaskForm({ initial, projectId, onSubmit, onCancel }: Re
               ))}
             </select>
           </div>
+
+          {/* Weekday filter for daily frequency */}
+          {showDailyWeekdays && (
+            <div className="rt-form-row">
+              <label>実行する曜日（未選択＝毎日）</label>
+              <div className="rt-weekday-group">
+                {WEEKDAY_LABELS.map((label, idx) => (
+                  <button
+                    key={idx}
+                    type="button"
+                    className={`rt-weekday-btn ${form.weekdays.includes(idx) ? 'active' : ''}`}
+                    onClick={() => toggleWeekday(idx)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <button
+                type="button"
+                className={`rt-preset-btn ${isWeekdaysOnly ? 'active' : ''}`}
+                onClick={() => updateField('weekdays', isWeekdaysOnly ? [] : [...WEEKDAYS_ONLY])}
+              >
+                平日のみ
+              </button>
+            </div>
+          )}
 
           {/* Weekday selector (weekly / biweekly) */}
           {needsWeekday && (

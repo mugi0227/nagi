@@ -10,8 +10,15 @@ const WEEKDAY_LABELS = ['月', '火', '水', '木', '金', '土', '日'];
 
 function frequencyLabel(task: RecurringTask): string {
   switch (task.frequency) {
-    case 'daily':
+    case 'daily': {
+      if (task.weekdays && task.weekdays.length > 0) {
+        if (task.weekdays.length === 5 && [0,1,2,3,4].every(d => task.weekdays!.includes(d))) {
+          return '毎日（平日のみ）';
+        }
+        return `毎日（${task.weekdays.map(d => WEEKDAY_LABELS[d]).join('・')}）`;
+      }
       return '毎日';
+    }
     case 'weekly':
       return `毎週${task.weekday != null ? WEEKDAY_LABELS[task.weekday] + '曜日' : ''}`;
     case 'biweekly':

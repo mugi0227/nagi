@@ -688,6 +688,7 @@ export interface RecurringTask {
   phase_id?: string;
   frequency: RecurringTaskFrequency;
   weekday?: number;
+  weekdays?: number[];
   day_of_month?: number;
   custom_interval_days?: number;
   start_time?: string;
@@ -710,6 +711,7 @@ export interface RecurringTaskCreate {
   phase_id?: string;
   frequency: RecurringTaskFrequency;
   weekday?: number;
+  weekdays?: number[];
   day_of_month?: number;
   custom_interval_days?: number;
   start_time?: string;
@@ -729,6 +731,7 @@ export interface RecurringTaskUpdate {
   phase_id?: string;
   frequency?: RecurringTaskFrequency;
   weekday?: number;
+  weekdays?: number[];
   day_of_month?: number;
   custom_interval_days?: number;
   start_time?: string;

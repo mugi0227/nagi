@@ -116,7 +116,15 @@ class RecurringTaskService:
         freq = definition.frequency
 
         if freq == RecurringTaskFrequency.DAILY:
-            return after_date + timedelta(days=1)
+            candidate = after_date + timedelta(days=1)
+            if definition.weekdays:
+                # Skip days not in the allowed weekdays list
+                for _ in range(7):
+                    if candidate.weekday() in definition.weekdays:
+                        return candidate
+                    candidate += timedelta(days=1)
+                return None  # should not reach here
+            return candidate
 
         elif freq == RecurringTaskFrequency.WEEKLY:
             if definition.weekday is None:

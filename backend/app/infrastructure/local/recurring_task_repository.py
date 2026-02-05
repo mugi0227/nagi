@@ -53,6 +53,7 @@ class SqliteRecurringTaskRepository(IRecurringTaskRepository):
                 purpose=data.purpose,
                 frequency=data.frequency.value,
                 weekday=data.weekday,
+                weekdays=data.weekdays,
                 day_of_month=data.day_of_month,
                 custom_interval_days=data.custom_interval_days,
                 start_time=self._format_time(data.start_time),

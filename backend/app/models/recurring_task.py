@@ -10,7 +10,7 @@ from datetime import date, datetime, time
 from typing import Optional
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from app.models.enums import EnergyLevel, Priority, RecurringTaskFrequency
 
@@ -27,6 +27,19 @@ class RecurringTaskBase(BaseModel):
     weekday: Optional[int] = Field(
         None, ge=0, le=6, description="0=Monday ... 6=Sunday, for WEEKLY/BIWEEKLY"
     )
+    weekdays: Optional[list[int]] = Field(
+        None, description="List of weekdays (0=Mon..6=Sun) for DAILY frequency filter"
+    )
+
+    @field_validator("weekdays")
+    @classmethod
+    def validate_weekdays(cls, v: Optional[list[int]]) -> Optional[list[int]]:
+        if v is not None:
+            for day in v:
+                if not (0 <= day <= 6):
+                    raise ValueError(f"weekday must be 0-6, got {day}")
+        return v
+
     day_of_month: Optional[int] = Field(
         None, ge=1, le=31, description="Day of month, for MONTHLY/BIMONTHLY"
     )
@@ -59,6 +72,9 @@ class RecurringTaskUpdate(BaseModel):
     phase_id: Optional[UUID] = None
     frequency: Optional[RecurringTaskFrequency] = None
     weekday: Optional[int] = Field(None, ge=0, le=6)
+    weekdays: Optional[list[int]] = Field(
+        None, description="List of weekdays (0=Mon..6=Sun) for DAILY frequency filter"
+    )
     day_of_month: Optional[int] = Field(None, ge=1, le=31)
     custom_interval_days: Optional[int] = Field(None, ge=1, le=365)
     start_time: Optional[time] = None
