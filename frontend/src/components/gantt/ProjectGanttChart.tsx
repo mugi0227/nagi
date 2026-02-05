@@ -419,6 +419,7 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
     row.parentTaskId ? 'is-subtask' : '',
     deadlineStatus === 'overdue' ? 'deadline-overdue' : '',
     deadlineStatus === 'approaching' ? 'deadline-approaching' : '',
+    row.bar?.status === 'DONE' ? 'status-done' : '',
   ].filter(Boolean).join(' ');
 
   return (
@@ -439,10 +440,20 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
           {row.isExpanded ? <FaChevronDown size={10} /> : <FaChevronRight size={10} />}
         </button>
       )}
+      {row.type === 'task' && !hasSubtasks && (
+        <span className="pgantt-task-toggle-spacer" />
+      )}
       {row.type === 'subtask' && <span className="pgantt-subtask-icon">└</span>}
       {row.type === 'milestone' && <span className="pgantt-milestone-icon">◆</span>}
       {row.linkedMilestoneId && <span className="pgantt-linked-icon">└</span>}
       {row.hasNoDate && <span className="pgantt-no-date-icon" title="期限未設定">⚠</span>}
+      {(row.type === 'task' || row.type === 'subtask') && row.bar?.status && (
+        <span className={`pgantt-status-dot ${row.bar.status.toLowerCase().replace('_', '-')}`} title={
+          row.bar.status === 'DONE' ? '完了' :
+          row.bar.status === 'IN_PROGRESS' ? '進行中' :
+          row.bar.status === 'WAITING' ? '待機中' : '未着手'
+        } />
+      )}
       <span
         ref={titleRef}
         className="pgantt-row-title"
