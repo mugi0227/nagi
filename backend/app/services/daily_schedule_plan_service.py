@@ -378,6 +378,11 @@ def _build_time_blocks(
                 remaining = min(allocation.minutes, remaining_limit)
                 task = task_map.get(allocation.task_id)
                 pinned_date = task.pinned_date.date() if task and task.pinned_date else None
+                status_value = None
+                if task:
+                    status_value = (
+                        task.status.value if hasattr(task.status, "value") else str(task.status)
+                    )
                 while remaining > 0 and available:
                     interval = available[0]
                     duration = min(remaining, interval.end_minutes - interval.start_minutes)
@@ -394,7 +399,7 @@ def _build_time_blocks(
                             start=start_dt,
                             end=end_dt,
                             kind="auto",
-                            status=task.status.value if hasattr(task.status, "value") else str(task.status) if task else None,
+                            status=status_value,
                             pinned_date=pinned_date,
                         )
                     )
@@ -542,7 +547,12 @@ class DailySchedulePlanService:
                     return False
             return True
 
-        return [task for task in tasks if is_my_task(task)]
+        today = date.today()
+        return [
+            task
+            for task in tasks
+            if is_my_task(task) or (task.pinned_date and task.pinned_date.date() >= today)
+        ]
 
     async def _load_settings(self, user_id: str) -> ScheduleSettings:
         settings = await self._settings_repo.get(user_id)
