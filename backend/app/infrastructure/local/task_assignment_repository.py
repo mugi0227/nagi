@@ -50,14 +50,14 @@ class SqliteTaskAssignmentRepository(ITaskAssignmentRepository):
                     and_(
                         TaskAssignmentORM.task_id == str(task_id),
                         TaskAssignmentORM.user_id == user_id,
+                        TaskAssignmentORM.assignee_id == assignment.assignee_id,
                     )
                 )
             )
             orm = result.scalar_one_or_none()
             if orm:
-                orm.assignee_id = assignment.assignee_id
-                orm.status = assignment.status.value if assignment.status else None
-                orm.progress = assignment.progress
+                orm.status = assignment.status.value if assignment.status else orm.status
+                orm.progress = assignment.progress if assignment.progress is not None else orm.progress
                 orm.updated_at = datetime.utcnow()
             else:
                 orm = TaskAssignmentORM(
@@ -81,7 +81,7 @@ class SqliteTaskAssignmentRepository(ITaskAssignmentRepository):
                         TaskAssignmentORM.task_id == str(task_id),
                         TaskAssignmentORM.user_id == user_id,
                     )
-                )
+                ).limit(1)
             )
             orm = result.scalar_one_or_none()
             return self._orm_to_model(orm) if orm else None
@@ -143,6 +143,7 @@ class SqliteTaskAssignmentRepository(ITaskAssignmentRepository):
             return self._orm_to_model(orm)
 
     async def delete_by_task(self, user_id: str, task_id: UUID) -> bool:
+        """Delete all assignments for a task. Returns True if any were deleted."""
         async with self._session_factory() as session:
             result = await session.execute(
                 select(TaskAssignmentORM).where(
@@ -152,10 +153,11 @@ class SqliteTaskAssignmentRepository(ITaskAssignmentRepository):
                     )
                 )
             )
-            orm = result.scalar_one_or_none()
-            if not orm:
+            rows = result.scalars().all()
+            if not rows:
                 return False
-            await session.delete(orm)
+            for orm in rows:
+                await session.delete(orm)
             await session.commit()
             return True
 

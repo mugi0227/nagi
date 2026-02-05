@@ -50,7 +50,7 @@ class ITaskAssignmentRepository(ABC):
 
     @abstractmethod
     async def delete_by_task(self, user_id: str, task_id: UUID) -> bool:
-        """Delete assignment for a task."""
+        """Delete all assignments for a task. Returns True if any were deleted."""
         pass
 
     @abstractmethod

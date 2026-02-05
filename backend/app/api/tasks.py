@@ -15,6 +15,7 @@ from app.api.deps import (
     CurrentUser,
     DailySchedulePlanRepo,
     PostponeRepo,
+    ProjectMemberRepo,
     ProjectRepo,
     ScheduleSettingsRepo,
     ScheduleSnapshotRepo,
@@ -40,9 +41,42 @@ from app.models.task import CompletionCheckResponse, Task, TaskCreate, TaskUpdat
 from app.services.daily_schedule_plan_service import DEFAULT_PLAN_DAYS, DailySchedulePlanService
 from app.services.scheduler_service import SchedulerService
 from app.utils.datetime_utils import get_user_today
+from app.services.assignee_utils import is_invitation_assignee
 from app.utils.dependency_validator import DependencyValidator
 
 router = APIRouter()
+
+
+async def _validate_assignees_are_project_members(
+    assignee_ids: list[str],
+    task: Task,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
+    user_id: str,
+) -> None:
+    """Validate that all assignee_ids are members of the task's project."""
+    if not task.project_id:
+        return  # No project = personal task, no member validation needed
+
+    project = await project_repo.get(user_id, task.project_id)
+    if not project:
+        return
+
+    members = await member_repo.list_by_project(task.project_id)
+    valid_ids = {m.member_user_id for m in members}
+
+    invalid = []
+    for aid in assignee_ids:
+        if is_invitation_assignee(aid):
+            continue  # Invitation-based assignees are allowed
+        if aid not in valid_ids:
+            invalid.append(aid)
+
+    if invalid:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"以下のユーザーはプロジェクトのメンバーではありません: {', '.join(invalid)}",
+        )
 
 
 def get_scheduler_service() -> SchedulerService:
@@ -557,9 +591,31 @@ async def delete_task(
     task_id: UUID,
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
 ):
     """Delete a task."""
-    deleted = await repo.delete(user.id, task_id)
+    # Try personal access first, then project-based (same pattern as update_task)
+    task = await repo.get(user.id, task_id)
+    task_project_id: Optional[UUID] = None
+
+    if task:
+        task_project_id = task.project_id
+    else:
+        # Try to find via projects user has access to
+        projects = await project_repo.list(user.id, limit=1000)
+        for project in projects:
+            task = await repo.get(user.id, task_id, project_id=project.id)
+            if task:
+                task_project_id = project.id
+                break
+
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Task {task_id} not found",
+        )
+
+    deleted = await repo.delete(user.id, task_id, project_id=task_project_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -730,9 +786,13 @@ async def assign_task(
     repo: TaskRepo,
     project_repo: ProjectRepo,
     assignment_repo: TaskAssignmentRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Assign a task to a member (upsert)."""
-    _, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+    task, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+    await _validate_assignees_are_project_members(
+        [assignment.assignee_id], task, project_repo, member_repo, user.id,
+    )
     return await assignment_repo.assign(owner_user_id, task_id, assignment)
 
 
@@ -744,9 +804,13 @@ async def assign_task_multiple(
     repo: TaskRepo,
     project_repo: ProjectRepo,
     assignment_repo: TaskAssignmentRepo,
+    member_repo: ProjectMemberRepo,
 ):
     """Assign a task to multiple members. Replaces existing assignments."""
-    _, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+    task, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+    await _validate_assignees_are_project_members(
+        assignments.assignee_ids, task, project_repo, member_repo, user.id,
+    )
     return await assignment_repo.assign_multiple(owner_user_id, task_id, assignments)
 
 
