@@ -35,6 +35,7 @@ from app.interfaces.recurring_meeting_repository import IRecurringMeetingReposit
 from app.interfaces.recurring_task_repository import IRecurringTaskRepository
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
+from app.interfaces.user_repository import IUserRepository
 from app.models.capture import CaptureCreate
 from app.models.chat import ChatRequest, ChatResponse
 from app.models.enums import ContentType, ToolApprovalMode
@@ -70,6 +71,7 @@ class AgentService:
         checkin_repo: ICheckinRepository,
         recurring_meeting_repo: IRecurringMeetingRepository,
         recurring_task_repo: IRecurringTaskRepository,
+        user_repo: IUserRepository | None = None,
     ):
         """
         Initialize Agent Service.
@@ -87,6 +89,7 @@ class AgentService:
             chat_repo: Chat session repository
             proposal_repo: Proposal repository
             checkin_repo: Check-in repository
+            user_repo: User repository (for resolving display names)
         """
         self._llm_provider = llm_provider
         self._task_repo = task_repo
@@ -105,6 +108,7 @@ class AgentService:
         self._checkin_repo = checkin_repo
         self._recurring_meeting_repo = recurring_meeting_repo
         self._recurring_task_repo = recurring_task_repo
+        self._user_repo = user_repo
 
     async def _get_or_create_runner(
         self,
@@ -147,6 +151,7 @@ class AgentService:
             proposal_repo=self._proposal_repo,
             session_id=session_id,
             auto_approve=auto_approve,
+            user_repo=self._user_repo,
         )
 
         runner = InMemoryRunner(agent=agent, app_name=self.APP_NAME)
@@ -783,6 +788,8 @@ class AgentService:
 
             # Stream agent execution
             assistant_message_parts: list[str] = []
+            # FIFO queue per tool name to correlate tool_start with tool_end
+            _pending_tool_ids: dict[str, list[str]] = {}
             async for event in runner.run_async(
                 user_id=user_id,
                 session_id=session_id_str,
@@ -795,9 +802,13 @@ class AgentService:
                     for part in event.content.parts:
                         func_call = getattr(part, "function_call", None)
                         if func_call:
+                            tool_call_id = str(uuid4())
+                            fc_name = func_call.name if hasattr(func_call, "name") else "unknown"
+                            _pending_tool_ids.setdefault(fc_name, []).append(tool_call_id)
                             yield {
                                 "chunk_type": "tool_start",
-                                "tool_name": func_call.name if hasattr(func_call, "name") else "unknown",
+                                "tool_name": fc_name,
+                                "tool_call_id": tool_call_id,
                                 "tool_args": dict(func_call.args) if hasattr(func_call, "args") else {},
                             }
 
@@ -807,6 +818,10 @@ class AgentService:
                             raw_response = func_response.response if hasattr(func_response, "response") else None
                             tool_result_str = ""
                             result = None
+
+                            # Pop the matching tool_call_id from the FIFO queue
+                            pending = _pending_tool_ids.get(tool_name, [])
+                            resp_tool_call_id = pending.pop(0) if pending else None
 
                             if raw_response is not None:
                                 if isinstance(raw_response, str):
@@ -849,12 +864,14 @@ class AgentService:
                                 yield {
                                     "chunk_type": "tool_error",
                                     "tool_name": tool_name,
+                                    "tool_call_id": resp_tool_call_id,
                                     "error_message": error_message,
                                 }
                             else:
                                 yield {
                                     "chunk_type": "tool_end",
                                     "tool_name": tool_name,
+                                    "tool_call_id": resp_tool_call_id,
                                     "tool_result": tool_result_str,
                                 }
 

@@ -26,6 +26,7 @@ from app.interfaces.recurring_meeting_repository import IRecurringMeetingReposit
 from app.interfaces.recurring_task_repository import IRecurringTaskRepository
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
+from app.interfaces.user_repository import IUserRepository
 from app.services.skills_service import format_skills_index_for_prompt, get_skills_index
 from app.tools import (
     add_agenda_item_tool,
@@ -149,6 +150,7 @@ async def create_secretary_agent(
     proposal_repo: IProposalRepository,
     session_id: str,
     auto_approve: bool = True,
+    user_repo: IUserRepository | None = None,
 ) -> Agent:
     """
     Create the main Secretary Agent with all tools.
@@ -447,6 +449,7 @@ async def create_secretary_agent(
             recurring_meeting_repo,
             project_member_repo,
             user_id,
+            user_repo=user_repo,
         ),
         list_recurring_meetings_tool(recurring_meeting_repo, project_repo, project_member_repo, user_id),
         create_recurring_task_tool(recurring_task_repo, task_repo, user_id),

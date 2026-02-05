@@ -1794,7 +1794,11 @@ def create_meeting_tool(
     async def _tool(input_data: dict) -> dict:
         """create_meeting: Register a fixed-time meeting event.
 
-        Use when extracting meetings from screenshots or text.
+        Use ONLY for actual meetings/appointments with other people (attendees exist).
+        Do NOT use for tasks that merely have a time-based deadline.
+        Examples of correct use: team meetings, client calls, interviews, seminars.
+        Examples of INCORRECT use: "submit report by 14:00", "finish review by 15:00".
+        For time-based deadlines, use create_task with due_date instead.
 
         Parameters:
             title (str): Meeting title

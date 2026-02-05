@@ -121,6 +121,7 @@ class IssueChatService:
         try:
             # Run agent
             user_message = self._build_user_content(message, image_base64)
+            _pending_tool_ids: dict[str, list[str]] = {}
             async for event in runner.run_async(
                 user_id=user_id,
                 session_id=session_id,
@@ -134,16 +135,24 @@ class IssueChatService:
                                 "content": part.text,
                             }
                         elif hasattr(part, "function_call") and part.function_call:
+                            tool_call_id = str(uuid4())
+                            fc_name = part.function_call.name
+                            _pending_tool_ids.setdefault(fc_name, []).append(tool_call_id)
                             yield {
                                 "chunk_type": "tool_start",
-                                "tool_name": part.function_call.name,
+                                "tool_name": fc_name,
+                                "tool_call_id": tool_call_id,
                                 "tool_args": dict(part.function_call.args) if part.function_call.args else {},
                             }
                         elif hasattr(part, "function_response") and part.function_response:
                             result = part.function_response.response
+                            fr_name = part.function_response.name
+                            pending = _pending_tool_ids.get(fr_name, [])
+                            resp_tool_call_id = pending.pop(0) if pending else None
                             yield {
                                 "chunk_type": "tool_end",
-                                "tool_name": part.function_response.name,
+                                "tool_name": fr_name,
+                                "tool_call_id": resp_tool_call_id,
                                 "tool_result": result,
                             }
                             # Detect ask_user_questions response

@@ -20,6 +20,7 @@ from app.interfaces.project_member_repository import IProjectMemberRepository
 from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
 from app.interfaces.task_repository import ITaskRepository
+from app.interfaces.user_repository import IUserRepository
 from app.services.project_permissions import ProjectAction
 from app.tools.permissions import require_project_action
 
@@ -39,6 +40,31 @@ class FetchMeetingContextInput(BaseModel):
     end_date: date = Field(..., description="対象期間の終了日 (YYYY-MM-DD)")
 
 
+async def _build_member_name_map(
+    member_repo: IProjectMemberRepository,
+    user_repo: Optional[IUserRepository],
+    project_id: UUID,
+) -> dict[str, str]:
+    """Build a mapping from member_user_id to display name."""
+    members = await member_repo.list_by_project(project_id)
+    name_map: dict[str, str] = {}
+    for member in members:
+        display_name = None
+        if user_repo:
+            try:
+                user_account = await user_repo.get(UUID(member.member_user_id))
+            except (ValueError, TypeError):
+                user_account = None
+            if not user_account and "@" in member.member_user_id:
+                user_account = await user_repo.get_by_email(member.member_user_id)
+            if not user_account:
+                user_account = await user_repo.get_by_username(member.member_user_id)
+            if user_account:
+                display_name = user_account.display_name or user_account.username
+        name_map[member.member_user_id] = display_name or member.member_user_id
+    return name_map
+
+
 async def fetch_meeting_context(
     user_id: str,
     checkin_repo: ICheckinRepository,
@@ -48,6 +74,7 @@ async def fetch_meeting_context(
     recurring_meeting_repo: IRecurringMeetingRepository,
     member_repo: IProjectMemberRepository,
     input_data: FetchMeetingContextInput,
+    user_repo: Optional[IUserRepository] = None,
 ) -> dict:
     """Fetch context for meeting agenda generation."""
     try:
@@ -97,6 +124,12 @@ async def fetch_meeting_context(
         except ValueError:
             pass  # Invalid meeting_id, skip
 
+    # Build member name map for display names
+    name_map = await _build_member_name_map(member_repo, user_repo, project_id)
+
+    def _resolve_name(member_user_id: str) -> str:
+        return name_map.get(member_user_id, member_user_id)
+
     # 3. Fetch Check-ins (V1 for backward compatibility)
     checkins = await checkin_repo.list(
         user_id=access.owner_id,
@@ -109,7 +142,7 @@ async def fetch_meeting_context(
     checkin_summaries = []
     for c in checkins:
         checkin_summaries.append({
-            "user": c.member_user_id,
+            "user": _resolve_name(c.member_user_id),
             "date": c.checkin_date.isoformat(),
             "summary": c.summary_text or c.raw_text,
             "type": c.checkin_type
@@ -122,6 +155,19 @@ async def fetch_meeting_context(
         start_date=input_data.start_date,
         end_date=input_data.end_date,
     )
+
+    # Resolve member names in agenda items
+    def _resolve_items(items: list[dict]) -> list[dict]:
+        for item in items:
+            if "member" in item:
+                item["member"] = _resolve_name(item["member"])
+        return items
+
+    _resolve_items(agenda_items.blockers)
+    _resolve_items(agenda_items.discussions)
+    _resolve_items(agenda_items.requests)
+    _resolve_items(agenda_items.updates)
+    _resolve_items(agenda_items.must_discuss_items)
 
     # 4. Fetch Tasks (Active ones)
     all_tasks = await task_repo.list(access.owner_id, project_id=project_id)
@@ -140,9 +186,9 @@ async def fetch_meeting_context(
             "progress": t.progress
         })
 
-    # Convert member_moods to serializable format
+    # Convert member_moods to serializable format with display names
     member_moods_serializable = {
-        k: v.value if hasattr(v, 'value') else v
+        _resolve_name(k): v.value if hasattr(v, 'value') else v
         for k, v in agenda_items.member_moods.items()
     }
 
@@ -177,6 +223,7 @@ def fetch_meeting_context_tool(
     recurring_meeting_repo: IRecurringMeetingRepository,
     member_repo: IProjectMemberRepository,
     user_id: str,
+    user_repo: Optional[IUserRepository] = None,
 ) -> FunctionTool:
     """Create ADK tool for fetching meeting context."""
 
@@ -200,7 +247,8 @@ def fetch_meeting_context_tool(
             project_repo,
             recurring_meeting_repo,
             member_repo,
-            FetchMeetingContextInput(**input_data)
+            FetchMeetingContextInput(**input_data),
+            user_repo=user_repo,
         )
 
     _tool.__name__ = "fetch_meeting_context"
