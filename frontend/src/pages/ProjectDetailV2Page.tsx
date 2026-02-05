@@ -20,6 +20,9 @@ import {
   FaUsers,
 } from 'react-icons/fa';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { usePageTour } from '../hooks/usePageTour';
+import { PageTour } from '../components/onboarding/PageTour';
+import { TourHelpButton } from '../components/onboarding/TourHelpButton';
 import { milestonesApi } from '../api/milestones';
 import { phasesApi } from '../api/phases';
 import { getProject, projectsApi } from '../api/projects';
@@ -138,6 +141,7 @@ export function ProjectDetailV2Page() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const timezone = useTimezone();
+  const tour = usePageTour('projectDetail');
 
   // Read initial tab from URL query parameter
   const getInitialTab = (): TabId => {
@@ -1216,6 +1220,7 @@ export function ProjectDetailV2Page() {
             </h1>
           </div>
           <div className="project-v2-header-actions">
+            <TourHelpButton onClick={tour.startTour} />
             <button
               className="project-v2-icon-btn"
               onClick={handleOpenProjectModal}
@@ -2553,6 +2558,12 @@ export function ProjectDetailV2Page() {
           </div>
         </div>
       )}
+      <PageTour
+        run={tour.run}
+        steps={tour.steps}
+        stepIndex={tour.stepIndex}
+        onCallback={tour.handleCallback}
+      />
     </div>
   );
 }

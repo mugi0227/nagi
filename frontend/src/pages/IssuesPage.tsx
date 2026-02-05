@@ -7,6 +7,9 @@ import { useTimezone } from '../hooks/useTimezone';
 import { useCurrentUser } from '../hooks/useCurrentUser';
 import { formatDate as formatDateValue } from '../utils/dateTime';
 import { IssueChatWindow } from '../components/issues/IssueChatWindow';
+import { usePageTour } from '../hooks/usePageTour';
+import { PageTour } from '../components/onboarding/PageTour';
+import { TourHelpButton } from '../components/onboarding/TourHelpButton';
 import './IssuesPage.css';
 
 const CATEGORY_LABELS: Record<IssueCategory, string> = {
@@ -66,6 +69,7 @@ type SortBy = 'created_at' | 'like_count';
 export function IssuesPage() {
   const timezone = useTimezone();
   const { data: currentUser } = useCurrentUser();
+  const tour = usePageTour('issues');
   const [issues, setIssues] = useState<Issue[]>([]);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -236,6 +240,7 @@ export function IssuesPage() {
           </p>
         </div>
         <div className="header-actions">
+          <TourHelpButton onClick={tour.startTour} />
           <button
             className="submit-button"
             onClick={() => setShowChatWindow(true)}
@@ -477,6 +482,12 @@ export function IssuesPage() {
       {showChatWindow && (
         <IssueChatWindow onClose={handleChatClose} />
       )}
+      <PageTour
+        run={tour.run}
+        steps={tour.steps}
+        stepIndex={tour.stepIndex}
+        onCallback={tour.handleCallback}
+      />
     </div>
   );
 }

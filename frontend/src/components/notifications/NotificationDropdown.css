@@ -168,6 +168,10 @@
   color: var(--accent-purple, #a78bfa);
 }
 
+.notification-icon.heartbeat {
+  color: var(--accent-pink);
+}
+
 .notification-content {
   flex: 1;
   min-width: 0;

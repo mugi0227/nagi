@@ -5,6 +5,7 @@ import type { ChatRequest, ChatResponse, ChatSession, ChatHistoryMessage } from 
 export interface StreamChunk {
   chunk_type: 'tool_start' | 'tool_end' | 'tool_error' | 'text' | 'done' | 'error' | 'proposal' | 'questions';
   tool_name?: string;
+  tool_call_id?: string;
   tool_args?: Record<string, unknown>;
   tool_result?: string;
   error_message?: string;

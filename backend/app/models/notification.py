@@ -27,6 +27,7 @@ class NotificationType(str, Enum):
     ISSUE_LIKED = "issue_liked"  # 要望にいいねがついた
     ISSUE_COMMENTED = "issue_commented"  # 要望にコメントがついた
     ISSUE_STATUS_CHANGED = "issue_status_changed"  # 要望のステータスが変更された
+    HEARTBEAT = "heartbeat"
 
 
 class Notification(BaseModel):

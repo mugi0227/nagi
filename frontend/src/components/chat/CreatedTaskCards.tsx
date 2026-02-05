@@ -10,9 +10,10 @@ import './CreatedTaskCards.css';
 interface CreatedTaskCardsProps {
   taskIds: string[];
   onTaskClick: (taskId: string) => void;
+  header?: string;
 }
 
-export function CreatedTaskCards({ taskIds, onTaskClick }: CreatedTaskCardsProps) {
+export function CreatedTaskCards({ taskIds, onTaskClick, header }: CreatedTaskCardsProps) {
   const timezone = useTimezone();
 
   const taskQueries = useQueries({
@@ -95,7 +96,7 @@ export function CreatedTaskCards({ taskIds, onTaskClick }: CreatedTaskCardsProps
 
   return (
     <div className="created-tasks">
-      <div className="created-tasks-header">Created tasks</div>
+      <div className="created-tasks-header">{header || 'Created tasks'}</div>
       {tasks.map((task) => {
         const assignees = taskAssigneeNames.get(task.id) || [];
         return (

@@ -1,6 +1,7 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { chatApi } from '../api/chat';
+import { heartbeatApi } from '../api/heartbeat';
 import type {
   ChatHistoryMessage,
   ChatMode,
@@ -69,6 +70,12 @@ export interface Message {
 }
 
 const SESSION_STORAGE_KEY = 'chat_session_id';
+const HEARTBEAT_SESSION_PREFIX = 'heartbeat-';
+const LEGACY_HEARTBEAT_SESSION_ID = 'heartbeat';
+
+const isHeartbeatSession = (sessionId: string) =>
+  sessionId === LEGACY_HEARTBEAT_SESSION_ID
+  || sessionId.startsWith(HEARTBEAT_SESSION_PREFIX);
 
 const APPROVAL_TOOL_NAMES = new Set([
   'create_task',
@@ -201,10 +208,18 @@ export function useChat() {
         }));
       setMessages(mapped);
       setSessionId(targetSessionId);
+      if (isHeartbeatSession(targetSessionId)) {
+        try {
+          await heartbeatApi.markRead();
+          queryClient.invalidateQueries({ queryKey: ['heartbeat', 'unread-count'] });
+        } catch (error) {
+          console.error('Failed to mark heartbeat messages as read', error);
+        }
+      }
     } finally {
       setIsLoadingHistory(false);
     }
-  }, [setSessionId, timezone]);
+  }, [queryClient, setSessionId, timezone]);
 
   const initialSessionId = useRef(sessionId);
 

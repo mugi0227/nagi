@@ -3,12 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { FaStar, FaPlus, FaLock, FaUsers } from 'react-icons/fa6';
 import { useProjects } from '../hooks/useProjects';
 import { ProjectCreateModal } from '../components/projects/ProjectCreateModal';
+import { usePageTour } from '../hooks/usePageTour';
+import { PageTour } from '../components/onboarding/PageTour';
+import { TourHelpButton } from '../components/onboarding/TourHelpButton';
 import './ProjectsPage.css';
 
 export function ProjectsPage() {
   const navigate = useNavigate();
   const { projects, isLoading, error, refetch } = useProjects();
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const tour = usePageTour('projects');
 
   if (error) {
     return (
@@ -46,6 +50,7 @@ export function ProjectsPage() {
       <div className="page-header">
         <h2 className="page-title">プロジェクト</h2>
         <div className="header-actions">
+          <TourHelpButton onClick={tour.startTour} />
           <span className="project-total">全{projects.length}件</span>
           <button className="button button-primary" onClick={() => setShowCreateModal(true)}>
             <FaPlus /> 新規プロジェクト
@@ -150,6 +155,12 @@ export function ProjectsPage() {
           }}
         />
       )}
+      <PageTour
+        run={tour.run}
+        steps={tour.steps}
+        stepIndex={tour.stepIndex}
+        onCallback={tour.handleCallback}
+      />
     </div>
   );
 }

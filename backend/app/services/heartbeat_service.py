@@ -14,6 +14,7 @@ from app.models.agent_task import AgentTask
 from app.models.enums import ActionType
 from app.services.recurring_meeting_service import RecurringMeetingService
 from app.services.recurring_task_service import RecurringTaskService
+from app.services.task_heartbeat_service import TaskHeartbeatService
 
 logger = setup_logger(__name__)
 
@@ -34,10 +35,12 @@ class HeartbeatService:
         agent_task_repo: IAgentTaskRepository,
         recurring_meeting_service: RecurringMeetingService | None = None,
         recurring_task_service: RecurringTaskService | None = None,
+        task_heartbeat_service: TaskHeartbeatService | None = None,
     ):
         self.agent_task_repo = agent_task_repo
         self.recurring_meeting_service = recurring_meeting_service
         self.recurring_task_service = recurring_task_service
+        self.task_heartbeat_service = task_heartbeat_service
         settings = get_settings()
 
         # Parse quiet hours from config
@@ -91,6 +94,7 @@ class HeartbeatService:
                 "failed": 0,
                 "recurring_meetings": recurring_result,
                 "recurring_tasks": recurring_tasks_result,
+                "task_heartbeat": None,
             }
 
         # Get pending tasks
@@ -100,45 +104,34 @@ class HeartbeatService:
             limit=10,
         )
 
-        if not pending_tasks:
-            logger.debug(f"No pending tasks for {user_id}")
-            return {
-                "status": "success",
-                "processed": 0,
-                "failed": 0,
-                "recurring_meetings": recurring_result,
-                "recurring_tasks": recurring_tasks_result,
-            }
-
-        logger.info(f"Processing {len(pending_tasks)} pending tasks for {user_id}")
-
         processed = 0
         failed = 0
 
-        for task in pending_tasks:
-            try:
-                # Execute the task
-                await self._execute_agent_task(user_id, task)
+        if pending_tasks:
+            logger.info(f"Processing {len(pending_tasks)} pending tasks for {user_id}")
+            for task in pending_tasks:
+                try:
+                    await self._execute_agent_task(user_id, task)
+                    await self.agent_task_repo.mark_completed(task.id)
+                    processed += 1
+                    logger.info(
+                        f"Completed agent task {task.id} "
+                        f"(type={task.action_type.value}, user={user_id})"
+                    )
+                except Exception as e:
+                    error_msg = str(e)
+                    await self.agent_task_repo.mark_failed(task.id, error_msg)
+                    failed += 1
+                    logger.error(
+                        f"Failed to execute agent task {task.id}: {error_msg}",
+                        exc_info=True,
+                    )
+        else:
+            logger.debug(f"No pending tasks for {user_id}")
 
-                # Mark as completed
-                await self.agent_task_repo.mark_completed(task.id)
-                processed += 1
-
-                logger.info(
-                    f"Completed agent task {task.id} "
-                    f"(type={task.action_type.value}, user={user_id})"
-                )
-
-            except Exception as e:
-                # Mark as failed and increment retry
-                error_msg = str(e)
-                await self.agent_task_repo.mark_failed(task.id, error_msg)
-                failed += 1
-
-                logger.error(
-                    f"Failed to execute agent task {task.id}: {error_msg}",
-                    exc_info=True,
-                )
+        task_heartbeat_result = None
+        if self.task_heartbeat_service:
+            task_heartbeat_result = await self.task_heartbeat_service.run(user_id)
 
         return {
             "status": "success",
@@ -146,6 +139,7 @@ class HeartbeatService:
             "failed": failed,
             "recurring_meetings": recurring_result,
             "recurring_tasks": recurring_tasks_result,
+            "task_heartbeat": task_heartbeat_result,
         }
 
     async def _execute_agent_task(self, user_id: str, task: AgentTask) -> dict[str, Any]:

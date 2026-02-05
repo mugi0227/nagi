@@ -1,7 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FaClock, FaComments, FaFolder, FaImage, FaPlus, FaRobot, FaXmark } from 'react-icons/fa6';
+import {
+  FaClock,
+  FaComments,
+  FaFolder,
+  FaHeartPulse,
+  FaImage,
+  FaPlus,
+  FaRobot,
+  FaXmark,
+} from 'react-icons/fa6';
 import { tasksApi } from '../../api/tasks';
 import { projectsApi } from '../../api/projects';
 import type { Task, TaskAssignment, TaskAssignmentsCreate } from '../../api/types';
@@ -17,6 +26,13 @@ import { ProposalPanel } from './ProposalPanel';
 import { QuestionsPanel } from './QuestionsPanel';
 import { userStorage } from '../../utils/userStorage';
 import './ChatWindow.css';
+
+const HEARTBEAT_SESSION_PREFIX = 'heartbeat-';
+const LEGACY_HEARTBEAT_SESSION_ID = 'heartbeat';
+
+const isHeartbeatSessionId = (sessionId: string) =>
+  sessionId === LEGACY_HEARTBEAT_SESSION_ID
+  || sessionId.startsWith(HEARTBEAT_SESSION_PREFIX);
 
 interface ChatWindowProps {
   isOpen: boolean;
@@ -55,6 +71,7 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
   const [isDragging, setIsDragging] = useState(false);
   const [draggedImage, setDraggedImage] = useState<string | null>(null);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [historyMode, setHistoryMode] = useState<'all' | 'heartbeat'>('all');
   const [approvalMode, setApprovalMode] = useState<'manual' | 'auto'>(() => {
     return (userStorage.get('aiApprovalMode') as 'manual' | 'auto') || 'auto';
   });
@@ -336,6 +353,33 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     userStorage.set('aiApprovalMode', mode);
   };
 
+  const heartbeatSessions = useMemo(
+    () => sessions.filter((session) => isHeartbeatSessionId(session.session_id)),
+    [sessions],
+  );
+
+  const regularSessions = useMemo(
+    () => sessions.filter((session) => !isHeartbeatSessionId(session.session_id)),
+    [sessions],
+  );
+
+  const visibleSessions = historyMode === 'heartbeat'
+    ? heartbeatSessions
+    : regularSessions;
+
+  const historyTitle = historyMode === 'heartbeat'
+    ? 'Heartbeat チャット'
+    : 'Recent Chats';
+
+  const emptyHistoryText = historyMode === 'heartbeat'
+    ? 'まだHeartbeatはありません。'
+    : 'No sessions yet.';
+
+  const toggleHistory = (mode: 'all' | 'heartbeat') => {
+    setHistoryMode(mode);
+    setIsHistoryOpen((prev) => (prev && historyMode === mode ? false : true));
+  };
+
   return (
     <div
       className={`chat-window ${isDragging ? 'dragging' : ''}`}
@@ -385,7 +429,18 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
             </button>
           </div>
           <div className="chat-header-actions">
-            <button className="header-btn" onClick={() => setIsHistoryOpen((prev) => !prev)} title="History">
+            <button
+              className="header-btn"
+              onClick={() => toggleHistory('heartbeat')}
+              title="Heartbeat"
+            >
+              <FaHeartPulse />
+            </button>
+            <button
+              className="header-btn"
+              onClick={() => toggleHistory('all')}
+              title="History"
+            >
               <FaClock />
             </button>
             <button className="header-btn" onClick={clearChat} title="New chat">
@@ -401,8 +456,12 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
       {isHistoryOpen && (
         <div className="chat-history-panel">
           <div className="history-panel-header">
-            <span>Recent Chats</span>
-            <button className="header-btn close-btn" onClick={() => setIsHistoryOpen(false)} title="Close history">
+            <span>{historyTitle}</span>
+            <button
+              className="header-btn close-btn"
+              onClick={() => setIsHistoryOpen(false)}
+              title="Close history"
+            >
               <FaXmark />
             </button>
           </div>
@@ -410,10 +469,10 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
             {(isLoadingSessions || isLoadingHistory) && (
               <div className="history-panel-empty">Loading history...</div>
             )}
-            {!isLoadingSessions && !isLoadingHistory && sessions.length === 0 && (
-              <div className="history-panel-empty">No sessions yet.</div>
+            {!isLoadingSessions && !isLoadingHistory && visibleSessions.length === 0 && (
+              <div className="history-panel-empty">{emptyHistoryText}</div>
             )}
-            {!isLoadingSessions && !isLoadingHistory && sessions.map((session) => (
+            {!isLoadingSessions && !isLoadingHistory && visibleSessions.map((session) => (
               <button
                 key={session.session_id}
                 className={`history-panel-item ${session.session_id === sessionId ? 'active' : ''}`}

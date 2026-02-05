@@ -1,5 +1,13 @@
 import { useEffect, useState } from 'react';
-import { FaTimes, FaMoon, FaSun, FaBell, FaUser, FaClock, FaCog } from 'react-icons/fa';
+import {
+  FaTimes,
+  FaMoon,
+  FaSun,
+  FaBell,
+  FaUser,
+  FaClock,
+  FaCog,
+} from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTheme } from '../../context/ThemeContext';
@@ -21,8 +29,11 @@ import { userStorage } from '../../utils/userStorage';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { usersApi } from '../../api/users';
 import { scheduleSettingsApi } from '../../api/scheduleSettings';
+import { heartbeatApi } from '../../api/heartbeat';
+import type { HeartbeatIntensity } from '../../api/types';
 import { ApiError } from '../../api/client';
 import { useScheduleSettings } from '../../hooks/useScheduleSettings';
+import { useHeartbeatSettings } from '../../hooks/useHeartbeatSettings';
 import './SettingsModal.css';
 
 const WEEKDAY_LABELS = ['日', '月', '火', '水', '木', '金', '土'];
@@ -85,6 +96,10 @@ const parseStoredNumber = (value: string | null, fallback: number) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const clampNumber = (value: number, min: number, max: number) => (
+  Math.min(max, Math.max(min, value))
+);
+
 const formatCapacityHours = (hours: number) => {
   const rounded = Math.round(hours * 10) / 10;
   return `${rounded}h`;
@@ -110,6 +125,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const queryClient = useQueryClient();
   const { data: currentUser } = useCurrentUser();
   const { data: scheduleSettings } = useScheduleSettings();
+  const { data: heartbeatSettings } = useHeartbeatSettings();
   const authMode = (import.meta.env.VITE_AUTH_MODE as string | undefined)?.toLowerCase() || '';
   const isLocalAuth = authMode === 'local';
   const [userName, setUserName] = useState('');
@@ -153,6 +169,14 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   );
   const [enableWeeklyMeetingReminder, setEnableWeeklyMeetingReminder] = useState(false);
   const [hasSyncedScheduleSettings, setHasSyncedScheduleSettings] = useState(false);
+  const [heartbeatEnabled, setHeartbeatEnabled] = useState(true);
+  const [heartbeatLimit, setHeartbeatLimit] = useState(2);
+  const [heartbeatWindowStart, setHeartbeatWindowStart] = useState('09:00');
+  const [heartbeatWindowEnd, setHeartbeatWindowEnd] = useState('21:00');
+  const [heartbeatIntensity, setHeartbeatIntensity] = useState<HeartbeatIntensity>('standard');
+  const [heartbeatDailyCapacity, setHeartbeatDailyCapacity] = useState(60);
+  const [heartbeatCooldownHours, setHeartbeatCooldownHours] = useState(24);
+  const [hasSyncedHeartbeatSettings, setHasSyncedHeartbeatSettings] = useState(false);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -180,6 +204,18 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   }, [scheduleSettings, hasSyncedScheduleSettings]);
 
   useEffect(() => {
+    if (!heartbeatSettings || hasSyncedHeartbeatSettings) return;
+    setHasSyncedHeartbeatSettings(true);
+    setHeartbeatEnabled(heartbeatSettings.enabled);
+    setHeartbeatLimit(heartbeatSettings.notification_limit_per_day);
+    setHeartbeatWindowStart(heartbeatSettings.notification_window_start);
+    setHeartbeatWindowEnd(heartbeatSettings.notification_window_end);
+    setHeartbeatIntensity(heartbeatSettings.heartbeat_intensity);
+    setHeartbeatDailyCapacity(heartbeatSettings.daily_capacity_per_task_minutes);
+    setHeartbeatCooldownHours(heartbeatSettings.cooldown_hours_per_task);
+  }, [heartbeatSettings, hasSyncedHeartbeatSettings]);
+
+  useEffect(() => {
     if (!hasSyncedScheduleSettings) return;
     const handle = window.setTimeout(() => {
       scheduleSettingsApi.update({
@@ -194,6 +230,36 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     }, 500);
     return () => window.clearTimeout(handle);
   }, [weeklyWorkHours, dailyBufferHours, breakAfterTaskMinutes, hasSyncedScheduleSettings, queryClient]);
+
+  useEffect(() => {
+    if (!hasSyncedHeartbeatSettings) return;
+    const handle = window.setTimeout(() => {
+      heartbeatApi.updateSettings({
+        enabled: heartbeatEnabled,
+        notification_limit_per_day: heartbeatLimit,
+        notification_window_start: heartbeatWindowStart,
+        notification_window_end: heartbeatWindowEnd,
+        heartbeat_intensity: heartbeatIntensity,
+        daily_capacity_per_task_minutes: heartbeatDailyCapacity,
+        cooldown_hours_per_task: heartbeatCooldownHours,
+      }).then((updated) => {
+        queryClient.setQueryData(['heartbeat-settings'], updated);
+      }).catch(() => {
+        return;
+      });
+    }, 500);
+    return () => window.clearTimeout(handle);
+  }, [
+    heartbeatEnabled,
+    heartbeatLimit,
+    heartbeatWindowStart,
+    heartbeatWindowEnd,
+    heartbeatIntensity,
+    heartbeatDailyCapacity,
+    heartbeatCooldownHours,
+    hasSyncedHeartbeatSettings,
+    queryClient,
+  ]);
 
   const handleUserNameChange = (value: string) => {
     setUserName(value);
@@ -319,6 +385,24 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     userStorage.set('quietHoursEnd', value);
   };
 
+  const handleHeartbeatLimitChange = (value: string) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    setHeartbeatLimit(clampNumber(Math.round(parsed), 1, 3));
+  };
+
+  const handleHeartbeatDailyCapacityChange = (value: string) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    setHeartbeatDailyCapacity(clampNumber(Math.round(parsed), 15, 480));
+  };
+
+  const handleHeartbeatCooldownChange = (value: string) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed)) return;
+    setHeartbeatCooldownHours(clampNumber(Math.round(parsed), 1, 168));
+  };
+
   const handleWeeklyMeetingReminderToggle = () => {
     const newValue = !enableWeeklyMeetingReminder;
     setEnableWeeklyMeetingReminder(newValue);
@@ -442,6 +526,8 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
       setIsUpdatingAccount(false);
     }
   };
+
+  const heartbeatControlsDisabled = !heartbeatEnabled;
 
   return (
     <div className="modal-overlay settings-modal-overlay" onMouseDown={(e) => e.target === e.currentTarget && onClose()}>
@@ -952,6 +1038,134 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
                   </div>
                 </div>
               )}
+            </div>
+
+            <div className="setting-item">
+              <div className="setting-row">
+                <div className="setting-label-group">
+                  <span className="setting-label">Heartbeat（やさしい確認）</span>
+                  <p className="setting-description">
+                    タスクの見落としを防ぐため、やさしく声かけします。
+                  </p>
+                </div>
+                <button
+                  className={`toggle-btn ${heartbeatEnabled ? 'active' : ''}`}
+                  onClick={() => setHeartbeatEnabled((prev) => !prev)}
+                >
+                  <span className="toggle-slider"></span>
+                </button>
+              </div>
+            </div>
+
+            <div className="setting-item">
+              <label htmlFor="heartbeatLimit" className="setting-label">
+                1日あたりの通知上限
+              </label>
+              <select
+                id="heartbeatLimit"
+                value={heartbeatLimit}
+                onChange={(event) => handleHeartbeatLimitChange(event.target.value)}
+                className="setting-select"
+                disabled={heartbeatControlsDisabled}
+              >
+                <option value={1}>1件</option>
+                <option value={2}>2件</option>
+                <option value={3}>3件</option>
+              </select>
+              <p className="setting-description">
+                1〜3件の範囲で調整できます。
+              </p>
+            </div>
+
+            <div className="setting-item">
+              <span className="setting-label">通知時間帯</span>
+              <div className="quiet-hours-config">
+                <div className="time-input-group">
+                  <label htmlFor="heartbeatWindowStart">開始時刻</label>
+                  <input
+                    type="time"
+                    id="heartbeatWindowStart"
+                    value={heartbeatWindowStart}
+                    onChange={(event) => setHeartbeatWindowStart(event.target.value)}
+                    className="setting-input"
+                    disabled={heartbeatControlsDisabled}
+                  />
+                </div>
+                <span className="time-separator">〜</span>
+                <div className="time-input-group">
+                  <label htmlFor="heartbeatWindowEnd">終了時刻</label>
+                  <input
+                    type="time"
+                    id="heartbeatWindowEnd"
+                    value={heartbeatWindowEnd}
+                    onChange={(event) => setHeartbeatWindowEnd(event.target.value)}
+                    className="setting-input"
+                    disabled={heartbeatControlsDisabled}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="setting-item">
+              <label htmlFor="heartbeatIntensity" className="setting-label">
+                声かけの強さ
+              </label>
+              <select
+                id="heartbeatIntensity"
+                value={heartbeatIntensity}
+                onChange={(event) => {
+                  setHeartbeatIntensity(event.target.value as HeartbeatIntensity);
+                }}
+                className="setting-select"
+                disabled={heartbeatControlsDisabled}
+              >
+                <option value="gentle">やさしめ</option>
+                <option value="standard">ふつう</option>
+                <option value="firm">しっかり</option>
+              </select>
+              <p className="setting-description">
+                伝え方のトーンを調整できます。
+              </p>
+            </div>
+
+            <div className="setting-item">
+              <label htmlFor="heartbeatDailyCapacity" className="setting-label">
+                1タスクあたりの1日作業目安（分）
+              </label>
+              <input
+                type="number"
+                id="heartbeatDailyCapacity"
+                value={heartbeatDailyCapacity}
+                onChange={(event) => handleHeartbeatDailyCapacityChange(event.target.value)}
+                className="setting-input capacity-input"
+                min="15"
+                max="480"
+                step="5"
+                disabled={heartbeatControlsDisabled}
+              />
+              <p className="setting-description">
+                期限までに必要な日数の目安計算に使います。
+              </p>
+            </div>
+
+            <div className="setting-item">
+              <label htmlFor="heartbeatCooldown" className="setting-label">
+                同じタスクへの通知間隔（時間）
+              </label>
+              <input
+                type="number"
+                id="heartbeatCooldown"
+                value={heartbeatCooldownHours}
+                onChange={(event) => handleHeartbeatCooldownChange(event.target.value)}
+                className="setting-input capacity-input"
+                min="1"
+                max="168"
+                step="1"
+                disabled={heartbeatControlsDisabled}
+              />
+              <p className="setting-description">
+                同じタスクへの声かけ頻度を抑えます。
+              </p>
             </div>
 
             <div className="setting-item">

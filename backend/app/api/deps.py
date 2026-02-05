@@ -18,6 +18,8 @@ from app.interfaces.blocker_repository import IBlockerRepository
 from app.interfaces.capture_repository import ICaptureRepository
 from app.interfaces.chat_session_repository import IChatSessionRepository
 from app.interfaces.checkin_repository import ICheckinRepository
+from app.interfaces.heartbeat_event_repository import IHeartbeatEventRepository
+from app.interfaces.heartbeat_settings_repository import IHeartbeatSettingsRepository
 from app.interfaces.issue_comment_repository import IIssueCommentRepository
 from app.interfaces.issue_repository import IIssueRepository
 from app.interfaces.llm_provider import ILLMProvider
@@ -374,6 +376,28 @@ def get_notification_repository() -> INotificationRepository:
         return SqliteNotificationRepository()
 
 
+@lru_cache()
+def get_heartbeat_settings_repository() -> IHeartbeatSettingsRepository:
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Heartbeat settings repository not implemented for GCP")
+    from app.infrastructure.local.heartbeat_settings_repository import (
+        SqliteHeartbeatSettingsRepository,
+    )
+    return SqliteHeartbeatSettingsRepository()
+
+
+@lru_cache()
+def get_heartbeat_event_repository() -> IHeartbeatEventRepository:
+    settings = get_settings()
+    if settings.is_gcp:
+        raise NotImplementedError("Heartbeat event repository not implemented for GCP")
+    from app.infrastructure.local.heartbeat_event_repository import (
+        SqliteHeartbeatEventRepository,
+    )
+    return SqliteHeartbeatEventRepository()
+
+
 # ===========================================
 # Provider Dependencies
 # ===========================================
@@ -540,4 +564,10 @@ IssueCommentRepo = Annotated[IIssueCommentRepository, Depends(get_issue_comment_
 AchievementRepo = Annotated[IAchievementRepository, Depends(get_achievement_repository)]
 ProjectAchievementRepo = Annotated[IProjectAchievementRepository, Depends(get_project_achievement_repository)]
 NotificationRepo = Annotated[INotificationRepository, Depends(get_notification_repository)]
+HeartbeatSettingsRepo = Annotated[
+    IHeartbeatSettingsRepository, Depends(get_heartbeat_settings_repository)
+]
+HeartbeatEventRepo = Annotated[
+    IHeartbeatEventRepository, Depends(get_heartbeat_event_repository)
+]
 CurrentUser = Annotated[User, Depends(get_current_user)]

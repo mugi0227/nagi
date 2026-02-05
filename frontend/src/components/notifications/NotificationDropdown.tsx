@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { FaBell, FaCheckDouble, FaTrophy, FaUsers, FaListCheck, FaEnvelope, FaFlag, FaClipboardCheck, FaLightbulb, FaHeart, FaComment, FaCircleInfo } from 'react-icons/fa6';
+import { FaBell, FaCheckDouble, FaTrophy, FaUsers, FaListCheck, FaEnvelope, FaFlag, FaClipboardCheck, FaLightbulb, FaHeart, FaHeartPulse, FaComment, FaCircleInfo } from 'react-icons/fa6';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNotifications, useUnreadNotificationCount } from '../../hooks/useNotifications';
 import type { Notification, NotificationType } from '../../api/types';
@@ -32,6 +32,8 @@ function getNotificationIcon(type: NotificationType) {
       return <FaComment className="notification-icon issue-comment" />;
     case 'issue_status_changed':
       return <FaCircleInfo className="notification-icon issue-status" />;
+    case 'heartbeat':
+      return <FaHeartPulse className="notification-icon heartbeat" />;
     default:
       return <FaBell className="notification-icon default" />;
   }

@@ -8,6 +8,9 @@ import { projectsApi } from '../api/projects';
 import type { Memory, MemoryType, Project, MemorySearchResult, MemoryCreate, MemoryUpdate } from '../api/types';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDate as formatDateValue } from '../utils/dateTime';
+import { usePageTour } from '../hooks/usePageTour';
+import { PageTour } from '../components/onboarding/PageTour';
+import { TourHelpButton } from '../components/onboarding/TourHelpButton';
 import './MemoriesPage.css';
 
 type MemoryTabId = 'user' | 'project' | 'skills';
@@ -99,6 +102,7 @@ const summarizeContent = (content: string) => {
 export function MemoriesPage() {
   const timezone = useTimezone();
   const [searchParams, setSearchParams] = useSearchParams();
+  const tour = usePageTour('memories');
 
   // Tab state
   const getInitialTab = (): MemoryTabId => {
@@ -557,6 +561,9 @@ export function MemoriesPage() {
     <div className="memories-page">
       <div className="page-header">
         <h2 className="page-title">メモリー</h2>
+        <div className="header-actions">
+          <TourHelpButton onClick={tour.startTour} />
+        </div>
       </div>
 
       <nav className="memories-tabs">
@@ -651,6 +658,12 @@ export function MemoriesPage() {
           </div>
         </div>
       )}
+      <PageTour
+        run={tour.run}
+        steps={tour.steps}
+        stepIndex={tour.stepIndex}
+        onCallback={tour.handleCallback}
+      />
     </div>
   );
 }

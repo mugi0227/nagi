@@ -306,6 +306,7 @@ async def run_migrations():
         await _ensure_username_unique(conn)
         await _ensure_schedule_settings(conn)
         await _ensure_daily_schedule_plans(conn)
+        await _ensure_heartbeat_tables(conn)
 
         # Create meeting_sessions table if missing
         session_result = await conn.execute(
@@ -916,3 +917,79 @@ async def _ensure_daily_schedule_plans(conn):
     await conn.execute(
         text("CREATE INDEX IF NOT EXISTS idx_daily_schedule_plans_group_id ON daily_schedule_plans(plan_group_id)")
     )
+
+
+async def _ensure_heartbeat_tables(conn):
+    settings_result = await conn.execute(
+        text("SELECT name FROM sqlite_master WHERE type='table' AND name='heartbeat_settings'")
+    )
+    if not settings_result.scalar():
+        await conn.execute(
+            text(
+                """
+                CREATE TABLE heartbeat_settings (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(255) NOT NULL UNIQUE,
+                    enabled BOOLEAN NOT NULL DEFAULT 1,
+                    notification_limit_per_day INTEGER NOT NULL DEFAULT 2,
+                    notification_window_start VARCHAR(5) NOT NULL DEFAULT '09:00',
+                    notification_window_end VARCHAR(5) NOT NULL DEFAULT '21:00',
+                    heartbeat_intensity VARCHAR(20) NOT NULL DEFAULT 'standard',
+                    daily_capacity_per_task_minutes INTEGER NOT NULL DEFAULT 60,
+                    cooldown_hours_per_task INTEGER NOT NULL DEFAULT 24,
+                    created_at DATETIME,
+                    updated_at DATETIME
+                )
+                """
+            )
+        )
+        await conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_heartbeat_settings_user_id ON heartbeat_settings(user_id)")
+        )
+
+    events_result = await conn.execute(
+        text("SELECT name FROM sqlite_master WHERE type='table' AND name='heartbeat_events'")
+    )
+    if not events_result.scalar():
+        await conn.execute(
+            text(
+                """
+                CREATE TABLE heartbeat_events (
+                    id VARCHAR(36) PRIMARY KEY,
+                    user_id VARCHAR(255) NOT NULL,
+                    task_id VARCHAR(36),
+                    severity VARCHAR(20) NOT NULL,
+                    risk_score FLOAT NOT NULL DEFAULT 0,
+                    notification_id VARCHAR(36),
+                    metadata_json JSON,
+                    is_read BOOLEAN NOT NULL DEFAULT 0,
+                    read_at DATETIME,
+                    created_at DATETIME
+                )
+                """
+            )
+        )
+        await conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_heartbeat_events_user_id ON heartbeat_events(user_id)")
+        )
+        await conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_heartbeat_events_task_id ON heartbeat_events(task_id)")
+        )
+        await conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_heartbeat_events_created_at ON heartbeat_events(created_at)")
+        )
+        await conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_heartbeat_events_is_read ON heartbeat_events(is_read)")
+        )
+    else:
+        events_cols_result = await conn.execute(text("PRAGMA table_info(heartbeat_events)"))
+        events_columns = {row[1] for row in events_cols_result.fetchall()}
+        if "is_read" not in events_columns:
+            await conn.execute(
+                text("ALTER TABLE heartbeat_events ADD COLUMN is_read BOOLEAN NOT NULL DEFAULT 0")
+            )
+            await conn.execute(
+                text("CREATE INDEX IF NOT EXISTS idx_heartbeat_events_is_read ON heartbeat_events(is_read)")
+            )
+        if "read_at" not in events_columns:
+            await conn.execute(text("ALTER TABLE heartbeat_events ADD COLUMN read_at DATETIME"))

@@ -18,6 +18,9 @@ from apscheduler.triggers.cron import CronTrigger
 from app.core.config import get_settings
 from app.core.logger import logger
 from app.interfaces.achievement_repository import IAchievementRepository
+from app.interfaces.chat_session_repository import IChatSessionRepository
+from app.interfaces.heartbeat_event_repository import IHeartbeatEventRepository
+from app.interfaces.heartbeat_settings_repository import IHeartbeatSettingsRepository
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.notification_repository import INotificationRepository
 from app.interfaces.project_achievement_repository import IProjectAchievementRepository
@@ -33,6 +36,7 @@ from app.models.enums import GenerationType
 from app.services.achievement_service import generate_achievement
 from app.services.daily_schedule_plan_service import DEFAULT_PLAN_DAYS, DailySchedulePlanService
 from app.services.project_achievement_service import generate_project_achievement
+from app.services.task_heartbeat_service import TaskHeartbeatService
 from app.services.weekly_meeting_reminder_service import ensure_weekly_meeting_reminders
 from app.utils.datetime_utils import get_user_today
 
@@ -62,6 +66,9 @@ class BackgroundScheduler:
         schedule_settings_repo: IScheduleSettingsRepository,
         schedule_plan_repo: IDailySchedulePlanRepository,
         schedule_snapshot_repo: IScheduleSnapshotRepository,
+        chat_repo: IChatSessionRepository,
+        heartbeat_settings_repo: IHeartbeatSettingsRepository,
+        heartbeat_event_repo: IHeartbeatEventRepository,
         task_assignment_repo: Optional[ITaskAssignmentRepository] = None,
     ):
         self._user_repo = user_repo
@@ -75,9 +82,22 @@ class BackgroundScheduler:
         self._schedule_settings_repo = schedule_settings_repo
         self._schedule_plan_repo = schedule_plan_repo
         self._schedule_snapshot_repo = schedule_snapshot_repo
+        self._chat_repo = chat_repo
+        self._heartbeat_settings_repo = heartbeat_settings_repo
+        self._heartbeat_event_repo = heartbeat_event_repo
         self._task_assignment_repo = task_assignment_repo
         self._scheduler: Optional[AsyncIOScheduler] = None
         self._last_run: Optional[datetime] = None
+        self._task_heartbeat_service = TaskHeartbeatService(
+            task_repo=self._task_repo,
+            chat_repo=self._chat_repo,
+            settings_repo=self._heartbeat_settings_repo,
+            event_repo=self._heartbeat_event_repo,
+            user_repo=self._user_repo,
+            project_repo=self._project_repo,
+            llm_provider=self._llm_provider,
+            task_assignment_repo=self._task_assignment_repo,
+        )
 
     @staticmethod
     def _calculate_last_friday(now: Optional[datetime] = None) -> datetime:
@@ -133,12 +153,21 @@ class BackgroundScheduler:
             replace_existing=True,
         )
 
+        self._scheduler.add_job(
+            self._run_task_heartbeat_checks,
+            CronTrigger(minute="*/30"),
+            id="task_heartbeat_checks",
+            name="Task Heartbeat Checks",
+            replace_existing=True,
+        )
+
         self._scheduler.start()
         logger.info(
             "Background scheduler started:\n"
             "  - Weekly achievement generation: Friday 00:00\n"
             "  - Weekly meeting reminder tasks: Monday 00:00\n"
-            "  - Daily schedule plan generation: every hour"
+            "  - Daily schedule plan generation: every hour\n"
+            "  - Task heartbeat checks: every 30 minutes"
         )
 
         # Check for missed runs in background (non-blocking)
@@ -456,6 +485,21 @@ class BackgroundScheduler:
             await asyncio.sleep(random.uniform(0.2, 0.8))
         logger.info("Daily schedule plan generation completed")
 
+    async def _run_task_heartbeat_checks(self):
+        logger.info("Starting task heartbeat checks...")
+        users = await self._user_repo.list_all()
+        if not users:
+            logger.info("No users found for task heartbeat checks")
+            return
+
+        for user in users:
+            try:
+                await self._task_heartbeat_service.run(str(user.id))
+            except Exception as exc:
+                logger.error(f"Failed to run task heartbeat for user {user.id}: {exc}")
+            await asyncio.sleep(random.uniform(0.2, 0.8))
+
+        logger.info("Task heartbeat checks completed")
     async def _generate_weekly_for_user(self, user_id: str, last_friday: datetime) -> bool:
         """
         Generate weekly achievement for a single user.
@@ -517,7 +561,10 @@ async def get_background_scheduler() -> BackgroundScheduler:
     if _scheduler is None:
         from app.api.deps import (
             get_achievement_repository,
+            get_chat_session_repository,
             get_daily_schedule_plan_repository,
+            get_heartbeat_event_repository,
+            get_heartbeat_settings_repository,
             get_llm_provider,
             get_notification_repository,
             get_project_achievement_repository,
@@ -542,6 +589,9 @@ async def get_background_scheduler() -> BackgroundScheduler:
             schedule_settings_repo=get_schedule_settings_repository(),
             schedule_plan_repo=get_daily_schedule_plan_repository(),
             schedule_snapshot_repo=get_schedule_snapshot_repository(),
+            chat_repo=get_chat_session_repository(),
+            heartbeat_settings_repo=get_heartbeat_settings_repository(),
+            heartbeat_event_repo=get_heartbeat_event_repository(),
             task_assignment_repo=get_task_assignment_repository(),
         )
     return _scheduler

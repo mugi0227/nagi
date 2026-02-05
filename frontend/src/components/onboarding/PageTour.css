@@ -1,0 +1,7 @@
+.__floater.__floater--open {
+  filter: drop-shadow(0 10px 40px rgba(0, 0, 0, 0.15));
+}
+
+[data-theme='dark'] .__floater.__floater--open {
+  filter: drop-shadow(0 10px 40px rgba(0, 0, 0, 0.4));
+}

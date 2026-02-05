@@ -2,6 +2,12 @@
   padding: 0;
 }
 
+.dashboard-header-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 0 0.5rem;
+}
+
 .daily-briefing-modal {
   position: fixed;
   inset: 0;
@@ -120,6 +126,10 @@
   font-size: 1.125rem;
   font-weight: 700;
   color: var(--text-main);
+}
+
+.dashboard-heartbeat-section {
+  margin-top: 0.75rem;
 }
 
 .dashboard-bottom-section {

@@ -7,6 +7,9 @@ import { ViewModeToggle, getStoredViewMode, setStoredViewMode, type ViewMode } f
 import { useTaskModal } from '../hooks/useTaskModal';
 import { useRecurringTasks } from '../hooks/useRecurringTasks';
 import { useCurrentUser } from '../hooks/useCurrentUser';
+import { usePageTour } from '../hooks/usePageTour';
+import { PageTour } from '../components/onboarding/PageTour';
+import { TourHelpButton } from '../components/onboarding/TourHelpButton';
 import { tasksApi } from '../api/tasks';
 import type { Task, TaskAssignment, TaskStatus, TaskUpdate } from '../api/types';
 import './TasksPage.css';
@@ -28,6 +31,7 @@ export function TasksPage() {
   const [showPersonalOnly, setShowPersonalOnly] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>(getStoredViewMode);
   const [sortBy, setSortBy] = useState<'default' | 'dueDate'>('dueDate');
+  const tour = usePageTour('tasks');
 
   const handleViewModeChange = (mode: ViewMode) => {
     setViewMode(mode);
@@ -169,6 +173,7 @@ export function TasksPage() {
       <div className="page-header">
         <h2 className="page-title">タスク</h2>
         <div className="header-actions">
+          <TourHelpButton onClick={tour.startTour} />
           <button
             type="button"
             className={`filter-toggle-btn ${showPersonalOnly ? 'active' : ''}`}
@@ -231,6 +236,12 @@ export function TasksPage() {
       />
 
       {taskModal.renderModals()}
+      <PageTour
+        run={tour.run}
+        steps={tour.steps}
+        stepIndex={tour.stepIndex}
+        onCallback={tour.handleCallback}
+      />
     </div>
   );
 }

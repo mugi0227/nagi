@@ -26,6 +26,24 @@
   transform: translateY(-2px) scale(1);
 }
 
+.chat-fab-badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--accent-orange);
+  color: #fff;
+  font-size: 0.7rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 6px 14px -6px rgba(251, 146, 60, 0.7);
+}
+
 .fab-icon {
   font-size: 1.75rem;
   transition: transform 0.3s ease;
@@ -45,5 +63,13 @@
 
   .fab-icon {
     font-size: 1.5rem;
+  }
+
+  .chat-fab-badge {
+    top: -4px;
+    right: -4px;
+    min-width: 18px;
+    height: 18px;
+    font-size: 0.65rem;
   }
 }

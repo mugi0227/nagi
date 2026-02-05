@@ -23,6 +23,9 @@ import type { Achievement, AchievementUpdate, SkillExperience } from '../api/typ
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDate, nowInTimezone, toDateTime } from '../utils/dateTime';
 import { WeeklyProgress } from '../components/dashboard/WeeklyProgress';
+import { usePageTour } from '../hooks/usePageTour';
+import { PageTour } from '../components/onboarding/PageTour';
+import { TourHelpButton } from '../components/onboarding/TourHelpButton';
 import './AchievementPage.css';
 
 function SkillBar({ skill, maxCount }: { skill: SkillExperience; maxCount: number }) {
@@ -807,6 +810,7 @@ function AchievementCard({
 export function AchievementPage() {
   const queryClient = useQueryClient();
   const timezone = useTimezone();
+  const tour = usePageTour('achievement');
   const now = nowInTimezone(timezone);
   const { weekStart, weekEnd } = getLatestWeekPeriod(now);
   const [showPreviewTasks, setShowPreviewTasks] = useState(false);
@@ -959,6 +963,9 @@ export function AchievementPage() {
           <FaTrophy className="page-icon" />
           <h2 className="page-title">達成項目</h2>
         </div>
+        <div className="header-actions">
+          <TourHelpButton onClick={tour.startTour} />
+        </div>
       </div>
 
       {errorMessage && (
@@ -1092,6 +1099,12 @@ export function AchievementPage() {
           ))}
         </div>
       )}
+      <PageTour
+        run={tour.run}
+        steps={tour.steps}
+        stepIndex={tour.stepIndex}
+        onCallback={tour.handleCallback}
+      />
     </div>
   );
 }

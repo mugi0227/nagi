@@ -1,0 +1,22 @@
+.tour-help-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-full, 9999px);
+  background: transparent;
+  border: 1.5px solid var(--border-color, #e2e8f0);
+  color: var(--text-muted, #94a3b8);
+  font-size: 1rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.tour-help-btn:hover {
+  color: var(--primary, #0ea5e9);
+  border-color: var(--primary, #0ea5e9);
+  background: var(--primary-light, rgba(14, 165, 233, 0.1));
+  transform: scale(1.05);
+}

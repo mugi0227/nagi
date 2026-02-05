@@ -671,6 +671,37 @@ class NotificationORM(Base):
     updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
 
 
+class HeartbeatSettingsORM(Base):
+    __tablename__ = "heartbeat_settings"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, unique=True, index=True)
+    enabled = Column(Boolean, default=True, nullable=False)
+    notification_limit_per_day = Column(Integer, default=2, nullable=False)
+    notification_window_start = Column(String(5), default="09:00", nullable=False)
+    notification_window_end = Column(String(5), default="21:00", nullable=False)
+    heartbeat_intensity = Column(String(20), default="standard", nullable=False)
+    daily_capacity_per_task_minutes = Column(Integer, default=60, nullable=False)
+    cooldown_hours_per_task = Column(Integer, default=24, nullable=False)
+    created_at = Column(DateTime, default=now_utc)
+    updated_at = Column(DateTime, default=now_utc, onupdate=now_utc)
+
+
+class HeartbeatEventORM(Base):
+    __tablename__ = "heartbeat_events"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid4()))
+    user_id = Column(String(255), nullable=False, index=True)
+    task_id = Column(String(36), nullable=True, index=True)
+    severity = Column(String(20), nullable=False)
+    risk_score = Column(Float, default=0.0, nullable=False)
+    notification_id = Column(String(36), nullable=True)
+    metadata_json = Column(JSON, nullable=True, default=dict)
+    is_read = Column(Boolean, default=False, nullable=False, index=True)
+    read_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=now_utc, index=True)
+
+
 # ===========================================
 # Database Session Management
 # ===========================================

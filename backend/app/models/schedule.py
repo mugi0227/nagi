@@ -48,6 +48,9 @@ class TaskScheduleInfo(BaseModel):
     priority_score: float
     status: Optional[str] = None
     pinned_date: Optional[date] = None
+    is_fixed_time: bool = Field(False, description="固定時間タスク（会議など）")
+    start_time: Optional[datetime] = Field(None, description="開始時刻（固定時間タスク用）")
+    end_time: Optional[datetime] = Field(None, description="終了時刻（固定時間タスク用）")
 
 
 class UnscheduledTask(BaseModel):

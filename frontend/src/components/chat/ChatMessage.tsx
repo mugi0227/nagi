@@ -14,6 +14,18 @@ const PREVIEW_DEFAULT_END = 20;
 const PREVIEW_MIN_START = 6;
 const PREVIEW_MAX_END = 22;
 const PREVIEW_HOUR_HEIGHT = 24;
+const TASK_LINK_PATTERN = /task:\/\/([0-9a-fA-F-]{36})/g;
+
+function extractLinkedTaskIds(content: string): string[] {
+  const ids = new Set<string>();
+  if (!content) return [];
+  for (const match of content.matchAll(TASK_LINK_PATTERN)) {
+    if (match[1]) {
+      ids.add(match[1]);
+    }
+  }
+  return Array.from(ids);
+}
 
 type MeetingPreviewBlock = {
   id: string;
@@ -256,6 +268,16 @@ export function ChatMessage({
   const timezone = useTimezone();
   const combinedPreview = buildCombinedMeetingPreview(proposals, meetingTasks, timezone);
   const createdTaskIds = useMemo(() => extractCreatedTaskIds(toolCalls), [toolCalls]);
+  const linkedTaskIds = useMemo(() => extractLinkedTaskIds(content), [content]);
+  const taskIdsForCards = useMemo(() => {
+    const ids = new Set<string>();
+    createdTaskIds.forEach((id) => ids.add(id));
+    linkedTaskIds.forEach((id) => ids.add(id));
+    return Array.from(ids);
+  }, [createdTaskIds, linkedTaskIds]);
+  const taskCardHeader = linkedTaskIds.length > 0 && createdTaskIds.length === 0
+    ? 'タスクを開く'
+    : undefined;
 
   const formatTime = (date: Date) => {
     return formatDate(date, { hour: '2-digit', minute: '2-digit' }, timezone);
@@ -350,7 +372,21 @@ export function ChatMessage({
     </div>
   ) : content ? (
     <div className="message-text markdown-content">
-      <ReactMarkdown remarkPlugins={[remarkGfm]}>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ href, children, node, ...rest }) => {
+            if (href && href.startsWith('task://')) {
+              return null;
+            }
+            return (
+              <a href={href} target="_blank" rel="noreferrer" {...rest}>
+                {children}
+              </a>
+            );
+          },
+        }}
+      >
         {content}
       </ReactMarkdown>
     </div>
@@ -457,8 +493,12 @@ export function ChatMessage({
 
         {messageText}
 
-        {createdTaskIds.length > 0 && onTaskClick && (
-          <CreatedTaskCards taskIds={createdTaskIds} onTaskClick={onTaskClick} />
+        {taskIdsForCards.length > 0 && onTaskClick && (
+          <CreatedTaskCards
+            taskIds={taskIdsForCards}
+            onTaskClick={onTaskClick}
+            header={taskCardHeader}
+          />
         )}
 
         {toolPlacement === 'after' && toolChips}

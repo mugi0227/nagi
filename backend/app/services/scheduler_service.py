@@ -190,10 +190,19 @@ class SchedulerService:
 
         return message
 
+    @staticmethod
+    def _to_local_datetime(value: datetime, timezone: str) -> datetime:
+        """Convert a datetime to the user's local timezone."""
+        tz = ZoneInfo(timezone)
+        if value.tzinfo is None:
+            return value.replace(tzinfo=tz)
+        return value.astimezone(tz)
+
     def _get_meetings_for_day(
         self,
         tasks: list[Task],
         target_date: date,
+        user_timezone: str = "Asia/Tokyo",
     ) -> tuple[list[Task], int]:
         """
         Get meetings scheduled for a specific day and calculate total duration.
@@ -204,6 +213,7 @@ class SchedulerService:
         Args:
             tasks: All tasks
             target_date: Date to check
+            user_timezone: User's timezone for date comparison
 
         Returns:
             (list of meeting tasks, total meeting minutes accounting for overlaps)
@@ -212,7 +222,7 @@ class SchedulerService:
             task for task in tasks
             if task.is_fixed_time
             and task.start_time
-            and task.start_time.date() == target_date
+            and self._to_local_datetime(task.start_time, user_timezone).date() == target_date
         ]
 
         if not meetings:
@@ -222,9 +232,12 @@ class SchedulerService:
         intervals = []
         for meeting in meetings:
             if meeting.end_time and meeting.start_time:
-                # Convert to minutes from midnight for easier calculation
-                start_mins = meeting.start_time.hour * 60 + meeting.start_time.minute
-                end_mins = meeting.end_time.hour * 60 + meeting.end_time.minute
+                # Convert to local timezone for correct hour/minute extraction
+                local_start = self._to_local_datetime(meeting.start_time, user_timezone)
+                local_end = self._to_local_datetime(meeting.end_time, user_timezone)
+
+                start_mins = local_start.hour * 60 + local_start.minute
+                end_mins = local_end.hour * 60 + local_end.minute
 
                 # Handle meetings that span midnight (rare but possible)
                 if end_mins < start_mins:
@@ -253,6 +266,7 @@ class SchedulerService:
     def _calculate_meeting_minutes_per_user(
         self,
         meetings: list[Task],
+        user_timezone: str = "Asia/Tokyo",
     ) -> dict[str, int]:
         """
         Calculate meeting minutes per user, handling overlapping meetings.
@@ -262,6 +276,7 @@ class SchedulerService:
 
         Args:
             meetings: List of meeting tasks for a specific day
+            user_timezone: User's timezone for correct time extraction
 
         Returns:
             Dictionary mapping user_id to total meeting minutes (with overlaps merged)
@@ -279,9 +294,12 @@ class SchedulerService:
             if not user_id:
                 continue
 
-            # Convert to minutes from midnight
-            start_mins = meeting.start_time.hour * 60 + meeting.start_time.minute
-            end_mins = meeting.end_time.hour * 60 + meeting.end_time.minute
+            # Convert to local timezone for correct hour/minute extraction
+            local_start = self._to_local_datetime(meeting.start_time, user_timezone)
+            local_end = self._to_local_datetime(meeting.end_time, user_timezone)
+
+            start_mins = local_start.hour * 60 + local_start.minute
+            end_mins = local_end.hour * 60 + local_end.minute
 
             # Handle meetings that span midnight
             if end_mins < start_mins:
@@ -610,7 +628,7 @@ class SchedulerService:
                 user_capacities[uid] = get_user_capacity_minutes(uid if uid != "unassigned" else None, day_cursor)
 
             # Reduce capacity by fixed meetings
-            day_meetings, meeting_minutes = self._get_meetings_for_day(tasks, day_cursor)
+            day_meetings, meeting_minutes = self._get_meetings_for_day(tasks, day_cursor, user_timezone)
 
             # Check for all-day tasks and zero out capacity for affected users
             all_day_user_ids: set[str] = set()
@@ -625,7 +643,7 @@ class SchedulerService:
 
             # Calculate meeting minutes per user with overlap handling
             # This prevents double-counting when the same user has multiple overlapping meetings
-            meeting_minutes_per_user = self._calculate_meeting_minutes_per_user(day_meetings)
+            meeting_minutes_per_user = self._calculate_meeting_minutes_per_user(day_meetings, user_timezone)
 
             # Subtract meeting time from each user's capacity (with overlaps already merged)
             # Skip users who already have capacity=0 due to all-day tasks
@@ -949,6 +967,9 @@ class SchedulerService:
                     ),
                     status=task.status.value if hasattr(task.status, 'value') else str(task.status),
                     pinned_date=task.pinned_date.date() if task.pinned_date else None,
+                    is_fixed_time=task.is_fixed_time,
+                    start_time=task.start_time if task.is_fixed_time else None,
+                    end_time=task.end_time if task.is_fixed_time else None,
                 )
             )
 
