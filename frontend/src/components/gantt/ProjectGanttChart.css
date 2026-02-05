@@ -328,6 +328,49 @@
   color: var(--c-text);
 }
 
+/* Spacer matching toggle button width for tasks without subtasks */
+.pgantt-task-toggle-spacer {
+  display: inline-block;
+  width: 18px;
+  flex-shrink: 0;
+}
+
+/* Status dot indicator */
+.pgantt-status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1.5px solid transparent;
+}
+
+.pgantt-status-dot.done {
+  background: var(--c-success);
+  border-color: #059669;
+}
+
+.pgantt-status-dot.in-progress {
+  background: #3b82f6;
+  border-color: #2563eb;
+}
+
+.pgantt-status-dot.waiting {
+  background: var(--c-warning);
+  border-color: #d97706;
+}
+
+.pgantt-status-dot.todo {
+  background: var(--c-border);
+  border-color: #94a3b8;
+}
+
+/* Completed task row styling */
+.pgantt-sidebar-row.status-done .pgantt-row-title {
+  color: var(--c-text-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--c-border);
+}
+
 /* Drag handle for reordering */
 .pgantt-drag-handle {
   display: flex;
