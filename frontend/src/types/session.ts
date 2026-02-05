@@ -45,6 +45,8 @@ export interface Decision {
   rationale?: string;
 }
 
+export type ActionType = 'create' | 'update' | 'add_subtask';
+
 export interface NextAction {
   title: string;
   description?: string;
@@ -56,6 +58,10 @@ export interface NextAction {
   priority: 'HIGH' | 'MEDIUM' | 'LOW';
   estimated_minutes?: number;
   energy_level?: 'HIGH' | 'MEDIUM' | 'LOW';
+  action_type?: ActionType;
+  existing_task_id?: string;
+  existing_task_title?: string;
+  update_reason?: string;
 }
 
 export interface MeetingSummary {
@@ -70,6 +76,7 @@ export interface MeetingSummary {
 
 export interface AnalyzeTranscriptRequest {
   transcript: string;
+  project_id?: string;
 }
 
 export interface CreateTasksFromActionsRequest {
@@ -83,6 +90,23 @@ export interface CreateTasksFromActionsResponse {
     id: string;
     title: string;
     assignee?: string;
+    due_date?: string;
+  }[];
+}
+
+export interface ApplyActionsResponse {
+  created_count: number;
+  updated_count: number;
+  subtask_count: number;
+  results: {
+    action_type: ActionType;
+    id: string;
+    title: string;
+    existing_task_title?: string;
+    update_reason?: string;
+    parent_task_id?: string;
+    assignee?: string;
+    assignee_id?: string;
     due_date?: string;
   }[];
 }

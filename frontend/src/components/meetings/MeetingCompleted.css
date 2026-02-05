@@ -782,6 +782,75 @@
     box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
 }
 
+/* Action Type Badges */
+.action-type-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.action-type-create {
+    background-color: #f0fdf4;
+    color: #16a34a;
+    border: 1px solid #86efac;
+}
+
+.action-type-update {
+    background-color: #fef3c7;
+    color: #b45309;
+    border: 1px solid #fcd34d;
+}
+
+.action-type-subtask {
+    background-color: #ede9fe;
+    color: #7c3aed;
+    border: 1px solid #c4b5fd;
+}
+
+/* Action item border variants by type */
+.action-item.action-item-update {
+    border-left: 3px solid #f59e0b;
+}
+
+.action-item.action-item-add_subtask {
+    border-left: 3px solid #8b5cf6;
+}
+
+/* Existing task reference */
+.existing-task-ref {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 0;
+    padding: 4px 10px;
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: #475569;
+}
+
+.existing-task-ref svg {
+    color: #94a3b8;
+    font-size: 0.7rem;
+    flex-shrink: 0;
+}
+
+/* Update reason text */
+.action-update-reason {
+    font-size: 0.8rem !important;
+    color: #b45309 !important;
+    font-style: italic;
+    margin: 2px 0 6px 0 !important;
+    padding-left: 8px;
+    border-left: 2px solid #fcd34d;
+}
+
 /* Purpose text */
 .action-purpose {
     font-size: 0.8rem !important;
