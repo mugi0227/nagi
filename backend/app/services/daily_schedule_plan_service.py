@@ -31,6 +31,7 @@ from app.models.schedule_plan import (
     ScheduleSettings,
     ScheduleTimeBlock,
     TaskPlanSnapshot,
+    TimeBlockMoveRequest,
     WorkdayHours,
     default_weekly_work_hours,
 )
@@ -550,7 +551,7 @@ class DailySchedulePlanService:
         return [
             task
             for task in tasks
-            if is_my_task(task) or (task.pinned_date and task.pinned_date.date() >= today)
+            if is_my_task(task) or task.is_fixed_time or (task.pinned_date and task.pinned_date.date() >= today)
         ]
 
     async def _load_settings(self, user_id: str) -> ScheduleSettings:
@@ -836,3 +837,61 @@ class DailySchedulePlanService:
             time_blocks=[],
             pinned_overflow_task_ids=[],
         )
+
+    async def move_time_block(
+        self,
+        user_id: str,
+        request: TimeBlockMoveRequest,
+    ) -> Optional[ScheduleTimeBlock]:
+        """Move or resize a time block within the stored schedule plan.
+
+        For meeting blocks, also updates the underlying task's start_time/end_time.
+        If duration changed (resize), also updates estimated_minutes.
+        """
+        timezone = await self._load_user_timezone(user_id)
+        tz = ZoneInfo(timezone)
+        new_start_local = _to_local_datetime(request.new_start, timezone)
+        new_end_local = _to_local_datetime(request.new_end, timezone)
+        target_date = new_start_local.date()
+        is_cross_day = request.original_date != target_date
+
+        if is_cross_day:
+            result = await self._plan_repo.move_time_block_across_days(
+                user_id=user_id,
+                source_date=request.original_date,
+                target_date=target_date,
+                task_id=request.task_id,
+                new_start=new_start_local,
+                new_end=new_end_local,
+            )
+        else:
+            result = await self._plan_repo.update_time_block(
+                user_id=user_id,
+                plan_date=request.original_date,
+                task_id=request.task_id,
+                new_start=new_start_local,
+                new_end=new_end_local,
+            )
+
+        if not result:
+            return None
+
+        # Sync underlying task data
+        task = await self._task_repo.get(str(request.task_id))
+        if task:
+            updates: dict = {}
+            if task.is_fixed_time:
+                updates["start_time"] = new_start_local
+                updates["end_time"] = new_end_local
+            old_duration = (
+                int((task.end_time - task.start_time).total_seconds() / 60)
+                if task.start_time and task.end_time
+                else task.estimated_minutes or 0
+            )
+            new_duration = int((new_end_local - new_start_local).total_seconds() / 60)
+            if old_duration != new_duration and new_duration > 0:
+                updates["estimated_minutes"] = new_duration
+            if updates:
+                await self._task_repo.update(str(request.task_id), updates)
+
+        return result

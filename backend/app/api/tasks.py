@@ -36,7 +36,7 @@ from app.models.collaboration import (
 from app.models.enums import CreatedBy, ProjectVisibility, TaskStatus
 from app.models.postpone import DoTodayRequest, PostponeEvent, PostponeRequest, PostponeStats
 from app.models.schedule import ScheduleResponse, TodayTasksResponse
-from app.models.schedule_plan import SchedulePlanResponse
+from app.models.schedule_plan import SchedulePlanResponse, ScheduleTimeBlock, TimeBlockMoveRequest
 from app.models.task import CompletionCheckResponse, Task, TaskCreate, TaskUpdate
 from app.services.daily_schedule_plan_service import DEFAULT_PLAN_DAYS, DailySchedulePlanService
 from app.services.scheduler_service import SchedulerService
@@ -366,6 +366,37 @@ async def recalculate_schedule_plan(
         filter_by_assignee=filter_by_assignee,
         apply_plan_constraints=apply_plan_constraints,
     )
+
+
+@router.patch("/schedule/plan/time-block", response_model=ScheduleTimeBlock)
+async def move_time_block(
+    body: TimeBlockMoveRequest,
+    user: CurrentUser,
+    repo: TaskRepo,
+    project_repo: ProjectRepo,
+    assignment_repo: TaskAssignmentRepo,
+    snapshot_repo: ScheduleSnapshotRepo,
+    user_repo: UserRepo,
+    settings_repo: ScheduleSettingsRepo,
+    plan_repo: DailySchedulePlanRepo,
+):
+    """Move or resize a single time block within the schedule plan."""
+    plan_service = DailySchedulePlanService(
+        task_repo=repo,
+        project_repo=project_repo,
+        assignment_repo=assignment_repo,
+        snapshot_repo=snapshot_repo,
+        user_repo=user_repo,
+        settings_repo=settings_repo,
+        plan_repo=plan_repo,
+    )
+    result = await plan_service.move_time_block(user_id=user.id, request=body)
+    if not result:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Time block not found in schedule plan",
+        )
+    return result
 
 
 @router.get("/today", response_model=TodayTasksResponse)

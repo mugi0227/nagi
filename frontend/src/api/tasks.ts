@@ -15,6 +15,8 @@ import type {
   PostponeRequest,
   DoTodayRequest,
   CompletionCheckResponse,
+  TimeBlockMoveRequest,
+  ScheduleTimeBlock,
 } from './types';
 
 export const tasksApi = {
@@ -175,4 +177,7 @@ export const tasksApi = {
 
   checkCompletion: (id: string) =>
     api.post<CompletionCheckResponse>(`/tasks/${id}/check-completion`, {}),
+
+  moveTimeBlock: (data: TimeBlockMoveRequest) =>
+    api.patch<ScheduleTimeBlock>('/tasks/schedule/plan/time-block', data),
 };

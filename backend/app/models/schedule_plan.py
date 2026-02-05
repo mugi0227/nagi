@@ -106,6 +106,13 @@ class DailySchedulePlan(DailySchedulePlanCreate):
     updated_at: datetime
 
 
+class TimeBlockMoveRequest(BaseModel):
+    task_id: UUID
+    original_date: date
+    new_start: datetime
+    new_end: datetime
+
+
 class SchedulePlanResponse(ScheduleResponse):
     plan_state: Literal["planned", "stale", "forecast"] = "forecast"
     plan_group_id: Optional[UUID] = None

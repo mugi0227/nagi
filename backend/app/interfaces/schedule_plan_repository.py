@@ -5,10 +5,11 @@ Daily schedule plan repository interface.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
+from uuid import UUID
 
-from app.models.schedule_plan import DailySchedulePlan, DailySchedulePlanCreate
+from app.models.schedule_plan import DailySchedulePlan, DailySchedulePlanCreate, ScheduleTimeBlock
 
 
 class IDailySchedulePlanRepository(ABC):
@@ -35,4 +36,29 @@ class IDailySchedulePlanRepository(ABC):
         start_date: date,
         end_date: date,
     ) -> list[DailySchedulePlan]:
+        pass
+
+    @abstractmethod
+    async def update_time_block(
+        self,
+        user_id: str,
+        plan_date: date,
+        task_id: UUID,
+        new_start: datetime,
+        new_end: datetime,
+    ) -> Optional[ScheduleTimeBlock]:
+        """Update a single time block's start/end within a day plan."""
+        pass
+
+    @abstractmethod
+    async def move_time_block_across_days(
+        self,
+        user_id: str,
+        source_date: date,
+        target_date: date,
+        task_id: UUID,
+        new_start: datetime,
+        new_end: datetime,
+    ) -> Optional[ScheduleTimeBlock]:
+        """Move a time block from one day's plan to another."""
         pass

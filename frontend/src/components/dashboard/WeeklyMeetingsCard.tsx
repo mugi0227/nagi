@@ -4,6 +4,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { tasksApi } from '../../api/tasks';
 import type { Task } from '../../api/types';
 import { useCapacitySettings } from '../../hooks/useCapacitySettings';
+import { useBlockDragResize } from '../../hooks/useBlockDragResize';
+import type { BlockInfo, GhostPosition, InteractionType } from '../../hooks/useBlockDragResize';
 import { useTaskModal } from '../../hooks/useTaskModal';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, toDateKey, toDateTime, todayInTimezone, nowInTimezone } from '../../utils/dateTime';
@@ -506,6 +508,24 @@ export function WeeklyMeetingsCard({
     return grouped;
   }, [meetingBlocksFromTasks]);
 
+  // Meeting intervals derived from schedule data (independent of meetingTasks query)
+  const scheduleMeetingIntervalsByDay = useMemo(() => {
+    const grouped = new Map<string, TimeInterval[]>();
+    (scheduleData?.tasks ?? []).forEach(task => {
+      if (!task.is_fixed_time || !task.start_time || !task.end_time) return;
+      const start = toDateTime(task.start_time, timezone);
+      const end = toDateTime(task.end_time, timezone);
+      if (!start.isValid || !end.isValid) return;
+      const dayKey = toLocalDateKey(start.toJSDate(), timezone);
+      const startMinutes = start.hour * 60 + start.minute;
+      const endMinutes = Math.max(startMinutes + 15, end.hour * 60 + end.minute);
+      const list = grouped.get(dayKey) ?? [];
+      list.push({ startMinutes, endMinutes });
+      grouped.set(dayKey, list);
+    });
+    return grouped;
+  }, [scheduleData?.tasks, timezone]);
+
   const workdayConfigByDay = useMemo(() => {
     const resolvedWeekly = weeklyWorkHours ?? DEFAULT_WEEKLY_WORK_HOURS;
     const map = new Map<string, WorkdayConfig>();
@@ -598,7 +618,7 @@ export function WeeklyMeetingsCard({
           laneCount: 1,
           location: meetingTask?.location,
           status: (normalizedStatus ?? 'TODO') as Task['status'],
-          kind: meetingTask ? 'meeting' : block.kind,
+          kind: meetingTask ? 'meeting' : (taskInfo?.is_fixed_time ? 'meeting' : block.kind),
           pinnedDate: block.pinned_date ?? taskInfo?.pinned_date ?? undefined,
         } satisfies MeetingBlock;
       })
@@ -630,12 +650,14 @@ export function WeeklyMeetingsCard({
         available = [fallbackInterval];
       }
 
-      const meetingIntervals = meetingIntervalsByDay.get(dayKey) ?? [];
-      available = subtractIntervals(available, meetingIntervals);
+      const meetingIntervalsFromTasks = meetingIntervalsByDay.get(dayKey) ?? [];
+      const meetingIntervalsFromSchedule = scheduleMeetingIntervalsByDay.get(dayKey) ?? [];
+      const combinedMeetingIntervals = [...meetingIntervalsFromTasks, ...meetingIntervalsFromSchedule];
+      available = subtractIntervals(available, combinedMeetingIntervals);
 
       let segmentIndex = 0;
       scheduleDay.task_allocations.forEach(allocation => {
-        if (meetingTaskIds.has(allocation.task_id)) {
+        if (meetingTaskIds.has(allocation.task_id) || scheduleTaskMap.get(allocation.task_id)?.is_fixed_time) {
           return;
         }
         const taskInfo = scheduleTaskMap.get(allocation.task_id);
@@ -686,6 +708,7 @@ export function WeeklyMeetingsCard({
     hasPlanBlocks,
     days,
     meetingIntervalsByDay,
+    scheduleMeetingIntervalsByDay,
     scheduleData?.days,
     scheduleData?.tasks,
     timezone,
@@ -877,6 +900,48 @@ export function WeeklyMeetingsCard({
     return () => window.removeEventListener('wheel', handleWheel, { capture: true });
   }, []);
 
+  // ── Drag & Resize ──
+  const handleBlockDrop = useCallback(
+    async (block: BlockInfo, target: GhostPosition, type: InteractionType) => {
+      const dayDate = days.find(d => toLocalDateKey(d.toJSDate(), timezone) === target.dayKey);
+      if (!dayDate) return;
+      const dayStart = dayDate.startOf('day');
+      const newStart = dayStart.plus({ minutes: target.startMinutes }).toISO()!;
+      const newEnd = dayStart.plus({ minutes: target.endMinutes }).toISO()!;
+      const originalDate = toDateKey(
+        days.find(d => toLocalDateKey(d.toJSDate(), timezone) === block.dayKey)?.toJSDate() ?? new Date(),
+        timezone,
+      );
+      try {
+        if (block.kind === 'meeting') {
+          await tasksApi.update(block.taskId, { start_time: newStart, end_time: newEnd });
+        }
+        await tasksApi.moveTimeBlock({
+          task_id: block.taskId,
+          original_date: originalDate,
+          new_start: newStart,
+          new_end: newEnd,
+        });
+        invalidateAfterChange(true);
+      } catch {
+        // silent — block returns to original position
+      }
+    },
+    [days, timezone, invalidateAfterChange],
+  );
+
+  const {
+    ghost: dragGhost,
+    activeBlockId: draggingBlockId,
+    isDragging,
+    startInteraction,
+  } = useBlockDragResize({
+    hourHeight,
+    startBoundHour: timeBounds.startHour,
+    endBoundHour: timeBounds.endHour,
+    onDrop: handleBlockDrop,
+  });
+
   return (
     <div className={`weekly-meetings-card ${embedded ? 'embedded' : ''}`}>
       <div className="card-header weekly-meetings-header">
@@ -1001,7 +1066,7 @@ export function WeeklyMeetingsCard({
       )}
 
       {!isLoading && !error && scheduleHasItems && (
-        <div className="weekly-meetings-grid" ref={gridRef}>
+        <div className={`weekly-meetings-grid${isDragging ? ' is-dragging' : ''}`} ref={gridRef}>
           <div className="weekly-meetings-header-row" style={{ '--days': days.length } as CSSProperties}>
             <div className="weekly-meetings-time-header" />
             {days.map(day => {
@@ -1037,7 +1102,7 @@ export function WeeklyMeetingsCard({
                 endBound,
               );
               return (
-                <div key={dayKey} className={`weekly-meetings-day-col ${isToday ? 'today' : ''}`} style={{ height: `${gridHeight}px` }}>
+                <div key={dayKey} data-day-key={dayKey} className={`weekly-meetings-day-col ${isToday ? 'today' : ''}${dragGhost?.dayKey === dayKey ? ' drop-target' : ''}`} style={{ height: `${gridHeight}px` }}>
                   <div className="weekly-workhours-layer">
                     {nonWorkIntervals.map(interval => {
                       const clampedStart = Math.max(startBound, interval.startMinutes);
@@ -1080,23 +1145,37 @@ export function WeeklyMeetingsCard({
                     const effectiveStatus = localDoneIds.has(meeting.taskId)
                       ? 'DONE'
                       : meeting.status ?? 'TODO';
+                    const isBeingDragged = draggingBlockId === meeting.id;
+                    const canDrag = effectiveStatus !== 'DONE';
                     return (
                       <div
                         key={meeting.id}
                         className={`weekly-meeting-block ${meeting.kind === 'auto' ? 'auto-slot' : ''} ${
                           effectiveStatus === 'DONE' ? 'done' : ''
-                        }`}
+                        }${isBeingDragged ? ' dragging' : ''}`}
                         style={{ top: `${top}px`, height: `${height}px`, left: `${left}%`, width: `${width}%` }}
                         title={`${meeting.title} (${timeLabel})`}
                         role="button"
                         tabIndex={0}
-                        onClick={() => handleTaskClick(meeting.taskId)}
+                        onClick={() => { if (!isDragging) handleTaskClick(meeting.taskId); }}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter' || event.key === ' ') {
                             event.preventDefault();
                             handleTaskClick(meeting.taskId);
                           }
                         }}
+                        onPointerDown={canDrag ? (e) => {
+                          // Don't start drag from action buttons or resize handle
+                          if ((e.target as HTMLElement).closest('.weekly-block-actions, .weekly-block-resize-handle')) return;
+                          startInteraction(e, {
+                            id: meeting.id,
+                            taskId: meeting.taskId,
+                            dayKey: meeting.dayKey,
+                            startMinutes: meeting.startMinutes,
+                            endMinutes: meeting.endMinutes,
+                            kind: meeting.kind,
+                          }, 'drag');
+                        } : undefined}
                       >
                         <div className="weekly-block-actions">
                           <button
@@ -1137,9 +1216,36 @@ export function WeeklyMeetingsCard({
                         </div>
                         <div className="weekly-meeting-time">{timeLabel}</div>
                         {meeting.location && <div className="weekly-meeting-location">{meeting.location}</div>}
+                        {canDrag && (
+                          <div
+                            className="weekly-block-resize-handle"
+                            onPointerDown={(e) => {
+                              startInteraction(e, {
+                                id: meeting.id,
+                                taskId: meeting.taskId,
+                                dayKey: meeting.dayKey,
+                                startMinutes: meeting.startMinutes,
+                                endMinutes: meeting.endMinutes,
+                                kind: meeting.kind,
+                              }, 'resize');
+                            }}
+                          />
+                        )}
                       </div>
                     );
                   })}
+                  {/* Ghost block for drag/resize preview */}
+                  {dragGhost && dragGhost.dayKey === dayKey && (() => {
+                    const ghostTop = ((dragGhost.startMinutes - startBound) / 60) * hourHeight;
+                    const ghostHeight = Math.max(1, ((dragGhost.endMinutes - dragGhost.startMinutes) / 60) * hourHeight);
+                    const dragBlock = dayBlocks.find(b => b.id === draggingBlockId);
+                    return (
+                      <div
+                        className={`weekly-block-ghost${dragBlock?.kind === 'auto' ? ' auto-slot' : ''}`}
+                        style={{ top: `${ghostTop}px`, height: `${ghostHeight}px`, left: 0, right: 0 }}
+                      />
+                    );
+                  })()}
                 </div>
               );
             })}

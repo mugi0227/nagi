@@ -4,7 +4,7 @@ SQLite implementation of daily schedule plan repository.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Optional
 from uuid import UUID, uuid4
 
@@ -127,3 +127,137 @@ class SqliteDailySchedulePlanRepository(IDailySchedulePlanRepository):
                 if orm.plan_date not in latest_by_date:
                     latest_by_date[orm.plan_date] = orm
             return [self._orm_to_model(orm) for orm in latest_by_date.values()]
+
+    async def _get_latest_orm(
+        self,
+        session,  # noqa: ANN001
+        user_id: str,
+        plan_date: date,
+    ) -> Optional[DailySchedulePlanORM]:
+        result = await session.execute(
+            select(DailySchedulePlanORM)
+            .where(
+                DailySchedulePlanORM.user_id == user_id,
+                DailySchedulePlanORM.plan_date == plan_date,
+            )
+            .order_by(DailySchedulePlanORM.generated_at.desc())
+        )
+        return result.scalars().first()
+
+    @staticmethod
+    def _patch_block_in_json(
+        blocks_json: list[dict],
+        task_id: UUID,
+        new_start: datetime,
+        new_end: datetime,
+    ) -> tuple[Optional[dict], list[dict]]:
+        """Find block by task_id, update start/end, return (updated_block, new_list)."""
+        updated_block: Optional[dict] = None
+        new_list: list[dict] = []
+        task_id_str = str(task_id)
+        for block in blocks_json:
+            if block.get("task_id") == task_id_str and updated_block is None:
+                patched = {
+                    **block,
+                    "start": new_start.isoformat(),
+                    "end": new_end.isoformat(),
+                }
+                updated_block = patched
+                new_list.append(patched)
+            else:
+                new_list.append(block)
+        return updated_block, new_list
+
+    async def update_time_block(
+        self,
+        user_id: str,
+        plan_date: date,
+        task_id: UUID,
+        new_start: datetime,
+        new_end: datetime,
+    ) -> Optional[ScheduleTimeBlock]:
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            orm = await self._get_latest_orm(session, user_id, plan_date)
+            if not orm:
+                return None
+            updated_block, new_list = self._patch_block_in_json(
+                orm.time_blocks_json or [], task_id, new_start, new_end,
+            )
+            if not updated_block:
+                return None
+            orm.time_blocks_json = new_list
+            orm.updated_at = now_utc()
+            await session.commit()
+            return ScheduleTimeBlock(**updated_block)
+
+    async def move_time_block_across_days(
+        self,
+        user_id: str,
+        source_date: date,
+        target_date: date,
+        task_id: UUID,
+        new_start: datetime,
+        new_end: datetime,
+    ) -> Optional[ScheduleTimeBlock]:
+        session_factory = get_session_factory()
+        task_id_str = str(task_id)
+        async with session_factory() as session:
+            source_orm = await self._get_latest_orm(session, user_id, source_date)
+            if not source_orm:
+                return None
+            # Remove block from source plan
+            removed_block: Optional[dict] = None
+            kept: list[dict] = []
+            for block in (source_orm.time_blocks_json or []):
+                if block.get("task_id") == task_id_str and removed_block is None:
+                    removed_block = block
+                else:
+                    kept.append(block)
+            if not removed_block:
+                return None
+            source_orm.time_blocks_json = kept
+            source_orm.updated_at = now_utc()
+
+            # Build the moved block
+            moved = {
+                **removed_block,
+                "start": new_start.isoformat(),
+                "end": new_end.isoformat(),
+            }
+
+            # Add to target plan (create minimal plan if it doesn't exist)
+            target_orm = await self._get_latest_orm(session, user_id, target_date)
+            if target_orm:
+                target_blocks = list(target_orm.time_blocks_json or [])
+                target_blocks.append(moved)
+                target_orm.time_blocks_json = target_blocks
+                target_orm.updated_at = now_utc()
+            else:
+                from app.models.schedule import ScheduleDay
+                target_orm = DailySchedulePlanORM(
+                    id=str(uuid4()),
+                    user_id=user_id,
+                    plan_date=target_date,
+                    timezone=source_orm.timezone,
+                    plan_group_id=source_orm.plan_group_id,
+                    schedule_day_json=ScheduleDay(
+                        date=target_date.isoformat(),
+                        capacity_minutes=0,
+                        allocated_minutes=0,
+                        task_allocations=[],
+                    ).model_dump(mode="json"),
+                    tasks_json=[],
+                    unscheduled_json=[],
+                    excluded_json=[],
+                    time_blocks_json=[moved],
+                    task_snapshots_json=[],
+                    pinned_overflow_json=[],
+                    plan_params_json={},
+                    generated_at=now_utc(),
+                    updated_at=now_utc(),
+                )
+                session.add(target_orm)
+
+            await session.commit()
+            return ScheduleTimeBlock(**moved)

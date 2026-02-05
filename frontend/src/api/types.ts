@@ -219,6 +219,13 @@ export interface DoTodayRequest {
   pin?: boolean;
 }
 
+export interface TimeBlockMoveRequest {
+  task_id: string;
+  original_date: string;
+  new_start: string;
+  new_end: string;
+}
+
 // Chat models
 export type ToolApprovalMode = 'manual' | 'auto';
 
@@ -880,6 +887,9 @@ export interface TaskScheduleInfo {
   priority_score: number;
   status?: string;
   pinned_date?: string;
+  is_fixed_time?: boolean;
+  start_time?: string;
+  end_time?: string;
 }
 
 export interface ExcludedTask {
@@ -1197,7 +1207,8 @@ export type NotificationType =
   | 'issue_edited'
   | 'issue_liked'
   | 'issue_commented'
-  | 'issue_status_changed';
+  | 'issue_status_changed'
+  | 'heartbeat';
 
 export interface Notification {
   id: string;
@@ -1222,6 +1233,57 @@ export interface NotificationListResponse {
 
 export interface UnreadCountResponse {
   count: number;
+}
+
+export interface HeartbeatUnreadCountResponse {
+  count: number;
+}
+
+export type HeartbeatRiskSeverity = 'critical' | 'high' | 'medium' | 'low';
+
+export interface HeartbeatRiskTask {
+  task_id: string;
+  title: string;
+  severity: HeartbeatRiskSeverity;
+  risk_score: number;
+  days_remaining?: number;
+  required_days?: number;
+  slack_days?: number;
+  due_date?: string;
+}
+
+export interface HeartbeatStatusResponse {
+  evaluated: number;
+  risk_level: 'low' | 'medium' | 'high';
+  top_risks: HeartbeatRiskTask[];
+  evaluated_at: string;
+  sent_today: number;
+  limit: number;
+}
+
+export type HeartbeatIntensity = 'gentle' | 'standard' | 'firm';
+
+export interface HeartbeatSettingsResponse {
+  user_id: string;
+  enabled: boolean;
+  notification_limit_per_day: number;
+  notification_window_start: string;
+  notification_window_end: string;
+  heartbeat_intensity: HeartbeatIntensity;
+  daily_capacity_per_task_minutes: number;
+  cooldown_hours_per_task: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HeartbeatSettingsUpdate {
+  enabled?: boolean;
+  notification_limit_per_day?: number;
+  notification_window_start?: string;
+  notification_window_end?: string;
+  heartbeat_intensity?: HeartbeatIntensity;
+  daily_capacity_per_task_minutes?: number;
+  cooldown_hours_per_task?: number;
 }
 
 // ===========================================
