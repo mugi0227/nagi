@@ -159,7 +159,6 @@ def _apply_capacity_buffer(
 
 def _task_fingerprint(task: Task) -> str:
     payload = {
-        "status": task.status.value if hasattr(task.status, "value") else str(task.status),
         "estimated_minutes": task.estimated_minutes,
         "due_date": task.due_date.isoformat() if task.due_date else None,
         "start_not_before": task.start_not_before.isoformat() if task.start_not_before else None,

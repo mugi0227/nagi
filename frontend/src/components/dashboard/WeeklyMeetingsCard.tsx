@@ -598,7 +598,7 @@ export function WeeklyMeetingsCard({
           laneCount: 1,
           location: meetingTask?.location,
           status: (normalizedStatus ?? 'TODO') as Task['status'],
-          kind: block.kind,
+          kind: meetingTask ? 'meeting' : block.kind,
           pinnedDate: block.pinned_date ?? taskInfo?.pinned_date ?? undefined,
         } satisfies MeetingBlock;
       })
