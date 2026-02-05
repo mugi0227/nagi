@@ -25,9 +25,12 @@ import {
     FaTrash,
     FaClock,
     FaBolt,
+    FaSyncAlt,
+    FaSitemap,
+    FaLink,
 } from 'react-icons/fa';
 import { meetingSessionApi } from '../../api/meetingSession';
-import type { MeetingSession, MeetingSummary, NextAction } from '../../types/session';
+import type { MeetingSession, MeetingSummary, NextAction, ActionType } from '../../types/session';
 import './MeetingCompleted.css';
 
 // Parse saved summary from session (stored as JSON string)
@@ -108,7 +111,10 @@ export function MeetingCompleted({ session, projectId, memberOptions = [], onTas
     // Analyze transcript mutation
     const analyzeMutation = useMutation({
         mutationFn: async () => {
-            return meetingSessionApi.analyzeTranscript(session.id, { transcript });
+            return meetingSessionApi.analyzeTranscript(session.id, {
+                transcript,
+                project_id: projectId,
+            });
         },
         onSuccess: (data) => {
             setSummary(data);
@@ -122,8 +128,8 @@ export function MeetingCompleted({ session, projectId, memberOptions = [], onTas
         },
     });
 
-    // Create tasks mutation
-    const createTasksMutation = useMutation({
+    // Apply actions mutation (create/update/add_subtask)
+    const applyActionsMutation = useMutation({
         mutationFn: async (actionIndices: number[]) => {
             if (!summary) throw new Error('No summary available');
             const actions: NextAction[] = actionIndices.map((i) => {
@@ -134,13 +140,17 @@ export function MeetingCompleted({ session, projectId, memberOptions = [], onTas
                     assignee_id: assigneeId || action.assignee_id,
                 };
             });
-            return meetingSessionApi.createTasksFromActions(session.id, {
+            return meetingSessionApi.applyActions(session.id, {
                 project_id: projectId,
                 actions,
             }).then((result) => ({ ...result, actionIndices }));
         },
         onSuccess: (data) => {
-            setSuccessMessage(`${data.created_count}件のタスクを作成しました。`);
+            const messages: string[] = [];
+            if (data.created_count > 0) messages.push(`${data.created_count}件作成`);
+            if (data.updated_count > 0) messages.push(`${data.updated_count}件更新`);
+            if (data.subtask_count > 0) messages.push(`${data.subtask_count}件サブタスク追加`);
+            setSuccessMessage(`${messages.join('、')}しました。`);
 
             const newConvertedActions = new Set(convertedActions);
             data.actionIndices.forEach((i: number) => newConvertedActions.add(i));
@@ -160,8 +170,8 @@ export function MeetingCompleted({ session, projectId, memberOptions = [], onTas
             onTasksCreated?.();
         },
         onError: (error) => {
-            setErrorMessage('タスクの作成に失敗しました。');
-            console.error('Failed to create tasks:', error);
+            setErrorMessage('アクションの適用に失敗しました。');
+            console.error('Failed to apply actions:', error);
         },
     });
 
@@ -288,11 +298,11 @@ export function MeetingCompleted({ session, projectId, memberOptions = [], onTas
         }));
     }, []);
 
-    const handleCreateTasks = useCallback(() => {
+    const handleApplyActions = useCallback(() => {
         if (!summary || selectedActions.size === 0) return;
-        const indicesToCreate = Array.from(selectedActions);
-        createTasksMutation.mutate(indicesToCreate);
-    }, [summary, selectedActions, createTasksMutation]);
+        const indicesToApply = Array.from(selectedActions);
+        applyActionsMutation.mutate(indicesToApply);
+    }, [summary, selectedActions, applyActionsMutation]);
 
     const getPriorityClass = (priority: string) => {
         switch (priority) {
@@ -319,6 +329,49 @@ export function MeetingCompleted({ session, projectId, memberOptions = [], onTas
             case 'LOW': return '軽';
             default: return null;
         }
+    };
+
+    const getActionTypeBadge = (actionType?: ActionType) => {
+        switch (actionType) {
+            case 'update':
+                return (
+                    <span className="action-type-badge action-type-update">
+                        <FaSyncAlt /> 既存更新
+                    </span>
+                );
+            case 'add_subtask':
+                return (
+                    <span className="action-type-badge action-type-subtask">
+                        <FaSitemap /> サブタスク追加
+                    </span>
+                );
+            default:
+                return (
+                    <span className="action-type-badge action-type-create">
+                        <FaPlus /> 新規作成
+                    </span>
+                );
+        }
+    };
+
+    // Build apply button label
+    const getApplyButtonLabel = () => {
+        if (applyActionsMutation.isPending) return '適用中...';
+        if (!summary || selectedActions.size === 0) return '適用 (0件)';
+
+        const selected = Array.from(selectedActions).map(
+            (i) => summary.next_actions[i]
+        );
+        const creates = selected.filter((a) => !a.action_type || a.action_type === 'create').length;
+        const updates = selected.filter((a) => a.action_type === 'update').length;
+        const subtasks = selected.filter((a) => a.action_type === 'add_subtask').length;
+
+        const parts: string[] = [];
+        if (creates > 0) parts.push(`作成${creates}`);
+        if (updates > 0) parts.push(`更新${updates}`);
+        if (subtasks > 0) parts.push(`サブタスク${subtasks}`);
+
+        return `適用 (${parts.join('/')})`;
     };
 
     // Get display summary (editing version if in edit mode)
@@ -601,30 +654,29 @@ export function MeetingCompleted({ session, projectId, memberOptions = [], onTas
                                     ネクストアクション ({displaySummary.next_actions.length}件)
                                     {convertedActions.size > 0 && (
                                         <span className="converted-count">
-                                            {convertedActions.size}件タスク化済み
+                                            {convertedActions.size}件適用済み
                                         </span>
                                     )}
                                 </h4>
                                 <button
                                     className="create-tasks-btn"
-                                    onClick={handleCreateTasks}
+                                    onClick={handleApplyActions}
                                     disabled={
-                                        selectedActions.size === 0 || createTasksMutation.isPending
+                                        selectedActions.size === 0 || applyActionsMutation.isPending
                                     }
                                 >
                                     <FaPlus />
-                                    {createTasksMutation.isPending
-                                        ? '作成中...'
-                                        : `タスク化 (${selectedActions.size}件)`}
+                                    {getApplyButtonLabel()}
                                 </button>
                             </div>
                             <div className="actions-list">
                                 {displaySummary.next_actions.map((action, index) => {
                                     const isConverted = convertedActions.has(index);
+                                    const actionType = action.action_type || 'create';
                                     return (
                                         <div
                                             key={index}
-                                            className={`action-item ${isConverted ? 'converted' : ''}`}
+                                            className={`action-item ${isConverted ? 'converted' : ''} action-item-${actionType}`}
                                         >
                                             <input
                                                 type="checkbox"
@@ -636,12 +688,29 @@ export function MeetingCompleted({ session, projectId, memberOptions = [], onTas
                                             <div className="action-content">
                                                 <div className="action-title-row">
                                                     <h5>{action.title}</h5>
+                                                    {getActionTypeBadge(action.action_type)}
                                                     {isConverted && (
                                                         <span className="converted-badge">
-                                                            <FaCheckCircle /> タスク化済み
+                                                            <FaCheckCircle /> 適用済み
                                                         </span>
                                                     )}
                                                 </div>
+
+                                                {/* Show existing task reference for update/add_subtask */}
+                                                {(actionType === 'update' || actionType === 'add_subtask') && action.existing_task_title && (
+                                                    <div className="existing-task-ref">
+                                                        <FaLink />
+                                                        <span>対象タスク: {action.existing_task_title}</span>
+                                                    </div>
+                                                )}
+
+                                                {/* Show update reason */}
+                                                {actionType === 'update' && action.update_reason && (
+                                                    <p className="action-update-reason">
+                                                        更新内容: {action.update_reason}
+                                                    </p>
+                                                )}
+
                                                 {action.description && <p>{action.description}</p>}
                                                 {action.purpose && (
                                                     <p className="action-purpose">目的: {action.purpose}</p>

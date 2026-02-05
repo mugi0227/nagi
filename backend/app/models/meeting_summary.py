@@ -7,10 +7,19 @@ Models for transcript analysis results including summaries, decisions, and next 
 from __future__ import annotations
 
 from datetime import date
+from enum import Enum
 from typing import Optional
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+
+
+class ActionType(str, Enum):
+    """Type of action to take for a next action item."""
+
+    CREATE = "create"           # 新規タスク作成
+    UPDATE = "update"           # 既存タスクの更新（説明追加、期限変更等）
+    ADD_SUBTASK = "add_subtask" # 既存タスクにサブタスク追加
 
 
 class AgendaDiscussion(BaseModel):
@@ -42,6 +51,22 @@ class NextAction(BaseModel):
     priority: str = Field("MEDIUM", description="優先度 (HIGH/MEDIUM/LOW)")
     estimated_minutes: Optional[int] = Field(None, description="見積もり時間（分）")
     energy_level: Optional[str] = Field(None, description="必要エネルギー (HIGH/MEDIUM/LOW)")
+    action_type: ActionType = Field(
+        ActionType.CREATE,
+        description="アクション種別: create=新規作成, update=既存更新, add_subtask=サブタスク追加",
+    )
+    existing_task_id: Optional[str] = Field(
+        None,
+        description="update/add_subtaskの場合の対象タスクID",
+    )
+    existing_task_title: Optional[str] = Field(
+        None,
+        description="update/add_subtaskの場合の対象タスクのタイトル（表示用）",
+    )
+    update_reason: Optional[str] = Field(
+        None,
+        description="update の場合、何を更新するかの説明",
+    )
 
 
 class MeetingSummary(BaseModel):
@@ -68,6 +93,7 @@ class AnalyzeTranscriptRequest(BaseModel):
     """Request body for transcript analysis."""
 
     transcript: str = Field(..., description="議事録テキスト", max_length=50000)
+    project_id: Optional[str] = Field(None, description="プロジェクトID（既存タスク取得用）")
 
 
 class CreateTasksFromActionsRequest(BaseModel):

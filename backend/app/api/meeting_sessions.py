@@ -22,11 +22,12 @@ from app.models.meeting_session import (
     MeetingSessionUpdate,
 )
 from app.models.meeting_summary import (
+    ActionType,
     AnalyzeTranscriptRequest,
     CreateTasksFromActionsRequest,
     MeetingSummary,
 )
-from app.models.task import TaskCreate
+from app.models.task import TaskCreate, TaskUpdate
 from app.services.meeting_summary_service import MeetingSummaryService
 from app.utils.datetime_utils import now_utc
 
@@ -256,6 +257,7 @@ async def analyze_transcript(
     user: CurrentUser,
     repo: MeetingSessionRepo,
     agenda_repo: MeetingAgendaRepo,
+    task_repo: TaskRepo,
     llm_provider: LLMProvider,
 ):
     """
@@ -266,6 +268,9 @@ async def analyze_transcript(
     - Discussion summary per agenda item
     - Decisions made during the meeting
     - Next actions with assignees and due dates
+
+    If project_id is provided, existing project tasks are included as context
+    to prevent duplicate task creation.
     """
     # Get session
     session = await repo.get(user.id, session_id)
@@ -275,12 +280,31 @@ async def analyze_transcript(
     # Get agenda items for context
     agenda_items = await agenda_repo.list_by_task(user.id, session.task_id)
 
+    # Get existing project tasks for duplicate prevention
+    existing_tasks = None
+    if request.project_id:
+        try:
+            project_id = UUID(request.project_id)
+            existing_tasks = await task_repo.list(
+                user_id=user.id,
+                project_id=project_id,
+                include_done=False,
+                limit=200,
+            )
+            # Exclude meeting tasks (is_fixed_time) to keep context focused
+            existing_tasks = [
+                t for t in existing_tasks if not t.is_fixed_time
+            ]
+        except ValueError:
+            pass  # Invalid project_id, skip task fetching
+
     # Analyze transcript
     service = MeetingSummaryService(llm_provider)
     summary = await service.analyze_transcript(
         session_id=session_id,
         transcript=request.transcript,
         agenda_items=agenda_items,
+        existing_tasks=existing_tasks,
     )
 
     # Save transcript and summary to session
@@ -293,8 +317,8 @@ async def analyze_transcript(
     return summary
 
 
-@router.post("/{session_id}/create-tasks")
-async def create_tasks_from_actions(
+@router.post("/{session_id}/apply-actions")
+async def apply_actions(
     session_id: UUID,
     request: CreateTasksFromActionsRequest,
     user: CurrentUser,
@@ -303,11 +327,14 @@ async def create_tasks_from_actions(
     assignment_repo: TaskAssignmentRepo,
 ):
     """
-    Create tasks from next actions extracted from meeting transcript.
+    Apply next actions from meeting transcript analysis.
 
-    Takes a list of next actions and creates corresponding tasks.
-    Optionally assigns tasks to specified members.
-    Returns the list of created task IDs.
+    Handles three action types:
+    - create: Create a new task
+    - update: Update an existing task (description, priority, due_date, etc.)
+    - add_subtask: Add a subtask to an existing task
+
+    Returns summary of all operations performed.
     """
     # Verify session exists
     session = await repo.get(user.id, session_id)
@@ -322,8 +349,6 @@ async def create_tasks_from_actions(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid project ID format")
 
-    # Create tasks from actions
-    created_tasks = []
     priority_map = {
         "HIGH": Priority.HIGH,
         "MEDIUM": Priority.MEDIUM,
@@ -335,53 +360,204 @@ async def create_tasks_from_actions(
         "LOW": EnergyLevel.LOW,
     }
 
+    results: list[dict] = []
+
     for action in request.actions:
         priority = priority_map.get(action.priority, Priority.MEDIUM)
         energy_level = energy_map.get(
             action.energy_level or "", EnergyLevel.MEDIUM
         )
-
-        # Parse due_date if provided
         due_date = None
         if action.due_date:
             due_date = datetime.combine(action.due_date, datetime.min.time())
 
-        task_data = TaskCreate(
-            title=action.title,
-            description=action.description,
-            purpose=action.purpose,
-            project_id=project_id,
-            importance=priority,
-            urgency=priority,
-            energy_level=energy_level,
-            estimated_minutes=action.estimated_minutes,
-            due_date=due_date,
-            created_by=CreatedBy.AGENT,
-        )
+        action_type = action.action_type
 
-        task = await task_repo.create(user.id, task_data)
+        if action_type == ActionType.UPDATE and action.existing_task_id:
+            # Update existing task
+            result = await _handle_update_action(
+                user, task_repo, assignment_repo, action,
+                priority, energy_level, due_date,
+            )
+            results.append(result)
 
-        # Assign task to specified member if assignee_id is provided
-        if action.assignee_id:
-            try:
-                from app.models.collaboration import TaskAssignmentCreate
-                await assignment_repo.assign(
-                    user.id,
-                    task.id,
-                    TaskAssignmentCreate(assignee_id=action.assignee_id),
-                )
-            except Exception:
-                pass  # Assignment failure should not block task creation
+        elif action_type == ActionType.ADD_SUBTASK and action.existing_task_id:
+            # Add subtask to existing task
+            result = await _handle_add_subtask_action(
+                user, task_repo, assignment_repo, action,
+                project_id, priority, energy_level, due_date,
+            )
+            results.append(result)
 
-        created_tasks.append({
-            "id": str(task.id),
-            "title": task.title,
-            "assignee": action.assignee,
-            "assignee_id": action.assignee_id,
-            "due_date": action.due_date.isoformat() if action.due_date else None,
-        })
+        else:
+            # Create new task (default)
+            result = await _handle_create_action(
+                user, task_repo, assignment_repo, action,
+                project_id, priority, energy_level, due_date,
+            )
+            results.append(result)
 
+    created = [r for r in results if r["action_type"] == "create"]
+    updated = [r for r in results if r["action_type"] == "update"]
+    subtasks = [r for r in results if r["action_type"] == "add_subtask"]
+
+    return {
+        "created_count": len(created),
+        "updated_count": len(updated),
+        "subtask_count": len(subtasks),
+        "results": results,
+    }
+
+
+# Keep legacy endpoint for backward compatibility
+@router.post("/{session_id}/create-tasks")
+async def create_tasks_from_actions(
+    session_id: UUID,
+    request: CreateTasksFromActionsRequest,
+    user: CurrentUser,
+    repo: MeetingSessionRepo,
+    task_repo: TaskRepo,
+    assignment_repo: TaskAssignmentRepo,
+):
+    """Legacy endpoint: Create tasks from next actions. Delegates to apply-actions."""
+    response = await apply_actions(
+        session_id, request, user, repo, task_repo, assignment_repo,
+    )
+    # Return legacy format for backward compat
+    created_tasks = [r for r in response["results"] if r["action_type"] == "create"]
     return {
         "created_count": len(created_tasks),
         "tasks": created_tasks,
+    }
+
+
+async def _handle_create_action(
+    user, task_repo, assignment_repo, action,
+    project_id, priority, energy_level, due_date,
+) -> dict:
+    """Handle a 'create' action — create a new task."""
+    task_data = TaskCreate(
+        title=action.title,
+        description=action.description,
+        purpose=action.purpose,
+        project_id=project_id,
+        importance=priority,
+        urgency=priority,
+        energy_level=energy_level,
+        estimated_minutes=action.estimated_minutes,
+        due_date=due_date,
+        created_by=CreatedBy.AGENT,
+    )
+    task = await task_repo.create(user.id, task_data)
+
+    if action.assignee_id:
+        try:
+            from app.models.collaboration import TaskAssignmentCreate
+            await assignment_repo.assign(
+                user.id, task.id,
+                TaskAssignmentCreate(assignee_id=action.assignee_id),
+            )
+        except Exception:
+            pass
+
+    return {
+        "action_type": "create",
+        "id": str(task.id),
+        "title": task.title,
+        "assignee": action.assignee,
+        "assignee_id": action.assignee_id,
+        "due_date": action.due_date.isoformat() if action.due_date else None,
+    }
+
+
+async def _handle_update_action(
+    user, task_repo, assignment_repo, action,
+    priority, energy_level, due_date,
+) -> dict:
+    """Handle an 'update' action — update an existing task."""
+    existing_task_id = UUID(action.existing_task_id)
+
+    # Build update data from the action fields
+    update_fields: dict = {}
+    if action.description:
+        update_fields["description"] = action.description
+    if action.purpose:
+        update_fields["purpose"] = action.purpose
+    if due_date:
+        update_fields["due_date"] = due_date
+    if action.priority:
+        update_fields["importance"] = priority
+        update_fields["urgency"] = priority
+    if action.energy_level:
+        update_fields["energy_level"] = energy_level
+    if action.estimated_minutes:
+        update_fields["estimated_minutes"] = action.estimated_minutes
+
+    if update_fields:
+        task_update = TaskUpdate(**update_fields)
+        await task_repo.update(user.id, existing_task_id, task_update)
+
+    if action.assignee_id:
+        try:
+            from app.models.collaboration import TaskAssignmentCreate
+            await assignment_repo.assign(
+                user.id, existing_task_id,
+                TaskAssignmentCreate(assignee_id=action.assignee_id),
+            )
+        except Exception:
+            pass
+
+    return {
+        "action_type": "update",
+        "id": str(existing_task_id),
+        "title": action.title,
+        "existing_task_title": action.existing_task_title,
+        "update_reason": action.update_reason,
+        "assignee": action.assignee,
+        "assignee_id": action.assignee_id,
+        "due_date": action.due_date.isoformat() if action.due_date else None,
+    }
+
+
+async def _handle_add_subtask_action(
+    user, task_repo, assignment_repo, action,
+    project_id, priority, energy_level, due_date,
+) -> dict:
+    """Handle an 'add_subtask' action — create a subtask under an existing task."""
+    parent_task_id = UUID(action.existing_task_id)
+
+    task_data = TaskCreate(
+        title=action.title,
+        description=action.description,
+        purpose=action.purpose,
+        project_id=project_id,
+        parent_id=parent_task_id,
+        importance=priority,
+        urgency=priority,
+        energy_level=energy_level,
+        estimated_minutes=action.estimated_minutes,
+        due_date=due_date,
+        created_by=CreatedBy.AGENT,
+    )
+    task = await task_repo.create(user.id, task_data)
+
+    if action.assignee_id:
+        try:
+            from app.models.collaboration import TaskAssignmentCreate
+            await assignment_repo.assign(
+                user.id, task.id,
+                TaskAssignmentCreate(assignee_id=action.assignee_id),
+            )
+        except Exception:
+            pass
+
+    return {
+        "action_type": "add_subtask",
+        "id": str(task.id),
+        "title": task.title,
+        "parent_task_id": str(parent_task_id),
+        "existing_task_title": action.existing_task_title,
+        "assignee": action.assignee,
+        "assignee_id": action.assignee_id,
+        "due_date": action.due_date.isoformat() if action.due_date else None,
     }

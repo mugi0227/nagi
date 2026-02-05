@@ -20,11 +20,13 @@ from app.core.logger import logger
 from app.interfaces.llm_provider import ILLMProvider
 from app.models.meeting_agenda import MeetingAgendaItem
 from app.models.meeting_summary import (
+    ActionType,
     AgendaDiscussion,
     Decision,
     MeetingSummary,
     NextAction,
 )
+from app.models.task import Task
 
 
 class MeetingSummaryService:
@@ -43,6 +45,7 @@ class MeetingSummaryService:
         transcript: str,
         agenda_items: list[MeetingAgendaItem],
         meeting_title: Optional[str] = None,
+        existing_tasks: Optional[list[Task]] = None,
     ) -> MeetingSummary:
         """
         Analyze meeting transcript to extract summary, decisions, and next actions.
@@ -52,6 +55,7 @@ class MeetingSummaryService:
             transcript: Meeting transcript text
             agenda_items: List of agenda items for context
             meeting_title: Optional meeting title for context
+            existing_tasks: Existing project tasks for duplicate prevention
 
         Returns:
             MeetingSummary with extracted information
@@ -66,33 +70,82 @@ class MeetingSummaryService:
         agent = Agent(
             name="meeting_summary_analyzer",
             model=self._llm_provider.get_model(),
-            instruction=self._get_system_instruction(),
+            instruction=self._get_system_instruction(
+                has_existing_tasks=bool(existing_tasks),
+            ),
         )
         runner = InMemoryRunner(agent=agent, app_name=self.APP_NAME)
 
         # Build prompt
-        prompt = self._build_analysis_prompt(transcript, agenda_items, meeting_title)
+        prompt = self._build_analysis_prompt(
+            transcript, agenda_items, meeting_title, existing_tasks,
+        )
 
         # Run with retry logic
         return await self._run_with_retry(runner, session_id, prompt)
 
-    def _get_system_instruction(self) -> str:
+    def _get_system_instruction(
+        self, has_existing_tasks: bool = False,
+    ) -> str:
         """Get system instruction for the analysis agent."""
-        return """あなたは会議議事録分析のエキスパートです。
+        base = """あなたは会議議事録分析のエキスパートです。
 会議の議事録（トランスクリプト）を分析し、以下の情報を抽出します：
 
 1. **全体サマリー**: 会議の概要を2-3文でまとめる
 2. **アジェンダごとの議論**: 各アジェンダ項目について議論された内容を要約
 3. **決定事項**: 会議で決まったことをリストアップ
-4. **ネクストアクション**: 今後のアクション項目（担当者・期限があれば含める）
+4. **ネクストアクション**: 今後のアクション項目（担当者・期限があれば含める）"""
 
-必ずJSON形式で出力してください。日本語で回答してください。"""
+        if has_existing_tasks:
+            base += """
+
+## 重要: 既存タスクとの重複防止
+
+プロジェクトの既存タスク一覧が提供されます。ネクストアクションを抽出する際、
+既存タスクと内容が被っていないか必ず確認してください。
+
+- **既存タスクと同じ内容** → `action_type: "update"` として、既存タスクの更新を提案
+  （例: 説明の追記、期限の更新、優先度の変更など）
+- **既存タスクのサブタスクとして追加すべき内容** → `action_type: "add_subtask"`
+- **完全に新しい内容** → `action_type: "create"`
+
+言い回しが違っても意味的に同じタスクは「update」として扱ってください。"""
+
+        base += "\n\n必ずJSON形式で出力してください。日本語で回答してください。"
+        return base
+
+    def _build_existing_tasks_section(self, tasks: list[Task]) -> str:
+        """Build existing tasks context section for the prompt."""
+        lines = ["## プロジェクトの既存タスク一覧"]
+        lines.append("")
+        lines.append("以下は現在プロジェクトにある未完了タスクです。"
+                      "ネクストアクションがこれらと重複していないか確認してください。")
+        lines.append("")
+
+        for task in tasks:
+            status = task.status.value if hasattr(task.status, "value") else task.status
+            line = f"- [{status}] {task.title} (ID: {task.id})"
+            if task.description:
+                desc = task.description[:100]
+                if len(task.description) > 100:
+                    desc += "..."
+                line += f"\n  説明: {desc}"
+            if task.purpose:
+                purpose = task.purpose[:80]
+                if len(task.purpose) > 80:
+                    purpose += "..."
+                line += f"\n  目的: {purpose}"
+            lines.append(line)
+
+        lines.append("")
+        return "\n".join(lines)
 
     def _build_analysis_prompt(
         self,
         transcript: str,
         agenda_items: list[MeetingAgendaItem],
         meeting_title: Optional[str] = None,
+        existing_tasks: Optional[list[Task]] = None,
     ) -> str:
         """Build the prompt for transcript analysis."""
         parts = []
@@ -109,6 +162,9 @@ class MeetingSummaryService:
                     parts.append(f"   - {item.description}")
             parts.append("")
 
+        if existing_tasks:
+            parts.append(self._build_existing_tasks_section(existing_tasks))
+
         parts.append("## 議事録")
         parts.append(transcript)
         parts.append("")
@@ -116,24 +172,10 @@ class MeetingSummaryService:
         parts.append("")
         parts.append("上記の議事録を分析し、以下のJSON形式で結果を返してください：")
         parts.append("")
-        parts.append("""```json
-{
-  "overall_summary": "会議全体の要約（2-3文）",
-  "agenda_discussions": [
-    {
-      "agenda_title": "アジェンダ項目のタイトル",
-      "summary": "この議題についての議論の要約",
-      "key_points": ["ポイント1", "ポイント2"]
-    }
-  ],
-  "decisions": [
-    {
-      "content": "決定内容",
-      "related_agenda": "関連するアジェンダ（任意）",
-      "rationale": "決定の理由（任意）"
-    }
-  ],
-  "next_actions": [
+
+        # Build next_actions example based on whether existing tasks are provided
+        if existing_tasks:
+            next_action_example = """\
     {
       "title": "アクション項目のタイトル",
       "description": "詳細説明（任意）",
@@ -142,22 +184,68 @@ class MeetingSummaryService:
       "due_date": "YYYY-MM-DD形式の期限（任意）",
       "related_agenda": "関連するアジェンダ（任意）",
       "priority": "HIGH/MEDIUM/LOW",
-      "estimated_minutes": 見積もり時間（分、整数、任意）,
-      "energy_level": "HIGH/MEDIUM/LOW（タスクの負荷レベル）"
-    }
-  ]
-}
-```
+      "estimated_minutes": 60,
+      "energy_level": "HIGH/MEDIUM/LOW",
+      "action_type": "create または update または add_subtask",
+      "existing_task_id": "updateまたはadd_subtaskの場合、対象タスクのID",
+      "existing_task_title": "対象タスクのタイトル（表示用）",
+      "update_reason": "updateの場合、何を更新するかの説明"
+    }"""
+        else:
+            next_action_example = """\
+    {
+      "title": "アクション項目のタイトル",
+      "description": "詳細説明（任意）",
+      "purpose": "なぜやるか・目的（任意）",
+      "assignee": "担当者名（任意）",
+      "due_date": "YYYY-MM-DD形式の期限（任意）",
+      "related_agenda": "関連するアジェンダ（任意）",
+      "priority": "HIGH/MEDIUM/LOW",
+      "estimated_minutes": 60,
+      "energy_level": "HIGH/MEDIUM/LOW"
+    }"""
 
-**注意事項**:
-- 決定事項は「〇〇することに決定」「〇〇で合意」などの明確な決定のみを抽出
-- ネクストアクションは具体的なアクションのみを抽出（「検討する」などの曖昧なものは含めない）
-- 担当者名は議事録に記載があれば抽出、なければnull
-- 期限も同様に、明示されていればYYYY-MM-DD形式で、なければnull
-- estimated_minutes: タスクの内容から見積もり時間を推定する（例: 簡単なタスク=30, 中程度=60, 複雑=120）
-- energy_level: タスクの負荷を推定する（HIGH=集中力が必要な重い作業, MEDIUM=普通, LOW=軽い作業）
-- purpose: アクションの目的や背景を簡潔に記述する
-""")
+        parts.append(f"""```json
+{{
+  "overall_summary": "会議全体の要約（2-3文）",
+  "agenda_discussions": [
+    {{
+      "agenda_title": "アジェンダ項目のタイトル",
+      "summary": "この議題についての議論の要約",
+      "key_points": ["ポイント1", "ポイント2"]
+    }}
+  ],
+  "decisions": [
+    {{
+      "content": "決定内容",
+      "related_agenda": "関連するアジェンダ（任意）",
+      "rationale": "決定の理由（任意）"
+    }}
+  ],
+  "next_actions": [
+{next_action_example}
+  ]
+}}
+```""")
+
+        parts.append("")
+        parts.append("**注意事項**:")
+        parts.append("- 決定事項は「〇〇することに決定」「〇〇で合意」などの明確な決定のみを抽出")
+        parts.append("- ネクストアクションは具体的なアクションのみを抽出（「検討する」などの曖昧なものは含めない）")
+        parts.append("- 担当者名は議事録に記載があれば抽出、なければnull")
+        parts.append("- 期限も同様に、明示されていればYYYY-MM-DD形式で、なければnull")
+        parts.append("- estimated_minutes: タスクの内容から見積もり時間を推定する（例: 簡単なタスク=30, 中程度=60, 複雑=120）")
+        parts.append("- energy_level: タスクの負荷を推定する（HIGH=集中力が必要な重い作業, MEDIUM=普通, LOW=軽い作業）")
+        parts.append("- purpose: アクションの目的や背景を簡潔に記述する")
+
+        if existing_tasks:
+            parts.append("")
+            parts.append("**既存タスクとの重複防止（重要）**:")
+            parts.append("- 既存タスクと意味的に同じアクション → `action_type: \"update\"` + `existing_task_id` を設定")
+            parts.append("- 既存タスクの一部として追加すべきアクション → `action_type: \"add_subtask\"` + `existing_task_id` を設定")
+            parts.append("- 完全に新しいアクション → `action_type: \"create\"`（existing_task_id は不要）")
+            parts.append("- 言い回しが違っても意味的に同じなら update として扱うこと")
+            parts.append("- update_reason には具体的に何を更新するか記述する（例: 「期限を12/20に変更」「説明に会議での決定事項を追記」）")
 
         return "\n".join(parts)
 
@@ -263,6 +351,13 @@ class MeetingSummaryService:
         # Build next actions
         next_actions = []
         for action_data in data.get("next_actions", []):
+            # Parse action_type with fallback to CREATE
+            raw_action_type = action_data.get("action_type", "create")
+            try:
+                action_type = ActionType(raw_action_type)
+            except ValueError:
+                action_type = ActionType.CREATE
+
             next_actions.append(NextAction(
                 title=action_data.get("title", ""),
                 description=action_data.get("description"),
@@ -273,6 +368,10 @@ class MeetingSummaryService:
                 priority=action_data.get("priority", "MEDIUM"),
                 estimated_minutes=action_data.get("estimated_minutes"),
                 energy_level=action_data.get("energy_level"),
+                action_type=action_type,
+                existing_task_id=action_data.get("existing_task_id"),
+                existing_task_title=action_data.get("existing_task_title"),
+                update_reason=action_data.get("update_reason"),
             ))
 
         return MeetingSummary(

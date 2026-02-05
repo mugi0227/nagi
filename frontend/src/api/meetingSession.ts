@@ -7,6 +7,7 @@ import type {
     AnalyzeTranscriptRequest,
     CreateTasksFromActionsRequest,
     CreateTasksFromActionsResponse,
+    ApplyActionsResponse,
 } from '../types/session';
 
 export const meetingSessionApi = {
@@ -79,6 +80,16 @@ export const meetingSessionApi = {
     ): Promise<CreateTasksFromActionsResponse> => {
         return client.post<CreateTasksFromActionsResponse>(
             `/meeting-sessions/${sessionId}/create-tasks`,
+            data
+        );
+    },
+
+    applyActions: async (
+        sessionId: string,
+        data: CreateTasksFromActionsRequest
+    ): Promise<ApplyActionsResponse> => {
+        return client.post<ApplyActionsResponse>(
+            `/meeting-sessions/${sessionId}/apply-actions`,
             data
         );
     },
