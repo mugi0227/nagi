@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   FaTrophy,
@@ -228,7 +230,9 @@ function AchievementCard({
             disabled={isBusy}
           />
         ) : (
-          <p>{achievement.summary}</p>
+          <div className="markdown-content">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{achievement.summary}</ReactMarkdown>
+          </div>
         )}
         <div
           className={`item-actions summary-actions${
@@ -327,7 +331,7 @@ function AchievementCard({
                               disabled={isBusy}
                             />
                           ) : (
-                            <span>{item}</span>
+                            <div className="markdown-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{item}</ReactMarkdown></div>
                           )}
                         </div>
                         <div className={`item-actions${isEditing ? '' : ' hover-actions'}`}>
@@ -408,7 +412,7 @@ function AchievementCard({
                               disabled={isBusy}
                             />
                           ) : (
-                            <span>{item}</span>
+                            <div className="markdown-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{item}</ReactMarkdown></div>
                           )}
                         </div>
                         <div className={`item-actions${isEditing ? '' : ' hover-actions'}`}>
@@ -489,7 +493,7 @@ function AchievementCard({
                               disabled={isBusy}
                             />
                           ) : (
-                            <span>{item}</span>
+                            <div className="markdown-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{item}</ReactMarkdown></div>
                           )}
                         </div>
                         <div className={`item-actions${isEditing ? '' : ' hover-actions'}`}>
@@ -570,7 +574,7 @@ function AchievementCard({
                               disabled={isBusy}
                             />
                           ) : (
-                            <span>{item}</span>
+                            <div className="markdown-content"><ReactMarkdown remarkPlugins={[remarkGfm]}>{item}</ReactMarkdown></div>
                           )}
                         </div>
                         <div className={`item-actions${isEditing ? '' : ' hover-actions'}`}>

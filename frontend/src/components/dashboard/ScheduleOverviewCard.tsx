@@ -273,14 +273,10 @@ export function ScheduleOverviewCard({
     };
   }, [data, projectId, filteredTasks, filteredDays, filteredUnscheduled, filteredExcluded]);
   const pendingChanges = scheduleData?.pending_changes ?? [];
-  const pendingChangePreview = useMemo(() => {
-    if (pendingChanges.length === 0) return '';
-    const labels = pendingChanges.slice(0, 3).map(change => change.title);
-    const extra = pendingChanges.length - labels.length;
-    return extra > 0 ? `${labels.join(' / ')} +${extra}${TEXT.countUnit}` : labels.join(' / ');
-  }, [pendingChanges]);
+  const pendingPreviewItems = pendingChanges.slice(0, 3);
+  const pendingExtraCount = pendingChanges.length - pendingPreviewItems.length;
   const planState = scheduleData?.plan_state ?? 'forecast';
-  const showPlanNotice = !isCalendarView && Boolean(scheduleData) && planState !== 'planned';
+  const showPlanNotice = !isCalendarView && Boolean(scheduleData) && (planState === 'forecast' || (planState === 'stale' && pendingChanges.length > 0));
 
   const activeLockInfo = useMemo(() => {
     if (!lockInfo) return null;
@@ -576,17 +572,34 @@ export function ScheduleOverviewCard({
 
       {showPlanNotice && (
         <div className={`schedule-plan-banner ${planState}`}>
+          <div className="schedule-plan-icon">
+            {planState === 'forecast' ? '○' : '●'}
+          </div>
           <div className="schedule-plan-text">
             <span className="schedule-plan-badge">
               {planState === 'forecast' ? TEXT.planForecast : TEXT.planStale}
             </span>
             {planState === 'stale' && pendingChanges.length > 0 && (
               <span className="schedule-plan-count">
-                {TEXT.pendingLabel}{pendingChanges.length}{TEXT.countUnit}
+                {pendingChanges.length}{TEXT.countUnit}
               </span>
             )}
-            {pendingChangePreview && (
-              <span className="schedule-plan-preview">{pendingChangePreview}</span>
+            {pendingPreviewItems.length > 0 && (
+              <span className="schedule-plan-preview">
+                {pendingPreviewItems.map((change, i) => (
+                  <span key={change.task_id}>
+                    {i > 0 && ' / '}
+                    <button
+                      type="button"
+                      className="schedule-plan-task-link"
+                      onClick={(e) => { e.stopPropagation(); onTaskClick?.(change.task_id); }}
+                    >
+                      {change.title}
+                    </button>
+                  </span>
+                ))}
+                {pendingExtraCount > 0 && ` +${pendingExtraCount}${TEXT.countUnit}`}
+              </span>
             )}
           </div>
         </div>

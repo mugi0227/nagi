@@ -1442,7 +1442,6 @@ export function ProjectDetailPage() {
             onAssignMultiple={handleAssignMultiple}
             onDeleteTask={(taskId: string) => {
               deleteTask(taskId);
-              refetchTasks();
             }}
             onRefreshTasks={refetchTasks}
             onDeleteGeneratedTasks={deleteGeneratedTasks}

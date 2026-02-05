@@ -470,14 +470,10 @@ export function WeeklyMeetingsCard({
     [meetingTasks],
   );
   const pendingChanges = scheduleData?.pending_changes ?? [];
-  const pendingChangePreview = useMemo(() => {
-    if (pendingChanges.length === 0) return '';
-    const labels = pendingChanges.slice(0, 3).map(change => change.title);
-    const extra = pendingChanges.length - labels.length;
-    return extra > 0 ? `${labels.join(' / ')} +${extra}${TEXT.countUnit}` : labels.join(' / ');
-  }, [pendingChanges]);
+  const pendingPreviewItems = pendingChanges.slice(0, 3);
+  const pendingExtraCount = pendingChanges.length - pendingPreviewItems.length;
   const planState = scheduleData?.plan_state ?? 'forecast';
-  const showPlanNotice = Boolean(scheduleData) && planState !== 'planned';
+  const showPlanNotice = Boolean(scheduleData) && (planState === 'forecast' || (planState === 'stale' && pendingChanges.length > 0));
   const pinnedOverflowTasks = useMemo(() => {
     const overflowIds = scheduleData?.pinned_overflow_task_ids ?? [];
     if (overflowIds.length === 0) return [] as Array<{ id: string; title: string }>;
@@ -946,17 +942,34 @@ export function WeeklyMeetingsCard({
 
       {showPlanNotice && (
         <div className={`weekly-plan-banner ${planState}`}>
+          <div className="weekly-plan-icon">
+            {planState === 'forecast' ? '○' : '●'}
+          </div>
           <div className="weekly-plan-banner-text">
             <span className="weekly-plan-badge">
               {planState === 'forecast' ? TEXT.planForecast : TEXT.planStale}
             </span>
             {planState === 'stale' && pendingChanges.length > 0 && (
               <span className="weekly-plan-count">
-                {TEXT.pendingLabel}{pendingChanges.length}{TEXT.countUnit}
+                {pendingChanges.length}{TEXT.countUnit}
               </span>
             )}
-            {pendingChangePreview && (
-              <span className="weekly-plan-preview">{pendingChangePreview}</span>
+            {pendingPreviewItems.length > 0 && (
+              <span className="weekly-plan-preview">
+                {pendingPreviewItems.map((change, i) => (
+                  <span key={change.task_id}>
+                    {i > 0 && ' / '}
+                    <button
+                      type="button"
+                      className="weekly-plan-task-link"
+                      onClick={(e) => { e.stopPropagation(); onTaskClick?.(change.task_id); }}
+                    >
+                      {change.title}
+                    </button>
+                  </span>
+                ))}
+                {pendingExtraCount > 0 && ` +${pendingExtraCount}${TEXT.countUnit}`}
+              </span>
             )}
           </div>
         </div>

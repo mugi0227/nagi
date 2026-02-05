@@ -318,6 +318,21 @@
   color: var(--text-secondary);
 }
 
+.questions-panel-decline-selected {
+  margin-bottom: 10px;
+}
+
+.questions-panel-decline-tag {
+  display: inline-block;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--accent-secondary);
+  border: 1px solid rgba(139, 92, 246, 0.3);
+  border-radius: 16px;
+  background: rgba(139, 92, 246, 0.08);
+}
+
 .questions-panel-simple-other-area {
   display: flex;
   gap: 8px;

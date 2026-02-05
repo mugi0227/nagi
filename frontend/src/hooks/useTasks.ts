@@ -73,6 +73,10 @@ export function useTasks(projectId?: string) {
   const deleteMutation = useMutation({
     mutationFn: tasksApi.delete,
     onSuccess: invalidateAll,
+    onError: (error: Error) => {
+      console.error('Failed to delete task:', error);
+      alert('タスクの削除に失敗しました。');
+    },
   });
 
   return {

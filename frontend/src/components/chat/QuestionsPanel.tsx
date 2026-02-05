@@ -42,6 +42,8 @@ export function QuestionsPanel({ questions, context, onSubmit, onCancel }: Quest
   const [currentIndex, setCurrentIndex] = useState(0);
   const [showOtherInput, setShowOtherInput] = useState(false);
   const [simpleOtherText, setSimpleOtherText] = useState('');
+  const [declineOption, setDeclineOption] = useState<string | null>(null);
+  const [declineText, setDeclineText] = useState('');
   const autoAdvanceTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [answers, setAnswers] = useState<Record<string, QuestionState>>(() => {
     const initial: Record<string, QuestionState> = {};
@@ -96,9 +98,30 @@ export function QuestionsPanel({ questions, context, onSubmit, onCancel }: Quest
   // ============================================
   if (isSimpleConfirmation(questions)) {
     const question = questions[0];
+    const isBinaryChoice = question.options.length === 2;
 
     const handleSimpleSubmit = (option: string) => {
       onSubmit(`${question.question}: ${option}`);
+    };
+
+    const handleDeclineSubmit = () => {
+      if (!declineOption) return;
+      const text = declineText.trim();
+      if (text) {
+        onSubmit(`${question.question}: ${declineOption}。${text}`);
+      } else {
+        onSubmit(`${question.question}: ${declineOption}`);
+      }
+    };
+
+    const handleSimpleClick = (option: string, index: number) => {
+      // For binary choices, the second option opens a free text input
+      if (isBinaryChoice && index === 1) {
+        setDeclineOption(option);
+        setDeclineText('');
+      } else {
+        handleSimpleSubmit(option);
+      }
     };
 
     if (showOtherInput) {
@@ -141,17 +164,60 @@ export function QuestionsPanel({ questions, context, onSubmit, onCancel }: Quest
       );
     }
 
+    // Decline option selected: show free text input with the option to add context
+    if (declineOption) {
+      return (
+        <div className="questions-panel questions-panel--simple">
+          <div className="questions-panel-simple-body">
+            <div className="questions-panel-simple-question">{question.question}</div>
+            <div className="questions-panel-decline-selected">
+              <span className="questions-panel-decline-tag">{declineOption}</span>
+            </div>
+            <div className="questions-panel-simple-other-area">
+              <input
+                type="text"
+                className="questions-panel-simple-other-input"
+                placeholder="理由や代わりの提案があれば入力（任意）"
+                value={declineText}
+                onChange={(e) => setDeclineText(e.target.value)}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleDeclineSubmit();
+                  }
+                }}
+              />
+              <button
+                className="questions-panel-simple-send"
+                onClick={handleDeclineSubmit}
+              >
+                送信
+              </button>
+            </div>
+            <div className="questions-panel-simple-footer">
+              <button
+                className="questions-panel-simple-other-link"
+                onClick={() => setDeclineOption(null)}
+              >
+                選択肢に戻る
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="questions-panel questions-panel--simple">
         <div className="questions-panel-simple-body">
           {context && <div className="questions-panel-simple-context">{context}</div>}
           <div className="questions-panel-simple-question">{question.question}</div>
           <div className="questions-panel-simple-buttons">
-            {question.options.map((option) => (
+            {question.options.map((option, index) => (
               <button
                 key={option}
                 className="questions-panel-simple-btn"
-                onClick={() => handleSimpleSubmit(option)}
+                onClick={() => handleSimpleClick(option, index)}
               >
                 {option}
               </button>

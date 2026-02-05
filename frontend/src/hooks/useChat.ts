@@ -21,6 +21,7 @@ import { userStorage } from '../utils/userStorage';
 
 export interface ToolCall {
   id: string;
+  toolCallId?: string;
   name: string;
   args?: Record<string, unknown>;
   result?: string;
@@ -322,6 +323,7 @@ export function useChat() {
               const toolName = chunk.tool_name || 'unknown';
               const toolArgs = chunk.tool_args;
               const toolId = crypto.randomUUID();
+              const toolCallId = chunk.tool_call_id as string | undefined;
               setMessages((prev) =>
                 prev.map((msg) =>
                   msg.id === assistantMessageId
@@ -330,6 +332,7 @@ export function useChat() {
                         ...(msg.toolCalls || []),
                         {
                           id: toolId,
+                          toolCallId,
                           name: toolName,
                           args: toolArgs,
                           status: 'running' as const,
@@ -384,30 +387,39 @@ export function useChat() {
 
             case 'tool_end': {
               const toolName = chunk.tool_name || 'unknown';
+              const endToolCallId = chunk.tool_call_id as string | undefined;
               setMessages((prev) =>
                 prev.map((msg) => {
                   if (msg.id !== assistantMessageId) {
                     return msg;
                   }
-                  const nextToolCalls = msg.toolCalls?.map((tc) =>
-                    tc.name === toolName && tc.status === 'running'
-                      ? {
+                  // Update only the matching tool call, not all with the same name
+                  let tcUpdated = false;
+                  const nextToolCalls = msg.toolCalls?.map((tc) => {
+                    if (tcUpdated) return tc;
+                    const matches = endToolCallId
+                      ? tc.toolCallId === endToolCallId
+                      : tc.name === toolName && tc.status === 'running';
+                    if (matches) {
+                      tcUpdated = true;
+                      return {
                         ...tc,
                         result: chunk.tool_result,
                         status: 'completed' as const,
-                      }
-                      : tc
-                  );
+                      };
+                    }
+                    return tc;
+                  });
                   if (!manualApproval || !msg.timeline || msg.timeline.length === 0) {
                     return {
                       ...msg,
                       toolCalls: nextToolCalls,
                     };
                   }
-                  let updated = false;
+                  let tlUpdated = false;
                   const nextTimeline = msg.timeline.map((item) => {
-                    if (!updated && item.kind === 'tool' && item.name === toolName && item.status === 'running') {
-                      updated = true;
+                    if (!tlUpdated && item.kind === 'tool' && item.name === toolName && item.status === 'running') {
+                      tlUpdated = true;
                       return {
                         ...item,
                         status: 'completed' as const,
@@ -427,30 +439,38 @@ export function useChat() {
 
             case 'tool_error': {
               const toolName = chunk.tool_name || 'unknown';
+              const errToolCallId = chunk.tool_call_id as string | undefined;
               setMessages((prev) =>
                 prev.map((msg) => {
                   if (msg.id !== assistantMessageId) {
                     return msg;
                   }
-                  const nextToolCalls = msg.toolCalls?.map((tc) =>
-                    tc.name === toolName && tc.status === 'running'
-                      ? {
+                  let tcUpdated = false;
+                  const nextToolCalls = msg.toolCalls?.map((tc) => {
+                    if (tcUpdated) return tc;
+                    const matches = errToolCallId
+                      ? tc.toolCallId === errToolCallId
+                      : tc.name === toolName && tc.status === 'running';
+                    if (matches) {
+                      tcUpdated = true;
+                      return {
                         ...tc,
                         error: chunk.error_message,
                         status: 'failed' as const,
-                      }
-                      : tc
-                  );
+                      };
+                    }
+                    return tc;
+                  });
                   if (!manualApproval || !msg.timeline || msg.timeline.length === 0) {
                     return {
                       ...msg,
                       toolCalls: nextToolCalls,
                     };
                   }
-                  let updated = false;
+                  let tlUpdated = false;
                   const nextTimeline = msg.timeline.map((item) => {
-                    if (!updated && item.kind === 'tool' && item.name === toolName && item.status === 'running') {
-                      updated = true;
+                    if (!tlUpdated && item.kind === 'tool' && item.name === toolName && item.status === 'running') {
+                      tlUpdated = true;
                       return {
                         ...item,
                         status: 'failed' as const,

@@ -1197,22 +1197,6 @@ ${filledSummary}${emptySummary}
                 <div className="sidebar-group">
                   <h3 className="sidebar-label">スケジュール</h3>
                   <div className="sidebar-meta-list">
-                    {(localTask.due_date || onUpdateTask) && (
-                      <div className="sidebar-meta-item">
-                        <span className="label">期限</span>
-                        {onUpdateTask ? (
-                          <EditableDateTime
-                            value={localTask.due_date}
-                            onSave={async (newValue) => handleFieldUpdate('due_date', newValue)}
-                            placeholder="未設定"
-                            timezone={timezone}
-                            icon={<HiOutlineCalendar />}
-                          />
-                        ) : (
-                          <span className="value"><HiOutlineCalendar /> {localTask.due_date ? formatDateValue(localTask.due_date) : '未設定'}</span>
-                        )}
-                      </div>
-                    )}
                     {(localTask.start_not_before || onUpdateTask) && (
                       <div className="sidebar-meta-item">
                         <span className="label">着手可能日</span>
@@ -1226,6 +1210,22 @@ ${filledSummary}${emptySummary}
                           />
                         ) : (
                           <span className="value"><HiOutlineCalendar /> {localTask.start_not_before ? formatDateValue(localTask.start_not_before) : '未設定'}</span>
+                        )}
+                      </div>
+                    )}
+                    {(localTask.due_date || onUpdateTask) && (
+                      <div className="sidebar-meta-item">
+                        <span className="label">期限</span>
+                        {onUpdateTask ? (
+                          <EditableDateTime
+                            value={localTask.due_date}
+                            onSave={async (newValue) => handleFieldUpdate('due_date', newValue)}
+                            placeholder="未設定"
+                            timezone={timezone}
+                            icon={<HiOutlineCalendar />}
+                          />
+                        ) : (
+                          <span className="value"><HiOutlineCalendar /> {localTask.due_date ? formatDateValue(localTask.due_date) : '未設定'}</span>
                         )}
                       </div>
                     )}
@@ -1494,24 +1494,6 @@ ${filledSummary}${emptySummary}
                 <div className="guide-section subtask-schedule-section">
                   <h4><HiOutlineCalendar /> スケジュール</h4>
                   <div className="subtask-schedule-grid">
-                    {(selectedSubtask.due_date || onUpdateTask) && (
-                      <div className="subtask-schedule-item">
-                        <span className="metadata-label">期限</span>
-                        {onUpdateTask ? (
-                          <EditableDateTime
-                            value={selectedSubtask.due_date}
-                            onSave={async (newValue) => handleSubtaskFieldUpdate(selectedSubtask.id, 'due_date', newValue)}
-                            placeholder="未設定"
-                            timezone={timezone}
-                            icon={<HiOutlineCalendar />}
-                          />
-                        ) : (
-                          <span className="metadata-value">
-                            <HiOutlineCalendar /> {selectedSubtask.due_date ? formatDateValue(selectedSubtask.due_date) : '未設定'}
-                          </span>
-                        )}
-                      </div>
-                    )}
                     {(selectedSubtask.start_not_before || onUpdateTask) && (
                       <div className="subtask-schedule-item">
                         <span className="metadata-label">着手可能日</span>
@@ -1526,6 +1508,24 @@ ${filledSummary}${emptySummary}
                         ) : (
                           <span className="metadata-value">
                             <HiOutlineCalendar /> {selectedSubtask.start_not_before ? formatDateValue(selectedSubtask.start_not_before) : '未設定'}
+                          </span>
+                        )}
+                      </div>
+                    )}
+                    {(selectedSubtask.due_date || onUpdateTask) && (
+                      <div className="subtask-schedule-item">
+                        <span className="metadata-label">期限</span>
+                        {onUpdateTask ? (
+                          <EditableDateTime
+                            value={selectedSubtask.due_date}
+                            onSave={async (newValue) => handleSubtaskFieldUpdate(selectedSubtask.id, 'due_date', newValue)}
+                            placeholder="未設定"
+                            timezone={timezone}
+                            icon={<HiOutlineCalendar />}
+                          />
+                        ) : (
+                          <span className="metadata-value">
+                            <HiOutlineCalendar /> {selectedSubtask.due_date ? formatDateValue(selectedSubtask.due_date) : '未設定'}
                           </span>
                         )}
                       </div>
