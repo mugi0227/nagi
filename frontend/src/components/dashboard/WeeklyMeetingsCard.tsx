@@ -100,6 +100,15 @@ type MeetingBlock = {
   pinnedDate?: string;
 };
 
+type DragHistoryEntry = {
+  taskId: string;
+  kind: 'meeting' | 'auto';
+  before: { dayKey: string; startMinutes: number; endMinutes: number; iso: { start: string; end: string; date: string } };
+  after:  { dayKey: string; startMinutes: number; endMinutes: number; iso: { start: string; end: string; date: string } };
+};
+
+const MAX_UNDO_HISTORY = 50;
+
 const formatTime = (date: Date, timezone: string) => (
   formatDate(date, { hour: '2-digit', minute: '2-digit' }, timezone)
 );
@@ -191,6 +200,9 @@ export function WeeklyMeetingsCard({
   const [doneOverrides, setDoneOverrides] = useState<Record<string, MeetingBlock[]>>({});
   const [dragOverrides, setDragOverrides] = useState<Record<string, MeetingBlock>>({});
   const [isPostponingPinned, setIsPostponingPinned] = useState(false);
+  const [undoStack, setUndoStack] = useState<DragHistoryEntry[]>([]);
+  const [redoStack, setRedoStack] = useState<DragHistoryEntry[]>([]);
+  const isUndoRedoRef = useRef(false);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const blocksRef = useRef<MeetingBlock[]>([]);
 
@@ -939,54 +951,56 @@ export function WeeklyMeetingsCard({
   }, []);
 
   // ── Drag & Resize ──
-  const handleBlockDrop = useCallback(
-    async (block: BlockInfo, target: GhostPosition, type: InteractionType) => {
-      const dayDate = days.find(d => toLocalDateKey(d.toJSDate(), timezone) === target.dayKey);
-      if (!dayDate) return;
-      const dayStart = dayDate.startOf('day');
-      const newStart = dayStart.plus({ minutes: target.startMinutes }).toISO()!;
-      const newEnd = dayStart.plus({ minutes: target.endMinutes }).toISO()!;
-      const originalDate = toDateKey(
-        days.find(d => toLocalDateKey(d.toJSDate(), timezone) === block.dayKey)?.toJSDate() ?? new Date(),
-        timezone,
-      );
 
-      // Optimistic update: immediately reflect the new position
-      const sourceBlock = blocksRef.current.find(b => b.id === block.id);
-      if (sourceBlock) {
+  /** Shared helper: move a block with optimistic update + API call */
+  const executeBlockMove = useCallback(
+    async (
+      taskId: string,
+      kind: 'meeting' | 'auto',
+      from: { dayKey: string; startMinutes: number; endMinutes: number },
+      to: { dayKey: string; startMinutes: number; endMinutes: number; isoStart: string; isoEnd: string; date: string },
+    ) => {
+      // Find current block for optimistic update
+      const sourceBlock = blocksRef.current.find(
+        b => b.taskId === taskId && b.dayKey === from.dayKey,
+      );
+      const overrideKey = sourceBlock?.id ?? `${taskId}-undo`;
+      const toDayDate = days.find(d => toLocalDateKey(d.toJSDate(), timezone) === to.dayKey);
+      const toDayStart = toDayDate?.startOf('day');
+
+      if (sourceBlock && toDayStart) {
         setDragOverrides(prev => ({
           ...prev,
-          [block.id]: {
+          [overrideKey]: {
             ...sourceBlock,
-            dayKey: target.dayKey,
-            startMinutes: target.startMinutes,
-            endMinutes: target.endMinutes,
-            start: dayStart.plus({ minutes: target.startMinutes }).toJSDate(),
-            end: dayStart.plus({ minutes: target.endMinutes }).toJSDate(),
+            dayKey: to.dayKey,
+            startMinutes: to.startMinutes,
+            endMinutes: to.endMinutes,
+            start: toDayStart.plus({ minutes: to.startMinutes }).toJSDate(),
+            end: toDayStart.plus({ minutes: to.endMinutes }).toJSDate(),
           },
         }));
       }
 
       const clearOverride = () => {
         setDragOverrides(prev => {
-          if (!prev[block.id]) return prev;
+          if (!prev[overrideKey]) return prev;
           const next = { ...prev };
-          delete next[block.id];
+          delete next[overrideKey];
           return next;
         });
       };
 
       try {
-        if (block.kind === 'meeting') {
-          await tasksApi.update(block.taskId, { start_time: newStart, end_time: newEnd });
+        if (kind === 'meeting') {
+          await tasksApi.update(taskId, { start_time: to.isoStart, end_time: to.isoEnd });
         }
         await tasksApi.moveTimeBlock({
-          task_id: block.taskId,
-          original_date: originalDate,
-          new_start: newStart,
-          new_end: newEnd,
+          task_id: taskId,
+          original_date: to.date,
+          new_start: to.isoStart,
+          new_end: to.isoEnd,
         });
-        // Await refetch so override persists until fresh data is ready
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ['schedule'] }),
           queryClient.invalidateQueries({ queryKey: ['meetings'] }),
@@ -994,13 +1008,126 @@ export function WeeklyMeetingsCard({
         ]);
         clearOverride();
         invalidateAfterChange(false);
+        return true;
       } catch {
-        // Revert — clear override so block returns to original position
         clearOverride();
+        return false;
       }
     },
     [days, timezone, invalidateAfterChange, queryClient],
   );
+
+  const handleBlockDrop = useCallback(
+    async (block: BlockInfo, target: GhostPosition, _type: InteractionType) => {
+      const dayDate = days.find(d => toLocalDateKey(d.toJSDate(), timezone) === target.dayKey);
+      if (!dayDate) return;
+      const dayStart = dayDate.startOf('day');
+      const newStart = dayStart.plus({ minutes: target.startMinutes }).toISO()!;
+      const newEnd = dayStart.plus({ minutes: target.endMinutes }).toISO()!;
+
+      const origDayDate = days.find(d => toLocalDateKey(d.toJSDate(), timezone) === block.dayKey);
+      const originalDate = toDateKey(
+        origDayDate?.toJSDate() ?? new Date(),
+        timezone,
+      );
+      const origDayStart = origDayDate?.startOf('day');
+      const origIsoStart = origDayStart
+        ? origDayStart.plus({ minutes: block.startMinutes }).toISO()!
+        : '';
+      const origIsoEnd = origDayStart
+        ? origDayStart.plus({ minutes: block.endMinutes }).toISO()!
+        : '';
+      const targetDate = toDateKey(dayDate.toJSDate(), timezone);
+
+      const entry: DragHistoryEntry = {
+        taskId: block.taskId,
+        kind: block.kind,
+        before: {
+          dayKey: block.dayKey,
+          startMinutes: block.startMinutes,
+          endMinutes: block.endMinutes,
+          iso: { start: origIsoStart, end: origIsoEnd, date: originalDate },
+        },
+        after: {
+          dayKey: target.dayKey,
+          startMinutes: target.startMinutes,
+          endMinutes: target.endMinutes,
+          iso: { start: newStart, end: newEnd, date: targetDate },
+        },
+      };
+
+      const ok = await executeBlockMove(
+        block.taskId,
+        block.kind,
+        { dayKey: block.dayKey, startMinutes: block.startMinutes, endMinutes: block.endMinutes },
+        { dayKey: target.dayKey, startMinutes: target.startMinutes, endMinutes: target.endMinutes, isoStart: newStart, isoEnd: newEnd, date: originalDate },
+      );
+
+      if (ok && !isUndoRedoRef.current) {
+        setUndoStack(prev => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), entry]);
+        setRedoStack([]);
+      }
+    },
+    [days, timezone, executeBlockMove],
+  );
+
+  const handleUndo = useCallback(async () => {
+    if (undoStack.length === 0) return;
+    const entry = undoStack[undoStack.length - 1];
+    isUndoRedoRef.current = true;
+    try {
+      const ok = await executeBlockMove(
+        entry.taskId,
+        entry.kind,
+        { dayKey: entry.after.dayKey, startMinutes: entry.after.startMinutes, endMinutes: entry.after.endMinutes },
+        { ...entry.before, isoStart: entry.before.iso.start, isoEnd: entry.before.iso.end, date: entry.after.iso.date },
+      );
+      if (ok) {
+        setUndoStack(prev => prev.slice(0, -1));
+        setRedoStack(prev => [...prev, entry]);
+      }
+    } finally {
+      setTimeout(() => { isUndoRedoRef.current = false; }, 100);
+    }
+  }, [undoStack, executeBlockMove]);
+
+  const handleRedo = useCallback(async () => {
+    if (redoStack.length === 0) return;
+    const entry = redoStack[redoStack.length - 1];
+    isUndoRedoRef.current = true;
+    try {
+      const ok = await executeBlockMove(
+        entry.taskId,
+        entry.kind,
+        { dayKey: entry.before.dayKey, startMinutes: entry.before.startMinutes, endMinutes: entry.before.endMinutes },
+        { ...entry.after, isoStart: entry.after.iso.start, isoEnd: entry.after.iso.end, date: entry.before.iso.date },
+      );
+      if (ok) {
+        setRedoStack(prev => prev.slice(0, -1));
+        setUndoStack(prev => [...prev, entry]);
+      }
+    } finally {
+      setTimeout(() => { isUndoRedoRef.current = false; }, 100);
+    }
+  }, [redoStack, executeBlockMove]);
+
+  // Keyboard shortcuts: Ctrl+Z / Ctrl+Y (Cmd on Mac)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
 
   const {
     ghost: dragGhost,
