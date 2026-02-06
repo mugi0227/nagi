@@ -66,6 +66,8 @@ export function useBlockDragResize({
   // Use a ref for onClick to avoid stale closures in document event listeners
   const onClickRef = useRef(onClick);
   onClickRef.current = onClick;
+  const onDropRef = useRef(onDrop);
+  onDropRef.current = onDrop;
 
   const snapToGrid = (minutes: number) =>
     Math.round(minutes / SNAP_MINUTES) * SNAP_MINUTES;
@@ -203,7 +205,7 @@ export function useBlockDragResize({
         endMinutes !== state.block.endMinutes;
 
       if (moved) {
-        onDrop(state.block, { dayKey, startMinutes, endMinutes }, state.type);
+        onDropRef.current(state.block, { dayKey, startMinutes, endMinutes }, state.type);
       }
     },
     [
@@ -212,7 +214,6 @@ export function useBlockDragResize({
       clientYToMinutes,
       startBoundHour,
       endBoundHour,
-      onDrop,
     ],
   );
 
