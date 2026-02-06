@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { FaBell, FaCheckDouble, FaTrophy, FaUsers, FaListCheck, FaEnvelope, FaFlag, FaClipboardCheck, FaLightbulb, FaHeart, FaHeartPulse, FaComment, FaCircleInfo } from 'react-icons/fa6';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -107,7 +108,9 @@ function NotificationItem({ notification, onRead, onClick }: NotificationItemPro
 
 export function NotificationDropdown() {
   const [isOpen, setIsOpen] = useState(false);
+  const buttonRef = useRef<HTMLButtonElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos] = useState<{ bottom: number; left: number } | null>(null);
   const navigate = useNavigate();
   const { count: unreadCount } = useUnreadNotificationCount();
   const {
@@ -117,12 +120,28 @@ export function NotificationDropdown() {
     isMarkingAllAsRead,
   } = useNotifications();
 
+  // Calculate position from button's viewport rect
+  useEffect(() => {
+    if (isOpen && buttonRef.current) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setDropdownPos({
+        bottom: window.innerHeight - rect.top + 8,
+        left: rect.left,
+      });
+    }
+  }, [isOpen]);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
+      const target = event.target as Node;
+      if (
+        buttonRef.current?.contains(target) ||
+        dropdownRef.current?.contains(target)
+      ) {
+        return;
       }
+      setIsOpen(false);
     }
 
     if (isOpen) {
@@ -147,9 +166,64 @@ export function NotificationDropdown() {
     markAllAsRead();
   };
 
+  const dropdownContent = (
+    <AnimatePresence>
+      {isOpen && dropdownPos && (
+        <motion.div
+          ref={dropdownRef}
+          className="notification-dropdown"
+          style={{
+            position: 'fixed',
+            bottom: dropdownPos.bottom,
+            left: dropdownPos.left,
+            zIndex: 9999,
+          }}
+          initial={{ opacity: 0, y: 10, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 10, scale: 0.95 }}
+          transition={{ duration: 0.15 }}
+        >
+          <div className="notification-header">
+            <h3>通知</h3>
+            {unreadCount > 0 && (
+              <button
+                className="mark-all-read-btn"
+                onClick={handleMarkAllAsRead}
+                disabled={isMarkingAllAsRead}
+                title="すべて既読にする"
+              >
+                <FaCheckDouble />
+                <span>すべて既読</span>
+              </button>
+            )}
+          </div>
+
+          <div className="notification-list">
+            {notifications.length === 0 ? (
+              <div className="notification-empty">
+                <FaBell className="empty-icon" />
+                <span>通知はありません</span>
+              </div>
+            ) : (
+              notifications.map((notification) => (
+                <NotificationItem
+                  key={notification.id}
+                  notification={notification}
+                  onRead={markAsRead}
+                  onClick={() => handleNotificationClick(notification)}
+                />
+              ))
+            )}
+          </div>
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+
   return (
-    <div className="notification-dropdown-container" ref={dropdownRef}>
+    <div className="notification-dropdown-container">
       <button
+        ref={buttonRef}
         className="footer-btn notification-btn"
         title="通知"
         onClick={() => setIsOpen(!isOpen)}
@@ -160,50 +234,7 @@ export function NotificationDropdown() {
         )}
       </button>
 
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            className="notification-dropdown"
-            initial={{ opacity: 0, y: -10, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: -10, scale: 0.95 }}
-            transition={{ duration: 0.15 }}
-          >
-            <div className="notification-header">
-              <h3>通知</h3>
-              {unreadCount > 0 && (
-                <button
-                  className="mark-all-read-btn"
-                  onClick={handleMarkAllAsRead}
-                  disabled={isMarkingAllAsRead}
-                  title="すべて既読にする"
-                >
-                  <FaCheckDouble />
-                  <span>すべて既読</span>
-                </button>
-              )}
-            </div>
-
-            <div className="notification-list">
-              {notifications.length === 0 ? (
-                <div className="notification-empty">
-                  <FaBell className="empty-icon" />
-                  <span>通知はありません</span>
-                </div>
-              ) : (
-                notifications.map((notification) => (
-                  <NotificationItem
-                    key={notification.id}
-                    notification={notification}
-                    onRead={markAsRead}
-                    onClick={() => handleNotificationClick(notification)}
-                  />
-                ))
-              )}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      {createPortal(dropdownContent, document.body)}
     </div>
   );
 }

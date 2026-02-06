@@ -25,15 +25,12 @@
 }
 
 .notification-dropdown {
-  position: fixed;
-  bottom: 80px;
-  left: 80px;
   width: 380px;
+  max-width: calc(100vw - 1rem);
   max-height: 480px;
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card), 0 10px 40px rgba(0, 0, 0, 0.15);
-  z-index: 1000;
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -240,10 +237,3 @@
   opacity: 0.3;
 }
 
-/* Mobile responsiveness */
-@media (max-width: 480px) {
-  .notification-dropdown {
-    width: calc(100vw - 2rem);
-    right: -1rem;
-  }
-}

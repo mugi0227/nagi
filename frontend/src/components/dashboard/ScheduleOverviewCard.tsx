@@ -678,7 +678,7 @@ export function ScheduleOverviewCard({
         <div className="schedule-calendar-view">
           <WeeklyMeetingsCard
             embedded
-            defaultViewMode="workdays"
+            defaultViewMode="today"
             onTaskClick={onTaskClick}
           />
         </div>
