@@ -349,6 +349,32 @@
   }
 }
 
+@media (max-width: 480px) {
+  .gantt-container {
+    --tree-width: 120px;
+    --day-min-width: 28px;
+    font-size: 0.75rem;
+  }
+
+  .gantt-tree-cell {
+    padding: 4px 6px;
+    font-size: 0.7rem;
+  }
+
+  .gantt-header-day {
+    padding: 3px 1px;
+    font-size: 0.6rem;
+  }
+
+  .gantt-bar {
+    height: 16px;
+  }
+
+  .gantt-row {
+    min-height: 32px;
+  }
+}
+
 .gantt-empty {
   padding: 2rem;
   text-align: center;

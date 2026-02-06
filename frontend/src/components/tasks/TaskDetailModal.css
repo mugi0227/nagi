@@ -928,6 +928,55 @@
   }
 }
 
+@media (max-width: 768px) {
+  .side-layout-modal {
+    width: 100%;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .task-detail-modal .modal-overlay {
+    padding: 0;
+  }
+
+  .modal-header {
+    padding: 1rem;
+  }
+
+  .modal-main-area {
+    padding: 1rem;
+    gap: 1.5rem;
+  }
+
+  .side-layout-modal .modal-sidebar {
+    padding: 1rem;
+  }
+
+  .modal-header-actions {
+    gap: 0.5rem;
+  }
+
+  .enrich-btn,
+  .edit-btn,
+  .delete-btn,
+  .close-btn {
+    min-width: var(--touch-target-min);
+    min-height: var(--touch-target-min);
+  }
+
+  .guide-panel {
+    width: 100%;
+    height: 100vh;
+    max-height: 100vh;
+    border-radius: 0;
+  }
+
+  .guide-body {
+    padding: 1rem;
+  }
+}
+
 /* Subtask Progress Section */
 .subtask-progress-section {
   margin-top: 1rem;

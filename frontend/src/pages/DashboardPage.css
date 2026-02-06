@@ -138,3 +138,20 @@
   gap: 1.5rem;
   margin-top: 1.5rem;
 }
+
+@media (max-width: 768px) {
+  .stats-card {
+    padding: 1rem;
+    border-radius: var(--radius-md);
+  }
+
+  .dashboard-bottom-section {
+    gap: 1rem;
+    margin-top: 1rem;
+  }
+
+  .daily-briefing-close {
+    width: var(--touch-target-min);
+    height: var(--touch-target-min);
+  }
+}

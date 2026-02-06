@@ -1537,6 +1537,25 @@
   }
 }
 
+@media (max-width: 480px) {
+  .project-v2-page {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .project-v2-header {
+    padding: 14px 16px;
+  }
+
+  .project-v2-title {
+    font-size: 20px;
+  }
+
+  .project-v2-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* ===========================================
    Baseline & Buffer Card
    =========================================== */

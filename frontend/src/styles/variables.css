@@ -45,6 +45,23 @@
   --radius-md: 16px;
   --radius-sm: 12px;
   --radius-full: 9999px;
+
+  /* Responsive Spacing */
+  --space-page: 1.5rem;
+  --touch-target-min: 44px;
+}
+
+@media (max-width: 768px) {
+  :root {
+    --space-page: 0.75rem;
+    --radius-lg: 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  :root {
+    --space-page: 0.5rem;
+  }
 }
 
 /* Dark Mode Theme */

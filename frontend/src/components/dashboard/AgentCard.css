@@ -224,3 +224,39 @@
   opacity: 0.8;
   font-weight: 400;
 }
+
+@media (max-width: 768px) {
+  .agent-card {
+    padding: 1.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .agent-greeting {
+    font-size: 1.25rem;
+  }
+
+  .agent-message {
+    font-size: 0.9rem;
+  }
+
+  .agent-avatar-container {
+    width: 56px;
+    height: 56px;
+  }
+
+  .agent-avatar-icon {
+    width: 48px;
+    height: 48px;
+    font-size: 1.5rem;
+  }
+
+  .agent-status-section {
+    gap: 1rem;
+  }
+
+  .primary-action-btn {
+    padding: 0.875rem 1.25rem;
+    width: 100%;
+    justify-content: center;
+  }
+}

@@ -15,9 +15,12 @@ import './Sidebar.css';
 interface SidebarProps {
   collapsed: boolean;
   onToggle: () => void;
+  isMobile?: boolean;
+  mobileOpen?: boolean;
+  onMobileClose?: () => void;
 }
 
-export function Sidebar({ collapsed, onToggle }: SidebarProps) {
+export function Sidebar({ collapsed, onToggle, isMobile, mobileOpen, onMobileClose }: SidebarProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const { theme, toggleTheme } = useTheme();
@@ -82,8 +85,42 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
     navigate('/login');
   };
 
+  // On mobile, sidebar is always shown expanded (full labels) regardless of collapsed state
+  const showCollapsed = collapsed && !isMobile;
+
+  const handleNavClick = () => {
+    if (isMobile && onMobileClose) {
+      onMobileClose();
+    }
+  };
+
   return (
-    <aside className={`sidebar ${collapsed ? 'collapsed' : ''}`}>
+    <>
+      {isMobile && (
+        <div
+          className={`sidebar-backdrop ${mobileOpen ? 'visible' : ''}`}
+          onClick={onMobileClose}
+        />
+      )}
+      <aside
+        className={`sidebar ${showCollapsed ? 'collapsed' : ''} ${isMobile && mobileOpen ? 'mobile-open' : ''}`}
+        style={isMobile ? (mobileOpen ? {
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: 280,
+          zIndex: 2000,
+          borderRadius: 0,
+          transform: 'translateX(0)',
+          boxShadow: '0 25px 50px rgba(0,0,0,0.25)',
+        } : {
+          position: 'fixed',
+          transform: 'translateX(-100%)',
+          width: 280,
+          pointerEvents: 'none',
+        }) : undefined}
+      >
       <div className="sidebar-header">
         <div className="sidebar-logo">
           <img
@@ -91,14 +128,14 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             alt="Nagi AI"
             className="logo-icon-img"
           />
-          {!collapsed && <span className="logo-text">タスク管理AI 凪</span>}
+          {!showCollapsed && <span className="logo-text">タスク管理AI 凪</span>}
         </div>
         <button
           className="sidebar-toggle-btn"
           onClick={onToggle}
-          title={collapsed ? 'サイドバーを展開' : 'サイドバーを折りたたむ'}
+          title={showCollapsed ? 'サイドバーを展開' : 'サイドバーを折りたたむ'}
         >
-          {collapsed ? <FaChevronRight /> : <FaChevronLeft />}
+          {showCollapsed ? <FaChevronRight /> : <FaChevronLeft />}
         </button>
       </div>
 
@@ -112,17 +149,18 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                   <Link
                     to={item.path}
                     className={`nav-link ${isProjectActive ? 'active' : ''}`}
-                    title={collapsed ? item.label : undefined}
+                    title={showCollapsed ? item.label : undefined}
+                    onClick={handleNavClick}
                   >
                     <item.icon className="nav-icon" />
-                    {!collapsed && <span className="nav-label">{item.label}</span>}
-                    {totalUnassigned > 0 && collapsed && (
+                    {!showCollapsed && <span className="nav-label">{item.label}</span>}
+                    {totalUnassigned > 0 && showCollapsed && (
                       <span className="nav-badge unassigned-badge collapsed-badge" title="未割り当てタスク">
                         {totalUnassigned}
                       </span>
                     )}
                   </Link>
-                  {!collapsed && activeProjects.length > 0 && (
+                  {!showCollapsed && activeProjects.length > 0 && (
                     <button
                       className={`expand-toggle ${projectsExpanded ? 'expanded' : ''}`}
                       onClick={toggleProjectsExpanded}
@@ -132,7 +170,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                     </button>
                   )}
                 </div>
-                {!collapsed && projectsExpanded && activeProjects.length > 0 && (
+                {!showCollapsed && projectsExpanded && activeProjects.length > 0 && (
                   <div className="project-sublist">
                     {activeProjects.map(project => {
                       const projectPath = `/projects/${project.id}/v2`;
@@ -143,6 +181,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                           to={projectPath}
                           className={`project-subitem ${isActive ? 'active' : ''}`}
                           title={project.name}
+                          onClick={handleNavClick}
                         >
                           {project.visibility === 'TEAM'
                             ? <FaUsers className="project-subitem-icon" />
@@ -162,17 +201,18 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
               key={item.path}
               to={item.path}
               className={`nav-link ${location.pathname === item.path ? 'active' : ''}`}
-              title={collapsed ? item.label : undefined}
+              title={showCollapsed ? item.label : undefined}
+              onClick={handleNavClick}
             >
               <item.icon className="nav-icon" />
-              {!collapsed && <span className="nav-label">{item.label}</span>}
+              {!showCollapsed && <span className="nav-label">{item.label}</span>}
             </Link>
           );
         })}
       </nav>
 
-      <div className={`sidebar-footer ${collapsed ? 'collapsed' : ''}`}>
-        {!collapsed && (
+      <div className={`sidebar-footer ${showCollapsed ? 'collapsed' : ''}`}>
+        {!showCollapsed && (
           <div className="user-profile">
             <div className="user-avatar">{avatarLabel}</div>
             <div className="user-info">
@@ -181,7 +221,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             </div>
           </div>
         )}
-        <div className={`footer-actions ${collapsed ? 'collapsed' : ''}`}>
+        <div className={`footer-actions ${showCollapsed ? 'collapsed' : ''}`}>
           <NotificationDropdown />
           <button
             className="footer-btn theme-toggle-btn"
@@ -218,9 +258,10 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
         </div>
       </div>
 
+    </aside>
       {showSettings && (
         <SettingsModal onClose={() => setShowSettings(false)} />
       )}
-    </aside>
+    </>
   );
 }

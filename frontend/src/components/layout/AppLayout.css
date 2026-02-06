@@ -1,8 +1,8 @@
 .app-container {
   display: flex;
   height: 100vh;
-  padding: 1.5rem;
-  gap: 1.5rem;
+  padding: var(--space-page);
+  gap: var(--space-page);
   background-color: var(--bg-main);
   overflow: hidden;
 }
@@ -52,13 +52,62 @@
   opacity: 0.5;
 }
 
-@media (max-width: 1024px) {
+/* Mobile header - visibility controlled by JS (isMobile) */
+.mobile-header {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1rem;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  flex-shrink: 0;
+}
+
+.hamburger-btn {
+  width: var(--touch-target-min, 44px);
+  height: var(--touch-target-min, 44px);
+  border: none;
+  background: var(--bg-main);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.25rem;
+  cursor: pointer;
+}
+
+.mobile-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+.mobile-logo img {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+}
+
+.mobile-logo span {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+@media (max-width: 1024px), (orientation: portrait) and (max-width: 1366px) {
+  .app-container {
+    flex-direction: column;
+  }
+
   .chat-sidebar {
     position: fixed;
-    right: 1.5rem;
-    top: 1.5rem;
-    bottom: 1.5rem;
-    z-index: 1000;
+    inset: 0;
+    width: 100% !important;
+    border-radius: 0;
+    z-index: 2500;
   }
 
   .resize-handle {

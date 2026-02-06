@@ -649,3 +649,47 @@
   background: var(--primary);
   color: white;
 }
+
+@media (max-width: 768px) {
+  .schedule-overview-card {
+    padding: 1rem;
+  }
+
+  .schedule-overview-card .card-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+
+  .schedule-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .schedule-days {
+    grid-template-columns: 1fr;
+  }
+
+  .schedule-summary {
+    flex-wrap: wrap;
+  }
+
+  .schedule-day {
+    padding: 0.75rem;
+  }
+
+  .schedule-task-row {
+    min-height: 40px;
+    padding: 0.5rem;
+  }
+
+  .schedule-task-check {
+    width: 24px;
+    height: 24px;
+  }
+
+  .schedule-task-lock {
+    width: 24px;
+    height: 24px;
+  }
+}

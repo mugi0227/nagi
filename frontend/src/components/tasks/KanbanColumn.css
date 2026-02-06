@@ -81,3 +81,14 @@
   color: var(--text-muted);
   font-size: 0.875rem;
 }
+
+@media (max-width: 768px) {
+  .kanban-column {
+    min-width: 0;
+    padding: 1rem;
+  }
+
+  .column-cards {
+    min-height: 100px;
+  }
+}

@@ -2,12 +2,15 @@ import { useQuery } from '@tanstack/react-query';
 import { AnimatePresence, motion } from 'framer-motion';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Outlet, useLocation } from 'react-router-dom';
+import { FaBars } from 'react-icons/fa6';
 import { projectsApi } from '../../api/projects';
+import { useIsMobile } from '../../hooks/useMediaQuery';
 import { useRealtimeSync } from '../../hooks/useRealtimeSync';
 import { userStorage } from '../../utils/userStorage';
 import { ChatWidget } from '../chat/ChatWidget';
 import { ChatWindow } from '../chat/ChatWindow';
 import type { DraftCardData } from '../chat/DraftCard';
+import nagiIcon from '../../assets/nagi_icon.png';
 import './AppLayout.css';
 import { Sidebar } from './Sidebar';
 
@@ -21,7 +24,9 @@ interface ChatState {
 
 export function AppLayout() {
   const location = useLocation();
+  const isMobile = useIsMobile();
   useRealtimeSync();
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const loadChatState = () => userStorage.getJson<ChatState>(CHAT_STORAGE_KEY, {
     isOpen: false,
     width: 400,
@@ -63,6 +68,11 @@ export function AppLayout() {
   useEffect(() => {
     userStorage.setJson(SIDEBAR_STORAGE_KEY, isSidebarCollapsed);
   }, [isSidebarCollapsed]);
+
+  // Close mobile menu on route change
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
 
   const toggleSidebar = () => setIsSidebarCollapsed(!isSidebarCollapsed);
 
@@ -130,8 +140,32 @@ export function AppLayout() {
   const toggleChat = () => setIsChatOpen(!isChatOpen);
 
   return (
-    <div className={`app-container ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}>
-      <Sidebar collapsed={isSidebarCollapsed} onToggle={toggleSidebar} />
+    <div
+      className={`app-container ${isSidebarCollapsed ? 'sidebar-collapsed' : ''}`}
+      style={isMobile ? { flexDirection: 'column' } : undefined}
+    >
+      {isMobile && (
+        <div className="mobile-header">
+          <button
+            className="hamburger-btn"
+            onClick={() => setIsMobileMenuOpen(true)}
+            aria-label="メニューを開く"
+          >
+            <FaBars />
+          </button>
+          <div className="mobile-logo">
+            <img src={nagiIcon} alt="Nagi AI" />
+            <span>凪</span>
+          </div>
+        </div>
+      )}
+      <Sidebar
+        collapsed={isSidebarCollapsed}
+        onToggle={toggleSidebar}
+        isMobile={isMobile}
+        mobileOpen={isMobileMenuOpen}
+        onMobileClose={() => setIsMobileMenuOpen(false)}
+      />
       <main className="main-content">
         <AnimatePresence mode="wait">
           <motion.div
@@ -149,13 +183,21 @@ export function AppLayout() {
 
       {isChatOpen && (
         <>
-          <div
-            className="resize-handle"
-            onMouseDown={startResizing}
-          />
+          {!isMobile && (
+            <div
+              className="resize-handle"
+              onMouseDown={startResizing}
+            />
+          )}
           <aside
             className="chat-sidebar"
-            style={{ width: `${chatWidth}px` }}
+            style={isMobile ? {
+              position: 'fixed',
+              inset: 0,
+              width: '100%',
+              borderRadius: 0,
+              zIndex: 2500,
+            } : { width: `${chatWidth}px` }}
           >
             <ChatWindow
               isOpen={isChatOpen}

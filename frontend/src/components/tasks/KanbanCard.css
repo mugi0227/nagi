@@ -572,3 +572,27 @@
   height: 20px;
   font-size: 0.75rem;
 }
+
+@media (max-width: 768px) {
+  .kanban-card {
+    padding: 0.75rem;
+  }
+
+  .card-actions {
+    opacity: 1;
+  }
+
+  .card-action-btn {
+    width: 32px;
+    height: 32px;
+  }
+
+  .kanban-card.compact .card-action-btn {
+    width: 28px;
+    height: 28px;
+  }
+
+  .kanban-card.done-compact .card-actions {
+    opacity: 1;
+  }
+}
