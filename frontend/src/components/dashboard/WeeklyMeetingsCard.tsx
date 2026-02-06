@@ -814,15 +814,37 @@ export function WeeklyMeetingsCard({
     blocksRef.current = [...renderAutoBlocks, ...renderMeetingBlocks];
   }, [renderAutoBlocks, renderMeetingBlocks]);
 
-  const autoBlocksByDay = useMemo(() => {
+  const blocksByDay = useMemo(() => {
     const grouped = new Map<string, MeetingBlock[]>();
-    renderAutoBlocks.forEach(block => {
+    [...renderAutoBlocks, ...renderMeetingBlocks].forEach(block => {
       const list = grouped.get(block.dayKey) ?? [];
-      list.push(block);
+      list.push({ ...block });
       grouped.set(block.dayKey, list);
     });
-    return grouped;
-  }, [renderAutoBlocks]);
+
+    const results = new Map<string, MeetingBlock[]>();
+    grouped.forEach((list, dayKey) => {
+      const sorted = [...list].sort((a, b) => a.startMinutes - b.startMinutes);
+      const laneEnds: number[] = [];
+      const withLanes = sorted.map(item => {
+        let laneIndex = laneEnds.findIndex(end => item.startMinutes >= end);
+        if (laneIndex === -1) {
+          laneIndex = laneEnds.length;
+          laneEnds.push(item.endMinutes);
+        } else {
+          laneEnds[laneIndex] = item.endMinutes;
+        }
+        return { ...item, lane: laneIndex };
+      });
+      const laneCount = Math.max(1, laneEnds.length);
+      results.set(
+        dayKey,
+        withLanes.map(item => ({ ...item, laneCount }))
+      );
+    });
+
+    return results;
+  }, [renderAutoBlocks, renderMeetingBlocks]);
 
   const timeBounds = useMemo(() => {
     const workdayBounds = Array.from(workdayConfigByDay.values()).reduce<TimeInterval | null>(
@@ -860,38 +882,6 @@ export function WeeklyMeetingsCard({
     endHour = Math.min(MAX_END_HOUR, Math.max(startHour + 1, endHour));
     return { startHour, endHour };
   }, [renderAutoBlocks, renderMeetingBlocks, workdayConfigByDay]);
-
-  const meetingsByDay = useMemo(() => {
-    const grouped = new Map<string, MeetingBlock[]>();
-    renderMeetingBlocks.forEach(meeting => {
-      const list = grouped.get(meeting.dayKey) ?? [];
-      list.push({ ...meeting });
-      grouped.set(meeting.dayKey, list);
-    });
-
-    const results = new Map<string, MeetingBlock[]>();
-    grouped.forEach((list, dayKey) => {
-      const sorted = [...list].sort((a, b) => a.startMinutes - b.startMinutes);
-      const laneEnds: number[] = [];
-      const withLanes = sorted.map(item => {
-        let laneIndex = laneEnds.findIndex(end => item.startMinutes >= end);
-        if (laneIndex === -1) {
-          laneIndex = laneEnds.length;
-          laneEnds.push(item.endMinutes);
-        } else {
-          laneEnds[laneIndex] = item.endMinutes;
-        }
-        return { ...item, lane: laneIndex };
-      });
-      const laneCount = Math.max(1, laneEnds.length);
-      results.set(
-        dayKey,
-        withLanes.map(item => ({ ...item, laneCount }))
-      );
-    });
-
-    return results;
-  }, [renderMeetingBlocks]);
 
   const hourCount = timeBounds.endHour - timeBounds.startHour;
   const hours = useMemo(() => (
@@ -1290,9 +1280,7 @@ export function WeeklyMeetingsCard({
             {days.map(day => {
               const dayKey = toLocalDateKey(day.toJSDate(), timezone);
               const isToday = dayKey === todayKey;
-              const dayMeetings = meetingsByDay.get(dayKey) ?? [];
-              const dayAutoBlocks = autoBlocksByDay.get(dayKey) ?? [];
-              const dayBlocks = [...dayAutoBlocks, ...dayMeetings];
+              const dayBlocks = blocksByDay.get(dayKey) ?? [];
               const workdayConfig = workdayConfigByDay.get(dayKey);
               const startBound = timeBounds.startHour * 60;
               const endBound = timeBounds.endHour * 60;
