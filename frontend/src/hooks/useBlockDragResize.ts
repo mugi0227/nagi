@@ -49,6 +49,8 @@ export interface UseBlockDragResizeOptions {
     target: GhostPosition,
     type: InteractionType,
   ) => void;
+  /** Called when a block is clicked (pointerdown+up without drag) */
+  onClick?: (block: BlockInfo) => void;
 }
 
 export function useBlockDragResize({
@@ -56,10 +58,14 @@ export function useBlockDragResize({
   startBoundHour,
   endBoundHour,
   onDrop,
+  onClick,
 }: UseBlockDragResizeOptions) {
   const [ghost, setGhost] = useState<GhostPosition | null>(null);
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   const dragRef = useRef<DragState | null>(null);
+  // Use a ref for onClick to avoid stale closures in document event listeners
+  const onClickRef = useRef(onClick);
+  onClickRef.current = onClick;
 
   const snapToGrid = (minutes: number) =>
     Math.round(minutes / SNAP_MINUTES) * SNAP_MINUTES;
@@ -151,7 +157,12 @@ export function useBlockDragResize({
       setActiveBlockId(null);
       setGhost(null);
 
-      if (!state?.hasMoved) return;
+      if (!state) return;
+      if (!state.hasMoved) {
+        // No drag occurred — treat as a click
+        onClickRef.current?.(state.block);
+        return;
+      }
 
       const column = findDayColumn(e.clientX, e.clientY);
       if (!column) return;

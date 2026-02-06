@@ -940,6 +940,7 @@ export function WeeklyMeetingsCard({
     startBoundHour: timeBounds.startHour,
     endBoundHour: timeBounds.endHour,
     onDrop: handleBlockDrop,
+    onClick: (block) => handleTaskClick(block.taskId),
   });
 
   return (
