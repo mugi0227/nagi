@@ -825,21 +825,45 @@ export function WeeklyMeetingsCard({
     const results = new Map<string, MeetingBlock[]>();
     grouped.forEach((list, dayKey) => {
       const sorted = [...list].sort((a, b) => a.startMinutes - b.startMinutes);
-      const laneEnds: number[] = [];
-      const withLanes = sorted.map(item => {
-        let laneIndex = laneEnds.findIndex(end => item.startMinutes >= end);
-        if (laneIndex === -1) {
-          laneIndex = laneEnds.length;
-          laneEnds.push(item.endMinutes);
-        } else {
-          laneEnds[laneIndex] = item.endMinutes;
+
+      // Build overlap groups: blocks that transitively overlap share a group
+      const groups: number[][] = []; // each group is an array of indices into sorted
+      let groupEnd = -Infinity;
+      let currentGroup: number[] = [];
+      sorted.forEach((item, idx) => {
+        if (item.startMinutes >= groupEnd && currentGroup.length > 0) {
+          groups.push(currentGroup);
+          currentGroup = [];
         }
-        return { ...item, lane: laneIndex };
+        currentGroup.push(idx);
+        groupEnd = Math.max(groupEnd, item.endMinutes);
       });
-      const laneCount = Math.max(1, laneEnds.length);
+      if (currentGroup.length > 0) groups.push(currentGroup);
+
+      // Assign lanes within each overlap group independently
+      const lanesResult = new Array<{ lane: number; laneCount: number }>(sorted.length);
+      for (const group of groups) {
+        const laneEnds: number[] = [];
+        for (const idx of group) {
+          const item = sorted[idx];
+          let laneIndex = laneEnds.findIndex(end => item.startMinutes >= end);
+          if (laneIndex === -1) {
+            laneIndex = laneEnds.length;
+            laneEnds.push(item.endMinutes);
+          } else {
+            laneEnds[laneIndex] = item.endMinutes;
+          }
+          lanesResult[idx] = { lane: laneIndex, laneCount: 0 };
+        }
+        const laneCount = Math.max(1, laneEnds.length);
+        for (const idx of group) {
+          lanesResult[idx].laneCount = laneCount;
+        }
+      }
+
       results.set(
         dayKey,
-        withLanes.map(item => ({ ...item, laneCount }))
+        sorted.map((item, idx) => ({ ...item, ...lanesResult[idx] }))
       );
     });
 
