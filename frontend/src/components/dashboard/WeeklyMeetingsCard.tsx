@@ -100,6 +100,15 @@ type MeetingBlock = {
   pinnedDate?: string;
 };
 
+type DragHistoryEntry = {
+  taskId: string;
+  kind: 'meeting' | 'auto';
+  before: { dayKey: string; startMinutes: number; endMinutes: number; iso: { start: string; end: string; date: string } };
+  after:  { dayKey: string; startMinutes: number; endMinutes: number; iso: { start: string; end: string; date: string } };
+};
+
+const MAX_UNDO_HISTORY = 50;
+
 const formatTime = (date: Date, timezone: string) => (
   formatDate(date, { hour: '2-digit', minute: '2-digit' }, timezone)
 );
@@ -189,7 +198,11 @@ export function WeeklyMeetingsCard({
   const [isSubmitting, setIsSubmitting] = useState<string | null>(null);
   const [localDoneIds, setLocalDoneIds] = useState<Set<string>>(new Set());
   const [doneOverrides, setDoneOverrides] = useState<Record<string, MeetingBlock[]>>({});
+  const [dragOverrides, setDragOverrides] = useState<Record<string, MeetingBlock>>({});
   const [isPostponingPinned, setIsPostponingPinned] = useState(false);
+  const [undoStack, setUndoStack] = useState<DragHistoryEntry[]>([]);
+  const [redoStack, setRedoStack] = useState<DragHistoryEntry[]>([]);
+  const isUndoRedoRef = useRef(false);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const blocksRef = useRef<MeetingBlock[]>([]);
 
@@ -743,36 +756,95 @@ export function WeeklyMeetingsCard({
     });
     return { auto, meeting };
   }, [doneOverrides, visibleDayKeys]);
+  const dragOverrideBlocks = useMemo(() => {
+    const overrides = Object.values(dragOverrides);
+    if (!overrides.length) {
+      return { auto: [] as MeetingBlock[], meeting: [] as MeetingBlock[] };
+    }
+    const auto: MeetingBlock[] = [];
+    const meeting: MeetingBlock[] = [];
+    overrides.forEach(block => {
+      if (block.kind === 'meeting') {
+        meeting.push(block);
+      } else {
+        auto.push(block);
+      }
+    });
+    return { auto, meeting };
+  }, [dragOverrides]);
+
   const renderAutoBlocks = useMemo(() => {
-    if (!doneOverrideBlocks.auto.length) return autoBlocks;
-    const overrideIds = new Set(doneOverrideBlocks.auto.map(block => block.taskId));
-    return [
-      ...autoBlocks.filter(block => !overrideIds.has(block.taskId)),
-      ...doneOverrideBlocks.auto,
-    ];
-  }, [autoBlocks, doneOverrideBlocks.auto]);
+    let result = autoBlocks;
+    if (doneOverrideBlocks.auto.length) {
+      const overrideIds = new Set(doneOverrideBlocks.auto.map(block => block.taskId));
+      result = [
+        ...result.filter(block => !overrideIds.has(block.taskId)),
+        ...doneOverrideBlocks.auto,
+      ];
+    }
+    if (dragOverrideBlocks.auto.length) {
+      const overrideIds = new Set(dragOverrideBlocks.auto.map(block => block.id));
+      result = [
+        ...result.filter(block => !overrideIds.has(block.id)),
+        ...dragOverrideBlocks.auto,
+      ];
+    }
+    return result;
+  }, [autoBlocks, doneOverrideBlocks.auto, dragOverrideBlocks.auto]);
   const renderMeetingBlocks = useMemo(() => {
-    if (!doneOverrideBlocks.meeting.length) return meetingBlocks;
-    const overrideIds = new Set(doneOverrideBlocks.meeting.map(block => block.taskId));
-    return [
-      ...meetingBlocks.filter(block => !overrideIds.has(block.taskId)),
-      ...doneOverrideBlocks.meeting,
-    ];
-  }, [meetingBlocks, doneOverrideBlocks.meeting]);
+    let result = meetingBlocks;
+    if (doneOverrideBlocks.meeting.length) {
+      const overrideIds = new Set(doneOverrideBlocks.meeting.map(block => block.taskId));
+      result = [
+        ...result.filter(block => !overrideIds.has(block.taskId)),
+        ...doneOverrideBlocks.meeting,
+      ];
+    }
+    if (dragOverrideBlocks.meeting.length) {
+      const overrideIds = new Set(dragOverrideBlocks.meeting.map(block => block.id));
+      result = [
+        ...result.filter(block => !overrideIds.has(block.id)),
+        ...dragOverrideBlocks.meeting,
+      ];
+    }
+    return result;
+  }, [meetingBlocks, doneOverrideBlocks.meeting, dragOverrideBlocks.meeting]);
 
   useEffect(() => {
     blocksRef.current = [...renderAutoBlocks, ...renderMeetingBlocks];
   }, [renderAutoBlocks, renderMeetingBlocks]);
 
-  const autoBlocksByDay = useMemo(() => {
+  const blocksByDay = useMemo(() => {
     const grouped = new Map<string, MeetingBlock[]>();
-    renderAutoBlocks.forEach(block => {
+    [...renderAutoBlocks, ...renderMeetingBlocks].forEach(block => {
       const list = grouped.get(block.dayKey) ?? [];
-      list.push(block);
+      list.push({ ...block });
       grouped.set(block.dayKey, list);
     });
-    return grouped;
-  }, [renderAutoBlocks]);
+
+    const results = new Map<string, MeetingBlock[]>();
+    grouped.forEach((list, dayKey) => {
+      const sorted = [...list].sort((a, b) => a.startMinutes - b.startMinutes);
+      const laneEnds: number[] = [];
+      const withLanes = sorted.map(item => {
+        let laneIndex = laneEnds.findIndex(end => item.startMinutes >= end);
+        if (laneIndex === -1) {
+          laneIndex = laneEnds.length;
+          laneEnds.push(item.endMinutes);
+        } else {
+          laneEnds[laneIndex] = item.endMinutes;
+        }
+        return { ...item, lane: laneIndex };
+      });
+      const laneCount = Math.max(1, laneEnds.length);
+      results.set(
+        dayKey,
+        withLanes.map(item => ({ ...item, laneCount }))
+      );
+    });
+
+    return results;
+  }, [renderAutoBlocks, renderMeetingBlocks]);
 
   const timeBounds = useMemo(() => {
     const workdayBounds = Array.from(workdayConfigByDay.values()).reduce<TimeInterval | null>(
@@ -810,38 +882,6 @@ export function WeeklyMeetingsCard({
     endHour = Math.min(MAX_END_HOUR, Math.max(startHour + 1, endHour));
     return { startHour, endHour };
   }, [renderAutoBlocks, renderMeetingBlocks, workdayConfigByDay]);
-
-  const meetingsByDay = useMemo(() => {
-    const grouped = new Map<string, MeetingBlock[]>();
-    renderMeetingBlocks.forEach(meeting => {
-      const list = grouped.get(meeting.dayKey) ?? [];
-      list.push({ ...meeting });
-      grouped.set(meeting.dayKey, list);
-    });
-
-    const results = new Map<string, MeetingBlock[]>();
-    grouped.forEach((list, dayKey) => {
-      const sorted = [...list].sort((a, b) => a.startMinutes - b.startMinutes);
-      const laneEnds: number[] = [];
-      const withLanes = sorted.map(item => {
-        let laneIndex = laneEnds.findIndex(end => item.startMinutes >= end);
-        if (laneIndex === -1) {
-          laneIndex = laneEnds.length;
-          laneEnds.push(item.endMinutes);
-        } else {
-          laneEnds[laneIndex] = item.endMinutes;
-        }
-        return { ...item, lane: laneIndex };
-      });
-      const laneCount = Math.max(1, laneEnds.length);
-      results.set(
-        dayKey,
-        withLanes.map(item => ({ ...item, laneCount }))
-      );
-    });
-
-    return results;
-  }, [renderMeetingBlocks]);
 
   const hourCount = timeBounds.endHour - timeBounds.startHour;
   const hours = useMemo(() => (
@@ -901,34 +941,183 @@ export function WeeklyMeetingsCard({
   }, []);
 
   // ── Drag & Resize ──
+
+  /** Shared helper: move a block with optimistic update + API call */
+  const executeBlockMove = useCallback(
+    async (
+      taskId: string,
+      kind: 'meeting' | 'auto',
+      from: { dayKey: string; startMinutes: number; endMinutes: number },
+      to: { dayKey: string; startMinutes: number; endMinutes: number; isoStart: string; isoEnd: string; date: string },
+    ) => {
+      // Find current block for optimistic update
+      const sourceBlock = blocksRef.current.find(
+        b => b.taskId === taskId && b.dayKey === from.dayKey,
+      );
+      const overrideKey = sourceBlock?.id ?? `${taskId}-undo`;
+      const toDayDate = days.find(d => toLocalDateKey(d.toJSDate(), timezone) === to.dayKey);
+      const toDayStart = toDayDate?.startOf('day');
+
+      if (sourceBlock && toDayStart) {
+        setDragOverrides(prev => ({
+          ...prev,
+          [overrideKey]: {
+            ...sourceBlock,
+            dayKey: to.dayKey,
+            startMinutes: to.startMinutes,
+            endMinutes: to.endMinutes,
+            start: toDayStart.plus({ minutes: to.startMinutes }).toJSDate(),
+            end: toDayStart.plus({ minutes: to.endMinutes }).toJSDate(),
+          },
+        }));
+      }
+
+      const clearOverride = () => {
+        setDragOverrides(prev => {
+          if (!prev[overrideKey]) return prev;
+          const next = { ...prev };
+          delete next[overrideKey];
+          return next;
+        });
+      };
+
+      try {
+        if (kind === 'meeting') {
+          await tasksApi.update(taskId, { start_time: to.isoStart, end_time: to.isoEnd });
+        }
+        await tasksApi.moveTimeBlock({
+          task_id: taskId,
+          original_date: to.date,
+          new_start: to.isoStart,
+          new_end: to.isoEnd,
+        });
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['schedule'] }),
+          queryClient.invalidateQueries({ queryKey: ['meetings'] }),
+          queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        ]);
+        clearOverride();
+        invalidateAfterChange(false);
+        return true;
+      } catch {
+        clearOverride();
+        return false;
+      }
+    },
+    [days, timezone, invalidateAfterChange, queryClient],
+  );
+
   const handleBlockDrop = useCallback(
-    async (block: BlockInfo, target: GhostPosition, type: InteractionType) => {
+    async (block: BlockInfo, target: GhostPosition, _type: InteractionType) => {
       const dayDate = days.find(d => toLocalDateKey(d.toJSDate(), timezone) === target.dayKey);
       if (!dayDate) return;
       const dayStart = dayDate.startOf('day');
       const newStart = dayStart.plus({ minutes: target.startMinutes }).toISO()!;
       const newEnd = dayStart.plus({ minutes: target.endMinutes }).toISO()!;
+
+      const origDayDate = days.find(d => toLocalDateKey(d.toJSDate(), timezone) === block.dayKey);
       const originalDate = toDateKey(
-        days.find(d => toLocalDateKey(d.toJSDate(), timezone) === block.dayKey)?.toJSDate() ?? new Date(),
+        origDayDate?.toJSDate() ?? new Date(),
         timezone,
       );
-      try {
-        if (block.kind === 'meeting') {
-          await tasksApi.update(block.taskId, { start_time: newStart, end_time: newEnd });
-        }
-        await tasksApi.moveTimeBlock({
-          task_id: block.taskId,
-          original_date: originalDate,
-          new_start: newStart,
-          new_end: newEnd,
-        });
-        invalidateAfterChange(true);
-      } catch {
-        // silent — block returns to original position
+      const origDayStart = origDayDate?.startOf('day');
+      const origIsoStart = origDayStart
+        ? origDayStart.plus({ minutes: block.startMinutes }).toISO()!
+        : '';
+      const origIsoEnd = origDayStart
+        ? origDayStart.plus({ minutes: block.endMinutes }).toISO()!
+        : '';
+      const targetDate = toDateKey(dayDate.toJSDate(), timezone);
+
+      const entry: DragHistoryEntry = {
+        taskId: block.taskId,
+        kind: block.kind,
+        before: {
+          dayKey: block.dayKey,
+          startMinutes: block.startMinutes,
+          endMinutes: block.endMinutes,
+          iso: { start: origIsoStart, end: origIsoEnd, date: originalDate },
+        },
+        after: {
+          dayKey: target.dayKey,
+          startMinutes: target.startMinutes,
+          endMinutes: target.endMinutes,
+          iso: { start: newStart, end: newEnd, date: targetDate },
+        },
+      };
+
+      const ok = await executeBlockMove(
+        block.taskId,
+        block.kind,
+        { dayKey: block.dayKey, startMinutes: block.startMinutes, endMinutes: block.endMinutes },
+        { dayKey: target.dayKey, startMinutes: target.startMinutes, endMinutes: target.endMinutes, isoStart: newStart, isoEnd: newEnd, date: originalDate },
+      );
+
+      if (ok && !isUndoRedoRef.current) {
+        setUndoStack(prev => [...prev.slice(-(MAX_UNDO_HISTORY - 1)), entry]);
+        setRedoStack([]);
       }
     },
-    [days, timezone, invalidateAfterChange],
+    [days, timezone, executeBlockMove],
   );
+
+  const handleUndo = useCallback(async () => {
+    if (undoStack.length === 0) return;
+    const entry = undoStack[undoStack.length - 1];
+    isUndoRedoRef.current = true;
+    try {
+      const ok = await executeBlockMove(
+        entry.taskId,
+        entry.kind,
+        { dayKey: entry.after.dayKey, startMinutes: entry.after.startMinutes, endMinutes: entry.after.endMinutes },
+        { ...entry.before, isoStart: entry.before.iso.start, isoEnd: entry.before.iso.end, date: entry.after.iso.date },
+      );
+      if (ok) {
+        setUndoStack(prev => prev.slice(0, -1));
+        setRedoStack(prev => [...prev, entry]);
+      }
+    } finally {
+      setTimeout(() => { isUndoRedoRef.current = false; }, 100);
+    }
+  }, [undoStack, executeBlockMove]);
+
+  const handleRedo = useCallback(async () => {
+    if (redoStack.length === 0) return;
+    const entry = redoStack[redoStack.length - 1];
+    isUndoRedoRef.current = true;
+    try {
+      const ok = await executeBlockMove(
+        entry.taskId,
+        entry.kind,
+        { dayKey: entry.before.dayKey, startMinutes: entry.before.startMinutes, endMinutes: entry.before.endMinutes },
+        { ...entry.after, isoStart: entry.after.iso.start, isoEnd: entry.after.iso.end, date: entry.before.iso.date },
+      );
+      if (ok) {
+        setRedoStack(prev => prev.slice(0, -1));
+        setUndoStack(prev => [...prev, entry]);
+      }
+    } finally {
+      setTimeout(() => { isUndoRedoRef.current = false; }, 100);
+    }
+  }, [redoStack, executeBlockMove]);
+
+  // Keyboard shortcuts: Ctrl+Z / Ctrl+Y (Cmd on Mac)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      } else if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        handleRedo();
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [handleUndo, handleRedo]);
 
   const {
     ghost: dragGhost,
@@ -1091,9 +1280,7 @@ export function WeeklyMeetingsCard({
             {days.map(day => {
               const dayKey = toLocalDateKey(day.toJSDate(), timezone);
               const isToday = dayKey === todayKey;
-              const dayMeetings = meetingsByDay.get(dayKey) ?? [];
-              const dayAutoBlocks = autoBlocksByDay.get(dayKey) ?? [];
-              const dayBlocks = [...dayAutoBlocks, ...dayMeetings];
+              const dayBlocks = blocksByDay.get(dayKey) ?? [];
               const workdayConfig = workdayConfigByDay.get(dayKey);
               const startBound = timeBounds.startHour * 60;
               const endBound = timeBounds.endHour * 60;
