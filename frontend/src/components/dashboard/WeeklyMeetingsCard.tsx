@@ -189,6 +189,7 @@ export function WeeklyMeetingsCard({
   const [isSubmitting, setIsSubmitting] = useState<string | null>(null);
   const [localDoneIds, setLocalDoneIds] = useState<Set<string>>(new Set());
   const [doneOverrides, setDoneOverrides] = useState<Record<string, MeetingBlock[]>>({});
+  const [dragOverrides, setDragOverrides] = useState<Record<string, MeetingBlock>>({});
   const [isPostponingPinned, setIsPostponingPinned] = useState(false);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const blocksRef = useRef<MeetingBlock[]>([]);
@@ -743,22 +744,59 @@ export function WeeklyMeetingsCard({
     });
     return { auto, meeting };
   }, [doneOverrides, visibleDayKeys]);
+  const dragOverrideBlocks = useMemo(() => {
+    const overrides = Object.values(dragOverrides);
+    if (!overrides.length) {
+      return { auto: [] as MeetingBlock[], meeting: [] as MeetingBlock[] };
+    }
+    const auto: MeetingBlock[] = [];
+    const meeting: MeetingBlock[] = [];
+    overrides.forEach(block => {
+      if (block.kind === 'meeting') {
+        meeting.push(block);
+      } else {
+        auto.push(block);
+      }
+    });
+    return { auto, meeting };
+  }, [dragOverrides]);
+
   const renderAutoBlocks = useMemo(() => {
-    if (!doneOverrideBlocks.auto.length) return autoBlocks;
-    const overrideIds = new Set(doneOverrideBlocks.auto.map(block => block.taskId));
-    return [
-      ...autoBlocks.filter(block => !overrideIds.has(block.taskId)),
-      ...doneOverrideBlocks.auto,
-    ];
-  }, [autoBlocks, doneOverrideBlocks.auto]);
+    let result = autoBlocks;
+    if (doneOverrideBlocks.auto.length) {
+      const overrideIds = new Set(doneOverrideBlocks.auto.map(block => block.taskId));
+      result = [
+        ...result.filter(block => !overrideIds.has(block.taskId)),
+        ...doneOverrideBlocks.auto,
+      ];
+    }
+    if (dragOverrideBlocks.auto.length) {
+      const overrideIds = new Set(dragOverrideBlocks.auto.map(block => block.id));
+      result = [
+        ...result.filter(block => !overrideIds.has(block.id)),
+        ...dragOverrideBlocks.auto,
+      ];
+    }
+    return result;
+  }, [autoBlocks, doneOverrideBlocks.auto, dragOverrideBlocks.auto]);
   const renderMeetingBlocks = useMemo(() => {
-    if (!doneOverrideBlocks.meeting.length) return meetingBlocks;
-    const overrideIds = new Set(doneOverrideBlocks.meeting.map(block => block.taskId));
-    return [
-      ...meetingBlocks.filter(block => !overrideIds.has(block.taskId)),
-      ...doneOverrideBlocks.meeting,
-    ];
-  }, [meetingBlocks, doneOverrideBlocks.meeting]);
+    let result = meetingBlocks;
+    if (doneOverrideBlocks.meeting.length) {
+      const overrideIds = new Set(doneOverrideBlocks.meeting.map(block => block.taskId));
+      result = [
+        ...result.filter(block => !overrideIds.has(block.taskId)),
+        ...doneOverrideBlocks.meeting,
+      ];
+    }
+    if (dragOverrideBlocks.meeting.length) {
+      const overrideIds = new Set(dragOverrideBlocks.meeting.map(block => block.id));
+      result = [
+        ...result.filter(block => !overrideIds.has(block.id)),
+        ...dragOverrideBlocks.meeting,
+      ];
+    }
+    return result;
+  }, [meetingBlocks, doneOverrideBlocks.meeting, dragOverrideBlocks.meeting]);
 
   useEffect(() => {
     blocksRef.current = [...renderAutoBlocks, ...renderMeetingBlocks];
@@ -912,6 +950,32 @@ export function WeeklyMeetingsCard({
         days.find(d => toLocalDateKey(d.toJSDate(), timezone) === block.dayKey)?.toJSDate() ?? new Date(),
         timezone,
       );
+
+      // Optimistic update: immediately reflect the new position
+      const sourceBlock = blocksRef.current.find(b => b.id === block.id);
+      if (sourceBlock) {
+        setDragOverrides(prev => ({
+          ...prev,
+          [block.id]: {
+            ...sourceBlock,
+            dayKey: target.dayKey,
+            startMinutes: target.startMinutes,
+            endMinutes: target.endMinutes,
+            start: dayStart.plus({ minutes: target.startMinutes }).toJSDate(),
+            end: dayStart.plus({ minutes: target.endMinutes }).toJSDate(),
+          },
+        }));
+      }
+
+      const clearOverride = () => {
+        setDragOverrides(prev => {
+          if (!prev[block.id]) return prev;
+          const next = { ...prev };
+          delete next[block.id];
+          return next;
+        });
+      };
+
       try {
         if (block.kind === 'meeting') {
           await tasksApi.update(block.taskId, { start_time: newStart, end_time: newEnd });
@@ -922,12 +986,20 @@ export function WeeklyMeetingsCard({
           new_start: newStart,
           new_end: newEnd,
         });
-        invalidateAfterChange(true);
+        // Await refetch so override persists until fresh data is ready
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['schedule'] }),
+          queryClient.invalidateQueries({ queryKey: ['meetings'] }),
+          queryClient.invalidateQueries({ queryKey: ['tasks'] }),
+        ]);
+        clearOverride();
+        invalidateAfterChange(false);
       } catch {
-        // silent — block returns to original position
+        // Revert — clear override so block returns to original position
+        clearOverride();
       }
     },
-    [days, timezone, invalidateAfterChange],
+    [days, timezone, invalidateAfterChange, queryClient],
   );
 
   const {
