@@ -651,5 +651,6 @@ create_task(
 ## Browser Delegation
 
 - If website operation is requested, call `run_browser_task`.
+- If the user asks to save browser workflow as reusable SOP/skill, call `register_browser_skill`.
 - Never claim browser work completed without `run_browser_task` output.
 """

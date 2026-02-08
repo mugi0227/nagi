@@ -20,6 +20,28 @@ class RunBrowserTaskInput(BaseModel):
     notes: Optional[str] = Field(None, description="Optional notes for execution context")
 
 
+class RegisterBrowserSkillInput(BaseModel):
+    """Input for register_browser_skill tool."""
+
+    title: str = Field(..., min_length=1, description="Skill title")
+    when_to_use: Optional[str] = Field(
+        None,
+        description="Optional 'When to use' description for the skill"
+    )
+    tags: list[str] = Field(
+        default_factory=lambda: ["browser", "automation", "skill"],
+        description="Optional skill tags"
+    )
+    target_goal: Optional[str] = Field(
+        None,
+        description="Optional browser run goal text to match the target run"
+    )
+    force: bool = Field(
+        False,
+        description="If true, allow using an in-progress run when no completed run is found"
+    )
+
+
 async def run_browser_task(input_data: RunBrowserTaskInput) -> dict:
     """
     Create browser task delegation payload for extension-side execution.
@@ -31,6 +53,29 @@ async def run_browser_task(input_data: RunBrowserTaskInput) -> dict:
         "start_url": input_data.start_url,
         "notes": input_data.notes,
         "instruction": input_data.goal,
+    }
+
+
+async def register_browser_skill(input_data: RegisterBrowserSkillInput) -> dict:
+    """
+    Request extension-side skill registration from latest browser run logs.
+    """
+    return {
+        "status": "browser_skill_registration_requested",
+        "requires_extension_execution": True,
+        "kind": "register_browser_skill",
+        "title": input_data.title,
+        "when_to_use": input_data.when_to_use,
+        "tags": input_data.tags,
+        "target_goal": input_data.target_goal,
+        "force": input_data.force,
+        "payload": {
+            "title": input_data.title,
+            "when_to_use": input_data.when_to_use,
+            "tags": input_data.tags,
+            "target_goal": input_data.target_goal,
+            "force": input_data.force,
+        },
     }
 
 
@@ -52,4 +97,28 @@ def run_browser_task_tool() -> FunctionTool:
         return await run_browser_task(RunBrowserTaskInput(**input_data))
 
     _tool.__name__ = "run_browser_task"
+    return FunctionTool(func=_tool)
+
+
+def register_browser_skill_tool() -> FunctionTool:
+    """Create ADK tool for extension-side browser skill registration."""
+
+    async def _tool(input_data: dict) -> dict:
+        """
+        register_browser_skill: Create a WORK/RULE skill from browser-agent run logs
+        (including screenshots) via the Chrome extension.
+
+        Parameters:
+            title (str): Skill title.
+            when_to_use (str, optional): Optional usage guidance.
+            tags (list[str], optional): Skill tags.
+            target_goal (str, optional): Match a specific browser run by goal text.
+            force (bool, optional): Allow in-progress run fallback.
+
+        Returns:
+            dict: Delegation payload consumed by extension stream handler.
+        """
+        return await register_browser_skill(RegisterBrowserSkillInput(**input_data))
+
+    _tool.__name__ = "register_browser_skill"
     return FunctionTool(func=_tool)

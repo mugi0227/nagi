@@ -12,7 +12,7 @@
         <header class="app-header">
             <div class="header-left">
                 <div class="logo-glow"></div>
-                <span class="logo-icon">✨</span>
+                <span class="logo-icon">AI</span>
                 <div class="header-titles">
                     <h1 class="logo-text">Secretary Agent</h1>
                     <div class="status-wrap">
@@ -86,7 +86,7 @@
             </div>
             <div class="browser-panel-row">
                 <input id="browser-goal-input" type="text"
-                    placeholder="侁E こ�Eペ�Eジで請求書アチE�Eロード手頁E��進めて" />
+                    placeholder="例: このページで請求書PDFをアップロードして" />
                 <button id="browser-run-btn" class="mini-btn">Run</button>
                 <button id="browser-stop-btn" class="mini-btn ghost" disabled>Stop</button>
             </div>
@@ -175,6 +175,7 @@
                 <span>Browser Provider</span>
                 <select id="browser-provider">
                     <option value="gemini_direct">Gemini API (Direct)</option>
+                    <option value="bedrock_direct">AWS Bedrock (Direct)</option>
                     <option value="litellm">LiteLLM</option>
                 </select>
             </label>
@@ -182,13 +183,29 @@
                 <span>Browser Model</span>
                 <input id="browser-model" type="text" placeholder="gemini-2.5-flash" />
             </label>
-            <label class="setting-field">
+            <label id="browser-api-key-field" class="setting-field">
                 <span>Browser LLM API Key</span>
                 <input id="browser-api-key" type="password" placeholder="Gemini/LiteLLM token" />
             </label>
-            <label class="setting-field">
+            <label id="browser-api-base-url-field" class="setting-field">
                 <span>Browser LiteLLM Base URL</span>
                 <input id="browser-api-base-url" type="url" placeholder="http://localhost:4000" />
+            </label>
+            <label id="browser-bedrock-region-field" class="setting-field hidden">
+                <span>Bedrock Region</span>
+                <input id="browser-bedrock-region" type="text" placeholder="us-east-1" />
+            </label>
+            <label id="browser-bedrock-access-key-field" class="setting-field hidden">
+                <span>Bedrock Access Key ID</span>
+                <input id="browser-bedrock-access-key-id" type="text" placeholder="AKIA..." />
+            </label>
+            <label id="browser-bedrock-secret-key-field" class="setting-field hidden">
+                <span>Bedrock Secret Access Key</span>
+                <input id="browser-bedrock-secret-access-key" type="password" placeholder="Secret access key" />
+            </label>
+            <label id="browser-bedrock-session-token-field" class="setting-field hidden">
+                <span>Bedrock Session Token (Optional)</span>
+                <input id="browser-bedrock-session-token" type="password" placeholder="STS session token" />
             </label>
             <div class="settings-actions">
                 <button id="save-settings-btn" class="mini-btn">Save</button>
