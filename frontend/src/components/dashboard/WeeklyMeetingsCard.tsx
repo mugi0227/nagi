@@ -1085,7 +1085,7 @@ export function WeeklyMeetingsCard({
           });
         } else if (kind === 'meeting') {
           await tasksApi.update(taskId, { start_time: to.isoStart, end_time: to.isoEnd });
-        } else if (kind !== 'meeting') {
+        } else {
           clearOverride();
           return false;
         }
