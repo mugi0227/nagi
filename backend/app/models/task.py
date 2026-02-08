@@ -129,11 +129,12 @@ class TaskBase(BaseModel):
                 target_date = self.start_time.date()
             elif self.due_date:
                 target_date = self.due_date.date()
+            else:
+                target_date = datetime.now().date()
 
-            if target_date:
-                # 00:00:00 〜 23:59:59 を設定
-                self.start_time = datetime.combine(target_date, datetime.min.time())
-                self.end_time = datetime.combine(target_date, datetime.max.time().replace(microsecond=0))
+            # 00:00:00 〜 23:59:59 を設定
+            self.start_time = datetime.combine(target_date, datetime.min.time())
+            self.end_time = datetime.combine(target_date, datetime.max.time().replace(microsecond=0))
 
         if self.is_fixed_time:
             if not self.start_time or not self.end_time:

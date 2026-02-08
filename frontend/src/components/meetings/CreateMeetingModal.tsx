@@ -4,11 +4,15 @@ import { FaCalendarPlus } from 'react-icons/fa';
 import { tasksApi } from '../../api/tasks';
 import type { TaskCreate } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
+import { useProjects } from '../../hooks/useProjects';
 import { nowInTimezone } from '../../utils/dateTime';
 import './CreateMeetingModal.css';
 
 interface CreateMeetingModalProps {
-    projectId: string;
+    projectId?: string;
+    initialDate?: string;
+    initialStartTime?: string;
+    initialEndTime?: string;
     onClose: () => void;
     onCreated: () => void;
 }
@@ -24,14 +28,16 @@ interface FormState {
     description: string;
 }
 
-export function CreateMeetingModal({ projectId, onClose, onCreated }: CreateMeetingModalProps) {
+export function CreateMeetingModal({ projectId, initialDate, initialStartTime, initialEndTime, onClose, onCreated }: CreateMeetingModalProps) {
     const timezone = useTimezone();
+    const { projects } = useProjects();
+    const [selectedProjectId, setSelectedProjectId] = useState(projectId ?? '');
 
     const [form, setForm] = useState<FormState>({
         title: '',
-        date: nowInTimezone(timezone).toFormat('yyyy-MM-dd'),
-        startTime: '10:00',
-        endTime: '11:00',
+        date: initialDate ?? nowInTimezone(timezone).toFormat('yyyy-MM-dd'),
+        startTime: initialStartTime ?? '10:00',
+        endTime: initialEndTime ?? '11:00',
         isAllDay: false,
         location: '',
         attendees: '',
@@ -85,9 +91,10 @@ export function CreateMeetingModal({ projectId, onClose, onCreated }: CreateMeet
                 endTimeISO = DateTime.fromISO(`${form.date}T${form.endTime}:00`, { zone: timezone }).toISO()!;
             }
 
+            const resolvedProjectId = projectId ?? (selectedProjectId || undefined);
             const payload: TaskCreate = {
                 title: form.title.trim(),
-                project_id: projectId,
+                project_id: resolvedProjectId,
                 is_fixed_time: true,
                 is_all_day: form.isAllDay,
                 start_time: startTimeISO,
@@ -128,6 +135,23 @@ export function CreateMeetingModal({ projectId, onClose, onCreated }: CreateMeet
                             autoFocus
                         />
                     </div>
+
+                    {/* Project selector (when no projectId provided) */}
+                    {!projectId && (
+                        <div className="create-meeting-form-row">
+                            <label htmlFor="cm-project">プロジェクト</label>
+                            <select
+                                id="cm-project"
+                                value={selectedProjectId}
+                                onChange={e => setSelectedProjectId(e.target.value)}
+                            >
+                                <option value="">なし（Inbox）</option>
+                                {projects.map(p => (
+                                    <option key={p.id} value={p.id}>{p.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                    )}
 
                     {/* Date + All-day toggle */}
                     <div className="create-meeting-form-grid">

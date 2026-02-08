@@ -186,6 +186,25 @@
   background: var(--bg-input, #e5e7eb);
 }
 
+/* Select (project dropdown) */
+.create-meeting-form select {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 14px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  background: var(--bg-input, #fff);
+  color: var(--text-primary, #1a1a2e);
+  transition: border-color 0.15s ease;
+  box-sizing: border-box;
+}
+
+.create-meeting-form select:focus {
+  outline: none;
+  border-color: var(--primary, #3b82f6);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+
 /* Dark mode */
 [data-theme="dark"] .create-meeting-error {
   background: rgba(239, 68, 68, 0.1);

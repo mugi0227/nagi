@@ -446,6 +446,29 @@
   cursor: not-allowed;
 }
 
+.weekly-meetings-add-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--primary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--primary);
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.weekly-meetings-add-btn:hover {
+  background: var(--primary);
+  color: #fff;
+}
+
 .weekly-plan-banner {
   margin-top: 0.75rem;
   padding: 0.5rem 0.75rem;
@@ -603,7 +626,7 @@
   background: rgba(102, 126, 234, 0.15);
   z-index: 8;
   pointer-events: none;
-  transition: top 0.06s ease, height 0.06s ease;
+  transition: top 0.06s ease, height 0.06s ease, left 0.06s ease, width 0.06s ease;
 }
 
 .weekly-block-ghost.auto-slot {

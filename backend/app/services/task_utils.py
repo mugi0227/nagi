@@ -4,9 +4,29 @@ Task utility functions.
 Helper functions for task calculations and processing.
 """
 
-from typing import Iterable
+from typing import Iterable, Optional
+from uuid import UUID
 
-from app.models.task import Task
+from app.interfaces.task_repository import ITaskRepository
+from app.models.task import Task, TaskUpdate
+
+
+async def renumber_siblings(
+    repo: ITaskRepository,
+    owner_id: str,
+    parent_id: UUID,
+    project_id: Optional[UUID] = None,
+) -> None:
+    """Renumber sibling subtasks to be sequential (1, 2, 3...)."""
+    siblings = await repo.get_subtasks(owner_id, parent_id, project_id=project_id)
+    siblings.sort(key=lambda s: (s.order_in_parent or 999, s.created_at))
+    for index, sibling in enumerate(siblings, start=1):
+        if sibling.order_in_parent != index:
+            await repo.update(
+                owner_id, sibling.id,
+                TaskUpdate(order_in_parent=index),
+                project_id=project_id,
+            )
 
 
 def get_effective_estimated_minutes(task: Task, all_tasks: Iterable[Task]) -> int:

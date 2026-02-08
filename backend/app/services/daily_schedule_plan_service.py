@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
-from typing import Optional
+from typing import Any, Optional
 from uuid import UUID, uuid4
 from zoneinfo import ZoneInfo
 
@@ -35,7 +35,7 @@ from app.models.schedule_plan import (
     WorkdayHours,
     default_weekly_work_hours,
 )
-from app.models.task import Task
+from app.models.task import Task, TaskUpdate
 from app.services.scheduler_service import SchedulerService
 from app.utils.datetime_utils import get_user_today, now_utc
 
@@ -333,6 +333,7 @@ def _build_time_blocks(
                 remaining_by_task.get(allocation.task_id, 0) + allocation.minutes
             )
     carryover: list[TaskAllocation] = []
+    done_keep_by_day: dict[date, list[TaskAllocation]] = {}
     for day in schedule.days:
         weekday_index = (day.date.weekday() + 1) % 7
         day_work = work_hours[weekday_index] if weekday_index < len(work_hours) else WorkdayHours(
@@ -340,15 +341,13 @@ def _build_time_blocks(
         )
         available_base = _build_work_intervals(day_work)
         available_base = _subtract_intervals(available_base, meeting_intervals_by_day.get(day.date, []))
-        available_past = available_base
         available_future = available_base
         if from_now and day.date == start_date:
-            available_past = _clip_intervals_end(available_base, now_minutes)
             available_future = _clip_intervals(available_base, now_minutes)
-        available_past = _clone_intervals(available_past)
         available_future = _clone_intervals(available_future)
 
-        done_queue: list[TaskAllocation] = []
+        done_keep: list[TaskAllocation] = []
+        done_ghost_queue: list[TaskAllocation] = []
         active_queue: list[TaskAllocation] = []
         if carryover:
             active_queue.extend(carryover)
@@ -359,9 +358,15 @@ def _build_time_blocks(
             if task and task.is_fixed_time:
                 continue
             if from_now and day.date == start_date and _is_done_task(task):
-                done_queue.append(TaskAllocation(task_id=allocation.task_id, minutes=allocation.minutes))
+                # Keep done tasks at their original scheduled position as ghost blocks
+                # (they don't consume available time so new tasks can overlap).
+                done_keep.append(TaskAllocation(task_id=allocation.task_id, minutes=allocation.minutes))
+                done_ghost_queue.append(TaskAllocation(task_id=allocation.task_id, minutes=allocation.minutes))
             else:
                 active_queue.append(TaskAllocation(task_id=allocation.task_id, minutes=allocation.minutes))
+
+        if done_keep:
+            done_keep_by_day[day.date] = done_keep
 
         day_blocks: list[ScheduleTimeBlock] = []
 
@@ -429,8 +434,44 @@ def _build_time_blocks(
                         remaining_by_task[allocation.task_id] = 0
             return blocks
 
-        if done_queue:
-            day_blocks.extend(allocate_blocks(done_queue, available_past, False))
+        # Place done tasks as ghost blocks at their original scheduled positions.
+        # These blocks do NOT consume available time, so new tasks can overlap (2-column).
+        if done_ghost_queue:
+            ghost_slots = _clone_intervals(available_base)
+            for allocation in done_ghost_queue:
+                task = task_map.get(allocation.task_id)
+                pinned_date = task.pinned_date.date() if task and task.pinned_date else None
+                status_value = None
+                if task:
+                    status_value = (
+                        task.status.value if hasattr(task.status, "value") else str(task.status)
+                    )
+                remaining = allocation.minutes
+                while remaining > 0 and ghost_slots:
+                    interval = ghost_slots[0]
+                    duration = min(remaining, interval.end_minutes - interval.start_minutes)
+                    if duration <= 0:
+                        ghost_slots.pop(0)
+                        continue
+                    start_dt = datetime.combine(day.date, datetime.min.time(), tzinfo=tz) + timedelta(
+                        minutes=interval.start_minutes
+                    )
+                    end_dt = start_dt + timedelta(minutes=duration)
+                    day_blocks.append(
+                        ScheduleTimeBlock(
+                            task_id=allocation.task_id,
+                            start=start_dt,
+                            end=end_dt,
+                            kind="auto",
+                            status=status_value,
+                            pinned_date=pinned_date,
+                        )
+                    )
+                    remaining -= duration
+                    interval.start_minutes += duration + break_after
+                    if interval.start_minutes >= interval.end_minutes:
+                        ghost_slots.pop(0)
+
         if active_queue:
             day_blocks.extend(allocate_blocks(active_queue, available_future, True))
 
@@ -458,17 +499,7 @@ def _build_time_blocks(
             TaskAllocation(task_id=task_id, minutes=minutes)
             for task_id, minutes in auto_minutes_by_day.get(day.date, {}).items()
         ]
-        done_missing: list[TaskAllocation] = []
-        if from_now and day.date == start_date:
-            day_auto = auto_minutes_by_day.get(day.date, {})
-            for allocation in allocations_by_day.get(day.date, []):
-                task = task_map.get(allocation.task_id)
-                if not task or task.is_fixed_time or not _is_done_task(task):
-                    continue
-                scheduled_minutes = day_auto.get(allocation.task_id, 0)
-                remaining_minutes = max(0, allocation.minutes - scheduled_minutes)
-                if remaining_minutes > 0:
-                    done_missing.append(TaskAllocation(task_id=allocation.task_id, minutes=remaining_minutes))
+        done_allocations: list[TaskAllocation] = done_keep_by_day.get(day.date, [])
         pinned_missing: list[TaskAllocation] = []
         for allocation in allocations_by_day.get(day.date, []):
             if allocation.task_id not in pinned_overflow:
@@ -477,7 +508,7 @@ def _build_time_blocks(
             remaining_minutes = max(0, allocation.minutes - scheduled_minutes)
             if remaining_minutes > 0:
                 pinned_missing.append(TaskAllocation(task_id=allocation.task_id, minutes=remaining_minutes))
-        task_allocations = meeting_allocations + auto_allocations + done_missing + pinned_missing
+        task_allocations = meeting_allocations + auto_allocations + done_allocations + pinned_missing
         allocated_minutes = sum(allocation.minutes for allocation in task_allocations)
         meeting_minutes = sum(allocation.minutes for allocation in meeting_allocations)
         overflow_minutes = max(0, allocated_minutes - day.capacity_minutes)
@@ -739,6 +770,62 @@ class DailySchedulePlanService:
             pinned_overflow_task_ids=pinned_overflow,
         )
 
+    async def _get_past_days_from_plans(
+        self,
+        user_id: str,
+        past_start: date,
+        past_end: date,
+        all_tasks: list[Task],
+        timezone: str,
+    ) -> tuple[list[ScheduleDay], list[ScheduleTimeBlock]]:
+        """Load saved plans for past days. Returns meeting-only data for days without plans."""
+        plans = await self._plan_repo.list_by_range(user_id, past_start, past_end)
+        plan_map = {plan.plan_date: plan for plan in plans}
+
+        days: list[ScheduleDay] = []
+        time_blocks: list[ScheduleTimeBlock] = []
+        cursor = past_start
+        while cursor <= past_end:
+            plan = plan_map.get(cursor)
+            if plan:
+                days.append(plan.schedule_day)
+                time_blocks.extend(plan.time_blocks)
+            else:
+                meeting_blocks: list[ScheduleTimeBlock] = []
+                meeting_allocations: list[TaskAllocation] = []
+                for task in all_tasks:
+                    if not task.is_fixed_time or not task.start_time or not task.end_time:
+                        continue
+                    start_dt = _to_local_datetime(task.start_time, timezone)
+                    if start_dt.date() != cursor:
+                        continue
+                    end_dt = _to_local_datetime(task.end_time, timezone)
+                    meeting_blocks.append(
+                        ScheduleTimeBlock(
+                            task_id=task.id,
+                            start=start_dt,
+                            end=end_dt,
+                            kind="meeting",
+                            status=task.status.value if hasattr(task.status, "value") else str(task.status),
+                        )
+                    )
+                    duration = int((end_dt - start_dt).total_seconds() / 60)
+                    meeting_allocations.append(TaskAllocation(task_id=task.id, minutes=max(0, duration)))
+                time_blocks.extend(meeting_blocks)
+                meeting_minutes = sum(a.minutes for a in meeting_allocations)
+                days.append(ScheduleDay(
+                    date=cursor,
+                    capacity_minutes=0,
+                    allocated_minutes=meeting_minutes,
+                    overflow_minutes=0,
+                    task_allocations=meeting_allocations,
+                    meeting_minutes=meeting_minutes,
+                    available_minutes=0,
+                ))
+            cursor += timedelta(days=1)
+
+        return days, time_blocks
+
     async def get_plan_or_forecast(
         self,
         user_id: str,
@@ -749,6 +836,68 @@ class DailySchedulePlanService:
     ) -> SchedulePlanResponse:
         timezone = await self._load_user_timezone(user_id)
         resolved_start = start_date or get_user_today(timezone)
+        user_today = get_user_today(timezone)
+
+        # If the requested range includes past days, handle them separately
+        # to avoid the scheduler re-allocating past tasks.
+        if resolved_start < user_today:
+            past_end = min(user_today - timedelta(days=1), resolved_start + timedelta(days=max_days - 1))
+            past_days_count = (past_end - resolved_start).days + 1
+            future_days_count = max(0, max_days - past_days_count)
+
+            all_tasks = await self._task_repo.list(user_id, include_done=True, limit=1000)
+            past_days, past_time_blocks = await self._get_past_days_from_plans(
+                user_id, resolved_start, past_end, all_tasks, timezone,
+            )
+
+            if future_days_count > 0:
+                future_result = await self._get_plan_or_forecast_from_date(
+                    user_id, user_today, future_days_count,
+                    filter_by_assignee, apply_plan_constraints, timezone,
+                )
+                merged_days = past_days + list(future_result.days)
+                merged_time_blocks = past_time_blocks + list(future_result.time_blocks)
+                return SchedulePlanResponse(
+                    start_date=resolved_start,
+                    days=merged_days,
+                    tasks=future_result.tasks,
+                    unscheduled_task_ids=future_result.unscheduled_task_ids,
+                    excluded_tasks=future_result.excluded_tasks,
+                    plan_state=future_result.plan_state,
+                    plan_group_id=future_result.plan_group_id,
+                    plan_generated_at=future_result.plan_generated_at,
+                    pending_changes=future_result.pending_changes,
+                    time_blocks=merged_time_blocks,
+                    pinned_overflow_task_ids=future_result.pinned_overflow_task_ids,
+                )
+            else:
+                return SchedulePlanResponse(
+                    start_date=resolved_start,
+                    days=past_days,
+                    tasks=[],
+                    unscheduled_task_ids=[],
+                    excluded_tasks=[],
+                    plan_state="planned",
+                    pending_changes=[],
+                    time_blocks=past_time_blocks,
+                    pinned_overflow_task_ids=[],
+                )
+
+        return await self._get_plan_or_forecast_from_date(
+            user_id, resolved_start, max_days,
+            filter_by_assignee, apply_plan_constraints, timezone,
+        )
+
+    async def _get_plan_or_forecast_from_date(
+        self,
+        user_id: str,
+        resolved_start: date,
+        max_days: int,
+        filter_by_assignee: bool,
+        apply_plan_constraints: bool,
+        timezone: str,
+    ) -> SchedulePlanResponse:
+        """Original get_plan_or_forecast logic for today-or-future start dates."""
         end_date = resolved_start + timedelta(days=max_days - 1)
         plans = await self._plan_repo.list_by_range(user_id, resolved_start, end_date)
         if len(plans) == max_days:
@@ -849,7 +998,6 @@ class DailySchedulePlanService:
         If duration changed (resize), also updates estimated_minutes.
         """
         timezone = await self._load_user_timezone(user_id)
-        tz = ZoneInfo(timezone)
         new_start_local = _to_local_datetime(request.new_start, timezone)
         new_end_local = _to_local_datetime(request.new_end, timezone)
         target_date = new_start_local.date()
@@ -877,9 +1025,11 @@ class DailySchedulePlanService:
             return None
 
         # Sync underlying task data
-        task = await self._task_repo.get(str(request.task_id))
+        task = await self._task_repo.get(user_id, request.task_id)
+        if not task:
+            task = await self._task_repo.get_by_id(user_id, request.task_id)
         if task:
-            updates: dict = {}
+            updates: dict[str, Any] = {}
             if task.is_fixed_time:
                 updates["start_time"] = new_start_local
                 updates["end_time"] = new_end_local
@@ -891,7 +1041,24 @@ class DailySchedulePlanService:
             new_duration = int((new_end_local - new_start_local).total_seconds() / 60)
             if old_duration != new_duration and new_duration > 0:
                 updates["estimated_minutes"] = new_duration
+            updated_task = task
             if updates:
-                await self._task_repo.update(str(request.task_id), updates)
+                updated_task = await self._task_repo.update(
+                    user_id=user_id,
+                    task_id=request.task_id,
+                    update=TaskUpdate(**updates),
+                    project_id=task.project_id,
+                )
+            source_plan = await self._plan_repo.get_by_date(user_id, request.original_date)
+            if source_plan:
+                await self._plan_repo.update_task_snapshot_for_group(
+                    user_id=user_id,
+                    plan_group_id=source_plan.plan_group_id,
+                    snapshot=TaskPlanSnapshot(
+                        task_id=updated_task.id,
+                        title=updated_task.title,
+                        fingerprint=_task_fingerprint(updated_task),
+                    ),
+                )
 
         return result

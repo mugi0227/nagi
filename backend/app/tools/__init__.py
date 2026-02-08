@@ -1,5 +1,8 @@
 """Agent tools for Google ADK."""
 
+from app.tools.browser_automation_tools import (
+    run_browser_task_tool,
+)
 from app.tools.meeting_agenda_tools import (
     add_agenda_item_tool,
     delete_agenda_item_tool,
@@ -122,4 +125,5 @@ __all__ = [
     "list_recurring_tasks_tool",
     "update_recurring_task_tool",
     "delete_recurring_task_tool",
+    "run_browser_task_tool",
 ]

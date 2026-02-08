@@ -1,0 +1,162 @@
+from datetime import date, datetime, timezone
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
+from uuid import UUID, uuid4
+
+import pytest
+
+from app.models.enums import CreatedBy, TaskStatus
+from app.models.schedule_plan import ScheduleTimeBlock, TimeBlockMoveRequest
+from app.models.task import Task, TaskUpdate
+from app.services.daily_schedule_plan_service import DailySchedulePlanService
+
+
+def _build_task(
+    task_id: UUID,
+    *,
+    project_id: UUID | None = None,
+    start_time: datetime,
+    end_time: datetime,
+) -> Task:
+    now = datetime.now(timezone.utc)
+    return Task(
+        id=task_id,
+        user_id="owner-user",
+        project_id=project_id,
+        title="Meeting",
+        status=TaskStatus.TODO,
+        created_by=CreatedBy.USER,
+        created_at=now,
+        updated_at=now,
+        is_fixed_time=True,
+        start_time=start_time,
+        end_time=end_time,
+    )
+
+
+def _build_service(task_repo: AsyncMock, plan_repo: AsyncMock) -> DailySchedulePlanService:
+    user_repo = AsyncMock()
+    user_repo.get.return_value = None
+    return DailySchedulePlanService(
+        task_repo=task_repo,
+        project_repo=AsyncMock(),
+        assignment_repo=AsyncMock(),
+        snapshot_repo=AsyncMock(),
+        user_repo=user_repo,
+        settings_repo=AsyncMock(),
+        plan_repo=plan_repo,
+    )
+
+
+@pytest.mark.asyncio
+async def test_move_time_block_uses_repository_signature_for_personal_task() -> None:
+    user_id = str(uuid4())
+    task_id = uuid4()
+    original_start = datetime(2026, 2, 8, 9, 0, tzinfo=timezone.utc)
+    original_end = datetime(2026, 2, 8, 10, 0, tzinfo=timezone.utc)
+    moved_start = datetime(2026, 2, 8, 11, 0, tzinfo=timezone.utc)
+    moved_end = datetime(2026, 2, 8, 12, 0, tzinfo=timezone.utc)
+
+    task_repo = AsyncMock()
+    task_repo.get.return_value = _build_task(
+        task_id,
+        start_time=original_start,
+        end_time=original_end,
+    )
+    task_repo.update.return_value = _build_task(
+        task_id,
+        start_time=moved_start,
+        end_time=moved_end,
+    )
+    plan_repo = AsyncMock()
+    plan_repo.update_time_block.return_value = ScheduleTimeBlock(
+        task_id=task_id,
+        start=moved_start,
+        end=moved_end,
+        kind="meeting",
+        status="TODO",
+    )
+    group_id = uuid4()
+    plan_repo.get_by_date.return_value = SimpleNamespace(plan_group_id=group_id)
+    service = _build_service(task_repo, plan_repo)
+
+    request = TimeBlockMoveRequest(
+        task_id=task_id,
+        original_date=date(2026, 2, 8),
+        new_start=moved_start,
+        new_end=moved_end,
+    )
+
+    result = await service.move_time_block(user_id=user_id, request=request)
+
+    assert result is not None
+    task_repo.get.assert_awaited_once_with(user_id, task_id)
+    task_repo.update.assert_awaited_once()
+    kwargs = task_repo.update.await_args.kwargs
+    assert kwargs["user_id"] == user_id
+    assert kwargs["task_id"] == task_id
+    assert kwargs["project_id"] is None
+    assert isinstance(kwargs["update"], TaskUpdate)
+    plan_repo.update_task_snapshot_for_group.assert_awaited_once()
+    snapshot_call = plan_repo.update_task_snapshot_for_group.await_args.kwargs
+    assert snapshot_call["user_id"] == user_id
+    assert snapshot_call["plan_group_id"] == group_id
+    assert snapshot_call["snapshot"].task_id == task_id
+
+
+@pytest.mark.asyncio
+async def test_move_time_block_falls_back_to_get_by_id_for_project_task() -> None:
+    user_id = str(uuid4())
+    task_id = uuid4()
+    project_id = uuid4()
+    original_start = datetime(2026, 2, 8, 9, 0, tzinfo=timezone.utc)
+    original_end = datetime(2026, 2, 8, 10, 0, tzinfo=timezone.utc)
+    moved_start = datetime(2026, 2, 8, 13, 0, tzinfo=timezone.utc)
+    moved_end = datetime(2026, 2, 8, 14, 0, tzinfo=timezone.utc)
+
+    task_repo = AsyncMock()
+    task_repo.get.return_value = None
+    task_repo.get_by_id.return_value = _build_task(
+        task_id,
+        project_id=project_id,
+        start_time=original_start,
+        end_time=original_end,
+    )
+    task_repo.update.return_value = _build_task(
+        task_id,
+        project_id=project_id,
+        start_time=moved_start,
+        end_time=moved_end,
+    )
+    plan_repo = AsyncMock()
+    plan_repo.update_time_block.return_value = ScheduleTimeBlock(
+        task_id=task_id,
+        start=moved_start,
+        end=moved_end,
+        kind="meeting",
+        status="TODO",
+    )
+    group_id = uuid4()
+    plan_repo.get_by_date.return_value = SimpleNamespace(plan_group_id=group_id)
+    service = _build_service(task_repo, plan_repo)
+
+    request = TimeBlockMoveRequest(
+        task_id=task_id,
+        original_date=date(2026, 2, 8),
+        new_start=moved_start,
+        new_end=moved_end,
+    )
+
+    result = await service.move_time_block(user_id=user_id, request=request)
+
+    assert result is not None
+    task_repo.get.assert_awaited_once_with(user_id, task_id)
+    task_repo.get_by_id.assert_awaited_once_with(user_id, task_id)
+    task_repo.update.assert_awaited_once()
+    kwargs = task_repo.update.await_args.kwargs
+    assert kwargs["project_id"] == project_id
+    assert isinstance(kwargs["update"], TaskUpdate)
+    plan_repo.update_task_snapshot_for_group.assert_awaited_once()
+    snapshot_call = plan_repo.update_task_snapshot_for_group.await_args.kwargs
+    assert snapshot_call["plan_group_id"] == group_id
+    assert snapshot_call["snapshot"].task_id == task_id

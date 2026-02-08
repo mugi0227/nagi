@@ -168,6 +168,25 @@ class SqliteDailySchedulePlanRepository(IDailySchedulePlanRepository):
                 new_list.append(block)
         return updated_block, new_list
 
+    @staticmethod
+    def _upsert_snapshot_entry(
+        snapshots_json: list[dict],
+        snapshot: TaskPlanSnapshot,
+    ) -> list[dict]:
+        snapshot_dict = snapshot.model_dump(mode="json")
+        task_id_str = str(snapshot.task_id)
+        updated = False
+        next_items: list[dict] = []
+        for entry in snapshots_json:
+            if entry.get("task_id") == task_id_str:
+                next_items.append(snapshot_dict)
+                updated = True
+            else:
+                next_items.append(entry)
+        if not updated:
+            next_items.append(snapshot_dict)
+        return next_items
+
     async def update_time_block(
         self,
         user_id: str,
@@ -261,3 +280,30 @@ class SqliteDailySchedulePlanRepository(IDailySchedulePlanRepository):
 
             await session.commit()
             return ScheduleTimeBlock(**moved)
+
+    async def update_task_snapshot_for_group(
+        self,
+        user_id: str,
+        plan_group_id: UUID,
+        snapshot: TaskPlanSnapshot,
+    ) -> None:
+        session_factory = get_session_factory()
+        async with session_factory() as session:
+            result = await session.execute(
+                select(DailySchedulePlanORM).where(
+                    and_(
+                        DailySchedulePlanORM.user_id == user_id,
+                        DailySchedulePlanORM.plan_group_id == str(plan_group_id),
+                    )
+                )
+            )
+            rows = result.scalars().all()
+            if not rows:
+                return
+            for orm in rows:
+                orm.task_snapshots_json = self._upsert_snapshot_entry(
+                    orm.task_snapshots_json or [],
+                    snapshot,
+                )
+                orm.updated_at = now_utc()
+            await session.commit()

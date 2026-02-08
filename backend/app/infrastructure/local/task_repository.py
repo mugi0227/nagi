@@ -150,6 +150,26 @@ class SqliteTaskRepository(ITaskRepository):
             orm = result.scalar_one_or_none()
             return self._orm_to_model(orm) if orm else None
 
+    async def get_by_id(self, user_id: str, task_id: UUID) -> Optional[Task]:
+        """Get a task by ID. First tries user_id match, then any task by ID."""
+        async with self._session_factory() as session:
+            # First try personal access (user_id match)
+            result = await session.execute(
+                select(TaskORM).where(
+                    and_(TaskORM.id == str(task_id), TaskORM.user_id == user_id)
+                )
+            )
+            orm = result.scalar_one_or_none()
+            if orm:
+                return self._orm_to_model(orm)
+
+            # Fallback: find by task_id only (for project tasks where user_id differs)
+            result = await session.execute(
+                select(TaskORM).where(TaskORM.id == str(task_id))
+            )
+            orm = result.scalar_one_or_none()
+            return self._orm_to_model(orm) if orm else None
+
     async def list(
         self,
         user_id: str,

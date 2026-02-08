@@ -286,3 +286,20 @@ class ITaskRepository(ABC):
             List of completed tasks in the period
         """
         pass
+
+    @abstractmethod
+    async def get_by_id(self, user_id: str, task_id: UUID) -> Optional[Task]:
+        """
+        Get a task by ID without user_id filtering.
+
+        Searches across all tasks (personal and project) accessible by the user.
+        First tries user_id match, then searches project tasks.
+
+        Args:
+            user_id: User ID (for access control context)
+            task_id: Task ID
+
+        Returns:
+            Task if found, None otherwise
+        """
+        pass

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useSchedule } from '../../hooks/useSchedule';
 import { useCapacitySettings } from '../../hooks/useCapacitySettings';
@@ -167,6 +167,7 @@ export function ScheduleOverviewCard({
   }, [todayIso]);
   const [statusOverrides, setStatusOverrides] = useState<Record<string, TaskStatus>>({});
   const [taskDetailsCache, setTaskDetailsCache] = useState<Record<string, Task>>({});
+  const failedTaskIds = useRef<Set<string>>(new Set());
   const queryClient = useQueryClient();
 
   const updateMutation = useMutation({
@@ -175,7 +176,7 @@ export function ScheduleOverviewCard({
     onSuccess: () => {
       for (const key of [
         ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
-        ['task-detail'], ['task-assignments'], ['project'],
+        ['task-detail'], ['task-assignments'], ['project'], ['meetings'],
       ]) {
         queryClient.invalidateQueries({ queryKey: key });
       }
@@ -327,7 +328,9 @@ export function ScheduleOverviewCard({
         desiredIds.add(task.parent_id);
       }
     });
-    const missingIds = Array.from(desiredIds).filter(id => !(id in taskDetailsCache));
+    const missingIds = Array.from(desiredIds).filter(
+      id => !(id in taskDetailsCache) && !failedTaskIds.current.has(id)
+    );
     if (missingIds.length === 0) return;
     Promise.all(
       missingIds.map(taskId =>
@@ -335,8 +338,13 @@ export function ScheduleOverviewCard({
       )
     ).then(results => {
       const updates: Record<string, Task> = {};
-      results.forEach(task => {
-        if (task) updates[task.id] = task;
+      results.forEach((task, index) => {
+        if (task) {
+          updates[task.id] = task;
+        } else {
+          // Record failed IDs to avoid infinite retry loops
+          failedTaskIds.current.add(missingIds[index]);
+        }
       });
       if (Object.keys(updates).length) {
         setTaskDetailsCache(prev => ({ ...prev, ...updates }));
@@ -437,7 +445,7 @@ export function ScheduleOverviewCard({
       await tasksApi.doToday(taskId, { pin: true });
       for (const key of [
         ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
-        ['task-detail'], ['task-assignments'], ['project'],
+        ['task-detail'], ['task-assignments'], ['project'], ['meetings'],
       ]) {
         queryClient.invalidateQueries({ queryKey: key });
       }

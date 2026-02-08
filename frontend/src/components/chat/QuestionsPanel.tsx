@@ -158,6 +158,14 @@ export function QuestionsPanel({ questions, context, onSubmit, onCancel }: Quest
               >
                 選択肢に戻る
               </button>
+              {onCancel && (
+                <button
+                  className="questions-panel-simple-other-link"
+                  onClick={onCancel}
+                >
+                  スキップ
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -201,6 +209,14 @@ export function QuestionsPanel({ questions, context, onSubmit, onCancel }: Quest
               >
                 選択肢に戻る
               </button>
+              {onCancel && (
+                <button
+                  className="questions-panel-simple-other-link"
+                  onClick={onCancel}
+                >
+                  スキップ
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -230,6 +246,14 @@ export function QuestionsPanel({ questions, context, onSubmit, onCancel }: Quest
             >
               その他の回答を入力
             </button>
+            {onCancel && (
+              <button
+                className="questions-panel-simple-other-link"
+                onClick={onCancel}
+              >
+                スキップ
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -281,6 +305,16 @@ export function QuestionsPanel({ questions, context, onSubmit, onCancel }: Quest
               送信
             </button>
           </div>
+          {onCancel && (
+            <div className="questions-panel-simple-footer">
+              <button
+                className="questions-panel-simple-other-link"
+                onClick={onCancel}
+              >
+                スキップ
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );

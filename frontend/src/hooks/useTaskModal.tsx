@@ -101,7 +101,7 @@ export function useTaskModal(options: UseTaskModalOptions): UseTaskModalReturn {
   const invalidateTaskQueries = () => {
     for (const key of [
       ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
-      ['task-detail'], ['task-assignments'], ['project'],
+      ['task-detail'], ['task-assignments'], ['project'], ['meetings'],
     ]) {
       queryClient.invalidateQueries({ queryKey: key });
     }

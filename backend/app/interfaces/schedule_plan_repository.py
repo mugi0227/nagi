@@ -9,7 +9,12 @@ from datetime import date, datetime
 from typing import Optional
 from uuid import UUID
 
-from app.models.schedule_plan import DailySchedulePlan, DailySchedulePlanCreate, ScheduleTimeBlock
+from app.models.schedule_plan import (
+    DailySchedulePlan,
+    DailySchedulePlanCreate,
+    ScheduleTimeBlock,
+    TaskPlanSnapshot,
+)
 
 
 class IDailySchedulePlanRepository(ABC):
@@ -61,4 +66,14 @@ class IDailySchedulePlanRepository(ABC):
         new_end: datetime,
     ) -> Optional[ScheduleTimeBlock]:
         """Move a time block from one day's plan to another."""
+        pass
+
+    @abstractmethod
+    async def update_task_snapshot_for_group(
+        self,
+        user_id: str,
+        plan_group_id: UUID,
+        snapshot: TaskPlanSnapshot,
+    ) -> None:
+        """Upsert one task snapshot for all plans in the same plan group."""
         pass

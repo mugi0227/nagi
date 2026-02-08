@@ -42,6 +42,7 @@ from app.services.daily_schedule_plan_service import DEFAULT_PLAN_DAYS, DailySch
 from app.services.scheduler_service import SchedulerService
 from app.utils.datetime_utils import get_user_today
 from app.services.assignee_utils import is_invitation_assignee
+from app.services.task_utils import renumber_siblings
 from app.utils.dependency_validator import DependencyValidator
 
 router = APIRouter()
@@ -131,10 +132,10 @@ async def _get_task_or_404(
 
     # If not found and project_repo is provided, try project-based access
     if project_repo:
-        projects = await project_repo.list(user.id, limit=1000)
-        for project in projects:
-            task = await repo.get(user.id, task_id, project_id=project.id)
-            if task:
+        task = await repo.get_by_id(user.id, task_id)
+        if task and task.project_id:
+            project = await project_repo.get(user.id, task.project_id)
+            if project:
                 return task, project.user_id  # Return project owner's user_id
 
     raise HTTPException(
@@ -180,6 +181,16 @@ async def create_task(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=str(e),
             )
+
+    # Shift existing siblings when inserting at a specific position
+    if task.parent_id and task.order_in_parent is not None:
+        existing_siblings = await repo.get_subtasks(user.id, task.parent_id)
+        for sibling in existing_siblings:
+            if sibling.order_in_parent is not None and sibling.order_in_parent >= task.order_in_parent:
+                await repo.update(
+                    user.id, sibling.id,
+                    TaskUpdate(order_in_parent=sibling.order_in_parent + 1),
+                )
 
     created_task = await repo.create(user.id, task)
 
@@ -508,16 +519,22 @@ async def get_task(
     project_repo: ProjectRepo,
 ):
     """Get a task by ID."""
-    # First try personal access (Inbox tasks)
+    # First try personal access (Inbox tasks owned by user)
     task = await repo.get(user.id, task_id)
     if task:
         return task
 
-    # If not found, try to find via projects user has access to
-    projects = await project_repo.list(user.id, limit=1000)
-    for project in projects:
-        task = await repo.get(user.id, task_id, project_id=project.id)
-        if task:
+    # Use get_by_id to find task regardless of user_id (covers project tasks)
+    task = await repo.get_by_id(user.id, task_id)
+    if task:
+        # Verify user has access to the task's project
+        if task.project_id:
+            project = await project_repo.get(user.id, task.project_id)
+            if project:
+                return task
+        else:
+            # Personal task found by get_by_id but not by get — shouldn't happen,
+            # but return it as a safety net
             return task
 
     raise HTTPException(
@@ -541,13 +558,15 @@ async def update_task(
     task_project_id = None
 
     if not current_task:
-        # Try to find via projects user has access to
-        projects = await project_repo.list(user.id, limit=1000)
-        for project in projects:
-            current_task = await repo.get(user.id, task_id, project_id=project.id)
-            if current_task:
-                task_project_id = project.id
-                break
+        # Use get_by_id to find task regardless of user_id (covers project tasks)
+        current_task = await repo.get_by_id(user.id, task_id)
+        if current_task and current_task.project_id:
+            # Verify user has access to the task's project
+            project = await project_repo.get(user.id, current_task.project_id)
+            if project:
+                task_project_id = current_task.project_id
+            else:
+                current_task = None  # No access
     else:
         task_project_id = current_task.project_id
 
@@ -632,13 +651,14 @@ async def delete_task(
     if task:
         task_project_id = task.project_id
     else:
-        # Try to find via projects user has access to
-        projects = await project_repo.list(user.id, limit=1000)
-        for project in projects:
-            task = await repo.get(user.id, task_id, project_id=project.id)
-            if task:
-                task_project_id = project.id
-                break
+        # Use get_by_id to find task regardless of user_id (covers project tasks)
+        task = await repo.get_by_id(user.id, task_id)
+        if task and task.project_id:
+            project = await project_repo.get(user.id, task.project_id)
+            if project:
+                task_project_id = task.project_id
+            else:
+                task = None  # No access
 
     if not task:
         raise HTTPException(
@@ -646,12 +666,16 @@ async def delete_task(
             detail=f"Task {task_id} not found",
         )
 
+    parent_id = task.parent_id
     deleted = await repo.delete(user.id, task_id, project_id=task_project_id)
     if not deleted:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Task {task_id} not found",
         )
+
+    if parent_id:
+        await renumber_siblings(repo, user.id, parent_id, task_project_id)
 
 
 @router.get("/{task_id}/subtasks", response_model=list[Task])

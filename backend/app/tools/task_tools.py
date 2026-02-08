@@ -24,6 +24,7 @@ from app.models.enums import CreatedBy, EnergyLevel, Priority
 from app.models.proposal import Proposal, ProposalType
 from app.models.task import Task, TaskCreate, TaskUpdate, TouchpointStep
 from app.services.project_permissions import ProjectAction
+from app.services.task_utils import renumber_siblings
 from app.tools.approval_tools import create_tool_action_proposal
 from app.tools.permissions import require_project_action, require_project_member
 from app.utils.datetime_utils import parse_iso_to_utc
@@ -603,20 +604,15 @@ async def create_task(
             else:
                 order_in_parent = len(siblings) + 1
 
-    if parent_id and not dependency_ids:
-        previous = None
-        if order_in_parent is not None:
-            for sibling in siblings:
-                if sibling.order_in_parent is None:
-                    continue
-                if sibling.order_in_parent >= order_in_parent:
-                    continue
-                if previous is None or sibling.order_in_parent > previous.order_in_parent:
-                    previous = sibling
-        if previous is None and siblings and not order_provided:
-            previous = max(siblings, key=lambda sibling: sibling.created_at)
-        if previous:
-            dependency_ids.append(previous.id)
+    # Shift existing siblings when inserting at a specific position
+    if parent_id and order_provided and order_in_parent is not None:
+        for sibling in siblings:
+            if sibling.order_in_parent is not None and sibling.order_in_parent >= order_in_parent:
+                await repo.update(
+                    owner_id, sibling.id,
+                    TaskUpdate(order_in_parent=sibling.order_in_parent + 1),
+                    project_id=project_id,
+                )
 
     # Parse meeting times if is_fixed_time
     start_time = None
@@ -933,7 +929,7 @@ async def delete_task(
         Deletion result
     """
     task_id = UUID(input_data.task_id)
-    _, owner_id, project_id, access_error = await _resolve_task_access(
+    task, owner_id, project_id, access_error = await _resolve_task_access(
         user_id,
         task_id,
         repo,
@@ -943,7 +939,11 @@ async def delete_task(
     if access_error:
         return access_error
 
+    parent_id = task.parent_id if task else None
     deleted = await repo.delete(owner_id, task_id, project_id=project_id)
+
+    if deleted and parent_id:
+        await renumber_siblings(repo, owner_id, parent_id, project_id)
 
     return {
         "success": deleted,

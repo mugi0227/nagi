@@ -5,12 +5,13 @@ import { tasksApi } from '../../api/tasks';
 import type { Task } from '../../api/types';
 import { useCapacitySettings } from '../../hooks/useCapacitySettings';
 import { useBlockDragResize } from '../../hooks/useBlockDragResize';
-import type { BlockInfo, GhostPosition, InteractionType } from '../../hooks/useBlockDragResize';
+import type { BlockInfo, GhostPosition } from '../../hooks/useBlockDragResize';
 import { useTaskModal } from '../../hooks/useTaskModal';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, toDateKey, toDateTime, todayInTimezone, nowInTimezone } from '../../utils/dateTime';
 import { DEFAULT_WEEKLY_WORK_HOURS } from '../../utils/capacitySettings';
 import { PostponePopover } from './PostponePopover';
+import { CreateMeetingModal } from '../meetings/CreateMeetingModal';
 import './WeeklyMeetingsCard.css';
 
 const TEXT = {
@@ -41,10 +42,10 @@ const TEXT = {
   doTodayError: '\u4eca\u65e5\u3084\u308b\u306e\u8a2d\u5b9a\u306b\u5931\u6557\u3057\u307e\u3057\u305f',
 };
 
-const DEFAULT_START_HOUR = 8;
-const DEFAULT_END_HOUR = 20;
-const MIN_START_HOUR = 6;
-const MAX_END_HOUR = 22;
+const DEFAULT_START_HOUR = 0;
+const DEFAULT_END_HOUR = 24;
+const MIN_START_HOUR = 0;
+const MAX_END_HOUR = 24;
 const MIN_HOUR_HEIGHT = 28;
 const MAX_HOUR_HEIGHT = 120;
 const DEFAULT_HOUR_HEIGHT = MAX_HOUR_HEIGHT;
@@ -177,6 +178,55 @@ const getNonWorkIntervals = (
   return subtractIntervals([{ startMinutes: startBound, endMinutes: endBound }], workIntervals);
 };
 
+type LaneComputationBlock = {
+  id: string;
+  startMinutes: number;
+  endMinutes: number;
+};
+
+const assignLaneMetadata = <T extends LaneComputationBlock>(
+  blocks: T[],
+): Array<T & { lane: number; laneCount: number }> => {
+  const sorted = [...blocks].sort(
+    (a, b) => a.startMinutes - b.startMinutes || a.endMinutes - b.endMinutes || a.id.localeCompare(b.id),
+  );
+
+  const groups: number[][] = [];
+  let groupEnd = -Infinity;
+  let currentGroup: number[] = [];
+  sorted.forEach((item, idx) => {
+    if (item.startMinutes >= groupEnd && currentGroup.length > 0) {
+      groups.push(currentGroup);
+      currentGroup = [];
+    }
+    currentGroup.push(idx);
+    groupEnd = Math.max(groupEnd, item.endMinutes);
+  });
+  if (currentGroup.length > 0) groups.push(currentGroup);
+
+  const lanesResult = new Array<{ lane: number; laneCount: number }>(sorted.length);
+  for (const group of groups) {
+    const laneEnds: number[] = [];
+    for (const idx of group) {
+      const item = sorted[idx];
+      let laneIndex = laneEnds.findIndex(end => item.startMinutes >= end);
+      if (laneIndex === -1) {
+        laneIndex = laneEnds.length;
+        laneEnds.push(item.endMinutes);
+      } else {
+        laneEnds[laneIndex] = item.endMinutes;
+      }
+      lanesResult[idx] = { lane: laneIndex, laneCount: 0 };
+    }
+    const laneCount = Math.max(1, laneEnds.length);
+    for (const idx of group) {
+      lanesResult[idx].laneCount = laneCount;
+    }
+  }
+
+  return sorted.map((item, idx) => ({ ...item, ...lanesResult[idx] }));
+};
+
 export function WeeklyMeetingsCard({
   embedded = false,
   defaultViewMode = 'workdays',
@@ -203,6 +253,12 @@ export function WeeklyMeetingsCard({
   const [undoStack, setUndoStack] = useState<DragHistoryEntry[]>([]);
   const [redoStack, setRedoStack] = useState<DragHistoryEntry[]>([]);
   const isUndoRedoRef = useRef(false);
+  const [showCreateMeeting, setShowCreateMeeting] = useState(false);
+  const [createMeetingPrefill, setCreateMeetingPrefill] = useState<{
+    date?: string;
+    startTime?: string;
+    endTime?: string;
+  } | null>(null);
   const gridRef = useRef<HTMLDivElement | null>(null);
   const blocksRef = useRef<MeetingBlock[]>([]);
 
@@ -223,14 +279,9 @@ export function WeeklyMeetingsCard({
   const viewEnd = viewStart.plus({ days: viewDaysCount });
   const viewStartKey = toDateKey(viewStart.toJSDate(), timezone);
   const viewEndKey = toDateKey(viewEnd.toJSDate(), timezone);
-  const todayStart = today.startOf('day');
   const viewStartDay = viewStart.startOf('day');
-  const scheduleStart = viewStartDay < todayStart ? todayStart : viewStartDay;
-  const scheduleStartKey = toDateKey(scheduleStart.toJSDate(), timezone);
-  const pastDaysCount = viewStartDay < todayStart
-    ? Math.round(todayStart.diff(viewStartDay, 'days').days)
-    : 0;
-  const scheduleDaysCount = Math.max(0, viewDaysCount - pastDaysCount);
+  const scheduleStartKey = toDateKey(viewStartDay.toJSDate(), timezone);
+  const scheduleDaysCount = viewDaysCount;
 
   const isCurrentView = viewMode === 'today' ? dayOffset === 0 : weekOffset === 0;
   const goToPrevRange = () => {
@@ -441,6 +492,12 @@ export function WeeklyMeetingsCard({
       setIsPostponingPinned(false);
     }
   };
+
+  // Clear done-related optimistic state when fresh data arrives
+  useEffect(() => {
+    setLocalDoneIds(prev => prev.size > 0 ? new Set() : prev);
+    setDoneOverrides(prev => Object.keys(prev).length > 0 ? {} : prev);
+  }, [meetingTasks, scheduleData]);
 
   const meetingBlocksFromTasks = useMemo(() => {
     const viewStartDate = viewStart.startOf('day');
@@ -739,6 +796,30 @@ export function WeeklyMeetingsCard({
     () => (hasPlanBlocks ? planBlocks.filter(block => block.kind === 'meeting') : meetingBlocksFromTasks),
     [hasPlanBlocks, planBlocks, meetingBlocksFromTasks],
   );
+  // Keep drag overrides until base data reflects the moved position.
+  // This avoids a snapback when unrelated queries resolve first.
+  useEffect(() => {
+    setDragOverrides(prev => {
+      if (Object.keys(prev).length === 0) return prev;
+      let changed = false;
+      const next: Record<string, MeetingBlock> = {};
+      for (const [key, override] of Object.entries(prev)) {
+        const source = override.kind === 'meeting' ? meetingBlocks : autoBlocks;
+        const synced = source.some(block =>
+          block.taskId === override.taskId
+          && block.dayKey === override.dayKey
+          && block.startMinutes === override.startMinutes
+          && block.endMinutes === override.endMinutes
+        );
+        if (synced) {
+          changed = true;
+        } else {
+          next[key] = override;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [meetingBlocks, autoBlocks]);
   const doneOverrideBlocks = useMemo(() => {
     const overrides = Object.values(doneOverrides).flat();
     if (!overrides.length) {
@@ -824,47 +905,7 @@ export function WeeklyMeetingsCard({
 
     const results = new Map<string, MeetingBlock[]>();
     grouped.forEach((list, dayKey) => {
-      const sorted = [...list].sort((a, b) => a.startMinutes - b.startMinutes);
-
-      // Build overlap groups: blocks that transitively overlap share a group
-      const groups: number[][] = []; // each group is an array of indices into sorted
-      let groupEnd = -Infinity;
-      let currentGroup: number[] = [];
-      sorted.forEach((item, idx) => {
-        if (item.startMinutes >= groupEnd && currentGroup.length > 0) {
-          groups.push(currentGroup);
-          currentGroup = [];
-        }
-        currentGroup.push(idx);
-        groupEnd = Math.max(groupEnd, item.endMinutes);
-      });
-      if (currentGroup.length > 0) groups.push(currentGroup);
-
-      // Assign lanes within each overlap group independently
-      const lanesResult = new Array<{ lane: number; laneCount: number }>(sorted.length);
-      for (const group of groups) {
-        const laneEnds: number[] = [];
-        for (const idx of group) {
-          const item = sorted[idx];
-          let laneIndex = laneEnds.findIndex(end => item.startMinutes >= end);
-          if (laneIndex === -1) {
-            laneIndex = laneEnds.length;
-            laneEnds.push(item.endMinutes);
-          } else {
-            laneEnds[laneIndex] = item.endMinutes;
-          }
-          lanesResult[idx] = { lane: laneIndex, laneCount: 0 };
-        }
-        const laneCount = Math.max(1, laneEnds.length);
-        for (const idx of group) {
-          lanesResult[idx].laneCount = laneCount;
-        }
-      }
-
-      results.set(
-        dayKey,
-        sorted.map((item, idx) => ({ ...item, ...lanesResult[idx] }))
-      );
+      results.set(dayKey, assignLaneMetadata(list));
     });
 
     return results;
@@ -964,6 +1005,35 @@ export function WeeklyMeetingsCard({
     return () => window.removeEventListener('wheel', handleWheel, { capture: true });
   }, []);
 
+  // ── Create Meeting from Calendar ──
+
+  const clickYToTime = useCallback((clientY: number, columnEl: Element): string => {
+    const rect = columnEl.getBoundingClientRect();
+    const offsetY = clientY - rect.top + (gridRef.current?.scrollTop ?? 0);
+    const rawMinutes = timeBounds.startHour * 60 + (offsetY / hourHeight) * 60;
+    const snapped = Math.round(rawMinutes / 15) * 15;
+    const clamped = Math.max(0, Math.min(23 * 60 + 45, snapped));
+    const h = Math.floor(clamped / 60);
+    const m = clamped % 60;
+    return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+  }, [timeBounds.startHour, hourHeight]);
+
+  const handleDayDoubleClick = useCallback((e: React.MouseEvent, dayKey: string) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('.weekly-meeting-block')) return;
+
+    const column = e.currentTarget as HTMLElement;
+    const startTime = clickYToTime(e.clientY, column);
+    const startMinutes = parseInt(startTime.split(':')[0]) * 60 + parseInt(startTime.split(':')[1]);
+    const endMinutes = Math.min(24 * 60 - 1, startMinutes + 60);
+    const endH = Math.floor(endMinutes / 60);
+    const endM = endMinutes % 60;
+    const endTime = `${String(endH).padStart(2, '0')}:${String(endM).padStart(2, '0')}`;
+
+    setCreateMeetingPrefill({ date: dayKey, startTime, endTime });
+    setShowCreateMeeting(true);
+  }, [clickYToTime]);
+
   // ── Drag & Resize ──
 
   /** Shared helper: move a block with optimistic update + API call */
@@ -1006,33 +1076,34 @@ export function WeeklyMeetingsCard({
       };
 
       try {
-        if (kind === 'meeting') {
+        if (hasPlanBlocks) {
+          await tasksApi.moveTimeBlock({
+            task_id: taskId,
+            original_date: to.date,
+            new_start: to.isoStart,
+            new_end: to.isoEnd,
+          });
+        } else if (kind === 'meeting') {
           await tasksApi.update(taskId, { start_time: to.isoStart, end_time: to.isoEnd });
+        } else if (kind !== 'meeting') {
+          clearOverride();
+          return false;
         }
-        await tasksApi.moveTimeBlock({
-          task_id: taskId,
-          original_date: to.date,
-          new_start: to.isoStart,
-          new_end: to.isoEnd,
-        });
-        await Promise.all([
-          queryClient.invalidateQueries({ queryKey: ['schedule'] }),
-          queryClient.invalidateQueries({ queryKey: ['meetings'] }),
-          queryClient.invalidateQueries({ queryKey: ['tasks'] }),
-        ]);
-        clearOverride();
-        invalidateAfterChange(false);
+        // Don't clear override here - let the useEffect clear it when new data arrives.
+        // This prevents the block from snapping back to the old position
+        // during the gap between override removal and refetch completion.
+        invalidateAfterChange(true);
         return true;
       } catch {
         clearOverride();
         return false;
       }
     },
-    [days, timezone, invalidateAfterChange, queryClient],
+    [days, timezone, hasPlanBlocks, invalidateAfterChange],
   );
 
   const handleBlockDrop = useCallback(
-    async (block: BlockInfo, target: GhostPosition, _type: InteractionType) => {
+    async (block: BlockInfo, target: GhostPosition) => {
       const dayDate = days.find(d => toLocalDateKey(d.toJSDate(), timezone) === target.dayKey);
       if (!dayDate) return;
       const dayStart = dayDate.startOf('day');
@@ -1155,6 +1226,72 @@ export function WeeklyMeetingsCard({
     onDrop: handleBlockDrop,
     onClick: (block) => handleTaskClick(block.taskId),
   });
+  const dragPreview = useMemo(() => {
+    if (!dragGhost || !draggingBlockId) return null;
+
+    const sourceBlock = [...blocksByDay.values()]
+      .flat()
+      .find(block => block.id === draggingBlockId)
+      ?? renderAutoBlocks.find(block => block.id === draggingBlockId)
+      ?? renderMeetingBlocks.find(block => block.id === draggingBlockId);
+    if (!sourceBlock) return null;
+
+    const previewByDay = new Map<string, MeetingBlock[]>();
+    blocksByDay.forEach((list, key) => {
+      previewByDay.set(key, list.map(block => ({ ...block })));
+    });
+
+    const targetDayKey = dragGhost.dayKey;
+    const ghostId = `${draggingBlockId}__ghost`;
+    const targetDayBlocks = (previewByDay.get(targetDayKey) ?? []).filter(
+      block => block.id !== draggingBlockId,
+    );
+    const withGhost = assignLaneMetadata([
+      ...targetDayBlocks.map(block => ({
+        id: block.id,
+        startMinutes: block.startMinutes,
+        endMinutes: block.endMinutes,
+      })),
+      {
+        id: ghostId,
+        startMinutes: dragGhost.startMinutes,
+        endMinutes: dragGhost.endMinutes,
+      },
+    ]);
+    const laneByBlockId = new Map(
+      withGhost
+        .filter(block => block.id !== ghostId)
+        .map(block => [block.id, block] as const),
+    );
+    const relayoutBlocks = targetDayBlocks.map(block => {
+      const lane = laneByBlockId.get(block.id);
+      if (!lane) return block;
+      return { ...block, lane: lane.lane, laneCount: lane.laneCount };
+    });
+    if (sourceBlock.dayKey === targetDayKey) {
+      const sourceInOriginal = (blocksByDay.get(sourceBlock.dayKey) ?? []).find(
+        block => block.id === draggingBlockId,
+      );
+      if (sourceInOriginal) {
+        relayoutBlocks.push(sourceInOriginal);
+      }
+    }
+    previewByDay.set(
+      targetDayKey,
+      relayoutBlocks.sort(
+        (a, b) => a.startMinutes - b.startMinutes || a.lane - b.lane || a.id.localeCompare(b.id),
+      ),
+    );
+    const ghost = withGhost.find(block => block.id === ghostId);
+    return {
+      blocksByDay: previewByDay,
+      ghost: {
+        lane: ghost?.lane ?? 0,
+        laneCount: ghost?.laneCount ?? 1,
+        kind: sourceBlock.kind,
+      },
+    };
+  }, [dragGhost, draggingBlockId, blocksByDay, renderAutoBlocks, renderMeetingBlocks]);
 
   return (
     <div className={`weekly-meetings-card ${embedded ? 'embedded' : ''}`}>
@@ -1214,6 +1351,17 @@ export function WeeklyMeetingsCard({
               disabled={recalcMutation.isPending}
             >
               {recalcMutation.isPending ? TEXT.recalculating : TEXT.recalc}
+            </button>
+            <button
+              type="button"
+              className="weekly-meetings-add-btn"
+              onClick={() => {
+                setCreateMeetingPrefill(null);
+                setShowCreateMeeting(true);
+              }}
+              title="ミーティングを作成"
+            >
+              +
             </button>
           </div>
         </div>
@@ -1304,7 +1452,7 @@ export function WeeklyMeetingsCard({
             {days.map(day => {
               const dayKey = toLocalDateKey(day.toJSDate(), timezone);
               const isToday = dayKey === todayKey;
-              const dayBlocks = blocksByDay.get(dayKey) ?? [];
+              const dayBlocks = dragPreview?.blocksByDay.get(dayKey) ?? blocksByDay.get(dayKey) ?? [];
               const workdayConfig = workdayConfigByDay.get(dayKey);
               const startBound = timeBounds.startHour * 60;
               const endBound = timeBounds.endHour * 60;
@@ -1314,7 +1462,7 @@ export function WeeklyMeetingsCard({
                 endBound,
               );
               return (
-                <div key={dayKey} data-day-key={dayKey} className={`weekly-meetings-day-col ${isToday ? 'today' : ''}${dragGhost?.dayKey === dayKey ? ' drop-target' : ''}`} style={{ height: `${gridHeight}px` }}>
+                <div key={dayKey} data-day-key={dayKey} className={`weekly-meetings-day-col ${isToday ? 'today' : ''}${dragGhost?.dayKey === dayKey ? ' drop-target' : ''}`} style={{ height: `${gridHeight}px` }} onDoubleClick={(e) => handleDayDoubleClick(e, dayKey)}>
                   <div className="weekly-workhours-layer">
                     {nonWorkIntervals.map(interval => {
                       const clampedStart = Math.max(startBound, interval.startMinutes);
@@ -1450,11 +1598,18 @@ export function WeeklyMeetingsCard({
                   {dragGhost && dragGhost.dayKey === dayKey && (() => {
                     const ghostTop = ((dragGhost.startMinutes - startBound) / 60) * hourHeight;
                     const ghostHeight = Math.max(1, ((dragGhost.endMinutes - dragGhost.startMinutes) / 60) * hourHeight);
-                    const dragBlock = dayBlocks.find(b => b.id === draggingBlockId);
+                    const ghostLaneCount = dragPreview?.ghost.laneCount ?? 1;
+                    const ghostWidth = 100 / ghostLaneCount;
+                    const ghostLeft = ghostWidth * (dragPreview?.ghost.lane ?? 0);
                     return (
                       <div
-                        className={`weekly-block-ghost${dragBlock?.kind === 'auto' ? ' auto-slot' : ''}`}
-                        style={{ top: `${ghostTop}px`, height: `${ghostHeight}px`, left: 0, right: 0 }}
+                        className={`weekly-block-ghost${dragPreview?.ghost.kind === 'auto' ? ' auto-slot' : ''}`}
+                        style={{
+                          top: `${ghostTop}px`,
+                          height: `${ghostHeight}px`,
+                          left: `${ghostLeft}%`,
+                          width: `${ghostWidth}%`,
+                        }}
                       />
                     );
                   })()}
@@ -1466,6 +1621,18 @@ export function WeeklyMeetingsCard({
       )}
 
       {!onTaskClick && taskModal.renderModals()}
+      {showCreateMeeting && (
+        <CreateMeetingModal
+          initialDate={createMeetingPrefill?.date}
+          initialStartTime={createMeetingPrefill?.startTime}
+          initialEndTime={createMeetingPrefill?.endTime}
+          onClose={() => setShowCreateMeeting(false)}
+          onCreated={() => {
+            setShowCreateMeeting(false);
+            invalidateAfterChange(true);
+          }}
+        />
+      )}
     </div>
   );
 }

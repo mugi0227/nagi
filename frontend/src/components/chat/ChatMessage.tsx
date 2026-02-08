@@ -9,10 +9,10 @@ import { formatDate, toDateKey, toDateTime } from '../../utils/dateTime';
 import { CreatedTaskCards } from './CreatedTaskCards';
 import './ChatMessage.css';
 
-const PREVIEW_DEFAULT_START = 8;
-const PREVIEW_DEFAULT_END = 20;
-const PREVIEW_MIN_START = 6;
-const PREVIEW_MAX_END = 22;
+const PREVIEW_DEFAULT_START = 0;
+const PREVIEW_DEFAULT_END = 24;
+const PREVIEW_MIN_START = 0;
+const PREVIEW_MAX_END = 24;
 const PREVIEW_HOUR_HEIGHT = 24;
 const TASK_LINK_PATTERN = /task:\/\/([0-9a-fA-F-]{36})/g;
 

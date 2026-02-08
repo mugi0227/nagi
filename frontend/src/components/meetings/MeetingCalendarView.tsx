@@ -6,10 +6,10 @@ import type { Task } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, toDateKey, toDateTime, todayInTimezone } from '../../utils/dateTime';
 
-const DEFAULT_START_HOUR = 8;
-const DEFAULT_END_HOUR = 20;
-const MIN_START_HOUR = 6;
-const MAX_END_HOUR = 22;
+const DEFAULT_START_HOUR = 0;
+const DEFAULT_END_HOUR = 24;
+const MIN_START_HOUR = 0;
+const MAX_END_HOUR = 24;
 const HOUR_HEIGHT = 44;
 
 const toLocalDateKey = (date: Date, timezone: string) => toDateKey(date, timezone);
