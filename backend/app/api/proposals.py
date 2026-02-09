@@ -19,6 +19,7 @@ from app.api.deps import (
     RecurringMeetingRepo,
     TaskAssignmentRepo,
     TaskRepo,
+    UserRepo,
 )
 from app.models.memory import MemoryCreate
 from app.models.proposal import ApprovalResult, ProposalStatus, RejectionResult
@@ -65,6 +66,7 @@ async def approve_proposal(
     meeting_agenda_repo: MeetingAgendaRepo,
     recurring_meeting_repo: RecurringMeetingRepo,
     llm_provider: LLMProvider,
+    user_repo: UserRepo,
 ) -> ApprovalResult:
     """Approve a proposal and create task/project.
 
@@ -241,7 +243,9 @@ async def approve_proposal(
             update_project,
         )
         from app.tools.scheduler_tools import (
+            ApplyScheduleRequestInput,
             ScheduleAgentTaskInput,
+            apply_schedule_request,
             schedule_agent_task,
         )
         from app.tools.task_tools import (
@@ -308,6 +312,15 @@ async def approve_proposal(
                 user.id,
                 agent_task_repo,
                 ScheduleAgentTaskInput(**args),
+            )
+        elif tool_name == "apply_schedule_request":
+            tool_result = await apply_schedule_request(
+                user_id=user.id,
+                task_repo=task_repo,
+                assignment_repo=assignment_repo,
+                project_repo=project_repo,
+                input_data=ApplyScheduleRequestInput(**args),
+                user_repo=user_repo,
             )
         elif tool_name == "add_agenda_item":
             tool_result = await add_agenda_item(

@@ -91,6 +91,7 @@ const APPROVAL_TOOL_NAMES = new Set([
   'add_to_memory',
   'refresh_user_profile',
   'schedule_agent_task',
+  'apply_schedule_request',
   'add_agenda_item',
   'update_agenda_item',
   'delete_agenda_item',

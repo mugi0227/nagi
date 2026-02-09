@@ -11,6 +11,8 @@ from datetime import date, datetime, timedelta
 from typing import Optional
 from uuid import UUID
 
+from sqlalchemy.exc import IntegrityError
+
 from app.core.logger import setup_logger
 from app.interfaces.recurring_task_repository import IRecurringTaskRepository
 from app.interfaces.task_repository import ITaskRepository
@@ -103,7 +105,15 @@ class RecurringTaskService:
                     recurring_task_id=definition.id,
                     created_by=CreatedBy.AGENT,
                 )
-                task = await self.task_repo.create(user_id, task_data)
+                try:
+                    task = await self.task_repo.create(user_id, task_data)
+                except IntegrityError:
+                    # Another concurrent worker already created this occurrence.
+                    seen_due_dates.add(next_date)
+                    reference_date = next_date
+                    latest_date = next_date
+                    continue
+
                 created.append(task.model_dump(mode="json"))
                 seen_due_dates.add(next_date)
 

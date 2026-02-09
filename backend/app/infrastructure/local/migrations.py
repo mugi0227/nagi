@@ -477,9 +477,35 @@ async def run_migrations():
         # Add recurring_task_id to tasks table
         if "recurring_task_id" not in columns:
             await conn.execute(text("ALTER TABLE tasks ADD COLUMN recurring_task_id VARCHAR(36)"))
-            await conn.execute(
-                text("CREATE INDEX IF NOT EXISTS idx_tasks_recurring_task_id ON tasks(recurring_task_id)")
+        await conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_tasks_recurring_task_id ON tasks(recurring_task_id)")
+        )
+        # Keep only one generated task per (user, recurring definition, due date).
+        await conn.execute(
+            text(
+                """
+                DELETE FROM tasks
+                WHERE recurring_task_id IS NOT NULL
+                  AND due_date IS NOT NULL
+                  AND rowid NOT IN (
+                      SELECT MIN(rowid)
+                      FROM tasks
+                      WHERE recurring_task_id IS NOT NULL
+                        AND due_date IS NOT NULL
+                      GROUP BY user_id, recurring_task_id, due_date
+                  )
+                """
             )
+        )
+        await conn.execute(
+            text(
+                """
+                CREATE UNIQUE INDEX IF NOT EXISTS idx_tasks_recurring_task_occurrence_unique
+                ON tasks(user_id, recurring_task_id, due_date)
+                WHERE recurring_task_id IS NOT NULL AND due_date IS NOT NULL
+                """
+            )
+        )
 
         # Create recurring_tasks table if missing
         recurring_tasks_result = await conn.execute(

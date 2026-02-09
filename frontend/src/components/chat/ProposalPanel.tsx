@@ -15,10 +15,17 @@ import './ProposalPanel.css';
 
 interface ProposalPanelProps {
   proposals: ProposalInfo[];
-  onApproved: (proposalId: string, proposal: ProposalInfo, result: ApprovalResult) => void;
-  onRejected: (proposalId: string) => void;
-  onAllApproved: (approvedProposals: ProposalInfo[], results: Record<string, ApprovalResult>) => void;
-  onAllRejected: () => void;
+  onApproved: (
+    proposalId: string,
+    proposal: ProposalInfo,
+    result: ApprovalResult,
+  ) => void | Promise<void>;
+  onRejected: (proposalId: string) => void | Promise<void>;
+  onAllApproved: (
+    approvedProposals: ProposalInfo[],
+    results: Record<string, ApprovalResult>,
+  ) => void | Promise<void>;
+  onAllRejected: () => void | Promise<void>;
 }
 
 const getBadgeLabel = (proposalType: string) => {
@@ -72,7 +79,7 @@ export function ProposalPanel({
     setError(null);
     try {
       const result = await proposalsApi.approve(currentProposal.proposalId);
-      onApproved(currentProposal.proposalId, currentProposal, result);
+      await onApproved(currentProposal.proposalId, currentProposal, result);
       // Move to next or adjust index
       if (currentIndex >= proposals.length - 1 && currentIndex > 0) {
         setCurrentIndex(currentIndex - 1);
@@ -90,7 +97,7 @@ export function ProposalPanel({
     setError(null);
     try {
       await proposalsApi.reject(currentProposal.proposalId);
-      onRejected(currentProposal.proposalId);
+      await onRejected(currentProposal.proposalId);
       // Move to next or adjust index
       if (currentIndex >= proposals.length - 1 && currentIndex > 0) {
         setCurrentIndex(currentIndex - 1);
@@ -111,7 +118,7 @@ export function ProposalPanel({
       for (const proposal of proposals) {
         results[proposal.proposalId] = await proposalsApi.approve(proposal.proposalId);
       }
-      onAllApproved(proposals, results);
+      await onAllApproved(proposals, results);
     } catch (err) {
       setError('一部の承諾に失敗しました');
       console.error('Failed to approve all proposals:', err);
@@ -127,7 +134,7 @@ export function ProposalPanel({
       for (const proposal of proposals) {
         await proposalsApi.reject(proposal.proposalId);
       }
-      onAllRejected();
+      await onAllRejected();
     } catch (err) {
       setError('一部の却下に失敗しました');
       console.error('Failed to reject all proposals:', err);

@@ -13,7 +13,12 @@ import {
 } from 'react-icons/fa6';
 import { tasksApi } from '../../api/tasks';
 import { projectsApi } from '../../api/projects';
-import type { Task, TaskAssignment, TaskAssignmentsCreate } from '../../api/types';
+import type {
+  Task,
+  TaskAssignment,
+  TaskAssignmentsCreate,
+  ToolActionProposalPayload,
+} from '../../api/types';
 import type { ApprovalResult } from '../../api/proposals';
 import { useChat, type ProposalInfo } from '../../hooks/useChat';
 import { useTaskModal } from '../../hooks/useTaskModal';
@@ -158,6 +163,29 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     }
   };
 
+  const shouldRecalculateSchedule = (proposal: ProposalInfo) => {
+    if (proposal.proposalType !== 'tool_action') {
+      return false;
+    }
+    const payload = proposal.payload as ToolActionProposalPayload;
+    return payload.tool_name === 'apply_schedule_request';
+  };
+
+  const recalculateScheduleForProposals = async (proposals: ProposalInfo[]) => {
+    if (!proposals.some(shouldRecalculateSchedule)) {
+      return;
+    }
+    try {
+      await tasksApi.recalculateSchedulePlan({
+        fromNow: true,
+        maxDays: 30,
+        filterByAssignee: true,
+      });
+    } catch (error) {
+      console.error('Failed to recalculate schedule after approval:', error);
+    }
+  };
+
   // Generate approval confirmation message for AI
   const generateApprovalMessage = (proposals: { description: string }[]) => {
     if (proposals.length === 1) {
@@ -167,14 +195,19 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     return `（以下を承諾しました:\n${descriptions}）`;
   };
 
-  const handleProposalApproved = (proposalId: string, proposal: ProposalInfo, result: ApprovalResult) => {
+  const handleProposalApproved = async (
+    proposalId: string,
+    proposal: ProposalInfo,
+    result: ApprovalResult,
+  ) => {
     updateProposalResult(proposalId, result);
     setProcessedProposalIds((prev) => new Set([...prev, proposalId]));
-    invalidateAfterProposal();
     approvedProposalsRef.current = [
       ...approvedProposalsRef.current,
       proposal,
     ];
+    await recalculateScheduleForProposals([proposal]);
+    invalidateAfterProposal();
     // Only send confirmation if this was the last pending proposal
     const remainingCount = pendingProposals.filter((p) => p.proposalId !== proposalId).length;
     if (remainingCount === 0) {
@@ -196,12 +229,16 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     }
   };
 
-  const handleAllProposalsApproved = (approvedProposals: ProposalInfo[], results: Record<string, ApprovalResult>) => {
+  const handleAllProposalsApproved = async (
+    approvedProposals: ProposalInfo[],
+    results: Record<string, ApprovalResult>,
+  ) => {
     for (const [proposalId, result] of Object.entries(results)) {
       updateProposalResult(proposalId, result);
     }
     const allIds = pendingProposals.map((p) => p.proposalId);
     setProcessedProposalIds((prev) => new Set([...prev, ...allIds]));
+    await recalculateScheduleForProposals(approvedProposals);
     invalidateAfterProposal();
     // Send confirmation to AI for all approved proposals
     sendMessageStream(generateApprovalMessage(approvedProposals), undefined, undefined, projectContext);

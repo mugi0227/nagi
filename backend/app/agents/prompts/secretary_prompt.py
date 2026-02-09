@@ -653,4 +653,11 @@ create_task(
 - If website operation is requested, call `run_browser_task`.
 - If the user asks to save browser workflow as reusable SOP/skill, call `register_browser_skill`.
 - Never claim browser work completed without `run_browser_task` output.
+
+## Schedule Preference Requests
+
+- If the user says they want to focus on specific themes today, call `apply_schedule_request`.
+- Populate `focus_keywords` from the user's requested themes when possible.
+- If the user says to avoid some work today, set `avoid_keywords` and `unpin_avoided_today=true`.
+- Keep `max_focus_tasks` small (usually 2-4) unless the user explicitly asks for more.
 """

@@ -1,9 +1,8 @@
-"""
-Shared helpers for tool approval flows.
-"""
+"""Shared helpers for tool approval flows."""
 
 from __future__ import annotations
 
+import hashlib
 from typing import Any
 from uuid import UUID
 
@@ -33,45 +32,51 @@ def _default_tool_action_description(tool_name: str, args: dict[str, Any]) -> st
 
     match tool_name:
         case "update_task":
-            return f'タスク「{title}」を更新します。' if title else "タスクを更新します。"
+            return f'Update task "{title}".' if title else "Update a task."
         case "delete_task":
-            return "タスクを削除します。"
+            return "Delete a task."
         case "assign_task":
-            return "タスクの担当者を設定します。"
+            return "Assign a task."
         case "update_project":
-            return f'プロジェクト「{name}」を更新します。' if name else "プロジェクトを更新します。"
+            return f'Update project "{name}".' if name else "Update a project."
         case "invite_project_member":
-            return f"{email} をプロジェクトに招待します。" if email else "プロジェクトにメンバーを招待します。"
+            return (
+                f"Invite {email} to the project."
+                if email
+                else "Invite a new member to the project."
+            )
         case "create_project_summary":
-            return "プロジェクトサマリーを作成します。"
+            return "Create a project summary."
         case "add_to_memory":
-            return "メモを記録します。"
+            return "Save information to memory."
         case "refresh_user_profile":
-            return "ユーザープロフィールを更新します。"
+            return "Refresh user profile memory."
         case "schedule_agent_task":
-            return "エージェントタスクをスケジュールします。"
+            return "Schedule an agent task."
+        case "apply_schedule_request":
+            return "Apply today's schedule preference request."
         case "add_agenda_item":
-            return "アジェンダを追加します。"
+            return "Add an agenda item."
         case "update_agenda_item":
-            return "アジェンダを更新します。"
+            return "Update an agenda item."
         case "delete_agenda_item":
-            return "アジェンダを削除します。"
+            return "Delete an agenda item."
         case "reorder_agenda_items":
-            return "アジェンダの順序を更新します。"
+            return "Reorder agenda items."
         case "create_phase":
-            return "フェーズを作成します。"
+            return "Create a phase."
         case "update_phase":
-            return "フェーズを更新します。"
+            return "Update a phase."
         case "delete_phase":
-            return "フェーズを削除します。"
+            return "Delete a phase."
         case "create_milestone":
-            return "マイルストーンを作成します。"
+            return "Create a milestone."
         case "update_milestone":
-            return "マイルストーンを更新します。"
+            return "Update a milestone."
         case "delete_milestone":
-            return "マイルストーンを削除します。"
+            return "Delete a milestone."
         case _:
-            return f'「{tool_name}」を実行します。'
+            return f"Run tool action: {tool_name}."
 
 
 async def create_tool_action_proposal(
@@ -85,12 +90,10 @@ async def create_tool_action_proposal(
     if not description:
         description = _default_tool_action_description(tool_name, args)
 
-    user_id_raw = None
+    user_id_raw: str | None = None
     try:
         parsed_user_id = UUID(user_id)
     except (ValueError, AttributeError):
-        import hashlib
-
         user_id_raw = user_id
         parsed_user_id = UUID(bytes=hashlib.md5(user_id.encode()).digest())
 
@@ -110,11 +113,13 @@ async def create_tool_action_proposal(
 
     created_proposal = await proposal_repo.create(proposal)
 
-    # Return pending_approval status to signal AI to wait for user approval
     return {
         "status": "pending_approval",
         "proposal_id": str(created_proposal.id),
         "proposal_type": ProposalType.TOOL_ACTION.value,
         "description": description,
-        "message": "ユーザーの承諾待ちです。承諾されるまで「完了しました」とは言わないでください。",
+        "message": (
+            "This tool action requires your approval. "
+            "Please approve it to continue."
+        ),
     }

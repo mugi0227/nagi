@@ -8,6 +8,7 @@ from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from sqlalchemy.exc import IntegrityError
 
 from app.models.enums import EnergyLevel, Priority, RecurringTaskFrequency
 from app.models.recurring_task import RecurringTask
@@ -380,3 +381,40 @@ async def test_ensure_upcoming_tasks_skips_duplicate_occurrence_on_recheck():
 
     assert result["created_count"] == 0
     task_repo.create.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_ensure_upcoming_tasks_handles_unique_violation_as_duplicate():
+    today = date.today()
+    definition = _make_definition(
+        RecurringTaskFrequency.DAILY,
+        anchor_date=today - timedelta(days=1),
+    )
+    recurring_repo = AsyncMock()
+    recurring_repo.list.return_value = [definition]
+
+    task_repo = AsyncMock()
+    task_repo.list_by_recurring_task.side_effect = [
+        [],
+        [],
+    ]
+    task_repo.create.side_effect = IntegrityError(
+        statement=None,
+        params=None,
+        orig=Exception("UNIQUE constraint failed"),
+    )
+
+    service = RecurringTaskService(
+        recurring_repo=recurring_repo,
+        task_repo=task_repo,
+        lookahead_days=0,
+    )
+    result = await service.ensure_upcoming_tasks("test_user")
+
+    assert result["created_count"] == 0
+    assert task_repo.create.await_count == 1
+    assert recurring_repo.update.await_count == 1
+    update_call = recurring_repo.update.await_args
+    assert update_call.args[0] == "test_user"
+    assert update_call.args[1] == definition.id
+    assert update_call.args[2].last_generated_date == today

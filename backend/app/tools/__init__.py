@@ -56,6 +56,7 @@ from app.tools.recurring_task_tools import (
     update_recurring_task_tool,
 )
 from app.tools.scheduler_tools import (
+    apply_schedule_request_tool,
     get_current_datetime_tool,
     schedule_agent_task_tool,
 )
@@ -103,6 +104,7 @@ __all__ = [
     "create_skill_tool",
     "load_skill_tool",
     "list_skills_index_tool",
+    "apply_schedule_request_tool",
     "get_current_datetime_tool",
     "schedule_agent_task_tool",
     "list_phases_tool",
