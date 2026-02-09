@@ -651,8 +651,14 @@ create_task(
 ## Browser Delegation
 
 - If website operation is requested, call `run_browser_task`.
+- If the task can be mostly deterministic, call `run_hybrid_rpa` with structured steps and keep AI fallback enabled.
+- Before calling `run_browser_task`, first check relevant skills:
+  - call `search_skills` with concise keywords from the user goal
+  - if a matching skill likely exists, call `load_skill` and inspect it
+  - if the skill contains `RPA Scenario (JSON)` with usable `steps`, prefer `run_hybrid_rpa` over `run_browser_task`
+- Use `run_browser_task` only when no reliable deterministic scenario can be formed from skills or current context.
 - If the user asks to save browser workflow as reusable SOP/skill, call `register_browser_skill`.
-- Never claim browser work completed without `run_browser_task` output.
+- Never claim browser work completed without `run_browser_task` or `run_hybrid_rpa` output.
 
 ## Schedule Preference Requests
 

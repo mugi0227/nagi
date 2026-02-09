@@ -71,6 +71,7 @@ from app.tools import (
     register_browser_skill_tool,
     reorder_agenda_items_tool,
     run_browser_task_tool,
+    run_hybrid_rpa_tool,
     schedule_agent_task_tool,
     search_memories_tool,
     search_similar_tasks_tool,
@@ -472,6 +473,7 @@ async def create_secretary_agent(
         load_skill_tool(memory_repo, user_id),
         list_skills_index_tool(memory_repo, user_id),
         run_browser_task_tool(),
+        run_hybrid_rpa_tool(),
         register_browser_skill_tool(),
         ask_user_questions_tool(),
     ]

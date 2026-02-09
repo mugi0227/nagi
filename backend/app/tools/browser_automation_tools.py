@@ -42,6 +42,51 @@ class RegisterBrowserSkillInput(BaseModel):
     )
 
 
+class RunHybridRpaInput(BaseModel):
+    """Input for run_hybrid_rpa tool."""
+
+    goal: str = Field(..., min_length=1, description="Overall automation goal")
+    scenario_name: Optional[str] = Field(
+        None,
+        description="Optional scenario name shown in activity log"
+    )
+    start_url: Optional[str] = Field(
+        None,
+        description="Optional URL to open before first RPA step"
+    )
+    steps: list[dict] = Field(
+        default_factory=list,
+        description=(
+            "Structured RPA steps. Supported types: "
+            "navigate/new_tab/click/type/scroll/wait/keypress/assert_text/assert_url."
+        ),
+    )
+    ai_fallback: bool = Field(
+        True,
+        description="If true, run browser AI fallback when deterministic RPA step fails"
+    )
+    ai_fallback_max_steps: int = Field(
+        3,
+        ge=1,
+        le=10,
+        description="Max planner steps per fallback attempt"
+    )
+    step_retry_limit: int = Field(
+        1,
+        ge=0,
+        le=3,
+        description="Retry count per deterministic step before fallback"
+    )
+    stop_on_failure: bool = Field(
+        True,
+        description="If true, stop scenario when a step cannot be recovered"
+    )
+    notes: Optional[str] = Field(
+        None,
+        description="Optional free-form context for execution"
+    )
+
+
 async def run_browser_task(input_data: RunBrowserTaskInput) -> dict:
     """
     Create browser task delegation payload for extension-side execution.
@@ -79,6 +124,31 @@ async def register_browser_skill(input_data: RegisterBrowserSkillInput) -> dict:
     }
 
 
+async def run_hybrid_rpa(input_data: RunHybridRpaInput) -> dict:
+    """
+    Request extension-side hybrid RPA execution (deterministic steps + AI fallback).
+    """
+    payload = {
+        "goal": input_data.goal,
+        "scenario_name": input_data.scenario_name,
+        "start_url": input_data.start_url,
+        "steps": input_data.steps,
+        "ai_fallback": input_data.ai_fallback,
+        "ai_fallback_max_steps": input_data.ai_fallback_max_steps,
+        "step_retry_limit": input_data.step_retry_limit,
+        "stop_on_failure": input_data.stop_on_failure,
+        "notes": input_data.notes,
+    }
+    return {
+        "status": "hybrid_rpa_requested",
+        "requires_extension_execution": True,
+        "kind": "run_hybrid_rpa",
+        "goal": input_data.goal,
+        "instruction": input_data.goal,
+        "payload": payload,
+    }
+
+
 def run_browser_task_tool() -> FunctionTool:
     """Create ADK tool for browser automation delegation."""
 
@@ -97,6 +167,33 @@ def run_browser_task_tool() -> FunctionTool:
         return await run_browser_task(RunBrowserTaskInput(**input_data))
 
     _tool.__name__ = "run_browser_task"
+    return FunctionTool(func=_tool)
+
+
+def run_hybrid_rpa_tool() -> FunctionTool:
+    """Create ADK tool for hybrid RPA execution via Chrome extension."""
+
+    async def _tool(input_data: dict) -> dict:
+        """
+        run_hybrid_rpa: Execute structured browser RPA steps and use AI only when needed.
+
+        Parameters:
+            goal (str): Overall automation goal.
+            scenario_name (str, optional): Display name for scenario.
+            start_url (str, optional): URL to open before step execution.
+            steps (list[dict], optional): Deterministic RPA steps.
+            ai_fallback (bool, optional): Enable fallback planner on failure.
+            ai_fallback_max_steps (int, optional): Planner step budget per fallback.
+            step_retry_limit (int, optional): Retry count for deterministic steps.
+            stop_on_failure (bool, optional): Stop when unrecoverable.
+            notes (str, optional): Extra context for runtime.
+
+        Returns:
+            dict: Delegation payload consumed by extension stream handler.
+        """
+        return await run_hybrid_rpa(RunHybridRpaInput(**input_data))
+
+    _tool.__name__ = "run_hybrid_rpa"
     return FunctionTool(func=_tool)
 
 
