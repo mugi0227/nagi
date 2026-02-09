@@ -1,4 +1,4 @@
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from uuid import UUID, uuid4
@@ -8,7 +8,10 @@ import pytest
 from app.models.enums import CreatedBy, TaskStatus
 from app.models.schedule_plan import ScheduleTimeBlock, TimeBlockMoveRequest
 from app.models.task import Task, TaskUpdate
-from app.services.daily_schedule_plan_service import DailySchedulePlanService
+from app.services.daily_schedule_plan_service import (
+    DailySchedulePlanService,
+    _build_meeting_intervals,
+)
 
 
 def _build_task(
@@ -17,6 +20,7 @@ def _build_task(
     project_id: UUID | None = None,
     start_time: datetime,
     end_time: datetime,
+    is_all_day: bool = False,
 ) -> Task:
     now = datetime.now(timezone.utc)
     return Task(
@@ -31,6 +35,7 @@ def _build_task(
         is_fixed_time=True,
         start_time=start_time,
         end_time=end_time,
+        is_all_day=is_all_day,
     )
 
 
@@ -160,3 +165,22 @@ async def test_move_time_block_falls_back_to_get_by_id_for_project_task() -> Non
     snapshot_call = plan_repo.update_task_snapshot_for_group.await_args.kwargs
     assert snapshot_call["plan_group_id"] == group_id
     assert snapshot_call["snapshot"].task_id == task_id
+
+
+def test_build_meeting_intervals_all_day_respects_target_date() -> None:
+    task_id = uuid4()
+    all_day_date = date(2026, 2, 8)
+    task = _build_task(
+        task_id,
+        start_time=datetime(2026, 2, 8, 0, 0, tzinfo=timezone.utc),
+        end_time=datetime(2026, 2, 8, 23, 59, tzinfo=timezone.utc),
+        is_all_day=True,
+    )
+
+    same_day = _build_meeting_intervals([task], all_day_date, "UTC")
+    other_day = _build_meeting_intervals([task], all_day_date + timedelta(days=1), "UTC")
+
+    assert len(same_day) == 1
+    assert same_day[0].start_minutes == 0
+    assert same_day[0].end_minutes == 24 * 60
+    assert other_day == []

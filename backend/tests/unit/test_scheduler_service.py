@@ -162,6 +162,32 @@ def test_planned_window_overrides_task_constraints():
     assert effective_due[task.id].date() == planned_end
 
 
+def test_pinned_date_uses_reference_today():
+    service = SchedulerService()
+    reference_today = date(2026, 2, 8)
+    blocked_start = datetime(2026, 2, 10, 0, 0, 0)
+    pinned_today = make_task(
+        "Pinned today",
+        estimated_minutes=60,
+        start_not_before=blocked_start,
+    )
+    pinned_today.pinned_date = datetime(2026, 2, 8, 0, 0, 0)
+    pinned_past = make_task(
+        "Pinned past",
+        estimated_minutes=60,
+        start_not_before=blocked_start,
+    )
+    pinned_past.pinned_date = datetime(2026, 2, 7, 0, 0, 0)
+
+    effective_start, _ = service._get_effective_constraints(
+        [pinned_today, pinned_past],
+        reference_today=reference_today,
+    )
+
+    assert effective_start[pinned_today.id] == reference_today
+    assert effective_start[pinned_past.id] == blocked_start.date()
+
+
 def test_parent_start_not_before_applies_to_subtask():
     service = SchedulerService()
     start_date = date.today()

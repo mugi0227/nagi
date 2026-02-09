@@ -18,7 +18,7 @@ from app.interfaces.schedule_snapshot_repository import IScheduleSnapshotReposit
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.interfaces.user_repository import IUserRepository
-from app.models.enums import TaskStatus
+from app.models.enums import ProjectVisibility, TaskStatus
 from app.models.schedule import (
     ScheduleDay,
     ScheduleResponse,
@@ -236,6 +236,15 @@ def _build_meeting_intervals(
         if not task.is_fixed_time:
             continue
         if task.is_all_day:
+            all_day_date: Optional[date] = None
+            if task.start_time:
+                all_day_date = _to_local_datetime(task.start_time, timezone).date()
+            elif task.start_not_before:
+                all_day_date = _to_local_datetime(task.start_not_before, timezone).date()
+            elif task.due_date:
+                all_day_date = _to_local_datetime(task.due_date, timezone).date()
+            if all_day_date != target_date:
+                continue
             intervals.append(TimeInterval(0, 24 * 60))
             continue
         if not task.start_time or not task.end_time:
@@ -553,6 +562,8 @@ class DailySchedulePlanService:
         assignments: Optional[list],
         user_id: str,
         filter_by_assignee: bool,
+        timezone: str,
+        team_project_ids: Optional[set[UUID]] = None,
     ) -> list[Task]:
         if not filter_by_assignee or assignments is None:
             return tasks
@@ -560,9 +571,14 @@ class DailySchedulePlanService:
         for assignment in assignments:
             assignees_by_task.setdefault(assignment.task_id, set()).add(assignment.assignee_id)
 
+        _team_ids = team_project_ids or set()
+
         def is_my_task(task: Task) -> bool:
             if not task.project_id:
-                return True
+                return True  # Personal task
+            if task.project_id not in _team_ids:
+                return True  # PRIVATE project task - always include
+            # TEAM project: only if assigned to me
             assignees = assignees_by_task.get(task.id)
             if not assignees or user_id not in assignees:
                 return False
@@ -578,7 +594,7 @@ class DailySchedulePlanService:
                     return False
             return True
 
-        today = date.today()
+        today = get_user_today(timezone)
         return [
             task
             for task in tasks
@@ -684,6 +700,13 @@ class DailySchedulePlanService:
         if apply_plan_constraints:
             planned_windows = await self._load_plan_windows(user_id, tasks)
 
+        # Build TEAM project ID set for PRIVATE/TEAM distinction
+        projects = await self._project_repo.list(user_id, limit=1000)
+        team_project_ids = {
+            p.id for p in projects
+            if p.visibility == ProjectVisibility.TEAM
+        }
+
         schedule = self._scheduler_service.build_schedule(
             tasks,
             project_priorities=project_priorities,
@@ -695,9 +718,17 @@ class DailySchedulePlanService:
             filter_by_assignee=filter_by_assignee,
             planned_window_by_task=planned_windows,
             user_timezone=timezone,
+            team_project_ids=team_project_ids,
         )
 
-        filtered_tasks = self._filter_tasks_for_plan(tasks, assignments, user_id, filter_by_assignee)
+        filtered_tasks = self._filter_tasks_for_plan(
+            tasks,
+            assignments,
+            user_id,
+            filter_by_assignee,
+            timezone,
+            team_project_ids=team_project_ids,
+        )
 
         time_blocks, updated_days, pinned_overflow = _build_time_blocks(
             schedule,
@@ -912,7 +943,19 @@ class DailySchedulePlanService:
             assignments = None
             if filter_by_assignee:
                 assignments = await self._assignment_repo.list_for_assignee(user_id)
-            current_tasks = self._filter_tasks_for_plan(current_tasks, assignments, user_id, filter_by_assignee)
+            projects = await self._project_repo.list(user_id, limit=1000)
+            team_project_ids = {
+                p.id for p in projects
+                if p.visibility == ProjectVisibility.TEAM
+            }
+            current_tasks = self._filter_tasks_for_plan(
+                current_tasks,
+                assignments,
+                user_id,
+                filter_by_assignee,
+                timezone,
+                team_project_ids=team_project_ids,
+            )
             pending_changes = _compute_pending_changes(
                 current_tasks,
                 plans[0].task_snapshots if plans else [],

@@ -9,6 +9,7 @@ from __future__ import annotations
 import calendar
 from datetime import date, datetime, timedelta
 from typing import Optional
+from uuid import UUID
 
 from app.core.logger import setup_logger
 from app.interfaces.recurring_task_repository import IRecurringTaskRepository
@@ -57,8 +58,10 @@ class RecurringTaskService:
             existing_due_dates = {
                 task.due_date.date() for task in existing_tasks if task.due_date
             }
+            seen_due_dates = set(existing_due_dates)
 
-            reference_date = today - timedelta(days=1)
+            base_reference = today - timedelta(days=1)
+            reference_date = max(base_reference, definition.last_generated_date or base_reference)
             latest_date: Optional[date] = None
 
             while True:
@@ -70,7 +73,13 @@ class RecurringTaskService:
                     reference_date = next_date
                     continue
 
-                if next_date in existing_due_dates:
+                if next_date in seen_due_dates:
+                    reference_date = next_date
+                    latest_date = next_date
+                    continue
+
+                if await self._has_existing_occurrence(user_id, definition.id, next_date):
+                    seen_due_dates.add(next_date)
                     reference_date = next_date
                     latest_date = next_date
                     continue
@@ -96,6 +105,7 @@ class RecurringTaskService:
                 )
                 task = await self.task_repo.create(user_id, task_data)
                 created.append(task.model_dump(mode="json"))
+                seen_due_dates.add(next_date)
 
                 reference_date = next_date
                 latest_date = next_date
@@ -108,6 +118,22 @@ class RecurringTaskService:
                 )
 
         return {"created_count": len(created), "tasks": created}
+
+    async def _has_existing_occurrence(
+        self,
+        user_id: str,
+        recurring_task_id: UUID,
+        occurrence_date: date,
+    ) -> bool:
+        day_start = datetime.combine(occurrence_date, datetime.min.time())
+        day_end = day_start + timedelta(days=1)
+        existing = await self.task_repo.list_by_recurring_task(
+            user_id=user_id,
+            recurring_task_id=recurring_task_id,
+            start_after=day_start,
+            end_before=day_end,
+        )
+        return any(task.due_date and task.due_date.date() == occurrence_date for task in existing)
 
     def _next_occurrence_after(
         self, definition: RecurringTask, after_date: date

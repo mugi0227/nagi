@@ -343,6 +343,7 @@ class SchedulerService:
         filter_by_assignee: bool = False,
         planned_window_by_task: Optional[dict[UUID, tuple[Optional[date], Optional[date]]]] = None,
         user_timezone: str = "Asia/Tokyo",
+        team_project_ids: Optional[set[UUID]] = None,
     ) -> ScheduleResponse:
         """
         Build a capacity-aware schedule across multiple days.
@@ -351,8 +352,9 @@ class SchedulerService:
         - Dependencies are respected.
         - Supports multi-user capacity if members and assignments are provided.
         """
+        local_today = datetime.now(ZoneInfo(user_timezone)).date()
         if not tasks:
-            start = start_date or date.today()
+            start = start_date or local_today
             return ScheduleResponse(
                 start_date=start,
                 days=[],
@@ -361,7 +363,7 @@ class SchedulerService:
                 excluded_tasks=[],
             )
 
-        start = start_date or date.today()
+        start = start_date or local_today
         project_priorities = project_priorities or {}
         capacity_by_weekday = capacity_by_weekday if capacity_by_weekday and len(capacity_by_weekday) == 7 else None
         capacity_ratio = 1.0 if capacity_ratio is None else capacity_ratio
@@ -416,6 +418,7 @@ class SchedulerService:
         effective_start_by_task, effective_due_by_task = self._get_effective_constraints(
             tasks,
             planned_window_by_task=planned_window_by_task,
+            reference_today=local_today,
         )
         effective_due_date_by_task: dict[UUID, date] = {
             task_id: due.date() for task_id, due in effective_due_by_task.items()
@@ -483,12 +486,17 @@ class SchedulerService:
                     assignees_by_task[a.task_id] = set()
                 assignees_by_task[a.task_id].add(a.assignee_id)
 
+            _team_ids = team_project_ids or set()
+
             def is_my_task(task: Task) -> bool:
                 if not task.project_id:
                     return True  # Personal tasks (Inbox/Memo) always included
+                if task.project_id not in _team_ids:
+                    return True  # PRIVATE project task - always include
+                # TEAM project: only if assigned to me
                 assignees = assignees_by_task.get(task.id)
                 if not assignees:
-                    return False  # Unassigned project tasks excluded
+                    return False  # Unassigned TEAM project tasks excluded
                 if current_user_id not in assignees:
                     return False
                 # Exclude requires_all_completion tasks where I already checked
@@ -503,11 +511,10 @@ class SchedulerService:
 
             # Pinned tasks bypass assignee filter — the user explicitly chose
             # to pin this task to a date, so it must appear in the schedule.
-            today = date.today()
             candidate_tasks = [
                 t for t in candidate_tasks
                 if is_my_task(t)
-                or (t.pinned_date and t.pinned_date.date() >= today)
+                or (t.pinned_date and t.pinned_date.date() >= local_today)
             ]
 
         candidate_ids = {task.id for task in candidate_tasks}
@@ -1047,10 +1054,13 @@ class SchedulerService:
         user_timezone: str = "UTC",
     ) -> TodayTasksResponse:
         """Extract today's tasks and top3 from schedule."""
-        today_date = today or date.today()
+        today_date = today or datetime.now(ZoneInfo(user_timezone)).date()
         task_map = {task.id: task for task in tasks}
         project_priorities = project_priorities or {}
-        _, effective_due_by_task = self._get_effective_constraints(tasks)
+        _, effective_due_by_task = self._get_effective_constraints(
+            tasks,
+            reference_today=today_date,
+        )
         effective_due_date_by_task: dict[UUID, date] = {
             task_id: due.date() for task_id, due in effective_due_by_task.items()
         }
@@ -1236,11 +1246,13 @@ class SchedulerService:
     def _get_effective_constraints(
         tasks: list[Task],
         planned_window_by_task: Optional[dict[UUID, tuple[Optional[date], Optional[date]]]] = None,
+        reference_today: Optional[date] = None,
     ) -> tuple[dict[UUID, date], dict[UUID, datetime]]:
         task_map = {task.id: task for task in tasks}
         planned_window_by_task = planned_window_by_task or {}
         effective_start_by_task: dict[UUID, date] = {}
         effective_due_by_task: dict[UUID, datetime] = {}
+        today = reference_today or date.today()
 
         def get_parent_bounds(task: Task) -> tuple[Optional[datetime], Optional[datetime]]:
             parent_start_candidates: list[datetime] = []
@@ -1270,7 +1282,7 @@ class SchedulerService:
             # Pinned date is the strongest signal — unconditionally override
             # start_not_before / parent constraints.  Past pins are ignored
             # so that "今日やる" only lasts for one day.
-            if task.pinned_date and task.pinned_date.date() >= date.today():
+            if task.pinned_date and task.pinned_date.date() >= today:
                 start_dt = task.pinned_date
 
             planned_start, planned_end = planned_window_by_task.get(task.id, (None, None))

@@ -263,37 +263,58 @@ async def list_tasks(
             )
             tasks = [t for t in all_tasks if t.is_fixed_time]
         else:
-            # My Tasks mode (No project_id) - Show Assigned + Personal
-            # 1. Assigned
-            assignments = await assignment_repo.list_for_assignee(user.id)
-            assigned_ids = [a.task_id for a in assignments]
-            assigned_tasks = await repo.get_many(assigned_ids)
+            # My Tasks mode (No project_id):
+            #   - Personal tasks (project_id NULL): all
+            #   - PRIVATE project tasks: all (single-user projects)
+            #   - TEAM project tasks: only assigned to me
 
-            # 2. Personal (Inbox)
-            # Fetching more than limit to ensure we have enough after merge/filter
-            personal_tasks = await repo.list_personal_tasks(
-                user.id, status=status, limit=limit + 100, offset=0
+            # 1. Get all tasks owned by this user
+            all_user_tasks = await repo.list(
+                user.id,
+                project_id=None,
+                status=status,
+                include_done=include_done,
+                limit=1000,
+                offset=0,
             )
 
-            # Merge
-            all_tasks_map = {t.id: t for t in personal_tasks}
+            # 2. Get assignments for TEAM project filtering
+            assignments = await assignment_repo.list_for_assignee(user.id)
+            assigned_task_ids = {a.task_id for a in assignments}
+
+            # 3. Build TEAM project ID set
+            projects = await project_repo.list(user.id, limit=1000)
+            team_project_ids = {
+                p.id for p in projects
+                if p.visibility == ProjectVisibility.TEAM
+            }
+
+            # 4. Filter: keep personal + PRIVATE project + assigned TEAM project
+            def should_include(task: Task) -> bool:
+                if not task.project_id:
+                    return True  # Personal task
+                if task.project_id not in team_project_ids:
+                    return True  # PRIVATE project task
+                # TEAM project: only if assigned to me
+                return task.id in assigned_task_ids
+
+            tasks = [t for t in all_user_tasks if should_include(t)]
+
+            # Also include TEAM project tasks assigned to me but owned by others
+            assigned_tasks = await repo.get_many(list(assigned_task_ids))
+            existing_ids = {t.id for t in tasks}
             for t in assigned_tasks:
-                # Apply filters to assigned tasks manually if needed?
+                if t.id in existing_ids:
+                    continue
                 if status and t.status.value != status:
                     continue
-                if not include_done and t.status.value == "done": # assuming "done" value
+                if not include_done and t.status == TaskStatus.DONE:
                     continue
-                all_tasks_map[t.id] = t
+                tasks.append(t)
 
-            tasks = list(all_tasks_map.values())
-
-            # Sort by created_at desc (default) or whatever
             tasks.sort(key=lambda t: t.created_at, reverse=True)
-
-            # Manual pagination
             tasks = tasks[offset : offset + limit]
 
-            # Apply exclude_meetings filter
             if exclude_meetings:
                 tasks = [t for t in tasks if not t.is_fixed_time]
 

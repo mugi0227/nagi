@@ -165,6 +165,7 @@ async def get_top3_tasks(
         current_user_id=user.id,
         assignments=all_assignments,
         filter_by_assignee=True,
+        user_timezone=user_timezone,
     )
     today_result = scheduler_service.get_today_tasks(
         schedule,

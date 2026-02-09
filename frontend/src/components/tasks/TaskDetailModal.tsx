@@ -176,6 +176,10 @@ export function TaskDetailModal({
   const handleDoToday = async () => {
     try {
       await tasksApi.doToday(task.id, { pin: true });
+      await tasksApi.recalculateSchedulePlan({
+        fromNow: true,
+        filterByAssignee: true,
+      });
       for (const key of [
         ['tasks'], ['subtasks'], ['top3'], ['today-tasks'], ['schedule'],
         ['task-detail'], ['task-assignments'], ['project'],

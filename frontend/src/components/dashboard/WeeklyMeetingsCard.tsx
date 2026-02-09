@@ -467,6 +467,11 @@ export function WeeklyMeetingsCard({
     setIsSubmitting(taskId);
     try {
       await tasksApi.doToday(taskId, { pin: true });
+      await tasksApi.recalculateSchedulePlan({
+        fromNow: true,
+        maxDays: DEFAULT_PLAN_DAYS,
+        filterByAssignee: true,
+      });
       invalidateAfterChange(true);
     } catch {
       alert(TEXT.doTodayError);

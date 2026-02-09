@@ -2,8 +2,12 @@
 Tests for RecurringTaskService occurrence calculation logic.
 """
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from uuid import uuid4
+
+import pytest
 
 from app.models.enums import EnergyLevel, Priority, RecurringTaskFrequency
 from app.models.recurring_task import RecurringTask
@@ -348,3 +352,31 @@ class TestComputeDueDate:
         )
         result = svc._compute_due_date(defn, date(2025, 3, 15))
         assert result == datetime(2025, 3, 15, 0, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_ensure_upcoming_tasks_skips_duplicate_occurrence_on_recheck():
+    today = date.today()
+    definition = _make_definition(
+        RecurringTaskFrequency.DAILY,
+        anchor_date=today - timedelta(days=1),
+    )
+    recurring_repo = AsyncMock()
+    recurring_repo.list.return_value = [definition]
+
+    task_repo = AsyncMock()
+    existing_for_today = SimpleNamespace(due_date=datetime.combine(today, datetime.min.time()))
+    task_repo.list_by_recurring_task.side_effect = [
+        [],
+        [existing_for_today],
+    ]
+
+    service = RecurringTaskService(
+        recurring_repo=recurring_repo,
+        task_repo=task_repo,
+        lookahead_days=0,
+    )
+    result = await service.ensure_upcoming_tasks("test_user")
+
+    assert result["created_count"] == 0
+    task_repo.create.assert_not_awaited()
