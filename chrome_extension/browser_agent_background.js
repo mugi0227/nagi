@@ -41,6 +41,20 @@ const MAX_CHAT_MESSAGES = 400;
 const textEncoder = new TextEncoder();
 const DECISION_RETRY_MAX = 2;
 const DECISION_RETRY_DELAY_MS = 600;
+const RPA_FALLBACK_DEFAULT_STEPS = 3;
+const RPA_STEP_RETRY_DEFAULT = 1;
+const RPA_SUPPORTED_STEP_TYPES = new Set([
+  "navigate",
+  "new_tab",
+  "click",
+  "type",
+  "scroll",
+  "wait",
+  "keypress",
+  "assert_text",
+  "assert_url",
+  "ai"
+]);
 const HIGH_RISK_KEYWORDS = [
   "delete",
   "remove",
@@ -62,6 +76,7 @@ const HIGH_RISK_KEYWORDS = [
 const panelPorts = new Set();
 const state = {
   running: false,
+  mode: "idle",
   sessionId: null,
   goal: "",
   step: 0,
@@ -75,6 +90,8 @@ const state = {
   scrollStallCount: 0,
   pendingApproval: null,
   pendingUserInstructions: [],
+  activeRpa: null,
+  activeRecording: null,
   updatedAt: Date.now()
 };
 
@@ -146,7 +163,36 @@ async function handleMessage(message, sender) {
     return startAgent(message?.payload?.goal, message?.payload?.config, sender);
   }
 
+  if (type === "rpa.start") {
+    return startHybridRpa(
+      message?.payload?.goal,
+      message?.payload?.scenario,
+      message?.payload?.config,
+      sender
+    );
+  }
+
+  if (type === "rpa.record.start") {
+    return startRpaRecording(message?.payload, sender);
+  }
+
+  if (type === "rpa.record.stop") {
+    return stopRpaRecording(message?.payload);
+  }
+
+  if (type === "rpa.record.event") {
+    ingestRpaRecordingEvent(message?.payload, sender);
+    return { ok: true };
+  }
+
+  if (type === "skill.suggest_metadata") {
+    return suggestSkillMetadata(message?.payload);
+  }
+
   if (type === "agent.stop") {
+    if (state.activeRecording) {
+      await stopRpaRecording({ discard: true });
+    }
     await stopAgent("Stopped by user.");
     return { ok: true, status: getStatus() };
   }
@@ -200,6 +246,10 @@ async function startAgent(goal, incomingConfig, sender) {
     return { ok: false, error: "Goal is empty." };
   }
 
+  if (state.activeRecording) {
+    await stopRpaRecording({ discard: true });
+  }
+
   if (state.running) {
     await stopAgent("Previous session was stopped before starting a new one.", false);
   }
@@ -220,6 +270,7 @@ async function startAgent(goal, incomingConfig, sender) {
   }
 
   state.running = true;
+  state.mode = "planner";
   state.sessionId = buildSessionId();
   state.goal = cleanGoal;
   state.step = 0;
@@ -231,6 +282,8 @@ async function startAgent(goal, incomingConfig, sender) {
   state.scrollStallCount = 0;
   clearPendingApproval();
   state.pendingUserInstructions = [];
+  state.activeRpa = null;
+  state.activeRecording = null;
   state.updatedAt = Date.now();
 
   await updateRunningIndicator(state.tabId, true, state.step);
@@ -248,10 +301,1049 @@ async function startAgent(goal, incomingConfig, sender) {
   return { ok: true, status: getStatus() };
 }
 
+function normalizeRpaScenario(rawScenario, fallbackGoal) {
+  const source = rawScenario && typeof rawScenario === "object" ? rawScenario : {};
+  const scenarioNameRaw = source.name || source.scenario_name || source.scenarioName || fallbackGoal;
+  const scenarioName = truncate(String(scenarioNameRaw || "Hybrid RPA Scenario"), 120).trim();
+  const startUrl = normalizeNavigationUrl(
+    String(source.start_url || source.startUrl || "").trim()
+  );
+  const rawSteps = Array.isArray(source.steps) ? source.steps : [];
+  const steps = rawSteps
+    .map((step, index) => normalizeRpaStep(step, index))
+    .filter((step) => Boolean(step));
+
+  const aiFallbackMaxSteps = clampNumber(
+    source.ai_fallback_max_steps ?? source.aiFallbackMaxSteps,
+    1,
+    10,
+    RPA_FALLBACK_DEFAULT_STEPS
+  );
+  const stepRetryLimit = clampNumber(
+    source.step_retry_limit ?? source.stepRetryLimit,
+    0,
+    3,
+    RPA_STEP_RETRY_DEFAULT
+  );
+
+  return {
+    name: scenarioName || "Hybrid RPA Scenario",
+    startUrl,
+    steps,
+    aiFallback: source.ai_fallback !== false,
+    aiFallbackMaxSteps,
+    stepRetryLimit,
+    stopOnFailure: source.stop_on_failure !== false,
+    notes: String(source.notes || "").trim()
+  };
+}
+
+function normalizeRpaStep(rawStep, index) {
+  if (!rawStep || typeof rawStep !== "object") {
+    return null;
+  }
+  const type = String(rawStep.type || "").trim().toLowerCase();
+  if (!RPA_SUPPORTED_STEP_TYPES.has(type)) {
+    return null;
+  }
+
+  const target =
+    rawStep.target && typeof rawStep.target === "object" ? rawStep.target : {};
+  const args =
+    rawStep.args && typeof rawStep.args === "object" ? rawStep.args : {};
+
+  const selector = String(
+    rawStep.selector ||
+      target.selector ||
+      args.selector ||
+      ""
+  ).trim();
+  const elementId = String(
+    rawStep.element_id ||
+      rawStep.elementId ||
+      target.element_id ||
+      target.elementId ||
+      ""
+  ).trim();
+  const text = String(
+    rawStep.text ??
+      args.text ??
+      ""
+  );
+  const textHint = String(
+    rawStep.text_hint ||
+      rawStep.textHint ||
+      rawStep.label ||
+      rawStep.target_text ||
+      rawStep.targetText ||
+      ""
+  ).trim();
+  const description = String(rawStep.description || "").trim();
+
+  const step = {
+    id: `rpa_${index + 1}`,
+    index: index + 1,
+    type,
+    selector,
+    elementId,
+    text,
+    textHint,
+    key: String(rawStep.key || args.key || "").trim(),
+    url: normalizeNavigationUrl(String(rawStep.url || args.url || "").trim()),
+    dy: clampNumber(rawStep.dy ?? args.dy, -4000, 4000, 900),
+    dx: clampNumber(rawStep.dx ?? args.dx, -4000, 4000, 0),
+    waitMs: clampNumber(rawStep.ms ?? rawStep.wait_ms ?? args.ms, 200, 10000, 1000),
+    assertText: String(
+      rawStep.assert_text ||
+        rawStep.expect_text ||
+        args.assert_text ||
+        ""
+    ).trim(),
+    assertUrlContains: String(
+      rawStep.assert_url_contains ||
+        rawStep.expect_url_contains ||
+        rawStep.contains ||
+        args.assert_url_contains ||
+        ""
+    ).trim(),
+    aiGoal: String(rawStep.goal || args.goal || description || "").trim(),
+    optional: Boolean(rawStep.optional),
+    description
+  };
+
+  if (type === "type" && !step.text) {
+    return null;
+  }
+  if (type === "navigate" || type === "new_tab") {
+    if (!step.url) {
+      return null;
+    }
+  }
+  if (type === "assert_text" && !step.assertText && !step.text) {
+    return null;
+  }
+  if (type === "assert_url" && !step.assertUrlContains && !step.url) {
+    return null;
+  }
+  if (type === "ai" && !step.aiGoal) {
+    return null;
+  }
+  return step;
+}
+
+function describeRpaStep(step) {
+  if (!step || typeof step !== "object") {
+    return "unknown step";
+  }
+  if (step.description) {
+    return step.description;
+  }
+  if (step.type === "navigate") {
+    return `navigate ${safeUrl(step.url)}`;
+  }
+  if (step.type === "new_tab") {
+    return `open new tab ${safeUrl(step.url)}`;
+  }
+  if (step.type === "click") {
+    if (step.selector) {
+      return `click selector ${truncate(step.selector, 90)}`;
+    }
+    if (step.textHint) {
+      return `click target containing "${truncate(step.textHint, 60)}"`;
+    }
+    return "click target";
+  }
+  if (step.type === "type") {
+    const target = step.selector || step.textHint || step.elementId || "target";
+    return `type "${truncate(step.text, 60)}" into ${truncate(target, 80)}`;
+  }
+  if (step.type === "scroll") {
+    return `scroll dy=${step.dy}`;
+  }
+  if (step.type === "wait") {
+    return `wait ${step.waitMs}ms`;
+  }
+  if (step.type === "keypress") {
+    return `keypress "${step.key || "Enter"}"`;
+  }
+  if (step.type === "assert_text") {
+    return `assert page contains "${truncate(step.assertText || step.text, 70)}"`;
+  }
+  if (step.type === "assert_url") {
+    return `assert URL contains "${truncate(step.assertUrlContains || step.url || "", 90)}"`;
+  }
+  if (step.type === "ai") {
+    return `AI step: ${truncate(step.aiGoal, 100)}`;
+  }
+  return step.type;
+}
+
+function resolveSelectorFromHint(step, observation) {
+  if (!observation?.page?.elements || !Array.isArray(observation.page.elements)) {
+    return null;
+  }
+
+  const hint = String(step.textHint || "").trim().toLowerCase();
+  if (!hint) {
+    return null;
+  }
+
+  for (const element of observation.page.elements) {
+    const haystack = [
+      element.label,
+      element.text,
+      element.ariaLabel,
+      element.placeholder,
+      element.selector
+    ]
+      .map((value) => String(value || "").toLowerCase())
+      .join(" ");
+    if (haystack.includes(hint)) {
+      return {
+        selector: typeof element.selector === "string" ? element.selector : "",
+        elementId: typeof element.id === "string" ? element.id : ""
+      };
+    }
+  }
+  return null;
+}
+
+function toActionFromRpaStep(step, observation) {
+  if (!step || typeof step !== "object") {
+    return null;
+  }
+
+  const selectorFromHint = resolveSelectorFromHint(step, observation);
+  const target = {};
+  if (step.elementId) {
+    target.element_id = step.elementId;
+  }
+  if (step.selector) {
+    target.selector = step.selector;
+  } else if (selectorFromHint?.selector) {
+    target.selector = selectorFromHint.selector;
+    if (!target.element_id && selectorFromHint.elementId) {
+      target.element_id = selectorFromHint.elementId;
+    }
+  }
+
+  if (step.type === "navigate") {
+    return { type: "navigate", target: {}, args: { url: step.url } };
+  }
+  if (step.type === "new_tab") {
+    return { type: "new_tab", target: {}, args: { url: step.url } };
+  }
+  if (step.type === "click") {
+    if (!target.selector) {
+      return null;
+    }
+    return { type: "click", target, args: {} };
+  }
+  if (step.type === "type") {
+    if (!target.selector) {
+      return null;
+    }
+    return {
+      type: "type",
+      target,
+      args: {
+        text: step.text,
+        pressEnter: false
+      }
+    };
+  }
+  if (step.type === "scroll") {
+    return {
+      type: "scroll",
+      target: {},
+      args: {
+        dy: step.dy,
+        dx: step.dx
+      }
+    };
+  }
+  if (step.type === "wait") {
+    return { type: "wait", target: {}, args: { ms: step.waitMs } };
+  }
+  if (step.type === "keypress") {
+    return {
+      type: "keypress",
+      target,
+      args: {
+        key: step.key || "Enter"
+      }
+    };
+  }
+  return null;
+}
+
+function evaluateRpaStepAssertions(step, observation) {
+  if (!observation || typeof observation !== "object") {
+    return { ok: false, message: "No observation available." };
+  }
+  const url = String(observation.url || "");
+  const textSnippet = String(observation?.page?.textSnippet || "");
+  const normalizedText = textSnippet.toLowerCase();
+
+  const assertText = String(step?.assertText || "").trim() || (step?.type === "assert_text" ? String(step?.text || "").trim() : "");
+  if (assertText) {
+    if (!normalizedText.includes(assertText.toLowerCase())) {
+      return {
+        ok: false,
+        message: `Expected text not found: "${truncate(assertText, 120)}"`
+      };
+    }
+  }
+
+  const assertUrlContains =
+    String(step?.assertUrlContains || "").trim() ||
+    (step?.type === "assert_url" ? String(step?.url || "").trim() : "");
+  if (assertUrlContains) {
+    if (!url.includes(assertUrlContains)) {
+      return {
+        ok: false,
+        message: `URL assertion failed. expected contains "${truncate(assertUrlContains, 120)}", actual ${safeUrl(url)}`
+      };
+    }
+  }
+
+  return { ok: true, message: "Assertions passed." };
+}
+
+async function runAiRecoveryForRpaStep(scenario, step, failureMessage) {
+  const maxFallbackSteps = clampNumber(
+    scenario?.aiFallbackMaxSteps,
+    1,
+    10,
+    RPA_FALLBACK_DEFAULT_STEPS
+  );
+  const subGoal =
+    step?.type === "ai"
+      ? step.aiGoal
+      : `Recover this RPA step and continue the business workflow: ${describeRpaStep(step)}`;
+  const recoveryContext = [
+    `Scenario: ${scenario?.name || "Hybrid RPA"}`,
+    `RPA step: ${describeRpaStep(step)}`,
+    `Failure: ${failureMessage || "unknown"}`
+  ].join(" | ");
+  let visualReason =
+    step?.type === "ai" ? "" : String(failureMessage || "").trim();
+
+  for (let attempt = 1; attempt <= maxFallbackSteps; attempt += 1) {
+    if (!state.running) {
+      return { ok: false, message: "Session stopped." };
+    }
+    if (state.step >= state.config.maxSteps) {
+      return { ok: false, message: `Max steps reached (${state.config.maxSteps}).` };
+    }
+
+    state.step += 1;
+    state.updatedAt = Date.now();
+    broadcastStatus();
+    await updateRunningIndicator(state.tabId, true, state.step);
+
+    let before;
+    let decision;
+    try {
+      before = await collectObservation(
+        state.tabId,
+        buildOnDemandScreenshotOptions(
+          visualReason,
+          `AI fallback context ${attempt}`
+        )
+      );
+      const decisionRecoveryContext = [
+        recoveryContext,
+        visualReason ? `Visual hint: ${truncate(visualReason, 140)}` : "",
+        `AI fallback attempt ${attempt}/${maxFallbackSteps}`
+      ]
+        .filter(Boolean)
+        .join(" | ");
+      decision = await requestDecision(before, {
+        goal: subGoal,
+        recoveryContext: decisionRecoveryContext
+      });
+      visualReason = "";
+    } catch (error) {
+      pushChat(
+        "system",
+        `[AI fallback] Attempt ${attempt}/${maxFallbackSteps} failed before action: ${error.message}`
+      );
+      visualReason = `Decision failed: ${error.message}`;
+      continue;
+    }
+    const action = normalizeAction(decision?.action, before);
+    if (!action) {
+      visualReason = "Model action was not executable from DOM context.";
+      continue;
+    }
+
+    const reasoning = typeof decision?.reasoning === "string" ? decision.reasoning.trim() : "";
+    pushChat("assistant", `[AI fallback ${attempt}/${maxFallbackSteps}] ${describeAction(action)}${reasoning ? `\nReason: ${reasoning}` : ""}`);
+
+    if (action.type === "finish") {
+      const finalAnswer =
+        typeof decision?.final_answer === "string" && decision.final_answer.trim()
+          ? decision.final_answer.trim()
+          : "AI fallback marked this step complete.";
+      pushChat("assistant", finalAnswer);
+      return { ok: true, message: "finish" };
+    }
+
+    const highRiskReason = getHighRiskReason(action, before);
+    if (highRiskReason) {
+      const approved = await requestHighRiskApproval(action, before, highRiskReason);
+      if (!approved) {
+        return { ok: false, message: "AI fallback action was not approved." };
+      }
+    }
+
+    const execution = await executeAction(action);
+    if (!execution.ok) {
+      visualReason = `Action failed: ${execution.message || "unknown"}`;
+      continue;
+    }
+
+    if (action.type !== "wait") {
+      await sleep(state.config.settleDelayMs);
+    }
+    let after;
+    try {
+      after = await collectObservation(state.tabId);
+    } catch (error) {
+      pushChat("system", `[AI fallback] Observation failed: ${error.message}`);
+      visualReason = `Post-action observation failed: ${error.message}`;
+      continue;
+    }
+    const change = evaluateStateChange(before, after);
+    pushChat("system", `[AI fallback] ${change.summary}`);
+
+    const assertion = evaluateRpaStepAssertions(step, after);
+    if (assertion.ok) {
+      return {
+        ok: true,
+        message: execution.message || "AI fallback succeeded."
+      };
+    }
+    visualReason = assertion.message || "Assertion failed after AI fallback action.";
+  }
+
+  return {
+    ok: false,
+    message: `AI fallback exceeded ${maxFallbackSteps} steps without satisfying the step.`
+  };
+}
+
+async function executeHybridRpaStep(scenario, step, stepIndex) {
+  try {
+    const stepNumber = stepIndex + 1;
+    const retries = clampNumber(scenario?.stepRetryLimit, 0, 3, RPA_STEP_RETRY_DEFAULT);
+
+    if (step.type === "ai") {
+      return runAiRecoveryForRpaStep(scenario, step, "AI step requested by scenario");
+    }
+
+    if (step.type === "assert_text" || step.type === "assert_url") {
+      const observation = await collectObservation(state.tabId);
+      return evaluateRpaStepAssertions(step, observation);
+    }
+
+    let lastFailure = "Unknown error";
+    for (let attempt = 1; attempt <= retries + 1; attempt += 1) {
+      if (!state.running) {
+        return { ok: false, message: "Session stopped." };
+      }
+      const before = await collectObservation(state.tabId);
+      const action = toActionFromRpaStep(step, before);
+      if (!action) {
+        return { ok: false, message: "RPA step could not be mapped to an executable browser action." };
+      }
+
+      const highRiskReason = getHighRiskReason(action, before);
+      if (highRiskReason) {
+        const approved = await requestHighRiskApproval(action, before, highRiskReason);
+        if (!approved) {
+          return { ok: false, message: "Step was not approved." };
+        }
+      }
+
+      const execution = await executeAction(action);
+      if (!execution.ok) {
+        lastFailure = execution.message || "Action failed.";
+        if (attempt <= retries) {
+          pushChat(
+            "system",
+            `RPA step ${stepNumber} retry ${attempt}/${retries}: ${lastFailure}`
+          );
+          await sleep(280);
+          continue;
+        }
+        return { ok: false, message: lastFailure };
+      }
+
+      if (action.type !== "wait") {
+        await sleep(state.config.settleDelayMs);
+      }
+      const after = await collectObservation(state.tabId);
+      const change = evaluateStateChange(before, after);
+      pushChat("system", `[RPA step ${stepNumber}] ${change.summary}`);
+
+      const assertion = evaluateRpaStepAssertions(step, after);
+      if (assertion.ok) {
+        return { ok: true, message: execution.message || "Step completed." };
+      }
+      lastFailure = assertion.message || "Assertion failed.";
+      if (attempt <= retries) {
+        pushChat(
+          "system",
+          `RPA step ${stepNumber} assertion retry ${attempt}/${retries}: ${lastFailure}`
+        );
+        await sleep(280);
+        continue;
+      }
+      return { ok: false, message: lastFailure };
+    }
+
+    return { ok: false, message: lastFailure };
+  } catch (error) {
+    return { ok: false, message: error.message || "RPA step execution error." };
+  }
+}
+
+async function runHybridRpaLoop(scenario) {
+  const totalSteps = Array.isArray(scenario?.steps) ? scenario.steps.length : 0;
+  if (scenario?.startUrl && normalizeNavigationUrl(scenario.startUrl)) {
+    pushChat("assistant", `Hybrid RPA start URL: ${safeUrl(scenario.startUrl)}`);
+    const nav = await executeAction({
+      type: "navigate",
+      target: {},
+      args: { url: scenario.startUrl }
+    });
+    if (!nav.ok) {
+      pushChat("system", `Failed to open start URL: ${nav.message}`);
+      if (scenario.stopOnFailure) {
+        const tabId = state.tabId;
+        state.running = false;
+        state.mode = "idle";
+        state.activeRpa = null;
+        state.updatedAt = Date.now();
+        state.scrollStallCount = 0;
+        clearPendingApproval();
+        await updateRunningIndicator(tabId, false, state.step);
+        broadcastStatus();
+        await persistChat();
+        return;
+      }
+    } else {
+      await sleep(state.config.settleDelayMs);
+    }
+  }
+
+  if (totalSteps === 0) {
+    pushChat("assistant", "Hybrid RPA scenario has no deterministic steps, so no action was executed.");
+  }
+
+  for (let i = 0; i < totalSteps && state.running; i += 1) {
+    if (state.step >= state.config.maxSteps) {
+      pushChat("assistant", `Stopped: reached max steps (${state.config.maxSteps}).`);
+      break;
+    }
+
+    state.step += 1;
+    state.updatedAt = Date.now();
+    broadcastStatus();
+    await updateRunningIndicator(state.tabId, true, state.step);
+
+    const step = scenario.steps[i];
+    pushChat("assistant", `RPA step ${i + 1}/${totalSteps}: ${describeRpaStep(step)}`);
+    const result = await executeHybridRpaStep(scenario, step, i);
+
+    if (result.ok) {
+      if (state.activeRpa && typeof state.activeRpa.completedSteps === "number") {
+        state.activeRpa.completedSteps += 1;
+      }
+      continue;
+    }
+
+    if (step.optional) {
+      pushChat("system", `Optional RPA step failed and was skipped: ${result.message}`);
+      continue;
+    }
+
+    const canFallback = Boolean(scenario.aiFallback) && step.type !== "ai";
+    if (!canFallback) {
+      try {
+        await collectObservation(
+          state.tabId,
+          buildOnDemandScreenshotOptions(
+            `RPA step ${i + 1} failed: ${result.message}`,
+            `RPA failure step ${i + 1}`
+          )
+        );
+      } catch {
+        // no-op
+      }
+      pushChat("assistant", `Stopped: RPA step failed (${result.message}).`);
+      if (scenario.stopOnFailure) {
+        break;
+      }
+      continue;
+    }
+
+    pushChat("assistant", `RPA step failed, trying AI fallback: ${result.message}`);
+    const fallbackResult = await runAiRecoveryForRpaStep(scenario, step, result.message);
+    if (fallbackResult.ok) {
+      if (state.activeRpa && typeof state.activeRpa.fallbacks === "number") {
+        state.activeRpa.fallbacks += 1;
+      }
+      continue;
+    }
+
+    pushChat("assistant", `AI fallback failed: ${fallbackResult.message}`);
+    if (scenario.stopOnFailure) {
+      break;
+    }
+  }
+
+  const tabId = state.tabId;
+  state.running = false;
+  state.mode = "idle";
+  state.activeRpa = null;
+  state.updatedAt = Date.now();
+  state.scrollStallCount = 0;
+  clearPendingApproval();
+  await updateRunningIndicator(tabId, false, state.step);
+  broadcastStatus();
+  await persistChat();
+}
+
+async function startHybridRpa(goal, rawScenario, incomingConfig, sender) {
+  const cleanGoal = typeof goal === "string" ? goal.trim() : "";
+  if (!cleanGoal) {
+    return { ok: false, error: "Goal is empty." };
+  }
+
+  if (state.activeRecording) {
+    await stopRpaRecording({ discard: true });
+  }
+
+  if (state.running) {
+    await stopAgent("Previous session was stopped before starting a new one.", false);
+  }
+
+  const nextConfig = sanitizeConfig(incomingConfig ?? {});
+  state.config = normalizeConfigObject({ ...state.config, ...nextConfig });
+  await persistConfig();
+
+  const tab = await findTargetTab(sender);
+  if (!tab || typeof tab.id !== "number") {
+    return { ok: false, error: "No active tab was found." };
+  }
+  if (!isAutomatableUrl(tab.url)) {
+    return { ok: false, error: "This page cannot be automated." };
+  }
+  if (!isAllowedDomain(tab.url, state.config.allowedDomains)) {
+    return { ok: false, error: "Current domain is not in the allowlist." };
+  }
+
+  const scenario = normalizeRpaScenario(rawScenario, cleanGoal);
+
+  state.running = true;
+  state.mode = "hybrid_rpa";
+  state.sessionId = buildSessionId();
+  state.goal = cleanGoal;
+  state.step = 0;
+  state.tabId = tab.id;
+  state.windowId = tab.windowId ?? null;
+  state.lastAction = null;
+  state.lastChangeSummary = null;
+  state.stagnationCount = 0;
+  state.scrollStallCount = 0;
+  state.pendingUserInstructions = [];
+  state.activeRpa = {
+    name: scenario.name,
+    totalSteps: scenario.steps.length,
+    completedSteps: 0,
+    fallbacks: 0,
+    startedAt: Date.now()
+  };
+  state.activeRecording = null;
+  clearPendingApproval();
+  state.updatedAt = Date.now();
+
+  await updateRunningIndicator(state.tabId, true, state.step);
+  pushChat("system", `Hybrid RPA session ${state.sessionId} started on ${safeUrl(tab.url)}.`);
+  pushChat("user", cleanGoal, { kind: "goal" });
+  pushChat(
+    "assistant",
+    `Hybrid RPA started: ${scenario.name} (${scenario.steps.length} step${scenario.steps.length === 1 ? "" : "s"})`
+  );
+  if (scenario.notes) {
+    pushChat("system", `Scenario notes: ${scenario.notes}`);
+  }
+  broadcastStatus();
+
+  runHybridRpaLoop(scenario).catch(async (error) => {
+    pushChat("system", `Hybrid RPA runtime error: ${error.message}`);
+    await stopAgent("Hybrid RPA stopped due to error.", false);
+  });
+
+  return { ok: true, status: getStatus() };
+}
+
+function buildRecordingId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return `rec-${crypto.randomUUID()}`;
+  }
+  return `rec-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+}
+
+function normalizeRecordingName(input, fallback = "Demo Browser Workflow") {
+  const text = String(input || "").trim();
+  if (!text) {
+    return fallback;
+  }
+  return truncate(text, 120);
+}
+
+function toRecordingPayload(recording) {
+  if (!recording || typeof recording !== "object") {
+    return null;
+  }
+  return {
+    id: recording.id,
+    name: recording.name,
+    goal: recording.goal,
+    tabId: recording.tabId,
+    startedAt: recording.startedAt,
+    eventCount: Array.isArray(recording.events) ? recording.events.length : 0
+  };
+}
+
+function ingestRpaRecordingEvent(rawEvent, sender) {
+  if (!state.activeRecording || !sender?.tab || sender.tab.id !== state.activeRecording.tabId) {
+    return;
+  }
+  const event = normalizeRecordedEvent(rawEvent);
+  if (!event) {
+    return;
+  }
+  const events = Array.isArray(state.activeRecording.events) ? state.activeRecording.events : [];
+  const previous = events.length > 0 ? events[events.length - 1] : null;
+  if (previous) {
+    const sameType = previous.type === event.type;
+    const sameSelector = String(previous.selector || "") === String(event.selector || "");
+    const sameText = String(previous.text || "") === String(event.text || "");
+    const closeInTime = Math.abs((event.at || 0) - (previous.at || 0)) <= 180;
+    if (sameType && sameSelector && sameText && closeInTime) {
+      return;
+    }
+  }
+  events.push(event);
+  if (events.length > 2000) {
+    events.splice(0, events.length - 2000);
+  }
+  state.activeRecording.events = events;
+  state.activeRecording.lastEventAt = Date.now();
+  state.updatedAt = Date.now();
+}
+
+function normalizeRecordedEvent(rawEvent) {
+  if (!rawEvent || typeof rawEvent !== "object") {
+    return null;
+  }
+  const type = String(rawEvent.type || rawEvent.kind || "").trim().toLowerCase();
+  if (!type) {
+    return null;
+  }
+
+  const base = {
+    type,
+    at: Number(rawEvent.at) > 0 ? Number(rawEvent.at) : Date.now()
+  };
+
+  if (type === "navigate") {
+    const url = normalizeNavigationUrl(String(rawEvent.url || "").trim());
+    if (!url) {
+      return null;
+    }
+    return { ...base, url };
+  }
+
+  if (type === "click") {
+    const selector = String(rawEvent.selector || "").trim();
+    if (!selector) {
+      return null;
+    }
+    return {
+      ...base,
+      selector: truncate(selector, 300),
+      textHint: truncate(String(rawEvent.text_hint || rawEvent.textHint || "").trim(), 160)
+    };
+  }
+
+  if (type === "type") {
+    const selector = String(rawEvent.selector || "").trim();
+    if (!selector) {
+      return null;
+    }
+    return {
+      ...base,
+      selector: truncate(selector, 300),
+      text: truncate(String(rawEvent.text || ""), 240)
+    };
+  }
+
+  if (type === "scroll") {
+    const dy = Number(rawEvent.dy);
+    if (!Number.isFinite(dy) || Math.abs(dy) < 8) {
+      return null;
+    }
+    return {
+      ...base,
+      dy: clampNumber(dy, -5000, 5000, 0)
+    };
+  }
+
+  if (type === "keypress") {
+    const key = String(rawEvent.key || "").trim();
+    if (!key) {
+      return null;
+    }
+    return {
+      ...base,
+      key: truncate(key, 30)
+    };
+  }
+
+  return null;
+}
+
+function buildScenarioFromRecording(recording) {
+  const events = Array.isArray(recording?.events) ? recording.events : [];
+  const steps = [];
+  let startUrl = normalizeNavigationUrl(String(recording?.startUrl || "").trim()) || "";
+  let lastKnownUrl = startUrl;
+
+  const appendStep = (nextStep) => {
+    if (!nextStep || typeof nextStep !== "object") {
+      return;
+    }
+    const previous = steps.length > 0 ? steps[steps.length - 1] : null;
+    if (previous && previous.type === "type" && nextStep.type === "type") {
+      if (String(previous.selector || "") === String(nextStep.selector || "")) {
+        previous.text = nextStep.text;
+        return;
+      }
+    }
+    if (previous && previous.type === "scroll" && nextStep.type === "scroll") {
+      const prevDy = Number(previous.dy) || 0;
+      const nextDy = Number(nextStep.dy) || 0;
+      if (prevDy === 0 || nextDy === 0) {
+        // keep separate
+      } else if ((prevDy > 0 && nextDy > 0) || (prevDy < 0 && nextDy < 0)) {
+        previous.dy = clampNumber(prevDy + nextDy, -5000, 5000, nextDy);
+        return;
+      }
+    }
+    steps.push(nextStep);
+  };
+
+  for (const event of events) {
+    const type = String(event?.type || "").trim().toLowerCase();
+    if (!type) {
+      continue;
+    }
+
+    if (type === "navigate") {
+      const url = normalizeNavigationUrl(String(event?.url || "").trim());
+      if (!url) {
+        continue;
+      }
+      if (!startUrl) {
+        startUrl = url;
+        lastKnownUrl = url;
+        continue;
+      }
+      if (url !== lastKnownUrl) {
+        appendStep({ type: "navigate", url });
+        lastKnownUrl = url;
+      }
+      continue;
+    }
+
+    if (type === "click") {
+      const selector = String(event?.selector || "").trim();
+      if (!selector) {
+        continue;
+      }
+      appendStep({
+        type: "click",
+        selector,
+        text_hint: String(event?.textHint || "").trim()
+      });
+      continue;
+    }
+
+    if (type === "type") {
+      const selector = String(event?.selector || "").trim();
+      if (!selector) {
+        continue;
+      }
+      appendStep({
+        type: "type",
+        selector,
+        text: String(event?.text || "")
+      });
+      continue;
+    }
+
+    if (type === "scroll") {
+      appendStep({
+        type: "scroll",
+        dy: clampNumber(event?.dy, -5000, 5000, 0)
+      });
+      continue;
+    }
+
+    if (type === "keypress") {
+      const key = String(event?.key || "").trim();
+      if (!key) {
+        continue;
+      }
+      appendStep({ type: "keypress", key });
+      continue;
+    }
+  }
+
+  const limitedSteps = steps.slice(0, 60);
+  if (limitedSteps.length === 0) {
+    limitedSteps.push({
+      type: "ai",
+      goal: String(recording?.goal || recording?.name || "Complete the demonstrated workflow")
+    });
+  }
+
+  return {
+    name: normalizeRecordingName(recording?.name, "Demo Browser Workflow"),
+    start_url: startUrl || "",
+    steps: limitedSteps,
+    ai_fallback: true,
+    ai_fallback_max_steps: RPA_FALLBACK_DEFAULT_STEPS,
+    step_retry_limit: RPA_STEP_RETRY_DEFAULT,
+    stop_on_failure: true,
+    notes: String(recording?.notes || "").trim()
+  };
+}
+
+async function startRpaRecording(payload, sender) {
+  if (state.running) {
+    await stopAgent("Stopped running session to start demonstration recording.", false);
+  }
+
+  if (state.activeRecording) {
+    await stopRpaRecording({ discard: true });
+  }
+
+  const tab = await findTargetTab(sender);
+  if (!tab || typeof tab.id !== "number") {
+    return { ok: false, error: "No active tab was found." };
+  }
+  if (!isAutomatableUrl(tab.url)) {
+    return { ok: false, error: "This page cannot be recorded." };
+  }
+  if (!isAllowedDomain(tab.url, state.config.allowedDomains)) {
+    return { ok: false, error: "Current domain is not in the allowlist." };
+  }
+
+  await ensureContentScript(tab.id);
+  const recordingId = buildRecordingId();
+  const startResponse = await tabsSendMessage(tab.id, {
+    type: "agent.recording.start",
+    recordingId
+  });
+  if (!startResponse?.ok) {
+    return { ok: false, error: startResponse?.message || "Failed to start recording in content script." };
+  }
+
+  const scenarioName = normalizeRecordingName(
+    payload?.scenarioName || payload?.name || payload?.goal,
+    "Demo Browser Workflow"
+  );
+  const goal = normalizeRecordingName(payload?.goal || scenarioName, scenarioName);
+
+  state.mode = "recording";
+  state.activeRecording = {
+    id: recordingId,
+    name: scenarioName,
+    goal,
+    tabId: tab.id,
+    startedAt: Date.now(),
+    startUrl: String(tab.url || ""),
+    notes: String(payload?.notes || "").trim(),
+    events: [],
+    lastEventAt: Date.now()
+  };
+  state.tabId = tab.id;
+  state.windowId = tab.windowId ?? state.windowId;
+  state.updatedAt = Date.now();
+  pushChat("system", `RPA demo recording started: ${scenarioName}`);
+  broadcastStatus();
+  return {
+    ok: true,
+    recording: toRecordingPayload(state.activeRecording),
+    status: getStatus()
+  };
+}
+
+async function stopRpaRecording(payload = {}) {
+  if (!state.activeRecording) {
+    return { ok: false, error: "No active recording session." };
+  }
+
+  const recording = { ...state.activeRecording, events: [...(state.activeRecording.events || [])] };
+  try {
+    await ensureContentScript(recording.tabId);
+    await tabsSendMessage(recording.tabId, { type: "agent.recording.stop" });
+  } catch {
+    // no-op
+  }
+
+  state.activeRecording = null;
+  if (!state.running) {
+    state.mode = "idle";
+  }
+  state.updatedAt = Date.now();
+  broadcastStatus();
+
+  if (payload?.discard) {
+    pushChat("system", "RPA demo recording discarded.");
+    return { ok: true, discarded: true, status: getStatus() };
+  }
+
+  const scenario = buildScenarioFromRecording(recording);
+  const stepCount = Array.isArray(scenario?.steps) ? scenario.steps.length : 0;
+  pushChat(
+    "assistant",
+    `Generated RPA scenario from demo: ${scenario.name} (${stepCount} step${stepCount === 1 ? "" : "s"})`
+  );
+
+  return {
+    ok: true,
+    goal: recording.goal,
+    scenario,
+    eventCount: recording.events.length,
+    status: getStatus()
+  };
+}
+
 async function stopAgent(reason, appendMessage = true) {
   const wasRunning = state.running;
   const tabId = state.tabId;
   state.running = false;
+  state.mode = "idle";
+  state.activeRpa = null;
+  state.activeRecording = null;
   state.updatedAt = Date.now();
   state.scrollStallCount = 0;
   clearPendingApproval();
@@ -263,6 +1355,8 @@ async function stopAgent(reason, appendMessage = true) {
 }
 
 async function runAgentLoop() {
+  let nextDecisionVisualReason = "";
+
   while (state.running) {
     if (state.step >= state.config.maxSteps) {
       pushChat("assistant", `Stopped: reached max steps (${state.config.maxSteps}).`);
@@ -274,17 +1368,51 @@ async function runAgentLoop() {
     broadcastStatus();
     await updateRunningIndicator(state.tabId, true, state.step);
 
-    const before = await collectObservation(state.tabId);
+    const visualReason = nextDecisionVisualReason;
+    nextDecisionVisualReason = "";
+    let before = await collectObservation(
+      state.tabId,
+      buildOnDemandScreenshotOptions(
+        visualReason,
+        `Decision context step ${state.step}`
+      )
+    );
     if (!state.running) {
       break;
     }
 
-    const decision = await requestDecision(before);
+    let decision = await requestDecision(
+      before,
+      visualReason
+        ? {
+            recoveryContext: `Visual context required because: ${truncate(visualReason, 160)}`
+          }
+        : {}
+    );
     if (!state.running) {
       break;
     }
 
-    const action = normalizeAction(decision?.action, before);
+    let action = normalizeAction(decision?.action, before);
+
+    if (!action && !before.screenshotDataUrl && state.config.includeScreenshotsInPrompt) {
+      const fallbackReason = "DOM-only planning did not produce an executable action.";
+      pushChat(
+        "system",
+        "Planner action was not executable from DOM context, retrying with screenshot."
+      );
+      before = await collectObservation(
+        state.tabId,
+        buildOnDemandScreenshotOptions(
+          fallbackReason,
+          `Decision retry step ${state.step}`
+        )
+      );
+      decision = await requestDecision(before, {
+        recoveryContext: fallbackReason
+      });
+      action = normalizeAction(decision?.action, before);
+    }
 
     if (!action) {
       pushChat("system", "Stopped: model response could not be parsed as an action.");
@@ -315,6 +1443,13 @@ async function runAgentLoop() {
     const execution = await executeAction(action);
     if (!execution.ok) {
       pushChat("system", `Action failed: ${execution.message}`);
+      state.lastAction = action;
+      state.lastChangeSummary = `Action failed: ${execution.message || "unknown"}`;
+      nextDecisionVisualReason = `Action execution failed (${truncate(
+        execution.message || "unknown",
+        140
+      )})`;
+      continue;
     }
     if (!state.running) {
       break;
@@ -328,10 +1463,7 @@ async function runAgentLoop() {
       break;
     }
 
-    const after = await collectObservation(state.tabId, {
-      screenshotToChat: true,
-      screenshotLabel: `Step ${state.step} screenshot after ${action.type}`
-    });
+    const after = await collectObservation(state.tabId);
     if (!state.running) {
       break;
     }
@@ -344,6 +1476,9 @@ async function runAgentLoop() {
     if (scrollGuard.checked) {
       if (scrollGuard.stuck) {
         state.scrollStallCount += 1;
+        if (!nextDecisionVisualReason) {
+          nextDecisionVisualReason = `Scroll progress was too small (${scrollGuard.deltaY}px).`;
+        }
         pushChat(
           "system",
           `Scroll progress is too small (moved ${scrollGuard.deltaY}px). stall=${state.scrollStallCount}`
@@ -365,6 +1500,9 @@ async function runAgentLoop() {
 
     if (!change.changed) {
       state.stagnationCount += 1;
+      if (!nextDecisionVisualReason) {
+        nextDecisionVisualReason = "No meaningful state change was detected.";
+      }
 
       if (decision?.fallback_action) {
         const fallback = normalizeAction(decision.fallback_action, before);
@@ -389,6 +1527,8 @@ async function runAgentLoop() {
 
   const tabId = state.tabId;
   state.running = false;
+  state.mode = "idle";
+  state.activeRpa = null;
   state.updatedAt = Date.now();
   state.scrollStallCount = 0;
   clearPendingApproval();
@@ -426,7 +1566,8 @@ async function collectObservation(tabId, options = {}) {
 
   let screenshotDataUrl = null;
   let screenshotHash = null;
-  if (typeof state.windowId === "number") {
+  const shouldCaptureScreenshot = Boolean(options.captureScreenshot || options.screenshotToChat);
+  if (shouldCaptureScreenshot && typeof state.windowId === "number") {
     try {
       screenshotDataUrl = await captureVisibleTab(state.windowId, {
         format: "jpeg",
@@ -466,11 +1607,325 @@ async function collectObservation(tabId, options = {}) {
   };
 }
 
-async function requestDecision(observation) {
+function buildOnDemandScreenshotOptions(reason, labelPrefix = "Screenshot") {
+  const trimmedReason = typeof reason === "string" ? reason.trim() : "";
+  if (!trimmedReason) {
+    return {};
+  }
+  const normalizedReason = trimmedReason.replace(/\s+/g, " ");
+  return {
+    captureScreenshot: true,
+    screenshotToChat: true,
+    screenshotLabel: `${labelPrefix}: ${truncate(normalizedReason, 120)}`
+  };
+}
+
+async function suggestSkillMetadata(payload = {}) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const draftSource = source.draft && typeof source.draft === "object" ? source.draft : {};
+  const configOverride = sanitizeConfig(source.config ?? {});
+  const effectiveConfig = normalizeConfigObject({ ...state.config, ...configOverride });
+  const fallbackTitle = truncate(
+    String(draftSource.title || draftSource.base_title || draftSource.goal || "Browser Skill")
+      .trim() || "Browser Skill",
+    120
+  );
+  const fallbackWhenToUse = truncate(
+    String(
+      draftSource.whenToUse ||
+        draftSource.when_to_use ||
+        `Use this skill when you need to complete: ${draftSource.goal || fallbackTitle}`
+    )
+      .trim() || `Use this skill when you need to complete: ${fallbackTitle}`,
+    360
+  );
+  const fallbackDescription = truncate(
+    String(draftSource.description || draftSource.summary || "").trim(),
+    260
+  );
+  const draft = {
+    title: fallbackTitle,
+    whenToUse: fallbackWhenToUse,
+    description: fallbackDescription,
+    goal: truncate(String(draftSource.goal || "").trim(), 260),
+    source: truncate(String(draftSource.source || "browser").trim(), 60),
+    scenarioName: truncate(String(draftSource.scenarioName || "").trim(), 120),
+    steps: Array.isArray(draftSource.steps)
+      ? draftSource.steps
+          .map((step) => truncate(String(step || "").trim(), 180))
+          .filter((step) => Boolean(step))
+          .slice(0, 10)
+      : []
+  };
+
+  try {
+    const totalAttempts = 2;
+    let retryHint = "";
+    let lastError = null;
+    for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+      const promptText = buildSkillMetadataPromptText(
+        draft,
+        effectiveConfig.responseLanguage,
+        retryHint
+      );
+      const rawContent = await requestSkillMetadataFromProvider(promptText, effectiveConfig);
+      const parsed = parseJsonLoose(rawContent);
+      if (parsed && typeof parsed === "object") {
+        const metadata = normalizeSkillMetadataSuggestion(parsed, draft);
+        return {
+          ok: true,
+          provider: effectiveConfig.provider,
+          metadata
+        };
+      }
+      lastError = new Error("Skill metadata response was not valid JSON.");
+      if (attempt < totalAttempts) {
+        retryHint =
+          "The previous response was invalid. Return exactly one JSON object with title, when_to_use, description.";
+        await sleep(320 * attempt);
+      }
+    }
+    throw lastError || new Error("Skill metadata response was not valid JSON.");
+  } catch (error) {
+    return {
+      ok: false,
+      provider: effectiveConfig.provider,
+      error: error?.message || "Failed to suggest skill metadata."
+    };
+  }
+}
+
+function buildSkillMetadataPromptText(draft, language, retryHint = "") {
+  const responseLanguage = normalizeResponseLanguage(language || DEFAULT_CONFIG.responseLanguage);
+  const promptData = {
+    goal: draft.goal || draft.title,
+    source: draft.source,
+    scenario_name: draft.scenarioName,
+    base_title: draft.title,
+    base_when_to_use: draft.whenToUse,
+    base_description: draft.description,
+    steps: draft.steps
+  };
+
+  const lines = [
+    "Return strict JSON only.",
+    "Schema:",
+    "{",
+    '  "title": "string",',
+    '  "when_to_use": "string",',
+    '  "description": "string"',
+    "}",
+    "",
+    "Rules:",
+    `1. Write all fields in ${responseLanguage}.`,
+    "2. title must be concise and action-oriented (max 80 chars preferred).",
+    "3. when_to_use must clearly describe trigger/timing and expected outcome (1-2 sentences).",
+    "4. description must summarize what the skill does and key constraints (1 sentence).",
+    "5. Keep wording reusable for future runs, not tied to one-time context.",
+    "6. Do not add markdown, prose, or code fences.",
+    "",
+    "Input JSON:",
+    JSON.stringify(promptData, null, 2)
+  ];
+
+  if (retryHint) {
+    lines.push("");
+    lines.push("Retry correction:");
+    lines.push(retryHint);
+  }
+
+  return lines.join("\n");
+}
+
+function normalizeSkillMetadataSuggestion(raw, fallback) {
+  const titleCandidate = String(raw.title || raw.skill_title || raw.name || "").trim();
+  const whenToUseCandidate = String(
+    raw.when_to_use || raw.whenToUse || raw.use_case || raw.when || ""
+  ).trim();
+  const descriptionCandidate = String(
+    raw.description || raw.summary || raw.note || ""
+  ).trim();
+
+  const title = truncate(titleCandidate || fallback.title || "Browser Skill", 120);
+  const whenToUse = truncate(
+    whenToUseCandidate || fallback.whenToUse || `Use this skill when you need to run: ${title}`,
+    360
+  );
+  const description = truncate(
+    descriptionCandidate ||
+      fallback.description ||
+      `This skill automates browser steps for ${fallback.goal || title}.`,
+    260
+  );
+
+  return {
+    title,
+    whenToUse,
+    description
+  };
+}
+
+async function requestSkillMetadataFromProvider(promptText, config) {
+  const provider = normalizeProvider(config?.provider);
+  if (provider === PROVIDERS.GEMINI_DIRECT) {
+    return requestSkillMetadataViaGemini(promptText, config);
+  }
+  if (provider === PROVIDERS.BEDROCK_DIRECT) {
+    return requestSkillMetadataViaBedrock(promptText, config);
+  }
+  return requestSkillMetadataViaLiteLLM(promptText, config);
+}
+
+async function requestSkillMetadataViaLiteLLM(promptText, config) {
+  const endpoint = normalizeApiBase(config.apiBaseUrl);
+  const model = getModelForProvider(PROVIDERS.LITELLM, config.providerModels);
+  const language = normalizeResponseLanguage(config.responseLanguage);
+  const requestBody = {
+    model,
+    temperature: clampNumber(config.temperature, 0, 1.2, 0.2),
+    max_tokens: clampNumber(Math.min(config.maxTokens, 800), 180, 1000, 420),
+    messages: [
+      {
+        role: "system",
+        content: `You generate reusable automation skill metadata. Return strict JSON only in ${language}.`
+      },
+      { role: "user", content: promptText }
+    ]
+  };
+
+  const headers = { "Content-Type": "application/json" };
+  if (config.apiKeyLiteLLM) {
+    headers.Authorization = `Bearer ${config.apiKeyLiteLLM}`;
+  }
+
+  const response = await fetch(`${endpoint}/v1/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(requestBody)
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`LLM request failed (${response.status}): ${errorText.slice(0, 300)}`);
+  }
+  const payload = await response.json();
+  return extractAssistantContent(payload);
+}
+
+async function requestSkillMetadataViaGemini(promptText, config) {
+  if (!config.apiKeyGemini) {
+    throw new Error("Gemini direct mode requires API key.");
+  }
+
+  const model = normalizeGeminiModel(getModelForProvider(PROVIDERS.GEMINI_DIRECT, config.providerModels));
+  if (!model) {
+    throw new Error("Gemini model is empty.");
+  }
+  const language = normalizeResponseLanguage(config.responseLanguage);
+  const endpoint =
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const requestBody = {
+    systemInstruction: {
+      parts: [
+        {
+          text: `You generate reusable automation skill metadata. Return strict JSON only in ${language}.`
+        }
+      ]
+    },
+    contents: [{ role: "user", parts: [{ text: promptText }] }],
+    generationConfig: {
+      temperature: clampNumber(config.temperature, 0, 1.2, 0.2),
+      maxOutputTokens: clampNumber(Math.min(config.maxTokens, 800), 180, 1000, 420)
+    }
+  };
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": config.apiKeyGemini
+    },
+    body: JSON.stringify(requestBody)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API request failed (${response.status}): ${errorText.slice(0, 300)}`);
+  }
+
+  const payload = await response.json();
+  return extractGeminiContent(payload);
+}
+
+async function requestSkillMetadataViaBedrock(promptText, config) {
+  const region = normalizeBedrockRegion(config.bedrockRegion);
+  const model = normalizeBedrockModel(getModelForProvider(PROVIDERS.BEDROCK_DIRECT, config.providerModels));
+  const accessKeyId = String(config.bedrockAccessKeyId || "").trim();
+  const secretAccessKey = String(config.bedrockSecretAccessKey || "").trim();
+  const sessionToken = String(config.bedrockSessionToken || "").trim();
+
+  if (!region) {
+    throw new Error("Bedrock region is empty.");
+  }
+  if (!model) {
+    throw new Error("Bedrock model is empty.");
+  }
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error("Bedrock direct mode requires AWS access key ID and secret access key.");
+  }
+
+  const language = normalizeResponseLanguage(config.responseLanguage);
+  const host = `bedrock-runtime.${region}.amazonaws.com`;
+  const path = `/model/${encodeURIComponent(model)}/converse`;
+  const endpoint = `https://${host}${path}`;
+  const requestBody = {
+    system: [
+      {
+        text: `You generate reusable automation skill metadata. Return strict JSON only in ${language}.`
+      }
+    ],
+    messages: [{ role: "user", content: [{ text: promptText }] }],
+    inferenceConfig: {
+      temperature: clampNumber(config.temperature, 0, 1.2, 0.2),
+      maxTokens: clampNumber(Math.min(config.maxTokens, 800), 180, 1000, 420)
+    }
+  };
+  const bodyText = JSON.stringify(requestBody);
+  const signedHeaders = await buildBedrockSigV4Headers({
+    region,
+    host,
+    path,
+    bodyText,
+    accessKeyId,
+    secretAccessKey,
+    sessionToken
+  });
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: signedHeaders,
+    body: bodyText
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Bedrock API request failed (${response.status}): ${errorText.slice(0, 300)}`);
+  }
+
+  const payload = await response.json();
+  return extractBedrockContent(payload);
+}
+
+async function requestDecision(observation, options = {}) {
+  const goalOverride =
+    typeof options?.goal === "string" && options.goal.trim() ? options.goal.trim() : state.goal;
+  const recoveryContext =
+    typeof options?.recoveryContext === "string" && options.recoveryContext.trim()
+      ? options.recoveryContext.trim()
+      : "";
   const pendingInstructions = state.pendingUserInstructions.splice(0, 3);
 
   const promptData = {
-    goal: state.goal,
+    goal: goalOverride,
     step: state.step,
     response_language: state.config.responseLanguage,
     current_url: observation.url,
@@ -489,7 +1944,8 @@ async function requestDecision(observation) {
       text: element.text,
       placeholder: element.placeholder,
       ariaLabel: element.ariaLabel
-    }))
+    })),
+    recovery_context: recoveryContext
   };
 
   const totalAttempts = DECISION_RETRY_MAX + 1;
@@ -558,6 +2014,10 @@ function buildDecisionPromptText(promptData, retryHint = "") {
     "8. If the target is visible in screenshot but not reliably present in elements, use click_at with normalized coordinates (0 to 1).",
     "9. Use new_tab when the user asks to open a page in a new tab."
   ];
+
+  if (promptData?.recovery_context) {
+    lines.push("", `Recovery context: ${promptData.recovery_context}`);
+  }
 
   if (retryHint) {
     lines.push("", "Retry correction:", retryHint);
@@ -1307,10 +2767,13 @@ function pushScreenshotMessage(dataUrl, label) {
 function getStatus() {
   return {
     running: state.running,
+    mode: state.mode,
     sessionId: state.sessionId,
     goal: state.goal,
     step: state.step,
     tabId: state.tabId,
+    activeRpa: state.activeRpa,
+    activeRecording: toRecordingPayload(state.activeRecording),
     pendingApproval: state.pendingApproval ? toApprovalPayload(state.pendingApproval) : null,
     updatedAt: state.updatedAt
   };

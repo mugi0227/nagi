@@ -1,8 +1,13 @@
 const SETTINGS_STORAGE_KEY = "secretary_extension_settings_v1";
 const SESSION_STORAGE_KEY = "session_id";
+const APPROVAL_MODE_STORAGE_KEY = "aiApprovalMode";
 const APP_AUTH_TOKEN_KEYS = ["auth_token", "id_token", "access_token"];
 const APP_TOKEN_CACHE_TTL_MS = 60 * 1000;
 const DEFAULT_BEARER_TOKEN = "dev_user";
+const APPROVAL_MODES = Object.freeze({
+    MANUAL: "manual",
+    AUTO: "auto"
+});
 const BROWSER_PROVIDERS = Object.freeze({
     LITELLM: "litellm",
     GEMINI_DIRECT: "gemini_direct",
@@ -17,6 +22,7 @@ const MAX_BROWSER_RUN_HISTORY = 10;
 const MAX_SKILL_STEP_LINES = 12;
 const MAX_SKILL_SCREENSHOTS = 6;
 const MAX_SKILL_CONTENT_LENGTH = 4900;
+const MAX_ATTACHMENT_SIZE_BYTES = 15 * 1024 * 1024;
 
 const DEFAULT_SETTINGS = Object.freeze({
     appBaseUrl: "http://localhost:3000",
@@ -35,13 +41,14 @@ const DEFAULT_SETTINGS = Object.freeze({
 });
 
 let settings = { ...DEFAULT_SETTINGS };
-let currentCapture = null;
+let currentAttachment = null;
 let isThinking = false;
 let currentSessionId = localStorage.getItem(SESSION_STORAGE_KEY);
 let browserPort = null;
 let browserStatus = {
     running: false,
-    step: 0
+    step: 0,
+    mode: "idle"
 };
 let appTokenCache = {
     origin: "",
@@ -52,10 +59,20 @@ let browserModelByProvider = { ...DEFAULT_PROVIDER_MODELS };
 let browserRunHistory = [];
 let currentBrowserRun = null;
 let lastBrowserStatus = { running: false, step: 0 };
+let approvalMode = normalizeApprovalMode(localStorage.getItem(APPROVAL_MODE_STORAGE_KEY));
+let pendingProposals = [];
+let pendingProposalIndex = 0;
+let proposalApprovedBuffer = [];
+let proposalProcessing = false;
+let pendingQuestions = null;
+let questionAnswers = {};
+let captureLoading = false;
 
 const messagesDiv = document.getElementById("messages");
 const userInput = document.getElementById("user-input");
 const sendBtn = document.getElementById("send-btn");
+const uploadFileBtn = document.getElementById("upload-file-btn");
+const fileUploadInput = document.getElementById("file-upload-input");
 const captureBtn = document.getElementById("capture-btn");
 const newChatBtn = document.getElementById("new-chat-btn");
 const historyBtn = document.getElementById("history-btn");
@@ -65,6 +82,8 @@ const closeSettingsBtn = document.getElementById("close-settings");
 const thinkingIndicator = document.getElementById("thinking");
 const previewContainer = document.getElementById("preview-container");
 const screenshotPreview = document.getElementById("screenshot-preview");
+const filePreviewBadge = document.getElementById("file-preview-badge");
+const previewTypeLabel = document.getElementById("preview-type");
 const removeScreenshotBtn = document.getElementById("remove-screenshot");
 const historyPanel = document.getElementById("history-panel");
 const sessionList = document.getElementById("session-list");
@@ -72,6 +91,26 @@ const settingsPanel = document.getElementById("settings-panel");
 const statusDot = document.getElementById("status");
 const statusText = document.querySelector(".status-text");
 const settingsHint = document.getElementById("settings-hint");
+const approvalManualBtn = document.getElementById("approval-manual-btn");
+const approvalAutoBtn = document.getElementById("approval-auto-btn");
+const interactionPanel = document.getElementById("interaction-panel");
+const proposalPanel = document.getElementById("proposal-panel");
+const proposalTypeBadge = document.getElementById("proposal-type-badge");
+const proposalDescription = document.getElementById("proposal-description");
+const proposalPayload = document.getElementById("proposal-payload");
+const proposalError = document.getElementById("proposal-error");
+const proposalPrevBtn = document.getElementById("proposal-prev-btn");
+const proposalNextBtn = document.getElementById("proposal-next-btn");
+const proposalPageLabel = document.getElementById("proposal-page-label");
+const proposalRejectBtn = document.getElementById("proposal-reject-btn");
+const proposalApproveBtn = document.getElementById("proposal-approve-btn");
+const proposalRejectAllBtn = document.getElementById("proposal-reject-all-btn");
+const proposalApproveAllBtn = document.getElementById("proposal-approve-all-btn");
+const questionsPanel = document.getElementById("questions-panel");
+const questionsContext = document.getElementById("questions-context");
+const questionsList = document.getElementById("questions-list");
+const questionsSubmitBtn = document.getElementById("questions-submit-btn");
+const questionsCancelBtn = document.getElementById("questions-cancel-btn");
 
 const appBaseUrlInput = document.getElementById("app-base-url");
 const apiBaseUrlInput = document.getElementById("api-base-url");
@@ -99,8 +138,11 @@ const openLoginBtn = document.getElementById("open-login-btn");
 const browserGoalInput = document.getElementById("browser-goal-input");
 const browserRunBtn = document.getElementById("browser-run-btn");
 const browserStopBtn = document.getElementById("browser-stop-btn");
+const rpaRecordBtn = document.getElementById("rpa-record-btn");
+const rpaRecordStopBtn = document.getElementById("rpa-record-stop-btn");
 const browserAgentBadge = document.getElementById("browser-agent-badge");
 const activityLog = document.getElementById("activity-log");
+const defaultUserInputPlaceholder = userInput.getAttribute("placeholder") || "Type a message...";
 
 void init();
 
@@ -108,6 +150,8 @@ async function init() {
     await loadSettings();
     applySettingsToUI();
     bindEvents();
+    syncApprovalModeUI();
+    renderInteractionPanel();
     updateBrowserAgentBadge();
     connectBrowserPort();
     validateInput();
@@ -126,12 +170,28 @@ async function init() {
 }
 
 function bindEvents() {
+    approvalManualBtn.addEventListener("click", () => {
+        setApprovalMode(APPROVAL_MODES.MANUAL);
+    });
+
+    approvalAutoBtn.addEventListener("click", () => {
+        setApprovalMode(APPROVAL_MODES.AUTO);
+    });
+
+    uploadFileBtn.addEventListener("click", () => {
+        fileUploadInput.click();
+    });
+
+    fileUploadInput.addEventListener("change", () => {
+        void handleFileSelection();
+    });
+
     captureBtn.addEventListener("click", () => {
         void captureScreen();
     });
 
     removeScreenshotBtn.addEventListener("click", () => {
-        currentCapture = null;
+        currentAttachment = null;
         hidePreview();
         validateInput();
     });
@@ -209,12 +269,62 @@ function bindEvents() {
         validateInput();
     });
 
+    userInput.addEventListener("paste", (event) => {
+        void handleInputPaste(event);
+    });
+
     browserRunBtn.addEventListener("click", () => {
         void runBrowserGoalFromInput();
     });
 
     browserStopBtn.addEventListener("click", () => {
         void stopBrowserAgent();
+    });
+
+    rpaRecordBtn.addEventListener("click", () => {
+        void startRpaRecordingFromInput();
+    });
+
+    rpaRecordStopBtn.addEventListener("click", () => {
+        void stopRpaRecordingAndSave();
+    });
+
+    proposalPrevBtn.addEventListener("click", () => {
+        if (pendingProposalIndex > 0) {
+            pendingProposalIndex -= 1;
+            renderInteractionPanel();
+        }
+    });
+
+    proposalNextBtn.addEventListener("click", () => {
+        if (pendingProposalIndex < pendingProposals.length - 1) {
+            pendingProposalIndex += 1;
+            renderInteractionPanel();
+        }
+    });
+
+    proposalApproveBtn.addEventListener("click", () => {
+        void handleProposalDecision("approve", false);
+    });
+
+    proposalRejectBtn.addEventListener("click", () => {
+        void handleProposalDecision("reject", false);
+    });
+
+    proposalApproveAllBtn.addEventListener("click", () => {
+        void handleProposalDecision("approve", true);
+    });
+
+    proposalRejectAllBtn.addEventListener("click", () => {
+        void handleProposalDecision("reject", true);
+    });
+
+    questionsSubmitBtn.addEventListener("click", () => {
+        void handleQuestionsSubmit();
+    });
+
+    questionsCancelBtn.addEventListener("click", () => {
+        handleQuestionsCancel();
     });
 }
 
@@ -302,6 +412,36 @@ function applySettingsToUI() {
     browserBedrockSessionTokenInput.value = settings.browserBedrockSessionToken;
     syncAuthModeUi();
     updateBrowserProviderUi({ retainCurrentModel: false });
+}
+
+function normalizeApprovalMode(value) {
+    return value === APPROVAL_MODES.MANUAL ? APPROVAL_MODES.MANUAL : APPROVAL_MODES.AUTO;
+}
+
+function setApprovalMode(mode) {
+    approvalMode = normalizeApprovalMode(mode);
+    localStorage.setItem(APPROVAL_MODE_STORAGE_KEY, approvalMode);
+    syncApprovalModeUI();
+    addActivity("settings", `Approval mode: ${approvalMode}`);
+    if (approvalMode === APPROVAL_MODES.MANUAL) {
+        if (currentSessionId) {
+            void refreshPendingProposalsForSession(currentSessionId);
+        }
+        return;
+    }
+
+    pendingProposals = [];
+    pendingProposalIndex = 0;
+    proposalApprovedBuffer = [];
+    proposalProcessing = false;
+    hideProposalError();
+    renderInteractionPanel();
+}
+
+function syncApprovalModeUI() {
+    const isManual = approvalMode === APPROVAL_MODES.MANUAL;
+    approvalManualBtn.classList.toggle("active", isManual);
+    approvalAutoBtn.classList.toggle("active", !isManual);
 }
 
 function readSettingsFromUI() {
@@ -455,13 +595,18 @@ async function captureScreen() {
         const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
         const dataUrl = await chrome.tabs.captureVisibleTab(null, { format: "jpeg", quality: 70 });
 
-        currentCapture = {
-            base64: dataUrl,
-            url: tab?.url || "",
-            title: tab?.title || ""
+        currentAttachment = {
+            kind: "image",
+            source: "screenshot",
+            dataUrl,
+            fileName: `screenshot-${Date.now()}.jpg`,
+            mimeType: "image/jpeg",
+            fileSize: 0,
+            pageUrl: tab?.url || "",
+            pageTitle: tab?.title || ""
         };
 
-        showPreview(dataUrl);
+        showPreview(currentAttachment);
         validateInput();
         addActivity("capture", "Captured current tab screenshot.");
     } catch (error) {
@@ -471,37 +616,191 @@ async function captureScreen() {
     }
 }
 
-async function sendMessage() {
-    const text = userInput.value.trim();
-    if ((!text && !currentCapture) || isThinking) {
+async function handleFileSelection() {
+    const file = fileUploadInput.files && fileUploadInput.files[0] ? fileUploadInput.files[0] : null;
+    fileUploadInput.value = "";
+    if (!file) {
+        return;
+    }
+    await attachFileToComposer(file, {
+        source: "upload",
+        allowPdf: true
+    });
+}
+
+async function handleInputPaste(event) {
+    const clipboard = event?.clipboardData;
+    const items = clipboard?.items ? Array.from(clipboard.items) : [];
+    if (!items.length) {
         return;
     }
 
-    addMessage("user", text, currentCapture ? currentCapture.base64 : null);
+    const imageItem = items.find((item) => item && item.kind === "file" && String(item.type || "").startsWith("image/"));
+    if (!imageItem) {
+        return;
+    }
 
-    const sendingCapture = currentCapture;
+    const file = imageItem.getAsFile();
+    if (!file) {
+        return;
+    }
+
+    event.preventDefault();
+    await attachFileToComposer(file, {
+        source: "paste",
+        allowPdf: false
+    });
+}
+
+async function attachFileToComposer(file, options = {}) {
+    if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
+        addSystemMessage("File is too large. Limit is 15MB.");
+        return;
+    }
+
+    const source = String(options.source || "upload");
+    const allowPdf = options.allowPdf !== false;
+    const defaultName = String(file.type || "").startsWith("image/")
+        ? `clipboard-image-${Date.now()}.png`
+        : "attachment";
+    const name = String(file.name || "").trim() || defaultName;
+    const mimeType = String(file.type || "").trim().toLowerCase();
+    const normalizedMimeType = mimeType || (name.toLowerCase().endsWith(".pdf") ? "application/pdf" : "");
+    const isImage = normalizedMimeType.startsWith("image/");
+    const isPdf = normalizedMimeType === "application/pdf";
+
+    if (!isImage && !(allowPdf && isPdf)) {
+        addSystemMessage("Only image files and PDF files are supported.");
+        return;
+    }
+
+    try {
+        const dataUrl = await readFileAsDataUrl(file);
+        currentAttachment = {
+            kind: isImage ? "image" : "pdf",
+            source,
+            dataUrl,
+            fileName: name,
+            mimeType: normalizedMimeType || (isImage ? "image/jpeg" : "application/pdf"),
+            fileSize: Number(file.size) || 0
+        };
+        showPreview(currentAttachment);
+        validateInput();
+        const sourceLabel = source === "paste" ? "paste" : "upload";
+        addActivity(sourceLabel, `${isPdf ? "PDF" : "Image"} attached: ${name}`);
+    } catch (error) {
+        addSystemMessage(`Failed to read selected file: ${error.message}`);
+    }
+}
+
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("file_read_failed"));
+        reader.readAsDataURL(file);
+    });
+}
+
+function getAttachmentPreviewImage(attachment) {
+    if (!attachment || attachment.kind !== "image") {
+        return null;
+    }
+    return String(attachment.dataUrl || "");
+}
+
+function getAttachmentLabel(attachment) {
+    if (!attachment) {
+        return "";
+    }
+    const fileName = String(attachment.fileName || "").trim();
+    if (attachment.kind === "pdf") {
+        return fileName ? `PDF: ${fileName}` : "PDF attached";
+    }
+    if (attachment.source === "upload" && fileName) {
+        return `Image: ${fileName}`;
+    }
+    return "";
+}
+
+function getAttachmentPreviewType(attachment) {
+    if (!attachment) {
+        return "Attachment";
+    }
+    const fileName = String(attachment.fileName || "").trim();
+    if (attachment.kind === "pdf") {
+        return fileName ? `PDF: ${truncateText(fileName, 32)}` : "PDF";
+    }
+    if (attachment.source === "upload" && fileName) {
+        return `Image: ${truncateText(fileName, 32)}`;
+    }
+    return "Screenshot";
+}
+
+function truncateText(value, maxLength) {
+    const text = String(value || "");
+    if (text.length <= maxLength) {
+        return text;
+    }
+    return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
+}
+
+async function sendMessage() {
+    if (hasPendingInteraction()) {
+        addActivity("chat", "Resolve pending approvals/questions before sending a new message.");
+        return;
+    }
+
+    const text = userInput.value.trim();
+    if ((!text && !currentAttachment) || isThinking) {
+        return;
+    }
+
+    addMessage(
+        "user",
+        text,
+        getAttachmentPreviewImage(currentAttachment),
+        getAttachmentLabel(currentAttachment)
+    );
+
+    const sendingAttachment = currentAttachment;
     const originalText = text;
 
     userInput.value = "";
     userInput.style.height = "auto";
-    currentCapture = null;
+    currentAttachment = null;
     hidePreview();
     validateInput();
     setThinking(true);
 
     try {
         let imageUrl = null;
+        let fileUrl = null;
 
-        if (sendingCapture) {
+        if (sendingAttachment) {
+            const captureMetadata = {
+                type: sendingAttachment.kind === "pdf" ? "EXT_FILE_UPLOAD" : "EXT_CAPTURE",
+                source: sendingAttachment.source || "",
+                file_name: sendingAttachment.fileName || "",
+                mime_type: sendingAttachment.mimeType || "",
+                file_size: Number(sendingAttachment.fileSize) || 0
+            };
+            if (sendingAttachment.source === "screenshot") {
+                captureMetadata.url = sendingAttachment.pageUrl || "";
+                captureMetadata.title = sendingAttachment.pageTitle || "";
+            }
+
             const capturePayload = {
                 content_type: "TEXT",
-                base64_image: sendingCapture.base64,
-                raw_text: JSON.stringify({
-                    type: "EXT_CAPTURE",
-                    url: sendingCapture.url,
-                    title: sendingCapture.title
-                })
+                raw_text: JSON.stringify(captureMetadata)
             };
+            if (sendingAttachment.kind === "image") {
+                capturePayload.base64_image = sendingAttachment.dataUrl;
+            } else {
+                capturePayload.base64_file = sendingAttachment.dataUrl;
+                capturePayload.file_name = sendingAttachment.fileName;
+                capturePayload.file_content_type = sendingAttachment.mimeType;
+            }
 
             const captureResp = await apiFetch("/captures", {
                 method: "POST",
@@ -510,16 +809,27 @@ async function sendMessage() {
 
             if (captureResp.ok) {
                 const captureData = await captureResp.json();
-                imageUrl = captureData.content_url || null;
+                const uploadedUrl = captureData.content_url || null;
+                if (sendingAttachment.kind === "image") {
+                    imageUrl = uploadedUrl;
+                } else {
+                    fileUrl = uploadedUrl;
+                }
             }
         }
 
         const chatPayload = {
             text: originalText,
-            image_base64: sendingCapture ? sendingCapture.base64 : null,
+            image_base64: sendingAttachment?.kind === "image" ? sendingAttachment.dataUrl : null,
             image_url: imageUrl,
+            file_base64: sendingAttachment?.kind === "pdf" && !fileUrl ? sendingAttachment.dataUrl : null,
+            file_url: sendingAttachment?.kind === "pdf" ? fileUrl : null,
+            file_name: sendingAttachment?.kind === "pdf" ? sendingAttachment.fileName : null,
+            file_mime_type: sendingAttachment?.kind === "pdf" ? sendingAttachment.mimeType : null,
             mode: "dump",
-            session_id: currentSessionId
+            session_id: currentSessionId,
+            approval_mode: approvalMode,
+            proposal_mode: approvalMode === APPROVAL_MODES.MANUAL
         };
 
         const response = await apiFetch("/chat/stream", {
@@ -614,11 +924,13 @@ async function handleStreamingChunk(chunk, contentDiv) {
 
     if (chunkType === "proposal") {
         addActivity("proposal", `${chunk.description || "Approval proposal"}`);
+        handleProposalChunk(chunk);
         return;
     }
 
     if (chunkType === "questions") {
         addActivity("questions", "Agent requested user input.");
+        handleQuestionsChunk(chunk);
         return;
     }
 
@@ -627,7 +939,23 @@ async function handleStreamingChunk(chunk, contentDiv) {
             currentSessionId = chunk.session_id;
             localStorage.setItem(SESSION_STORAGE_KEY, chunk.session_id);
         }
+        const hasActiveBrowserDelegation =
+            Boolean(currentBrowserRun) &&
+            (!currentBrowserRun.endedAt || browserStatus.running);
+        if (hasActiveBrowserDelegation) {
+            addActivity(
+                "done",
+                `Session ${chunk.session_id || "updated"} (chat response finished; browser delegation is still running)`
+            );
+            if (approvalMode === APPROVAL_MODES.MANUAL && currentSessionId) {
+                void refreshPendingProposalsForSession(currentSessionId);
+            }
+            return;
+        }
         addActivity("done", `Session ${chunk.session_id || "updated"}`);
+        if (approvalMode === APPROVAL_MODES.MANUAL && currentSessionId) {
+            void refreshPendingProposalsForSession(currentSessionId);
+        }
         return;
     }
 
@@ -637,6 +965,499 @@ async function handleStreamingChunk(chunk, contentDiv) {
     }
 
     addActivity("event", JSON.stringify(chunk));
+}
+
+function getProposalTypeLabel(proposalType) {
+    const type = String(proposalType || "").trim().toLowerCase();
+    if (type === "tool_action") {
+        return "Approval Required";
+    }
+    if (type === "create_task") {
+        return "Task Draft";
+    }
+    if (type === "create_skill") {
+        return "Skill Draft";
+    }
+    if (type === "assign_task") {
+        return "Assignment Draft";
+    }
+    if (type === "phase_breakdown") {
+        return "Phase Plan";
+    }
+    if (type === "create_project") {
+        return "Project Draft";
+    }
+    return "Proposal";
+}
+
+function normalizeProposalPayload(payload) {
+    if (payload && typeof payload === "object") {
+        return payload;
+    }
+    return {};
+}
+
+function normalizeProposalEntry(raw) {
+    if (!raw || typeof raw !== "object") {
+        return null;
+    }
+    const proposalId =
+        String(raw.proposal_id || raw.id || "").trim();
+    if (!proposalId) {
+        return null;
+    }
+    return {
+        proposalId,
+        proposalType: String(raw.proposal_type || raw.proposalType || "tool_action").trim().toLowerCase(),
+        description: String(raw.description || "").trim(),
+        payload: normalizeProposalPayload(raw.payload),
+        createdAt: raw.created_at || raw.createdAt || null
+    };
+}
+
+function handleProposalChunk(chunk) {
+    const proposal = normalizeProposalEntry(chunk);
+    if (!proposal) {
+        return;
+    }
+    const exists = pendingProposals.some((entry) => entry.proposalId === proposal.proposalId);
+    if (!exists) {
+        pendingProposals.push(proposal);
+    }
+    if (pendingProposalIndex >= pendingProposals.length) {
+        pendingProposalIndex = Math.max(0, pendingProposals.length - 1);
+    }
+    hideProposalError();
+    renderInteractionPanel();
+}
+
+function normalizePendingQuestions(rawQuestions, rawContext) {
+    const questions = Array.isArray(rawQuestions) ? rawQuestions : [];
+    const normalizedQuestions = questions
+        .map((question, index) => {
+            if (!question || typeof question !== "object") {
+                return null;
+            }
+            const id = String(question.id || `q_${index + 1}`).trim();
+            const text = String(question.question || "").trim();
+            if (!id || !text) {
+                return null;
+            }
+            const options = Array.isArray(question.options)
+                ? question.options
+                    .map((option) => String(option || "").trim())
+                    .filter((option) => Boolean(option))
+                : [];
+            return {
+                id,
+                question: text,
+                options,
+                allowMultiple: Boolean(question.allow_multiple || question.allowMultiple),
+                placeholder: String(question.placeholder || "").trim()
+            };
+        })
+        .filter((question) => Boolean(question));
+
+    if (normalizedQuestions.length === 0) {
+        return null;
+    }
+    const context = String(rawContext || "").trim();
+    return {
+        questions: normalizedQuestions,
+        context
+    };
+}
+
+function handleQuestionsChunk(chunk) {
+    const normalized = normalizePendingQuestions(
+        chunk.questions,
+        chunk.context || chunk.questions_context
+    );
+    if (!normalized) {
+        return;
+    }
+    pendingQuestions = normalized;
+    questionAnswers = {};
+    for (const question of pendingQuestions.questions) {
+        questionAnswers[question.id] = {
+            selectedOptions: [],
+            otherText: "",
+            freeText: ""
+        };
+    }
+    renderInteractionPanel();
+}
+
+function renderInteractionPanel() {
+    const hasProposals = pendingProposals.length > 0;
+    const hasQuestions = !hasProposals && Boolean(pendingQuestions?.questions?.length);
+
+    interactionPanel.classList.toggle("hidden", !hasProposals && !hasQuestions);
+    proposalPanel.classList.toggle("hidden", !hasProposals);
+    questionsPanel.classList.toggle("hidden", !hasQuestions);
+
+    if (hasProposals) {
+        renderProposalPanel();
+    } else {
+        hideProposalError();
+    }
+
+    if (hasQuestions) {
+        renderQuestionsPanel();
+    } else {
+        questionsList.innerHTML = "";
+        questionsSubmitBtn.disabled = true;
+        questionsContext.classList.add("hidden");
+        questionsContext.textContent = "";
+    }
+
+    validateInput();
+}
+
+function hideProposalError() {
+    proposalError.textContent = "";
+    proposalError.classList.add("hidden");
+}
+
+function showProposalError(text) {
+    proposalError.textContent = String(text || "Proposal action failed.");
+    proposalError.classList.remove("hidden");
+}
+
+function renderProposalPanel() {
+    if (pendingProposals.length === 0) {
+        return;
+    }
+    const safeIndex = Math.max(0, Math.min(pendingProposalIndex, pendingProposals.length - 1));
+    pendingProposalIndex = safeIndex;
+    const proposal = pendingProposals[safeIndex];
+
+    proposalTypeBadge.textContent = getProposalTypeLabel(proposal.proposalType);
+    proposalDescription.textContent = proposal.description || "Approval proposal";
+    proposalPayload.textContent = JSON.stringify(proposal.payload || {}, null, 2);
+    proposalPageLabel.textContent = `${safeIndex + 1} / ${pendingProposals.length}`;
+    proposalPrevBtn.disabled = proposalProcessing || safeIndex === 0;
+    proposalNextBtn.disabled = proposalProcessing || safeIndex >= pendingProposals.length - 1;
+    proposalApproveBtn.disabled = proposalProcessing;
+    proposalRejectBtn.disabled = proposalProcessing;
+    proposalApproveAllBtn.disabled = proposalProcessing || pendingProposals.length <= 1;
+    proposalRejectAllBtn.disabled = proposalProcessing || pendingProposals.length <= 1;
+}
+
+async function handleProposalDecision(decision, all) {
+    if (proposalProcessing || pendingProposals.length === 0) {
+        return;
+    }
+    proposalProcessing = true;
+    renderProposalPanel();
+    hideProposalError();
+
+    const targets = all
+        ? pendingProposals.slice()
+        : [pendingProposals[pendingProposalIndex]];
+    const approved = [];
+
+    try {
+        for (const proposal of targets) {
+            const endpoint = `/proposals/${encodeURIComponent(proposal.proposalId)}/${decision}`;
+            const response = await apiFetch(endpoint, {
+                method: "POST",
+                body: {}
+            });
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            if (decision === "approve") {
+                approved.push(proposal);
+            }
+            pendingProposals = pendingProposals.filter((entry) => entry.proposalId !== proposal.proposalId);
+        }
+
+        if (pendingProposalIndex >= pendingProposals.length) {
+            pendingProposalIndex = Math.max(0, pendingProposals.length - 1);
+        }
+
+        if (decision === "approve" && approved.length > 0) {
+            proposalApprovedBuffer = [...proposalApprovedBuffer, ...approved];
+        }
+
+        renderInteractionPanel();
+
+        if (decision === "approve") {
+            addActivity("proposal", all ? "Approved all proposals." : "Proposal approved.");
+        } else {
+            addActivity("proposal", all ? "Rejected all proposals." : "Proposal rejected.");
+        }
+
+        if (pendingProposals.length === 0 && proposalApprovedBuffer.length > 0) {
+            const confirmation = buildProposalApprovalMessage(proposalApprovedBuffer);
+            proposalApprovedBuffer = [];
+            await sendAutomatedFollowup(confirmation);
+        }
+    } catch (error) {
+        showProposalError(`Failed to ${decision}: ${error.message}`);
+    } finally {
+        proposalProcessing = false;
+        renderInteractionPanel();
+    }
+}
+
+function buildProposalApprovalMessage(approvedProposals) {
+    if (!Array.isArray(approvedProposals) || approvedProposals.length === 0) {
+        return "Approved.";
+    }
+    if (approvedProposals.length === 1) {
+        return `Approved: ${approvedProposals[0].description || approvedProposals[0].proposalType}`;
+    }
+    const lines = approvedProposals.map((proposal) => `- ${proposal.description || proposal.proposalType}`);
+    return `Approved proposals:\n${lines.join("\n")}`;
+}
+
+function renderQuestionsPanel() {
+    if (!pendingQuestions || !Array.isArray(pendingQuestions.questions)) {
+        return;
+    }
+
+    questionsList.innerHTML = "";
+    const context = String(pendingQuestions.context || "").trim();
+    questionsContext.textContent = context;
+    questionsContext.classList.toggle("hidden", !context);
+
+    for (const [index, question] of pendingQuestions.questions.entries()) {
+        const item = document.createElement("div");
+        item.className = "question-item";
+
+        const label = document.createElement("div");
+        label.className = "question-label";
+        label.textContent = `${index + 1}. ${question.question}`;
+        item.appendChild(label);
+
+        if (!Array.isArray(question.options) || question.options.length === 0) {
+            const input = document.createElement("input");
+            input.type = "text";
+            input.className = "question-freetext-input";
+            input.placeholder = question.placeholder || "Type your answer";
+            input.value = questionAnswers[question.id]?.freeText || "";
+            input.addEventListener("input", () => {
+                ensureQuestionAnswerState(question.id);
+                questionAnswers[question.id].freeText = input.value;
+                updateQuestionsSubmitState();
+            });
+            item.appendChild(input);
+            questionsList.appendChild(item);
+            continue;
+        }
+
+        const optionsWrap = document.createElement("div");
+        optionsWrap.className = "question-options";
+        const options = [...question.options, "Other (type manually)"];
+        for (const option of options) {
+            const optionLabel = document.createElement("label");
+            optionLabel.className = "question-option";
+            const input = document.createElement("input");
+            input.type = question.allowMultiple ? "checkbox" : "radio";
+            input.name = `question-${question.id}`;
+            input.checked = Boolean(questionAnswers[question.id]?.selectedOptions?.includes(option));
+            input.addEventListener("change", () => {
+                ensureQuestionAnswerState(question.id);
+                if (question.allowMultiple) {
+                    const selected = questionAnswers[question.id].selectedOptions;
+                    if (input.checked) {
+                        if (!selected.includes(option)) {
+                            selected.push(option);
+                        }
+                    } else {
+                        questionAnswers[question.id].selectedOptions = selected.filter((entry) => entry !== option);
+                    }
+                } else {
+                    questionAnswers[question.id].selectedOptions = input.checked ? [option] : [];
+                }
+                renderInteractionPanel();
+            });
+            const text = document.createElement("span");
+            text.textContent = option;
+            optionLabel.append(input, text);
+            optionsWrap.appendChild(optionLabel);
+        }
+        item.appendChild(optionsWrap);
+
+        const selected = questionAnswers[question.id]?.selectedOptions || [];
+        const needsOtherText = selected.includes("Other (type manually)");
+        if (needsOtherText) {
+            const otherInput = document.createElement("input");
+            otherInput.type = "text";
+            otherInput.className = "question-other-input";
+            otherInput.placeholder = "Type custom option";
+            otherInput.value = questionAnswers[question.id]?.otherText || "";
+            otherInput.addEventListener("input", () => {
+                ensureQuestionAnswerState(question.id);
+                questionAnswers[question.id].otherText = otherInput.value;
+                updateQuestionsSubmitState();
+            });
+            item.appendChild(otherInput);
+        }
+
+        questionsList.appendChild(item);
+    }
+
+    updateQuestionsSubmitState();
+}
+
+function ensureQuestionAnswerState(questionId) {
+    if (!questionAnswers[questionId]) {
+        questionAnswers[questionId] = {
+            selectedOptions: [],
+            otherText: "",
+            freeText: ""
+        };
+    }
+}
+
+function isQuestionAnswered(question) {
+    const answer = questionAnswers[question.id];
+    if (!answer) {
+        return false;
+    }
+    if (!Array.isArray(question.options) || question.options.length === 0) {
+        return String(answer.freeText || "").trim().length > 0;
+    }
+    if (!Array.isArray(answer.selectedOptions) || answer.selectedOptions.length === 0) {
+        return false;
+    }
+    if (answer.selectedOptions.includes("Other (type manually)")) {
+        return String(answer.otherText || "").trim().length > 0;
+    }
+    return true;
+}
+
+function updateQuestionsSubmitState() {
+    if (!pendingQuestions || !Array.isArray(pendingQuestions.questions) || pendingQuestions.questions.length === 0) {
+        questionsSubmitBtn.disabled = true;
+        return;
+    }
+    questionsSubmitBtn.disabled = !pendingQuestions.questions.every((question) => isQuestionAnswered(question));
+}
+
+function buildQuestionsAnswerText() {
+    if (!pendingQuestions || !Array.isArray(pendingQuestions.questions)) {
+        return "";
+    }
+    const lines = [];
+    for (const question of pendingQuestions.questions) {
+        const answer = questionAnswers[question.id] || {
+            selectedOptions: [],
+            otherText: "",
+            freeText: ""
+        };
+        let value = "";
+        if (!Array.isArray(question.options) || question.options.length === 0) {
+            value = String(answer.freeText || "").trim();
+        } else {
+            const selected = Array.isArray(answer.selectedOptions) ? answer.selectedOptions : [];
+            const base = selected.filter((entry) => entry !== "Other (type manually)");
+            if (selected.includes("Other (type manually)")) {
+                const otherText = String(answer.otherText || "").trim();
+                if (otherText) {
+                    base.push(otherText);
+                }
+            }
+            value = base.join(" / ");
+        }
+        if (!value) {
+            value = "(no answer)";
+        }
+        lines.push(`${question.question}: ${value}`);
+    }
+    return lines.join("\n");
+}
+
+async function handleQuestionsSubmit() {
+    if (!pendingQuestions) {
+        return;
+    }
+    const message = buildQuestionsAnswerText();
+    if (!message.trim()) {
+        return;
+    }
+    pendingQuestions = null;
+    questionAnswers = {};
+    renderInteractionPanel();
+    addActivity("questions", "Submitted answers to agent.");
+    await sendAutomatedFollowup(message);
+}
+
+function handleQuestionsCancel() {
+    pendingQuestions = null;
+    questionAnswers = {};
+    renderInteractionPanel();
+    addActivity("questions", "Question prompt dismissed.");
+}
+
+async function sendAutomatedFollowup(text) {
+    const trimmed = String(text || "").trim();
+    if (!trimmed) {
+        return;
+    }
+    if (isThinking) {
+        addActivity("chat", "Auto follow-up skipped because chat stream is still active.");
+        return;
+    }
+
+    const previousText = userInput.value;
+    const previousAttachment = currentAttachment;
+    currentAttachment = null;
+    hidePreview();
+    userInput.value = trimmed;
+    userInput.style.height = "auto";
+    await sendMessage();
+    userInput.value = previousText;
+    currentAttachment = previousAttachment;
+    showPreview(previousAttachment);
+}
+
+async function refreshPendingProposalsForSession(sessionId) {
+    const id = String(sessionId || "").trim();
+    if (!id) {
+        pendingProposals = [];
+        pendingProposalIndex = 0;
+        proposalApprovedBuffer = [];
+        proposalProcessing = false;
+        renderInteractionPanel();
+        return;
+    }
+    try {
+        const response = await apiFetch(
+            `/proposals/pending?session_id=${encodeURIComponent(id)}`,
+            { method: "GET" }
+        );
+        if (!response.ok) {
+            pendingProposals = [];
+            pendingProposalIndex = 0;
+            proposalApprovedBuffer = [];
+            proposalProcessing = false;
+            hideProposalError();
+            renderInteractionPanel();
+            return;
+        }
+        const payload = await response.json();
+        const proposals = Array.isArray(payload?.proposals) ? payload.proposals : [];
+        pendingProposals = proposals
+            .map((proposal) => normalizeProposalEntry({
+                proposal_id: proposal.id,
+                proposal_type: proposal.proposal_type,
+                description: proposal.description,
+                payload: proposal.payload,
+                created_at: proposal.created_at
+            }))
+            .filter((proposal) => Boolean(proposal));
+        pendingProposalIndex = 0;
+        proposalApprovedBuffer = [];
+        proposalProcessing = false;
+        hideProposalError();
+        renderInteractionPanel();
+    } catch {
+        // no-op
+    }
 }
 
 function parseToolResultPayload(chunk) {
@@ -662,6 +1483,11 @@ async function handleExtensionDelegation(chunk) {
         return;
     }
 
+    if (toolName === "run_hybrid_rpa") {
+        await maybeDelegateHybridRpa(resultPayload);
+        return;
+    }
+
     if (toolName === "register_browser_skill") {
         await maybeRegisterBrowserSkill(resultPayload);
     }
@@ -680,8 +1506,316 @@ async function maybeDelegateBrowserTask(resultPayload) {
         return;
     }
 
+    const startUrl = String(
+        resultPayload?.start_url ||
+        resultPayload?.startUrl ||
+        resultPayload?.payload?.start_url ||
+        resultPayload?.payload?.startUrl ||
+        ""
+    ).trim();
+    const notes = String(
+        resultPayload?.notes ||
+        resultPayload?.payload?.notes ||
+        ""
+    ).trim();
+
+    const matchedScenario = await resolveHybridRpaScenarioFromSkills(goal);
+    if (matchedScenario?.scenario && Array.isArray(matchedScenario.scenario.steps)) {
+        const scenario = matchedScenario.scenario;
+        const scenarioName = (
+            String(scenario?.name || "").trim() ||
+            String(matchedScenario?.title || "").trim() ||
+            goal
+        );
+        addActivity(
+            "browser_delegate",
+            `Matched skill scenario: ${scenarioName} (${scenario.steps.length} step${scenario.steps.length === 1 ? "" : "s"})`
+        );
+        await startHybridRpaTask({
+            goal,
+            scenarioName,
+            startUrl: String(scenario.start_url || startUrl || "").trim(),
+            steps: Array.isArray(scenario.steps) ? scenario.steps : [],
+            aiFallback: scenario.ai_fallback !== false,
+            aiFallbackMaxSteps: Number(scenario.ai_fallback_max_steps) || 3,
+            stepRetryLimit: Number(scenario.step_retry_limit) >= 0
+                ? Number(scenario.step_retry_limit)
+                : 1,
+            stopOnFailure: scenario.stop_on_failure !== false,
+            notes: [notes, matchedScenario?.memoryId ? `skill_id=${matchedScenario.memoryId}` : ""]
+                .filter((line) => Boolean(line))
+                .join(" | ")
+        });
+        return;
+    }
+
+    addActivity("browser_delegate", "No matching RPA scenario found; falling back to planner mode.");
     addActivity("browser_delegate", `Delegating browser task: ${goal}`);
     await startBrowserAgent(goal);
+}
+
+function extractSkillTitleFromContent(content) {
+    const text = String(content || "");
+    const match = text.match(/^#\s+(.+)$/m);
+    if (!match) {
+        return "";
+    }
+    return String(match[1] || "").trim().slice(0, 120);
+}
+
+function normalizeTextForMatch(value) {
+    return String(value || "")
+        .toLowerCase()
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+function hasGoalOverlapWithSkill(goal, title, content) {
+    const normalizedGoal = normalizeTextForMatch(goal);
+    if (!normalizedGoal) {
+        return false;
+    }
+    const normalizedTitle = normalizeTextForMatch(title);
+    const normalizedContent = normalizeTextForMatch(content).slice(0, 2200);
+
+    if (normalizedTitle.length >= 4 && (
+        normalizedTitle.includes(normalizedGoal) ||
+        normalizedGoal.includes(normalizedTitle)
+    )) {
+        return true;
+    }
+    if (normalizedGoal.length >= 4 && normalizedContent.includes(normalizedGoal)) {
+        return true;
+    }
+
+    const tokens = normalizedGoal
+        .split(/[\s,.;:!?/\\|()[\]{}"'`]+/)
+        .map((token) => token.trim())
+        .filter((token) => token.length >= 3)
+        .slice(0, 8);
+    if (tokens.length === 0) {
+        return false;
+    }
+
+    let hits = 0;
+    for (const token of tokens) {
+        if (normalizedTitle.includes(token) || normalizedContent.includes(token)) {
+            hits += 1;
+        }
+    }
+    return hits >= Math.min(2, tokens.length);
+}
+
+function parseJsonLooseText(raw) {
+    if (!raw || typeof raw !== "string") {
+        return null;
+    }
+    const content = raw.trim();
+    if (!content) {
+        return null;
+    }
+
+    try {
+        return JSON.parse(content);
+    } catch {
+        // continue
+    }
+
+    const start = content.indexOf("{");
+    if (start < 0) {
+        return null;
+    }
+
+    let depth = 0;
+    let inString = false;
+    let escaped = false;
+    for (let i = start; i < content.length; i += 1) {
+        const ch = content[i];
+        if (escaped) {
+            escaped = false;
+            continue;
+        }
+        if (ch === "\\") {
+            escaped = true;
+            continue;
+        }
+        if (ch === "\"") {
+            inString = !inString;
+            continue;
+        }
+        if (inString) {
+            continue;
+        }
+        if (ch === "{") {
+            depth += 1;
+        } else if (ch === "}") {
+            depth -= 1;
+            if (depth === 0) {
+                const snippet = content.slice(start, i + 1);
+                try {
+                    return JSON.parse(snippet);
+                } catch {
+                    return null;
+                }
+            }
+        }
+    }
+
+    return null;
+}
+
+function extractRpaScenarioFromSkillContent(content) {
+    const text = String(content || "");
+    if (!text) {
+        return null;
+    }
+
+    const candidates = [];
+    const explicitSectionRegex = /###\s*RPA Scenario\s*\(JSON\)[\s\S]*?```json\s*([\s\S]*?)```/gi;
+    for (const match of text.matchAll(explicitSectionRegex)) {
+        if (match && typeof match[1] === "string" && match[1].trim()) {
+            candidates.push(match[1].trim());
+        }
+    }
+
+    const genericJsonBlockRegex = /```json\s*([\s\S]*?)```/gi;
+    for (const match of text.matchAll(genericJsonBlockRegex)) {
+        if (match && typeof match[1] === "string" && match[1].trim()) {
+            candidates.push(match[1].trim());
+        }
+    }
+
+    if (candidates.length === 0) {
+        return null;
+    }
+
+    for (const candidate of candidates) {
+        const parsed = parseJsonLooseText(candidate);
+        if (!parsed || typeof parsed !== "object") {
+            continue;
+        }
+        const normalized = normalizeScenarioForSkill(parsed);
+        if (Array.isArray(normalized?.steps) && normalized.steps.length > 0) {
+            return normalized;
+        }
+    }
+    return null;
+}
+
+async function resolveHybridRpaScenarioFromSkills(goal) {
+    const query = String(goal || "").trim();
+    if (!query) {
+        return null;
+    }
+
+    const path = `/memories/search?query=${encodeURIComponent(query)}&scope=WORK&limit=8`;
+    let response;
+    try {
+        response = await apiFetch(path, { method: "GET" });
+    } catch (error) {
+        addActivity("browser_delegate", `Skill search skipped: ${error.message}`);
+        return null;
+    }
+
+    let entries = [];
+    if (!response?.ok) {
+        if (response?.status === 422) {
+            addActivity("browser_delegate", "Skill search endpoint returned HTTP 422; trying fallback list filter.");
+            entries = await fetchFallbackWorkSkillEntries();
+        } else {
+            addActivity("browser_delegate", `Skill search skipped (HTTP ${response?.status || "?"}).`);
+            return null;
+        }
+    } else {
+        let payload = [];
+        try {
+            payload = await response.json();
+        } catch {
+            return null;
+        }
+        if (Array.isArray(payload) && payload.length > 0) {
+            entries = payload;
+        }
+    }
+
+    if (!Array.isArray(entries) || entries.length === 0) {
+        return null;
+    }
+
+    const matches = [];
+    for (const entry of entries) {
+        const memory = entry?.memory && typeof entry.memory === "object" ? entry.memory : entry;
+        if (!memory || typeof memory !== "object") {
+            continue;
+        }
+        const content = String(memory.content || "").trim();
+        if (!content) {
+            continue;
+        }
+        const scenario = extractRpaScenarioFromSkillContent(content);
+        if (!scenario || !Array.isArray(scenario.steps) || scenario.steps.length === 0) {
+            continue;
+        }
+        const title = extractSkillTitleFromContent(content);
+        const relevanceScore = Number(entry?.relevance_score);
+        const score = Number.isFinite(relevanceScore) ? relevanceScore : 0;
+        const overlap = hasGoalOverlapWithSkill(query, title, content);
+        if (!overlap && score < 0.55) {
+            continue;
+        }
+        matches.push({
+            scenario,
+            title,
+            memoryId: String(memory.id || "").trim(),
+            score,
+            overlap
+        });
+    }
+
+    if (matches.length === 0) {
+        return null;
+    }
+
+    matches.sort((a, b) => {
+        if (a.overlap !== b.overlap) {
+            return a.overlap ? -1 : 1;
+        }
+        if (b.score !== a.score) {
+            return b.score - a.score;
+        }
+        return b.scenario.steps.length - a.scenario.steps.length;
+    });
+    return matches[0];
+}
+
+async function fetchFallbackWorkSkillEntries() {
+    let response;
+    try {
+        response = await apiFetch("/memories?scope=WORK&limit=100", { method: "GET" });
+    } catch (error) {
+        addActivity("browser_delegate", `Fallback skill list failed: ${error.message}`);
+        return [];
+    }
+
+    if (!response?.ok) {
+        addActivity("browser_delegate", `Fallback skill list skipped (HTTP ${response?.status || "?"}).`);
+        return [];
+    }
+
+    let payload = [];
+    try {
+        payload = await response.json();
+    } catch {
+        return [];
+    }
+    if (!Array.isArray(payload) || payload.length === 0) {
+        return [];
+    }
+
+    return payload.map((memory) => ({
+        memory,
+        relevance_score: 0
+    }));
 }
 
 async function maybeRegisterBrowserSkill(resultPayload) {
@@ -703,6 +1837,58 @@ async function maybeRegisterBrowserSkill(resultPayload) {
     }
 
     addActivity("skill", `Skill saved (${response.memoryId}).`);
+}
+
+function normalizeHybridRpaPayload(resultPayload) {
+    const source = resultPayload?.payload && typeof resultPayload.payload === "object"
+        ? { ...resultPayload.payload, ...resultPayload }
+        : (resultPayload || {});
+
+    const goal =
+        String(
+            source.goal ||
+            source.instruction ||
+            source.task ||
+            source.scenario_name ||
+            "Hybrid RPA Task"
+        ).trim() || "Hybrid RPA Task";
+
+    const scenarioName = String(source.scenario_name || source.scenarioName || "").trim();
+    const startUrl = String(source.start_url || source.startUrl || "").trim();
+    const steps = Array.isArray(source.steps) ? source.steps : [];
+    const aiFallbackMaxRaw = Number(source.ai_fallback_max_steps ?? source.aiFallbackMaxSteps);
+    const stepRetryRaw = Number(source.step_retry_limit ?? source.stepRetryLimit);
+
+    return {
+        goal,
+        scenarioName,
+        startUrl,
+        steps,
+        aiFallback: source.ai_fallback !== false,
+        aiFallbackMaxSteps: Number.isFinite(aiFallbackMaxRaw)
+            ? Math.max(1, Math.min(10, Math.round(aiFallbackMaxRaw)))
+            : 3,
+        stepRetryLimit: Number.isFinite(stepRetryRaw)
+            ? Math.max(0, Math.min(3, Math.round(stepRetryRaw)))
+            : 1,
+        stopOnFailure: source.stop_on_failure !== false,
+        notes: String(source.notes || "").trim()
+    };
+}
+
+async function maybeDelegateHybridRpa(resultPayload) {
+    const payload = normalizeHybridRpaPayload(resultPayload);
+    if (!payload.goal) {
+        addActivity("rpa", "Hybrid RPA request detected but no goal was found.");
+        return;
+    }
+
+    const label = payload.scenarioName || payload.goal;
+    addActivity(
+        "rpa",
+        `Delegating hybrid RPA: ${label} (${payload.steps.length} step${payload.steps.length === 1 ? "" : "s"})`
+    );
+    await startHybridRpaTask(payload);
 }
 
 async function fetchSessions() {
@@ -774,11 +1960,21 @@ async function loadHistory(sessionId) {
         currentSessionId = null;
         localStorage.removeItem(SESSION_STORAGE_KEY);
     } finally {
+        if (approvalMode === APPROVAL_MODES.MANUAL && currentSessionId) {
+            await refreshPendingProposalsForSession(currentSessionId);
+        } else {
+            pendingProposals = [];
+            pendingProposalIndex = 0;
+            proposalApprovedBuffer = [];
+            proposalProcessing = false;
+            hideProposalError();
+            renderInteractionPanel();
+        }
         setThinking(false);
     }
 }
 
-function addMessage(role, text, imageBase64) {
+function addMessage(role, text, imageBase64, attachmentLabel = "") {
     const messageDiv = document.createElement("div");
     messageDiv.className = `message ${role}`;
 
@@ -790,6 +1986,13 @@ function addMessage(role, text, imageBase64) {
         img.src = imageBase64;
         img.className = "message-image";
         contentDiv.appendChild(img);
+    }
+
+    if (attachmentLabel) {
+        const attachmentDiv = document.createElement("div");
+        attachmentDiv.className = "message-attachment";
+        attachmentDiv.textContent = attachmentLabel;
+        contentDiv.appendChild(attachmentDiv);
     }
 
     if (text) {
@@ -835,26 +2038,60 @@ function setThinking(value) {
     scrollToBottom();
 }
 
-function validateInput() {
-    const hasText = userInput.value.trim().length > 0;
-    const hasImage = Boolean(currentCapture);
-    sendBtn.disabled = !(hasText || hasImage) || isThinking;
+function hasPendingInteraction() {
+    return pendingProposals.length > 0 || Boolean(pendingQuestions?.questions?.length);
 }
 
-function showPreview(dataUrl) {
-    screenshotPreview.src = dataUrl;
+function validateInput() {
+    const interactionLocked = hasPendingInteraction();
+    const hasText = userInput.value.trim().length > 0;
+    const hasAttachment = Boolean(currentAttachment);
+    const composerLocked = isThinking || interactionLocked;
+    const fileActionDisabled = composerLocked || captureLoading;
+
+    sendBtn.disabled = composerLocked || !(hasText || hasAttachment);
+    userInput.disabled = composerLocked;
+    userInput.placeholder = interactionLocked
+        ? "Resolve approval/questions first..."
+        : defaultUserInputPlaceholder;
+    uploadFileBtn.disabled = fileActionDisabled;
+    captureBtn.disabled = fileActionDisabled;
+    uploadFileBtn.style.opacity = fileActionDisabled ? "0.5" : "1";
+    captureBtn.style.opacity = fileActionDisabled ? "0.5" : "1";
+}
+
+function showPreview(attachment) {
+    if (!attachment) {
+        hidePreview();
+        return;
+    }
+
+    previewTypeLabel.textContent = getAttachmentPreviewType(attachment);
+    if (attachment.kind === "image") {
+        screenshotPreview.src = attachment.dataUrl || "";
+        screenshotPreview.classList.remove("hidden");
+        filePreviewBadge.classList.add("hidden");
+    } else {
+        screenshotPreview.src = "";
+        screenshotPreview.classList.add("hidden");
+        filePreviewBadge.textContent = "PDF";
+        filePreviewBadge.classList.remove("hidden");
+    }
     previewContainer.classList.remove("hidden");
     scrollToBottom();
 }
 
 function hidePreview() {
     screenshotPreview.src = "";
+    screenshotPreview.classList.remove("hidden");
+    filePreviewBadge.classList.add("hidden");
+    previewTypeLabel.textContent = "Attachment";
     previewContainer.classList.add("hidden");
 }
 
 function setCaptureLoading(loading) {
-    captureBtn.disabled = loading;
-    captureBtn.style.opacity = loading ? "0.5" : "1";
+    captureLoading = Boolean(loading);
+    validateInput();
 }
 
 function scrollToBottom() {
@@ -868,9 +2105,18 @@ function clearView() {
         message.remove();
     }
 
+    pendingProposals = [];
+    pendingProposalIndex = 0;
+    proposalApprovedBuffer = [];
+    proposalProcessing = false;
+    pendingQuestions = null;
+    questionAnswers = {};
+    hideProposalError();
+    renderInteractionPanel();
+
     userInput.value = "";
     userInput.style.height = "auto";
-    currentCapture = null;
+    currentAttachment = null;
     hidePreview();
     validateInput();
 }
@@ -902,6 +2148,7 @@ function handleBrowserPortMessage(message) {
         const payload = message.payload || {};
         browserStatus.running = Boolean(payload.running);
         browserStatus.step = Number(payload.step) || 0;
+        browserStatus.mode = String(payload.mode || "idle");
         handleBrowserStatusTransition(browserStatus);
         updateBrowserAgentBadge();
         return;
@@ -946,7 +2193,7 @@ function buildBrowserRunId() {
     return `br-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
 }
 
-function beginBrowserRun(goal, source) {
+function beginBrowserRun(goal, source, options = {}) {
     const normalizedGoal = String(goal || "").trim() || "Browser task";
     currentBrowserRun = {
         id: buildBrowserRunId(),
@@ -954,7 +2201,10 @@ function beginBrowserRun(goal, source) {
         source: source || "manual",
         startedAt: Date.now(),
         endedAt: null,
-        messages: []
+        messages: [],
+        scenario: options?.scenario && typeof options.scenario === "object"
+            ? normalizeScenarioForSkill(options.scenario)
+            : null
     };
 }
 
@@ -1083,6 +2333,282 @@ async function startBrowserAgent(goal) {
     addActivity("browser", `Started browser task: ${goal}`);
 }
 
+async function startHybridRpaTask(task) {
+    const payload = {
+        goal: task.goal,
+        scenario: {
+            name: task.scenarioName || task.goal,
+            start_url: task.startUrl || "",
+            steps: Array.isArray(task.steps) ? task.steps : [],
+            ai_fallback: task.aiFallback !== false,
+            ai_fallback_max_steps: task.aiFallbackMaxSteps,
+            step_retry_limit: task.stepRetryLimit,
+            stop_on_failure: task.stopOnFailure !== false,
+            notes: task.notes || ""
+        },
+        config: buildBrowserAgentConfig()
+    };
+
+    beginBrowserRun(task.scenarioName || task.goal, "hybrid_rpa", {
+        scenario: payload.scenario
+    });
+    const response = await sendRuntimeMessage({
+        type: "rpa.start",
+        payload
+    });
+
+    if (!response?.ok) {
+        finalizeCurrentBrowserRun("rpa_start_failed");
+        addActivity("rpa", `Start failed: ${response?.error || "unknown error"}`);
+        return;
+    }
+
+    addActivity("rpa", `Started hybrid RPA: ${task.scenarioName || task.goal}`);
+}
+
+async function startRpaRecordingFromInput() {
+    const scenarioName = String(browserGoalInput.value || "").trim() || "Demo Browser Workflow";
+    const response = await sendRuntimeMessage({
+        type: "rpa.record.start",
+        payload: {
+            scenarioName,
+            goal: scenarioName
+        }
+    });
+
+    if (!response?.ok) {
+        addActivity("rpa.record", `Start failed: ${response?.error || "unknown error"}`);
+        return;
+    }
+
+    addActivity("rpa.record", `Recording started: ${scenarioName}`);
+}
+
+function convertScenarioStepToSkillLine(step) {
+    const type = String(step?.type || "").trim().toLowerCase();
+    if (!type) {
+        return "";
+    }
+    if (type === "navigate") {
+        return `Open ${String(step.url || "").trim()}`;
+    }
+    if (type === "new_tab") {
+        return `Open a new tab: ${String(step.url || "").trim()}`;
+    }
+    if (type === "click") {
+        const hint = String(step.text_hint || step.textHint || step.selector || "").trim();
+        return hint ? `Click ${hint}` : "Click the target element";
+    }
+    if (type === "type") {
+        const selector = String(step.selector || "").trim();
+        const value = String(step.text || "").trim();
+        if (selector) {
+            return `Type "${value}" into ${selector}`;
+        }
+        return `Type "${value}"`;
+    }
+    if (type === "scroll") {
+        const dy = Number(step.dy) || 0;
+        return `Scroll ${dy >= 0 ? "down" : "up"} by ${Math.abs(dy)} px`;
+    }
+    if (type === "wait") {
+        return `Wait ${Number(step.ms || step.wait_ms || 0) || 1000} ms`;
+    }
+    if (type === "keypress") {
+        return `Press ${String(step.key || "Enter")}`;
+    }
+    if (type === "assert_text") {
+        return `Confirm page contains "${String(step.assert_text || "").trim()}"`;
+    }
+    if (type === "assert_url") {
+        return `Confirm URL includes "${String(step.assert_url_contains || "").trim()}"`;
+    }
+    if (type === "ai") {
+        return `Use AI fallback for: ${String(step.goal || "").trim()}`;
+    }
+    return type;
+}
+
+function normalizeScenarioForSkill(rawScenario) {
+    const source = rawScenario && typeof rawScenario === "object" ? rawScenario : {};
+    const steps = Array.isArray(source.steps) ? source.steps : [];
+    const normalizedSteps = [];
+    for (const rawStep of steps) {
+        if (!rawStep || typeof rawStep !== "object") {
+            continue;
+        }
+        const type = String(rawStep.type || "").trim().toLowerCase();
+        if (!type) {
+            continue;
+        }
+        const step = { type };
+        if (typeof rawStep.selector === "string" && rawStep.selector.trim()) {
+            step.selector = rawStep.selector.trim();
+        }
+        if (typeof rawStep.text_hint === "string" && rawStep.text_hint.trim()) {
+            step.text_hint = rawStep.text_hint.trim().slice(0, 180);
+        }
+        if (typeof rawStep.text === "string" && rawStep.text) {
+            step.text = rawStep.text.slice(0, 240);
+        }
+        if (typeof rawStep.key === "string" && rawStep.key.trim()) {
+            step.key = rawStep.key.trim().slice(0, 40);
+        }
+        if (typeof rawStep.url === "string" && rawStep.url.trim()) {
+            step.url = rawStep.url.trim().slice(0, 400);
+        }
+        if (rawStep.dy !== undefined && rawStep.dy !== null) {
+            step.dy = Number(rawStep.dy) || 0;
+        }
+        if (rawStep.dx !== undefined && rawStep.dx !== null) {
+            step.dx = Number(rawStep.dx) || 0;
+        }
+        if (rawStep.ms !== undefined && rawStep.ms !== null) {
+            step.ms = Number(rawStep.ms) || 0;
+        }
+        if (typeof rawStep.assert_text === "string" && rawStep.assert_text.trim()) {
+            step.assert_text = rawStep.assert_text.trim().slice(0, 240);
+        }
+        if (
+            typeof rawStep.assert_url_contains === "string" &&
+            rawStep.assert_url_contains.trim()
+        ) {
+            step.assert_url_contains = rawStep.assert_url_contains.trim().slice(0, 240);
+        }
+        if (typeof rawStep.goal === "string" && rawStep.goal.trim()) {
+            step.goal = rawStep.goal.trim().slice(0, 300);
+        }
+        if (rawStep.optional === true) {
+            step.optional = true;
+        }
+        normalizedSteps.push(step);
+        if (normalizedSteps.length >= 40) {
+            break;
+        }
+    }
+
+    const name = String(source.name || source.scenario_name || source.scenarioName || "RPA Scenario")
+        .trim()
+        .slice(0, 120);
+    return {
+        name: name || "RPA Scenario",
+        start_url: String(source.start_url || source.startUrl || "").trim().slice(0, 400),
+        ai_fallback: source.ai_fallback !== false,
+        ai_fallback_max_steps: Number(source.ai_fallback_max_steps) > 0 ? Number(source.ai_fallback_max_steps) : 3,
+        step_retry_limit: Number(source.step_retry_limit) >= 0 ? Number(source.step_retry_limit) : 1,
+        stop_on_failure: source.stop_on_failure !== false,
+        steps: normalizedSteps
+    };
+}
+
+function buildScenarioFromRun(run) {
+    const candidate = run?.scenario || run?.meta?.scenario || null;
+    if (!candidate || typeof candidate !== "object") {
+        return null;
+    }
+    return normalizeScenarioForSkill(candidate);
+}
+
+async function saveScenarioAsSkill(options = {}) {
+    const scenario = normalizeScenarioForSkill(options.scenario || {});
+    if (!Array.isArray(scenario.steps) || scenario.steps.length === 0) {
+        return { ok: false, error: "Scenario has no steps." };
+    }
+
+    const run = options.run || {
+        goal: String(options.goal || scenario.name || "RPA scenario"),
+        startedAt: Date.now(),
+        source: String(options.source || "rpa_recording")
+    };
+    const baseTitle = buildSkillTitle(run, options.title || `RPA SOP: ${scenario.name}`);
+    const baseWhenToUse = buildWhenToUse(
+        run,
+        options.whenToUse || `Use this when repeating scenario: ${scenario.name}`
+    );
+    const baseDescription = buildSkillDescription(
+        run,
+        options.description || `RPA scenario focused on: ${scenario.name}`
+    );
+    const tags = normalizeSkillTags(options.tags || ["browser", "automation", "rpa", "skill"]);
+    const steps = scenario.steps
+        .map((step) => convertScenarioStepToSkillLine(step))
+        .filter((line) => Boolean(line))
+        .slice(0, MAX_SKILL_STEP_LINES);
+    const metadata = await suggestSkillMetadataForSkill({
+        run,
+        steps,
+        scenario,
+        title: baseTitle,
+        whenToUse: baseWhenToUse,
+        description: baseDescription
+    });
+    const title = metadata.title;
+    const whenToUse = metadata.whenToUse;
+    const description = metadata.description;
+
+    const content = composeSkillContent({
+        title,
+        whenToUse,
+        description,
+        run,
+        steps,
+        screenshotUrls: [],
+        scenario
+    });
+
+    const response = await apiFetch("/memories", {
+        method: "POST",
+        body: {
+            content,
+            scope: "WORK",
+            memory_type: "RULE",
+            tags,
+            source: "agent"
+        }
+    });
+
+    if (!response.ok) {
+        return { ok: false, error: `Skill creation failed (HTTP ${response.status})` };
+    }
+
+    const memory = await response.json();
+    return {
+        ok: true,
+        memoryId: String(memory?.id || ""),
+        title
+    };
+}
+
+async function stopRpaRecordingAndSave() {
+    const response = await sendRuntimeMessage({
+        type: "rpa.record.stop",
+        payload: { saveAsSkill: true }
+    });
+    if (!response?.ok) {
+        addActivity("rpa.record", `Stop failed: ${response?.error || "unknown error"}`);
+        return;
+    }
+
+    const scenario = response?.scenario;
+    const stepCount = Array.isArray(scenario?.steps) ? scenario.steps.length : 0;
+    addActivity("rpa.record", `Recording stopped. Generated ${stepCount} scenario steps.`);
+
+    const saveResult = await saveScenarioAsSkill({
+        scenario,
+        goal: response?.goal || scenario?.name || "Recorded scenario",
+        source: "rpa_recording",
+        title: `Demo SOP: ${scenario?.name || "Recorded Browser Workflow"}`,
+        whenToUse: "Use this SOP for recurring browser operations demonstrated by a human."
+    });
+
+    if (!saveResult.ok) {
+        addActivity("skill", `Scenario skill save failed: ${saveResult.error}`);
+        return;
+    }
+
+    addActivity("skill", `Scenario skill saved (${saveResult.memoryId}).`);
+}
+
 async function stopBrowserAgent() {
     const response = await sendRuntimeMessage({ type: "agent.stop" });
     if (!response?.ok) {
@@ -1169,6 +2695,80 @@ function buildWhenToUse(run, preferredWhenToUse) {
         return "Use this skill when a browser workflow must be executed reliably.";
     }
     return `Use this when you need to complete: ${goal}`.slice(0, 360);
+}
+
+function buildSkillDescription(run, preferredDescription) {
+    const base = String(preferredDescription || "").trim();
+    if (base) {
+        return base.slice(0, 260);
+    }
+    const goal = String(run?.goal || "").trim();
+    if (!goal) {
+        return "Reusable browser automation skill for recurring operational tasks.";
+    }
+    return `Reusable browser automation skill to complete: ${goal}`.slice(0, 260);
+}
+
+function normalizeSuggestedSkillMetadata(raw, fallback) {
+    const source = raw && typeof raw === "object" ? raw : {};
+    const title = String(source.title || "").trim().slice(0, 120) || fallback.title;
+    const whenToUse = (
+        String(source.whenToUse || source.when_to_use || "").trim().slice(0, 360) ||
+        fallback.whenToUse
+    );
+    const description = (
+        String(source.description || source.summary || "").trim().slice(0, 260) ||
+        fallback.description
+    );
+    return {
+        title,
+        whenToUse,
+        description
+    };
+}
+
+async function suggestSkillMetadataForSkill(options = {}) {
+    const run = options.run || {};
+    const fallback = {
+        title: String(options.title || buildSkillTitle(run)).trim().slice(0, 120),
+        whenToUse: String(options.whenToUse || buildWhenToUse(run)).trim().slice(0, 360),
+        description: String(options.description || buildSkillDescription(run)).trim().slice(0, 260)
+    };
+    const steps = Array.isArray(options.steps)
+        ? options.steps
+            .map((step) => String(step || "").trim())
+            .filter((step) => Boolean(step))
+            .slice(0, 10)
+        : [];
+    const scenario = options.scenario && typeof options.scenario === "object" ? options.scenario : null;
+
+    const response = await sendRuntimeMessage({
+        type: "skill.suggest_metadata",
+        payload: {
+            config: buildBrowserAgentConfig(),
+            draft: {
+                goal: String(run?.goal || "").trim().slice(0, 260),
+                source: String(run?.source || "").trim().slice(0, 60),
+                title: fallback.title,
+                whenToUse: fallback.whenToUse,
+                description: fallback.description,
+                scenarioName: String(scenario?.name || "").trim().slice(0, 120),
+                steps
+            }
+        }
+    });
+
+    if (!response?.ok) {
+        if (response?.error) {
+            addActivity("skill", `AI metadata skipped: ${response.error}`);
+        }
+        return fallback;
+    }
+
+    const normalized = normalizeSuggestedSkillMetadata(response?.metadata, fallback);
+    const provider = String(response?.provider || "").trim();
+    addActivity("skill", provider ? `AI metadata refined (${provider}).` : "AI metadata refined.");
+    return normalized;
 }
 
 function findBrowserRunByGoal(targetGoal) {
@@ -1318,12 +2918,15 @@ function extractSkillScreenshotsFromRun(run) {
     return screenshots;
 }
 
-function composeSkillContentRaw({ title, whenToUse, run, steps, screenshotUrls }) {
+function composeSkillContentRaw({ title, whenToUse, description, run, steps, screenshotUrls, scenario }) {
     const lines = [
         `# ${title}`,
         "",
         "## When to use",
         whenToUse,
+        "",
+        "## Description",
+        description,
         "",
         "## Content",
         "### Goal",
@@ -1332,6 +2935,14 @@ function composeSkillContentRaw({ title, whenToUse, run, steps, screenshotUrls }
         "### Procedure",
         ...steps.map((step, index) => `${index + 1}. ${step}`)
     ];
+
+    if (scenario && Array.isArray(scenario.steps) && scenario.steps.length > 0) {
+        lines.push("");
+        lines.push("### RPA Scenario (JSON)");
+        lines.push("```json");
+        lines.push(JSON.stringify(scenario, null, 2));
+        lines.push("```");
+    }
 
     if (screenshotUrls.length > 0) {
         lines.push("");
@@ -1351,16 +2962,19 @@ function composeSkillContentRaw({ title, whenToUse, run, steps, screenshotUrls }
     return lines.join("\n");
 }
 
-function composeSkillContent({ title, whenToUse, run, steps, screenshotUrls }) {
+function composeSkillContent({ title, whenToUse, description, run, steps, screenshotUrls, scenario = null }) {
     let trimmedShots = [...screenshotUrls];
     let trimmedSteps = [...steps];
+    let trimmedScenario = scenario ? normalizeScenarioForSkill(scenario) : null;
 
     let content = composeSkillContentRaw({
         title,
         whenToUse,
+        description,
         run,
         steps: trimmedSteps,
-        screenshotUrls: trimmedShots
+        screenshotUrls: trimmedShots,
+        scenario: trimmedScenario
     });
     if (content.length <= MAX_SKILL_CONTENT_LENGTH) {
         return content;
@@ -1371,9 +2985,11 @@ function composeSkillContent({ title, whenToUse, run, steps, screenshotUrls }) {
         content = composeSkillContentRaw({
             title,
             whenToUse,
+            description,
             run,
             steps: trimmedSteps,
-            screenshotUrls: trimmedShots
+            screenshotUrls: trimmedShots,
+            scenario: trimmedScenario
         });
     }
 
@@ -1382,9 +2998,24 @@ function composeSkillContent({ title, whenToUse, run, steps, screenshotUrls }) {
         content = composeSkillContentRaw({
             title,
             whenToUse,
+            description,
             run,
             steps: trimmedSteps,
-            screenshotUrls: []
+            screenshotUrls: [],
+            scenario: trimmedScenario
+        });
+    }
+
+    if (trimmedScenario && content.length > MAX_SKILL_CONTENT_LENGTH) {
+        trimmedScenario = null;
+        content = composeSkillContentRaw({
+            title,
+            whenToUse,
+            description,
+            run,
+            steps: trimmedSteps,
+            screenshotUrls: [],
+            scenario: null
         });
     }
 
@@ -1431,10 +3062,14 @@ async function saveLatestBrowserRunAsSkill(options = {}) {
         return { ok: false, error: "No completed browser run with logs was found." };
     }
 
-    const title = buildSkillTitle(run, options.title);
-    const whenToUse = buildWhenToUse(run, options.whenToUse);
-    const tags = normalizeSkillTags(options.tags);
+    const baseTitle = buildSkillTitle(run, options.title);
+    const baseWhenToUse = buildWhenToUse(run, options.whenToUse);
+    const baseDescription = buildSkillDescription(run, options.description);
     const steps = extractSkillStepsFromRun(run);
+    const scenario = buildScenarioFromRun(run);
+    const tags = scenario
+        ? normalizeSkillTags([...(Array.isArray(options.tags) ? options.tags : []), "rpa", "hybrid"])
+        : normalizeSkillTags(options.tags);
     const screenshotEntries = extractSkillScreenshotsFromRun(run);
 
     const screenshotUrls = [];
@@ -1452,12 +3087,26 @@ async function saveLatestBrowserRunAsSkill(options = {}) {
         }
     }
 
+    const metadata = await suggestSkillMetadataForSkill({
+        run,
+        steps,
+        scenario,
+        title: baseTitle,
+        whenToUse: baseWhenToUse,
+        description: baseDescription
+    });
+    const title = metadata.title;
+    const whenToUse = metadata.whenToUse;
+    const description = metadata.description;
+
     const content = composeSkillContent({
         title,
         whenToUse,
+        description,
         run,
         steps,
-        screenshotUrls
+        screenshotUrls,
+        scenario
     });
 
     const memoryPayload = {
@@ -1487,12 +3136,25 @@ async function saveLatestBrowserRunAsSkill(options = {}) {
 }
 
 function updateBrowserAgentBadge() {
+    const isRecording = browserStatus.mode === "recording";
     browserAgentBadge.classList.toggle("running", browserStatus.running);
-    browserAgentBadge.classList.toggle("idle", !browserStatus.running);
+    browserAgentBadge.classList.toggle("recording", isRecording);
+    browserAgentBadge.classList.toggle("idle", !browserStatus.running && !isRecording);
     browserStopBtn.disabled = !browserStatus.running;
+    rpaRecordBtn.disabled = browserStatus.running || isRecording;
+    rpaRecordStopBtn.disabled = !isRecording;
+
+    if (isRecording) {
+        browserAgentBadge.textContent = "Recording";
+        return;
+    }
 
     if (!browserStatus.running) {
         browserAgentBadge.textContent = "Idle";
+        return;
+    }
+    if (browserStatus.mode === "hybrid_rpa") {
+        browserAgentBadge.textContent = `RPA step ${browserStatus.step}`;
         return;
     }
     browserAgentBadge.textContent = `Running step ${browserStatus.step}`;
@@ -1933,3 +3595,4 @@ function sendRuntimeMessage(message) {
         });
     });
 }
+

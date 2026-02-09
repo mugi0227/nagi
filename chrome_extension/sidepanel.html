@@ -22,6 +22,14 @@
                 </div>
             </div>
             <div class="header-actions">
+                <div class="approval-mode-toggle" role="group" aria-label="Approval mode">
+                    <button id="approval-manual-btn" class="approval-mode-btn" title="Require approval for tool actions">
+                        Manual
+                    </button>
+                    <button id="approval-auto-btn" class="approval-mode-btn active" title="Auto-run tool actions">
+                        Auto
+                    </button>
+                </div>
                 <button id="settings-btn" class="action-icon-btn" title="Connection Settings">
                     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                         stroke-width="2">
@@ -86,9 +94,13 @@
             </div>
             <div class="browser-panel-row">
                 <input id="browser-goal-input" type="text"
-                    placeholder="例: このページで請求書PDFをアップロードして" />
+                    placeholder="Example: Upload invoice PDF on this page" />
                 <button id="browser-run-btn" class="mini-btn">Run</button>
                 <button id="browser-stop-btn" class="mini-btn ghost" disabled>Stop</button>
+            </div>
+            <div class="browser-panel-row rpa-record-row">
+                <button id="rpa-record-btn" class="mini-btn ghost">Record Demo</button>
+                <button id="rpa-record-stop-btn" class="mini-btn ghost" disabled>Stop & Save Skill</button>
             </div>
             <details class="activity-panel">
                 <summary>Agent Activity</summary>
@@ -97,9 +109,51 @@
         </section>
 
         <footer class="input-section">
+            <section id="interaction-panel" class="interaction-panel hidden">
+                <div id="proposal-panel" class="proposal-panel hidden">
+                    <div class="proposal-panel-header">
+                        <span id="proposal-type-badge" class="proposal-type-badge">Approval Required</span>
+                        <div class="proposal-pagination">
+                            <button id="proposal-prev-btn" class="proposal-nav-btn" type="button" title="Previous proposal">
+                                &lt;
+                            </button>
+                            <span id="proposal-page-label" class="proposal-page-label">1 / 1</span>
+                            <button id="proposal-next-btn" class="proposal-nav-btn" type="button" title="Next proposal">
+                                &gt;
+                            </button>
+                        </div>
+                    </div>
+                    <div class="proposal-panel-body">
+                        <p id="proposal-description" class="proposal-description"></p>
+                        <pre id="proposal-payload" class="proposal-payload"></pre>
+                    </div>
+                    <div id="proposal-error" class="proposal-error hidden"></div>
+                    <div class="proposal-actions-row">
+                        <button id="proposal-reject-btn" class="mini-btn ghost" type="button">Reject</button>
+                        <button id="proposal-approve-btn" class="mini-btn" type="button">Approve</button>
+                    </div>
+                    <div class="proposal-actions-row all">
+                        <button id="proposal-reject-all-btn" class="mini-btn ghost" type="button">Reject All</button>
+                        <button id="proposal-approve-all-btn" class="mini-btn" type="button">Approve All</button>
+                    </div>
+                </div>
+
+                <div id="questions-panel" class="questions-panel hidden">
+                    <div class="questions-panel-header">
+                        <span class="questions-title">Agent Needs Input</span>
+                    </div>
+                    <p id="questions-context" class="questions-context hidden"></p>
+                    <div id="questions-list" class="questions-list"></div>
+                    <div class="questions-actions">
+                        <button id="questions-cancel-btn" class="mini-btn ghost" type="button">Cancel</button>
+                        <button id="questions-submit-btn" class="mini-btn" type="button" disabled>Send Answers</button>
+                    </div>
+                </div>
+            </section>
             <div id="preview-container" class="hidden">
                 <div class="preview-card">
                     <img id="screenshot-preview" src="" alt="Screenshot">
+                    <div id="file-preview-badge" class="file-preview-badge hidden">PDF</div>
                     <button id="remove-screenshot" class="remove-btn">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="3">
@@ -108,13 +162,21 @@
                         </svg>
                     </button>
                     <div class="preview-info">
-                        <span class="preview-type">Screenshot</span>
+                        <span id="preview-type" class="preview-type">Screenshot</span>
                     </div>
                 </div>
             </div>
 
             <div class="input-box-wrapper">
                 <div class="input-actions-left">
+                    <input id="file-upload-input" type="file" accept="image/*,application/pdf" class="hidden" />
+                    <button id="upload-file-btn" class="input-action-btn" title="Upload image or PDF">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path
+                                d="M21.44 11.05l-8.49 8.49a5 5 0 0 1-7.07-7.07l8.49-8.49a3.5 3.5 0 0 1 4.95 4.95l-8.49 8.49a2 2 0 0 1-2.83-2.83l7.78-7.78" />
+                        </svg>
+                    </button>
                     <button id="capture-btn" class="input-action-btn" title="Capture Tab">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -219,3 +281,4 @@
 </body>
 
 </html>
+

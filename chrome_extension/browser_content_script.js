@@ -9,10 +9,24 @@
   const INDICATOR_STYLE_ID = "llm-browser-agent-indicator-style";
   const CURSOR_ID = "llm-browser-agent-virtual-cursor";
   const CURSOR_STYLE_ID = "llm-browser-agent-virtual-cursor-style";
+  const indicatorState = {
+    runningActive: false,
+    step: 0,
+    recordingActive: false
+  };
   const cursorState = {
     x: Math.max(0, Math.round(window.innerWidth * 0.5)),
     y: Math.max(0, Math.round(window.innerHeight * 0.5)),
     visible: false
+  };
+  const recordingState = {
+    active: false,
+    recordingId: "",
+    startedAt: 0,
+    lastScrollY: Math.round(window.scrollY),
+    lastScrollAt: 0,
+    navTimerId: null,
+    lastUrl: location.href
   };
 
   chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
@@ -40,6 +54,14 @@
     }
     if (type === "agent.setRunningIndicator") {
       setRunningIndicator(Boolean(message?.active), Number(message?.step) || 0);
+      return { ok: true };
+    }
+    if (type === "agent.recording.start") {
+      startInteractionRecording(String(message?.recordingId || ""));
+      return { ok: true };
+    }
+    if (type === "agent.recording.stop") {
+      stopInteractionRecording();
       return { ok: true };
     }
 
@@ -632,21 +654,50 @@
   }
 
   function setRunningIndicator(active, step) {
+    indicatorState.runningActive = Boolean(active);
+    indicatorState.step = Number(step) || 0;
+    renderIndicator();
+  }
+
+  function renderIndicator() {
     ensureIndicatorStyle();
     const indicator = ensureIndicatorElement();
     if (!indicator) {
       return;
     }
 
-    if (!active) {
+    const visible = indicatorState.runningActive || indicatorState.recordingActive;
+    if (!visible) {
       indicator.style.display = "none";
+      indicator.dataset.mode = "idle";
       return;
     }
 
+    const mode =
+      indicatorState.recordingActive && indicatorState.runningActive
+        ? "recording_running"
+        : indicatorState.recordingActive
+          ? "recording"
+          : "running";
+
     const badge = indicator.querySelector("[data-role='badge']");
     if (badge) {
-      badge.textContent = step > 0 ? `AI Agent Running · step ${step}` : "AI Agent Running";
+      if (mode === "recording") {
+        badge.textContent = "RPA Recording in Progress";
+      } else if (mode === "recording_running") {
+        badge.textContent =
+          indicatorState.step > 0
+            ? `RPA Recording + AI Running - step ${indicatorState.step}`
+            : "RPA Recording + AI Running";
+      } else {
+        badge.textContent =
+          indicatorState.step > 0
+            ? `AI Agent Running - step ${indicatorState.step}`
+            : "AI Agent Running";
+      }
     }
+
+    indicator.dataset.mode = mode;
     indicator.style.display = "block";
   }
 
@@ -666,7 +717,21 @@
         box-shadow:
           inset 0 0 24px rgba(34, 199, 255, 0.65),
           0 0 18px rgba(34, 199, 255, 0.55);
-        animation: llm-agent-glow-pulse 1.1s ease-in-out infinite alternate;
+        animation: llm-agent-running-pulse 1.1s ease-in-out infinite alternate;
+      }
+      #${INDICATOR_ID}[data-mode='recording'] {
+        border: 4px solid rgba(255, 76, 76, 0.92);
+        box-shadow:
+          inset 0 0 24px rgba(255, 76, 76, 0.55),
+          0 0 20px rgba(255, 76, 76, 0.48);
+        animation: llm-agent-recording-pulse 0.9s ease-in-out infinite alternate;
+      }
+      #${INDICATOR_ID}[data-mode='recording_running'] {
+        border: 4px solid rgba(255, 117, 53, 0.95);
+        box-shadow:
+          inset 0 0 26px rgba(255, 117, 53, 0.58),
+          0 0 22px rgba(255, 117, 53, 0.5);
+        animation: llm-agent-mixed-pulse 0.85s ease-in-out infinite alternate;
       }
       #${INDICATOR_ID} [data-role='badge'] {
         position: fixed;
@@ -680,7 +745,15 @@
         letter-spacing: 0.02em;
         box-shadow: 0 0 10px rgba(34, 199, 255, 0.7);
       }
-      @keyframes llm-agent-glow-pulse {
+      #${INDICATOR_ID}[data-mode='recording'] [data-role='badge'] {
+        background: rgba(168, 21, 21, 0.9);
+        box-shadow: 0 0 10px rgba(255, 83, 83, 0.75);
+      }
+      #${INDICATOR_ID}[data-mode='recording_running'] [data-role='badge'] {
+        background: rgba(180, 74, 16, 0.92);
+        box-shadow: 0 0 10px rgba(255, 130, 70, 0.75);
+      }
+      @keyframes llm-agent-running-pulse {
         from {
           border-color: rgba(34, 199, 255, 0.7);
           box-shadow:
@@ -692,6 +765,34 @@
           box-shadow:
             inset 0 0 26px rgba(255, 126, 54, 0.68),
             0 0 22px rgba(255, 126, 54, 0.62);
+        }
+      }
+      @keyframes llm-agent-recording-pulse {
+        from {
+          border-color: rgba(255, 76, 76, 0.7);
+          box-shadow:
+            inset 0 0 18px rgba(255, 76, 76, 0.42),
+            0 0 12px rgba(255, 76, 76, 0.35);
+        }
+        to {
+          border-color: rgba(255, 31, 31, 0.98);
+          box-shadow:
+            inset 0 0 28px rgba(255, 31, 31, 0.58),
+            0 0 24px rgba(255, 31, 31, 0.52);
+        }
+      }
+      @keyframes llm-agent-mixed-pulse {
+        from {
+          border-color: rgba(255, 117, 53, 0.74);
+          box-shadow:
+            inset 0 0 20px rgba(255, 117, 53, 0.48),
+            0 0 14px rgba(255, 117, 53, 0.42);
+        }
+        to {
+          border-color: rgba(255, 160, 33, 0.98);
+          box-shadow:
+            inset 0 0 30px rgba(255, 160, 33, 0.62),
+            0 0 24px rgba(255, 160, 33, 0.55);
         }
       }
     `;
@@ -708,6 +809,7 @@
     indicator.id = INDICATOR_ID;
     indicator.setAttribute("aria-hidden", "true");
     indicator.style.display = "none";
+    indicator.dataset.mode = "idle";
 
     const badge = document.createElement("div");
     badge.setAttribute("data-role", "badge");
@@ -716,6 +818,184 @@
 
     document.documentElement.appendChild(indicator);
     return indicator;
+  }
+
+  function startInteractionRecording(recordingId) {
+    stopInteractionRecording();
+    recordingState.active = true;
+    recordingState.recordingId = recordingId || "";
+    recordingState.startedAt = Date.now();
+    recordingState.lastScrollY = Math.round(window.scrollY);
+    recordingState.lastScrollAt = 0;
+    recordingState.lastUrl = location.href;
+    setupRecordingNavigationWatcher();
+    emitRecordingEvent({
+      type: "navigate",
+      url: location.href
+    });
+    indicatorState.recordingActive = true;
+    renderIndicator();
+    window.addEventListener("click", onRecordingClick, true);
+    window.addEventListener("input", onRecordingInput, true);
+    window.addEventListener("keydown", onRecordingKeydown, true);
+    window.addEventListener("scroll", onRecordingScroll, { capture: true, passive: true });
+  }
+
+  function stopInteractionRecording() {
+    if (!recordingState.active) {
+      indicatorState.recordingActive = false;
+      renderIndicator();
+      return;
+    }
+    window.removeEventListener("click", onRecordingClick, true);
+    window.removeEventListener("input", onRecordingInput, true);
+    window.removeEventListener("keydown", onRecordingKeydown, true);
+    window.removeEventListener("scroll", onRecordingScroll, true);
+
+    if (recordingState.navTimerId) {
+      clearInterval(recordingState.navTimerId);
+      recordingState.navTimerId = null;
+    }
+
+    recordingState.active = false;
+    recordingState.recordingId = "";
+    recordingState.startedAt = 0;
+    indicatorState.recordingActive = false;
+    renderIndicator();
+  }
+
+  function setupRecordingNavigationWatcher() {
+    if (recordingState.navTimerId) {
+      clearInterval(recordingState.navTimerId);
+      recordingState.navTimerId = null;
+    }
+    recordingState.navTimerId = setInterval(() => {
+      if (!recordingState.active) {
+        return;
+      }
+      const currentUrl = location.href;
+      if (currentUrl === recordingState.lastUrl) {
+        return;
+      }
+      recordingState.lastUrl = currentUrl;
+      emitRecordingEvent({
+        type: "navigate",
+        url: currentUrl
+      });
+    }, 450);
+  }
+
+  function emitRecordingEvent(eventData) {
+    if (!recordingState.active || !eventData || typeof eventData !== "object") {
+      return;
+    }
+    const payload = {
+      ...eventData,
+      recordingId: recordingState.recordingId,
+      at: Date.now(),
+      url: location.href
+    };
+    try {
+      chrome.runtime.sendMessage({ type: "rpa.record.event", payload }, () => {
+        void chrome.runtime.lastError;
+      });
+    } catch {
+      // no-op
+    }
+  }
+
+  function onRecordingClick(event) {
+    if (!recordingState.active) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    const selector = buildCssPath(target);
+    if (!selector) {
+      return;
+    }
+    emitRecordingEvent({
+      type: "click",
+      selector,
+      text_hint: getElementLabel(target)
+    });
+  }
+
+  function onRecordingInput(event) {
+    if (!recordingState.active) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof HTMLElement)) {
+      return;
+    }
+    if (
+      target instanceof HTMLInputElement &&
+      ["password", "hidden"].includes(String(target.type || "").toLowerCase())
+    ) {
+      return;
+    }
+
+    const selector = buildCssPath(target);
+    if (!selector) {
+      return;
+    }
+
+    let text = "";
+    if (target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement) {
+      text = target.value || "";
+    } else if (target.isContentEditable) {
+      text = target.textContent || "";
+    } else {
+      return;
+    }
+
+    emitRecordingEvent({
+      type: "type",
+      selector,
+      text: String(text || "").slice(0, 240)
+    });
+  }
+
+  function onRecordingKeydown(event) {
+    if (!recordingState.active) {
+      return;
+    }
+    const key = String(event?.key || "").trim();
+    if (!key) {
+      return;
+    }
+    const allowed = new Set(["Enter", "Tab", "Escape", "ArrowDown", "ArrowUp"]);
+    if (!allowed.has(key)) {
+      return;
+    }
+    emitRecordingEvent({
+      type: "keypress",
+      key
+    });
+  }
+
+  function onRecordingScroll() {
+    if (!recordingState.active) {
+      return;
+    }
+    const now = Date.now();
+    if (now - recordingState.lastScrollAt < 280) {
+      return;
+    }
+    const currentY = Math.round(window.scrollY);
+    const dy = currentY - recordingState.lastScrollY;
+    recordingState.lastScrollY = currentY;
+    recordingState.lastScrollAt = now;
+    if (Math.abs(dy) < 12) {
+      return;
+    }
+    emitRecordingEvent({
+      type: "scroll",
+      dy
+    });
   }
 
   function hashString(value) {
