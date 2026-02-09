@@ -968,30 +968,57 @@ export function WeeklyMeetingsCard({
   const gridHeight = hourCount * hourHeight;
   const scheduleHasItems = renderMeetingBlocks.length > 0 || renderAutoBlocks.length > 0;
 
+  const viewIncludestoday = visibleDayKeys.has(todayKey);
   const currentTimeInBounds =
     nowMinutes >= timeBounds.startHour * 60 && nowMinutes < timeBounds.endHour * 60;
 
-  // Auto-scroll to current time at ~30% from top
+  // Compute first workday start minute for non-today views
+  const firstWorkdayStartMinutes = useMemo(() => {
+    for (const day of days) {
+      const dayKey = toLocalDateKey(day.toJSDate(), timezone);
+      const config = workdayConfigByDay.get(dayKey);
+      if (config?.workWindow.length) {
+        return Math.min(...config.workWindow.map(w => w.startMinutes));
+      }
+    }
+    return null;
+  }, [days, timezone, workdayConfigByDay]);
+
+  // Auto-scroll to appropriate position based on view
   const hasAutoScrolled = useRef(false);
-  const scrollToCurrentTime = useCallback(() => {
+  const scrollToInitialPosition = useCallback(() => {
     const grid = gridRef.current;
-    if (!grid || !currentTimeInBounds) return;
+    if (!grid) return;
     const startBound = timeBounds.startHour * 60;
-    const currentOffset = ((nowMinutes - startBound) / 60) * hourHeight;
     const viewportHeight = grid.clientHeight;
-    const targetScroll = currentOffset - viewportHeight * 0.3;
-    grid.scrollTop = Math.max(0, targetScroll);
-  }, [currentTimeInBounds, timeBounds.startHour, nowMinutes, hourHeight]);
+
+    if (viewIncludestoday && currentTimeInBounds) {
+      // Today is visible: scroll to current time at ~30% from top
+      const currentOffset = ((nowMinutes - startBound) / 60) * hourHeight;
+      const targetScroll = currentOffset - viewportHeight * 0.3;
+      grid.scrollTop = Math.max(0, targetScroll);
+    } else if (firstWorkdayStartMinutes != null) {
+      // Non-today view: scroll to first workday start at ~10% from top
+      const workdayOffset = ((firstWorkdayStartMinutes - startBound) / 60) * hourHeight;
+      const targetScroll = workdayOffset - viewportHeight * 0.1;
+      grid.scrollTop = Math.max(0, targetScroll);
+    }
+  }, [viewIncludestoday, currentTimeInBounds, timeBounds.startHour, nowMinutes, hourHeight, firstWorkdayStartMinutes]);
+
+  // Reset scroll flag when view or navigation changes
+  useEffect(() => {
+    hasAutoScrolled.current = false;
+  }, [viewMode, viewStartKey]);
 
   useEffect(() => {
     if (!hasAutoScrolled.current && scheduleHasItems) {
       // Small delay to ensure DOM is rendered
       requestAnimationFrame(() => {
-        scrollToCurrentTime();
+        scrollToInitialPosition();
         hasAutoScrolled.current = true;
       });
     }
-  }, [scheduleHasItems, scrollToCurrentTime]);
+  }, [scheduleHasItems, scrollToInitialPosition]);
 
   useEffect(() => {
     const handleWheel = (event: WheelEvent) => {
