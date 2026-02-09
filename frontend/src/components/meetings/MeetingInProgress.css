@@ -632,3 +632,281 @@
         min-height: 200px;
     }
 }
+
+/* ===== 議事録追加ボタン ===== */
+.btn-add-transcript {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1.25rem;
+    background: linear-gradient(135deg, var(--primary) 0%, #0369a1 100%);
+    color: white;
+    border: none;
+    border-radius: 10px;
+    font-size: 0.875rem;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-add-transcript:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(14, 165, 233, 0.3);
+}
+
+.btn-add-transcript:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* ===== 前回の決定事項セクション ===== */
+.previous-session-section {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.06) 0%, rgba(245, 158, 11, 0.03) 100%);
+    border: 1px solid rgba(251, 191, 36, 0.2);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.previous-session-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.875rem 1.25rem;
+    background: none;
+    border: none;
+    font-size: 0.875rem;
+    font-weight: 700;
+    color: #b45309;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.previous-session-toggle:hover {
+    background: rgba(251, 191, 36, 0.08);
+}
+
+.previous-session-icon {
+    color: #f59e0b;
+}
+
+.previous-session-content {
+    padding: 0 1.25rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.previous-summary-block h5,
+.previous-decisions-block h5 {
+    margin: 0 0 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+}
+
+.previous-summary-block p {
+    margin: 0;
+    font-size: 0.875rem;
+    line-height: 1.6;
+    color: var(--text-main);
+}
+
+.previous-decisions-block ul {
+    margin: 0;
+    padding-left: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.375rem;
+}
+
+.previous-decisions-block li {
+    font-size: 0.875rem;
+    line-height: 1.5;
+}
+
+.decision-content {
+    color: var(--text-main);
+}
+
+.decision-rationale {
+    color: var(--text-muted);
+    font-size: 0.8125rem;
+}
+
+.previous-transcript {
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.02);
+    padding: 0.75rem;
+    border-radius: 8px;
+    margin: 0;
+}
+
+[data-theme="dark"] .previous-session-section {
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.08) 0%, rgba(245, 158, 11, 0.04) 100%);
+    border-color: rgba(251, 191, 36, 0.15);
+}
+
+[data-theme="dark"] .previous-session-toggle {
+    color: #fbbf24;
+}
+
+/* ===== 過去の議事録一覧 ===== */
+.past-sessions-section {
+    border: 1px solid rgba(0, 0, 0, 0.06);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.past-sessions-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.75rem 1.25rem;
+    background: rgba(0, 0, 0, 0.015);
+    border: none;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.past-sessions-toggle:hover {
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.past-sessions-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    background: rgba(0, 0, 0, 0.04);
+}
+
+.past-session-card {
+    background: white;
+}
+
+.past-session-card.current {
+    background: rgba(14, 165, 233, 0.03);
+}
+
+.past-session-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.625rem 1.25rem;
+    background: none;
+    border: none;
+    font-size: 0.8125rem;
+    cursor: pointer;
+    color: var(--text-main);
+    transition: background 0.2s;
+}
+
+.past-session-header:hover {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.past-session-date {
+    font-weight: 700;
+}
+
+.past-session-current-badge {
+    background: var(--primary);
+    color: white;
+    padding: 0.125rem 0.5rem;
+    border-radius: 999px;
+    font-size: 0.6875rem;
+    font-weight: 700;
+}
+
+.past-session-has-summary,
+.past-session-has-transcript {
+    font-size: 0.6875rem;
+    color: var(--text-muted);
+    margin-left: auto;
+}
+
+.past-session-body {
+    padding: 0.5rem 1.25rem 1rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    font-size: 0.8125rem;
+    line-height: 1.6;
+}
+
+.past-session-summary {
+    color: var(--text-main);
+}
+
+.past-session-decisions ul {
+    margin: 0.25rem 0 0;
+    padding-left: 1.25rem;
+}
+
+.past-session-decisions li {
+    margin-bottom: 0.25rem;
+}
+
+.past-session-transcript-details {
+    margin-top: 0.25rem;
+}
+
+.past-session-transcript-details summary {
+    cursor: pointer;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    font-weight: 600;
+}
+
+.past-session-transcript-details pre {
+    font-size: 0.75rem;
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 150px;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.02);
+    padding: 0.5rem;
+    border-radius: 6px;
+    margin: 0.5rem 0 0;
+}
+
+.past-session-empty {
+    color: var(--text-muted);
+    font-style: italic;
+    margin: 0;
+}
+
+[data-theme="dark"] .past-sessions-section {
+    border-color: rgba(255, 255, 255, 0.06);
+}
+
+[data-theme="dark"] .past-sessions-toggle {
+    background: rgba(255, 255, 255, 0.02);
+}
+
+[data-theme="dark"] .past-sessions-list {
+    background: rgba(255, 255, 255, 0.04);
+}
+
+[data-theme="dark"] .past-session-card {
+    background: var(--bg-card);
+}
+
+[data-theme="dark"] .past-session-card.current {
+    background: rgba(14, 165, 233, 0.06);
+}

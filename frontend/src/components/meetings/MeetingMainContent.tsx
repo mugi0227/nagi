@@ -1,7 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useMemo, useState } from 'react';
-import { FaMagic, FaPlay, FaMapMarkerAlt, FaUsers, FaInfoCircle, FaExpand, FaUndo, FaChevronDown, FaChevronUp, FaHistory, FaTrash, FaClock } from 'react-icons/fa';
+import { FaMagic, FaPlay, FaMapMarkerAlt, FaUsers, FaInfoCircle, FaExpand, FaUndo, FaChevronDown, FaChevronUp, FaHistory, FaTrash, FaClock, FaClipboardList, FaLightbulb, FaCheckCircle } from 'react-icons/fa';
 import { meetingAgendaApi } from '../../api/meetingAgenda';
+import { meetingSessionApi } from '../../api/meetingSession';
 import { projectsApi } from '../../api/projects';
 import type { RecurringMeeting, Task, TaskUpdate } from '../../api/types';
 import type { DraftCardData } from '../chat/DraftCard';
@@ -11,6 +12,7 @@ import {
     useLatestSessionByTask,
     useCreateSession,
     useStartSession,
+    useEndSession,
     useReopenSession,
     useResetToPreparation,
 } from '../../hooks/useMeetingSession';
@@ -113,8 +115,26 @@ export function MeetingMainContent({
     // Session mutations
     const createSessionMutation = useCreateSession();
     const startSessionMutation = useStartSession(taskId);
+    const endSessionMutation = useEndSession(taskId);
     const reopenSessionMutation = useReopenSession(taskId);
     const resetToPreparationMutation = useResetToPreparation(taskId);
+
+    // Past sessions for recurring meetings (議事録履歴)
+    const { data: pastSessions = [] } = useQuery({
+        queryKey: ['meeting-sessions', 'recurring', recurringMeetingId],
+        queryFn: () => meetingSessionApi.listByRecurringMeeting(recurringMeetingId!),
+        enabled: !!recurringMeetingId,
+    });
+
+    // Previous session summary (前回の決定事項)
+    const previousSession = useMemo(() => {
+        if (!pastSessions.length || !session) return pastSessions.length ? pastSessions[0] : null;
+        // Find the most recent session that is NOT the current one
+        return pastSessions.find(s => s.id !== session.id) ?? null;
+    }, [pastSessions, session]);
+
+    // State for past sessions panel visibility
+    const [showPastSessions, setShowPastSessions] = useState(false);
 
     // Global timer context
     const meetingTimer = useMeetingTimer();
@@ -265,6 +285,17 @@ export function MeetingMainContent({
             meetingTimer.showModal();
         } catch (error) {
             console.error('Failed to reopen session:', error);
+        }
+    };
+
+    const handleAddTranscriptForPast = async () => {
+        if (!taskId) return;
+        try {
+            const newSession = await createSessionMutation.mutateAsync({ task_id: taskId });
+            await endSessionMutation.mutateAsync(newSession.id);
+            await refetchSession();
+        } catch (error) {
+            console.error('Failed to create session for past meeting:', error);
         }
     };
 
@@ -467,6 +498,19 @@ export function MeetingMainContent({
                             </div>
                         )}
 
+                        {/* 過去の会議でセッションがない場合: 議事録を追加ボタン */}
+                        {mode === 'ARCHIVE' && !session && (
+                            <div className="agenda-actions">
+                                <button
+                                    className="btn-add-transcript"
+                                    onClick={handleAddTranscriptForPast}
+                                    disabled={createSessionMutation.isPending || endSessionMutation.isPending}
+                                >
+                                    <FaClipboardList /> 議事録を追加
+                                </button>
+                            </div>
+                        )}
+
                         <AgendaList
                             meetingId={recurringMeetingId}
                             taskId={isStandalone ? taskId : undefined}
@@ -483,6 +527,40 @@ export function MeetingMainContent({
                         projectId={projectId}
                         memberOptions={memberOptions}
                     />
+                )}
+
+                {/* 前回の決定事項・議事録履歴 (PREPARATION/ARCHIVE mode) */}
+                {(mode === 'PREPARATION' || mode === 'ARCHIVE') && previousSession && (
+                    <PreviousSessionSummary
+                        session={previousSession}
+                        timezone={timezone}
+                    />
+                )}
+
+                {/* 過去の議事録一覧 (定例会議のみ) */}
+                {(mode === 'PREPARATION' || mode === 'ARCHIVE') && pastSessions.length > 0 && (
+                    <div className="past-sessions-section">
+                        <button
+                            className="past-sessions-toggle"
+                            onClick={() => setShowPastSessions(!showPastSessions)}
+                        >
+                            <FaHistory />
+                            <span>過去の議事録 ({pastSessions.length}件)</span>
+                            {showPastSessions ? <FaChevronUp /> : <FaChevronDown />}
+                        </button>
+                        {showPastSessions && (
+                            <div className="past-sessions-list">
+                                {pastSessions.map((ps) => (
+                                    <PastSessionCard
+                                        key={ps.id}
+                                        session={ps}
+                                        isCurrentSession={session?.id === ps.id}
+                                        timezone={timezone}
+                                    />
+                                ))}
+                            </div>
+                        )}
+                    </div>
                 )}
 
                 {/* Minimized meeting bar - show when meeting is in progress but modal is closed */}
@@ -513,6 +591,141 @@ export function MeetingMainContent({
                 )}
                 {/* Modal is now rendered globally via GlobalMeetingModal */}
             </div>
+        </div>
+    );
+}
+
+// --- Helper Components ---
+
+interface MeetingSessionSummaryData {
+    overall_summary?: string;
+    agenda_discussions?: Array<{ title: string; summary: string }>;
+    decisions?: Array<{ content: string; rationale?: string }>;
+}
+
+function parseSummaryJson(summaryJson: string | null | undefined): MeetingSessionSummaryData | null {
+    if (!summaryJson) return null;
+    try {
+        return JSON.parse(summaryJson) as MeetingSessionSummaryData;
+    } catch {
+        return null;
+    }
+}
+
+/** 前回の決定事項を表示するコンポーネント */
+function PreviousSessionSummary({ session, timezone }: { session: { summary?: string | null; ended_at?: string | null; created_at?: string | null; transcript?: string | null }; timezone: string }) {
+    const [isExpanded, setIsExpanded] = useState(false);
+    const summaryData = useMemo(() => parseSummaryJson(session.summary), [session.summary]);
+
+    if (!summaryData && !session.transcript) return null;
+
+    const dateLabel = session.ended_at
+        ? formatDate(session.ended_at, { month: 'short', day: 'numeric' }, timezone)
+        : session.created_at
+            ? formatDate(session.created_at, { month: 'short', day: 'numeric' }, timezone)
+            : '';
+
+    return (
+        <div className="previous-session-section">
+            <button
+                className="previous-session-toggle"
+                onClick={() => setIsExpanded(!isExpanded)}
+            >
+                <FaLightbulb className="previous-session-icon" />
+                <span>前回の決定事項・サマリー {dateLabel && `(${dateLabel})`}</span>
+                {isExpanded ? <FaChevronUp /> : <FaChevronDown />}
+            </button>
+            {isExpanded && (
+                <div className="previous-session-content">
+                    {summaryData?.overall_summary && (
+                        <div className="previous-summary-block">
+                            <h5>サマリー</h5>
+                            <p>{summaryData.overall_summary}</p>
+                        </div>
+                    )}
+                    {summaryData?.decisions && summaryData.decisions.length > 0 && (
+                        <div className="previous-decisions-block">
+                            <h5><FaCheckCircle /> 決定事項</h5>
+                            <ul>
+                                {summaryData.decisions.map((d, i) => (
+                                    <li key={i}>
+                                        <span className="decision-content">{d.content}</span>
+                                        {d.rationale && <span className="decision-rationale">（{d.rationale}）</span>}
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                    {!summaryData && session.transcript && (
+                        <div className="previous-summary-block">
+                            <h5>議事録</h5>
+                            <pre className="previous-transcript">{session.transcript}</pre>
+                        </div>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+}
+
+/** 過去のセッションカード */
+function PastSessionCard({ session, isCurrentSession, timezone }: {
+    session: { id: string; summary?: string | null; ended_at?: string | null; created_at?: string | null; transcript?: string | null; status: string };
+    isCurrentSession: boolean;
+    timezone: string;
+}) {
+    const [isExpanded, setIsExpanded] = useState(false);
+    const summaryData = useMemo(() => parseSummaryJson(session.summary), [session.summary]);
+
+    const dateLabel = session.ended_at
+        ? formatDate(session.ended_at, { year: 'numeric', month: 'short', day: 'numeric' }, timezone)
+        : session.created_at
+            ? formatDate(session.created_at, { year: 'numeric', month: 'short', day: 'numeric' }, timezone)
+            : '';
+
+    return (
+        <div className={`past-session-card ${isCurrentSession ? 'current' : ''}`}>
+            <button
+                className="past-session-header"
+                onClick={() => setIsExpanded(!isExpanded)}
+            >
+                <span className="past-session-date">{dateLabel}</span>
+                {isCurrentSession && <span className="past-session-current-badge">今回</span>}
+                {summaryData ? (
+                    <span className="past-session-has-summary">サマリーあり</span>
+                ) : session.transcript ? (
+                    <span className="past-session-has-transcript">議事録あり</span>
+                ) : null}
+                {isExpanded ? <FaChevronUp /> : <FaChevronDown />}
+            </button>
+            {isExpanded && (
+                <div className="past-session-body">
+                    {summaryData?.overall_summary && (
+                        <div className="past-session-summary">
+                            <strong>サマリー:</strong> {summaryData.overall_summary}
+                        </div>
+                    )}
+                    {summaryData?.decisions && summaryData.decisions.length > 0 && (
+                        <div className="past-session-decisions">
+                            <strong>決定事項:</strong>
+                            <ul>
+                                {summaryData.decisions.map((d, i) => (
+                                    <li key={i}>{d.content}</li>
+                                ))}
+                            </ul>
+                        </div>
+                    )}
+                    {session.transcript && (
+                        <details className="past-session-transcript-details">
+                            <summary>議事録を表示</summary>
+                            <pre>{session.transcript}</pre>
+                        </details>
+                    )}
+                    {!summaryData && !session.transcript && (
+                        <p className="past-session-empty">内容がありません</p>
+                    )}
+                </div>
+            )}
         </div>
     );
 }

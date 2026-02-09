@@ -63,6 +63,10 @@ export const meetingSessionApi = {
         return client.post<MeetingSession>(`/meeting-sessions/${sessionId}/reset-to-preparation`, {});
     },
 
+    listByRecurringMeeting: async (recurringMeetingId: string): Promise<MeetingSession[]> => {
+        return client.get<MeetingSession[]>(`/meeting-sessions/recurring/${recurringMeetingId}`);
+    },
+
     // Phase 4: Post-meeting summary
     analyzeTranscript: async (
         sessionId: string,

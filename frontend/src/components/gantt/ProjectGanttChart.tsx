@@ -101,6 +101,7 @@ interface GanttRow {
   subtaskCount?: number;  // Number of subtasks for a parent task
   assigneeName?: string;  // Display name of the assignee
   dueDateStr?: string;    // Raw due_date for deadline status calculation
+  startNotBeforeStr?: string;  // Raw start_not_before for date display
 }
 
 interface MonthHeader {
@@ -155,6 +156,13 @@ const getBufferStatusColor = (status: BufferStatus): string => {
     case 'warning': return '#f59e0b';
     default: return '#10b981';
   }
+};
+
+/** Format date string to short M/d format (e.g. "1/15") */
+const formatShortDate = (dateStr?: string): string => {
+  if (!dateStr) return '?';
+  const dt = DateTime.fromISO(dateStr);
+  return dt.isValid ? dt.toFormat('M/d') : '?';
 };
 
 /** Calculate deadline status for a task based on due_date relative to today */
@@ -270,7 +278,6 @@ const DroppableMilestoneRow: React.FC<DroppableMilestoneRowProps> = ({
       {...listeners}
     >
       <span className="pgantt-milestone-icon">◆</span>
-      {row.hasNoDate && <span className="pgantt-no-date-icon" title="期限未設定">⚠</span>}
       <span
         ref={titleRef}
         className="pgantt-row-title"
@@ -446,7 +453,6 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
       {row.type === 'subtask' && <span className="pgantt-subtask-icon">└</span>}
       {row.type === 'milestone' && <span className="pgantt-milestone-icon">◆</span>}
       {row.linkedMilestoneId && <span className="pgantt-linked-icon">└</span>}
-      {row.hasNoDate && <span className="pgantt-no-date-icon" title="期限未設定">⚠</span>}
       {(row.type === 'task' || row.type === 'subtask') && row.bar?.status && (
         <span className={`pgantt-status-dot ${row.bar.status.toLowerCase().replace('_', '-')}`} title={
           row.bar.status === 'DONE' ? '完了' :
@@ -454,14 +460,21 @@ const SortableSidebarRow: React.FC<SortableSidebarRowProps> = ({
           row.bar.status === 'WAITING' ? '待機中' : '未着手'
         } />
       )}
-      <span
-        ref={titleRef}
-        className="pgantt-row-title"
-        onMouseEnter={handleTitleMouseEnter}
-      >
-        {row.title}
-        <span className="pgantt-row-title-popover" style={popoverStyle}>{row.title}</span>
-      </span>
+      <div className="pgantt-row-info">
+        <span
+          ref={titleRef}
+          className="pgantt-row-title"
+          onMouseEnter={handleTitleMouseEnter}
+        >
+          {row.title}
+          <span className="pgantt-row-title-popover" style={popoverStyle}>{row.title}</span>
+        </span>
+        {(row.type === 'task' || row.type === 'subtask') && (row.startNotBeforeStr || row.dueDateStr) && (
+          <span className="pgantt-row-dates">
+            {formatShortDate(row.startNotBeforeStr)}〜{formatShortDate(row.dueDateStr)}
+          </span>
+        )}
+      </div>
       {(row.type === 'task' || row.type === 'subtask') && row.assigneeName && (
         <span className="pgantt-assignee-badge" title={row.assigneeName}>
           <FaUser size={8} />
@@ -1256,7 +1269,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
       }
     }
 
-    // Post-process: add assigneeName and dueDateStr to task/subtask rows
+    // Post-process: add assigneeName, dueDateStr, startNotBeforeStr to task/subtask rows
     const taskMap = new Map(tasks.map(t => [t.id, t]));
     result.forEach(row => {
       if (row.type === 'task' || row.type === 'subtask') {
@@ -1264,6 +1277,7 @@ export const ProjectGanttChart: React.FC<ProjectGanttChartProps> = ({
         const task = taskMap.get(row.id);
         if (task) {
           row.dueDateStr = task.due_date;
+          row.startNotBeforeStr = task.start_not_before;
         }
       }
     });

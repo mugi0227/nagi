@@ -126,6 +126,7 @@ export function MemoriesPage() {
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Skills-specific state
+  const [expandedSkills, setExpandedSkills] = useState<Set<string>>(new Set());
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editingSkill, setEditingSkill] = useState<Memory | null>(null);
@@ -389,12 +390,26 @@ export function MemoriesPage() {
               </div>
             ) : (
               skillsView.map((skill) => (
-                <div key={skill.id} className="skill-card">
+                <div
+                  key={skill.id}
+                  className="skill-card"
+                  onClick={() =>
+                    setExpandedSkills((prev) => {
+                      const next = new Set(prev);
+                      if (next.has(skill.id)) {
+                        next.delete(skill.id);
+                      } else {
+                        next.add(skill.id);
+                      }
+                      return next;
+                    })
+                  }
+                >
                   <div className="skill-header">
                     <div>
                       <h3 className="skill-title">{skill.summary.title}</h3>
                       {skill.summary.body && (
-                        <div className="skill-body markdown-content">
+                        <div className={`skill-body markdown-content${expandedSkills.has(skill.id) ? ' is-expanded' : ''}`}>
                           <ReactMarkdown remarkPlugins={[remarkGfm]}>
                             {skill.summary.body}
                           </ReactMarkdown>
@@ -405,7 +420,7 @@ export function MemoriesPage() {
                       <button
                         className="skill-action-btn"
                         type="button"
-                        onClick={() => openEditor(skill)}
+                        onClick={(e) => { e.stopPropagation(); openEditor(skill); }}
                         title="編集"
                       >
                         <FaPen />
@@ -413,7 +428,7 @@ export function MemoriesPage() {
                       <button
                         className="skill-action-btn danger"
                         type="button"
-                        onClick={() => handleDeleteSkill(skill)}
+                        onClick={(e) => { e.stopPropagation(); handleDeleteSkill(skill); }}
                         title="削除"
                       >
                         <FaTrash />

@@ -25,7 +25,7 @@
   --c-success: #10b981;
   --c-warning: #f59e0b;
   --c-danger: #ef4444;
-  --c-milestone: #a855f7;
+  --c-milestone: #1e293b;
 
   display: flex;
   flex-direction: column;
@@ -365,6 +365,11 @@
 }
 
 /* Completed task row styling */
+.pgantt-sidebar-row.status-done {
+  opacity: 0.5;
+  background: rgba(16, 185, 129, 0.05);
+}
+
 .pgantt-sidebar-row.status-done .pgantt-row-title {
   color: var(--c-text-muted);
   text-decoration: line-through;
@@ -424,17 +429,30 @@
   font-size: 0.9rem;
 }
 
-.pgantt-row-title {
+.pgantt-row-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
   flex: 1;
+  gap: 1px;
+}
+
+.pgantt-row-title {
   font-size: 0.85rem;
   color: #1e293b; /* Always black for readability */
   overflow: hidden;
   display: -webkit-box;
-  -webkit-line-clamp: 2;
+  -webkit-line-clamp: 1;
   -webkit-box-orient: vertical;
   line-height: 1.3;
   position: relative;
   min-width: 0; /* Allow flex item to shrink below content size */
+}
+
+.pgantt-row-dates {
+  font-size: 0.65rem;
+  color: var(--c-text-muted);
+  line-height: 1;
 }
 
 /* Popover on hover - using fixed positioning to escape overflow containers */
@@ -738,29 +756,20 @@
 
 .pgantt-sidebar-row.milestone-linked {
   padding-left: calc(12px + var(--depth, 0) * 14px);
-  background: linear-gradient(to right, rgba(168, 85, 247, 0.05), transparent);
   border-left: 3px solid var(--c-milestone);
-}
-
-.pgantt-sidebar-row.milestone-linked .pgantt-row-title {
-  color: #1e293b; /* Black for readability, same as other tasks */
-}
-
-.pgantt-sidebar-row.milestone-linked:hover {
-  background: linear-gradient(to right, rgba(168, 85, 247, 0.12), rgba(168, 85, 247, 0.05));
 }
 
 /* Phase 6: Milestone drop target - sidebar row */
 .pgantt-sidebar-row.milestone.drop-target {
-  background: rgba(168, 85, 247, 0.2);
+  background: rgba(30, 41, 59, 0.2);
   border: 2px dashed var(--c-milestone);
   border-radius: 4px;
   animation: milestone-pulse 0.8s ease-in-out infinite;
 }
 
 @keyframes milestone-pulse {
-  0%, 100% { background: rgba(168, 85, 247, 0.2); }
-  50% { background: rgba(168, 85, 247, 0.35); }
+  0%, 100% { background: rgba(30, 41, 59, 0.2); }
+  50% { background: rgba(30, 41, 59, 0.35); }
 }
 
 .pgantt-sidebar-row.milestone.drop-target .pgantt-milestone-icon {
@@ -770,7 +779,7 @@
 
 /* Phase 6: Milestone drop target - timeline bar row */
 .pgantt-bar-row.milestone.drop-target {
-  background: rgba(168, 85, 247, 0.15);
+  background: rgba(30, 41, 59, 0.15);
 }
 
 .pgantt-bar.milestone.drop-target {
@@ -778,11 +787,7 @@
   outline-offset: 4px;
 }
 
-/* Phase 6: Milestone-linked task bar */
-.pgantt-bar.milestone-linked {
-  background: linear-gradient(135deg, #c084fc 0%, var(--c-milestone) 100%);
-  box-shadow: 0 2px 8px rgba(168, 85, 247, 0.3);
-}
+/* Phase 6: Milestone-linked task bar - uses normal task colors */
 
 /* Milestone deadline marker on task rows - faded diamond */
 .pgantt-milestone-marker {
@@ -800,87 +805,6 @@
    Undated Items (No Date)
    ============================================ */
 
-/* Sidebar warning icon for undated items */
-.pgantt-no-date-icon {
-  color: var(--c-warning);
-  font-size: 0.85rem;
-  margin-right: 4px;
-  animation: warning-pulse 2s ease-in-out infinite;
-}
-
-@keyframes warning-pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
-}
-
-/* Sidebar row for undated items */
-.pgantt-sidebar-row.no-date {
-  background: linear-gradient(to right, rgba(245, 158, 11, 0.08), transparent);
-}
-
-.pgantt-sidebar-row.no-date:hover {
-  background: linear-gradient(to right, rgba(245, 158, 11, 0.15), rgba(245, 158, 11, 0.05));
-}
-
-.pgantt-sidebar-row.milestone.no-date .pgantt-milestone-icon {
-  animation: milestone-blink 1.5s ease-in-out infinite;
-}
-
-@keyframes milestone-blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-
-/* Task bar for undated items - dashed border */
-.pgantt-bar.task.no-date {
-  background: repeating-linear-gradient(
-    45deg,
-    rgba(99, 102, 241, 0.3),
-    rgba(99, 102, 241, 0.3) 4px,
-    rgba(99, 102, 241, 0.15) 4px,
-    rgba(99, 102, 241, 0.15) 8px
-  );
-  border: 2px dashed var(--c-primary);
-  box-shadow: none;
-}
-
-.pgantt-bar.task.no-date:hover {
-  background: repeating-linear-gradient(
-    45deg,
-    rgba(99, 102, 241, 0.5),
-    rgba(99, 102, 241, 0.5) 4px,
-    rgba(99, 102, 241, 0.25) 4px,
-    rgba(99, 102, 241, 0.25) 8px
-  );
-  border-color: var(--c-primary-light);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
-}
-
-/* Subtask bar for undated items */
-.pgantt-bar.subtask.no-date {
-  background: repeating-linear-gradient(
-    45deg,
-    rgba(129, 140, 248, 0.25),
-    rgba(129, 140, 248, 0.25) 4px,
-    rgba(129, 140, 248, 0.1) 4px,
-    rgba(129, 140, 248, 0.1) 8px
-  );
-  border: 2px dashed #818cf8;
-  box-shadow: none;
-}
-
-.pgantt-bar.subtask.no-date:hover {
-  background: repeating-linear-gradient(
-    45deg,
-    rgba(129, 140, 248, 0.4),
-    rgba(129, 140, 248, 0.4) 4px,
-    rgba(129, 140, 248, 0.2) 4px,
-    rgba(129, 140, 248, 0.2) 8px
-  );
-  transform: translateY(-1px);
-}
-
 /* Draggable styling for milestones in sidebar */
 .pgantt-sidebar-row.milestone.draggable {
   cursor: grab;
@@ -892,7 +816,7 @@
 
 .pgantt-sidebar-row.milestone.dragging {
   opacity: 0.5;
-  background: rgba(168, 85, 247, 0.2);
+  background: rgba(30, 41, 59, 0.2);
   border: 1px dashed var(--c-milestone);
   border-radius: 4px;
 }
@@ -1159,7 +1083,7 @@
 .pgantt-bar-milestone {
   font-size: 1.4rem;
   color: var(--c-milestone);
-  filter: drop-shadow(0 2px 4px rgba(168, 85, 247, 0.4));
+  filter: drop-shadow(0 2px 4px rgba(30, 41, 59, 0.3));
 }
 
 /* Buffer Bar */

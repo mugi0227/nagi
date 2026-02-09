@@ -8,17 +8,32 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 2600;
   padding: 1rem;
 }
 
 .modal-container {
   display: flex;
   max-width: 98vw;
+  max-height: 90vh;
   align-items: stretch;
   justify-content: center;
-  gap: 3rem;
-  /* モーダル間のギャップをさらに拡大 */
+  gap: 1.5rem;
+}
+
+/* split-view: 両パネルを画面内に収める */
+.modal-container.split-view {
+  gap: 1rem;
+}
+
+.modal-container.split-view .side-layout-modal {
+  width: clamp(400px, 50vw, 700px);
+  flex-shrink: 1;
+}
+
+.modal-container.split-view .guide-panel {
+  width: clamp(350px, 40vw, 600px);
+  flex-shrink: 1;
 }
 
 .side-layout-modal {
@@ -908,6 +923,34 @@
   margin-bottom: 1rem;
 }
 
+/* split-view を縦スタックに切り替え（画面幅が足りない場合） */
+@media (max-width: 1200px) {
+  .modal-container.split-view {
+    flex-direction: column;
+    align-items: center;
+    overflow-y: auto;
+    gap: 0;
+  }
+
+  .modal-container.split-view .side-layout-modal {
+    width: 100%;
+    max-width: 700px;
+    height: auto;
+    max-height: none;
+    flex-shrink: 0;
+    border-radius: 20px 20px 0 0;
+  }
+
+  .modal-container.split-view .guide-panel {
+    width: 100%;
+    max-width: 700px;
+    height: auto;
+    max-height: none;
+    flex-shrink: 0;
+    border-radius: 0 0 20px 20px;
+  }
+}
+
 @media (max-width: 1024px) {
   .modal-body-wrapper {
     flex-direction: column;
@@ -1003,7 +1046,7 @@
     height: 100vh !important;
     max-height: 100vh !important;
     border-radius: 0 !important;
-    z-index: 1001;
+    z-index: 2601;
   }
 
   .guide-header {

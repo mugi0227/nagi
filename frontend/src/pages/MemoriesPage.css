@@ -399,6 +399,7 @@
   padding: 1.5rem;
   box-shadow: var(--shadow-card);
   border: 1px solid var(--border-color);
+  cursor: pointer;
 }
 
 .skill-header {
@@ -434,6 +435,15 @@
   height: 40px;
   background: linear-gradient(transparent, var(--bg-card));
   pointer-events: none;
+}
+
+.skill-body.is-expanded {
+  max-height: none;
+  overflow: visible;
+}
+
+.skill-body.is-expanded::after {
+  display: none;
 }
 
 .skill-body.markdown-content p {
