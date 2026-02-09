@@ -51,6 +51,13 @@ class AgentService:
 
     APP_NAME = "SecretaryPartnerAI"
     HISTORY_SEED_LIMIT = 200
+    PDF_TEXT_MAX_PAGES = 30
+    PDF_TEXT_MAX_CHARS = 20000
+    PDF_TEXT_MIN_CHARS = 240
+    PDF_IMAGE_MAX_PAGES = 6
+    PDF_IMAGE_RENDER_DPI = 130
+    PDF_IMAGE_JPEG_QUALITY = 80
+    PDF_IMAGE_MAX_TOTAL_BYTES = 8 * 1024 * 1024
 
     def __init__(
         self,
@@ -195,6 +202,9 @@ class AgentService:
             return request.text
         if request.image_base64 or request.image_url:
             return "[Image attached]"
+        if request.file_base64 or request.file_url:
+            file_name = (request.file_name or "").strip()
+            return f"[File attached: {file_name}]" if file_name else "[File attached]"
         return ""
 
     async def _ensure_session(
@@ -493,6 +503,224 @@ class AgentService:
 
         return await self._llm_provider.analyze_image(image_bytes, mime_type, prompt)
 
+    async def _read_file_bytes_from_url(
+        self,
+        file_url: str,
+    ) -> tuple[bytes | None, str | None, str | None]:
+        """
+        Read file bytes from storage/file/http URL.
+
+        Returns:
+            (bytes, mime_type, error_message)
+        """
+        import mimetypes
+
+        settings = get_settings()
+        storage_prefix = f"{settings.BASE_URL}/storage/"
+
+        file_path = None
+        if file_url.startswith(storage_prefix):
+            relative_path = file_url[len(storage_prefix):]
+            abs_storage_path = Path(settings.STORAGE_BASE_PATH).absolute()
+            file_path = abs_storage_path / relative_path
+        elif file_url.startswith("file://"):
+            local_path_str = file_url[7:]
+            if local_path_str.startswith("/") and len(local_path_str) > 2 and local_path_str[2] == ":":
+                local_path_str = local_path_str[1:]
+            file_path = Path(local_path_str)
+        elif not file_url.startswith(("http://", "https://")):
+            candidate_path = Path(file_url)
+            if candidate_path.is_absolute():
+                file_path = candidate_path
+
+        if file_path:
+            try:
+                if not file_path.exists():
+                    return None, None, f"File not found: {file_path}"
+                file_bytes = file_path.read_bytes()
+                mime_type, _ = mimetypes.guess_type(str(file_path))
+                return file_bytes, mime_type or "application/octet-stream", None
+            except Exception as e:
+                return None, None, f"Failed to read file: {e}"
+
+        import httpx
+
+        try:
+            async with httpx.AsyncClient() as client:
+                resp = await client.get(file_url)
+                if resp.status_code != 200:
+                    return None, None, f"Failed to fetch file: HTTP {resp.status_code}"
+                mime_type = resp.headers.get("content-type", "").split(";")[0].strip()
+                return resp.content, (mime_type or "application/octet-stream"), None
+        except Exception as e:
+            return None, None, f"Failed to fetch file: {e}"
+
+    async def _extract_pdf_text_layer(
+        self,
+        pdf_bytes: bytes,
+    ) -> tuple[str, dict[str, Any]]:
+        """
+        Extract PDF text layer and evaluate if it's sufficient.
+
+        Returns:
+            (text, metadata)
+            metadata keys: status, reason, page_count, extracted_chars
+        """
+        import re
+        from io import BytesIO
+
+        if not pdf_bytes:
+            return "", {
+                "status": "insufficient",
+                "reason": "empty_pdf_bytes",
+                "page_count": 0,
+                "extracted_chars": 0,
+            }
+
+        try:
+            from pypdf import PdfReader
+        except Exception:
+            return "", {
+                "status": "insufficient",
+                "reason": "pypdf_not_available",
+                "page_count": 0,
+                "extracted_chars": 0,
+            }
+
+        try:
+            reader = PdfReader(BytesIO(pdf_bytes))
+            page_count = len(reader.pages)
+            limited_pages = reader.pages[: self.PDF_TEXT_MAX_PAGES]
+            chunks: list[str] = []
+
+            for idx, page in enumerate(limited_pages):
+                page_text = ""
+                try:
+                    page_text = page.extract_text() or ""
+                except Exception:
+                    page_text = ""
+
+                page_text = page_text.strip()
+                if not page_text:
+                    continue
+                chunks.append(f"[Page {idx + 1}]\n{page_text}")
+
+            text = "\n\n".join(chunks)
+            if len(text) > self.PDF_TEXT_MAX_CHARS:
+                text = text[: self.PDF_TEXT_MAX_CHARS]
+
+            non_ws_chars = len(re.sub(r"\s+", "", text))
+            if non_ws_chars >= self.PDF_TEXT_MIN_CHARS:
+                return text, {
+                    "status": "sufficient",
+                    "reason": "ok",
+                    "page_count": page_count,
+                    "extracted_chars": non_ws_chars,
+                }
+
+            reason = "text_too_short_or_scanned_pdf"
+            if not text:
+                reason = "no_text_layer"
+
+            return text, {
+                "status": "insufficient",
+                "reason": reason,
+                "page_count": page_count,
+                "extracted_chars": non_ws_chars,
+            }
+        except Exception as e:
+            logger.warning(f"PDF text extraction failed: {e}")
+            return "", {
+                "status": "insufficient",
+                "reason": "pdf_parse_failed",
+                "page_count": 0,
+                "extracted_chars": 0,
+            }
+
+    async def _render_pdf_pages_as_images(
+        self,
+        pdf_bytes: bytes,
+    ) -> tuple[list[tuple[int, bytes, str]], dict[str, Any]]:
+        """
+        Render PDF pages into compressed JPEG images for OCR fallback.
+
+        Returns:
+            (rendered_pages, metadata)
+            rendered_pages: [(page_number_1based, image_bytes, mime_type), ...]
+            metadata keys: status, reason, page_count, rendered_pages, total_image_bytes, truncated
+        """
+        if not pdf_bytes:
+            return [], {
+                "status": "failed",
+                "reason": "empty_pdf_bytes",
+                "page_count": 0,
+                "rendered_pages": 0,
+                "total_image_bytes": 0,
+                "truncated": False,
+            }
+
+        try:
+            import fitz  # type: ignore
+        except Exception:
+            return [], {
+                "status": "failed",
+                "reason": "pymupdf_not_available",
+                "page_count": 0,
+                "rendered_pages": 0,
+                "total_image_bytes": 0,
+                "truncated": False,
+            }
+
+        rendered: list[tuple[int, bytes, str]] = []
+        total_image_bytes = 0
+        truncated = False
+        page_count = 0
+
+        try:
+            doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+            page_count = doc.page_count
+            max_pages = min(page_count, self.PDF_IMAGE_MAX_PAGES)
+            scale = max(self.PDF_IMAGE_RENDER_DPI / 72.0, 0.1)
+            matrix = fitz.Matrix(scale, scale)
+
+            for page_index in range(max_pages):
+                page = doc.load_page(page_index)
+                pix = page.get_pixmap(matrix=matrix, alpha=False)
+                image_bytes = pix.tobytes("jpeg", jpg_quality=self.PDF_IMAGE_JPEG_QUALITY)
+                if not image_bytes:
+                    continue
+
+                if total_image_bytes + len(image_bytes) > self.PDF_IMAGE_MAX_TOTAL_BYTES:
+                    truncated = True
+                    break
+
+                rendered.append((page_index + 1, image_bytes, "image/jpeg"))
+                total_image_bytes += len(image_bytes)
+
+            if page_count > max_pages:
+                truncated = True
+
+            doc.close()
+        except Exception as e:
+            logger.warning(f"PDF page rendering failed: {e}")
+            return [], {
+                "status": "failed",
+                "reason": "pdf_render_failed",
+                "page_count": page_count,
+                "rendered_pages": 0,
+                "total_image_bytes": 0,
+                "truncated": False,
+            }
+
+        return rendered, {
+            "status": "ok" if rendered else "failed",
+            "reason": "ok" if rendered else "no_rendered_pages",
+            "page_count": page_count,
+            "rendered_pages": len(rendered),
+            "total_image_bytes": total_image_bytes,
+            "truncated": truncated,
+        }
+
     async def _construct_user_message(self, request: ChatRequest) -> Content:
         """Construct multimodal user message.
 
@@ -629,6 +857,135 @@ class AgentService:
                 except Exception as e:
                     logger.warning(f"Failed to fetch image from {request.image_url}: {e}")
                     parts.append(Part(text=f"[Image loading failed: {str(e)}]"))
+
+        if request.file_base64 or request.file_url:
+            import base64
+            import re
+            from urllib.parse import urlparse
+
+            file_bytes = None
+            file_mime_type = (request.file_mime_type or "").strip().lower()
+            file_name = (request.file_name or "").strip()
+            if not file_name and request.file_url:
+                try:
+                    parsed = urlparse(request.file_url)
+                    candidate_name = Path(parsed.path).name
+                    if candidate_name:
+                        file_name = candidate_name
+                except Exception:
+                    file_name = file_name or ""
+
+            if request.file_base64:
+                encoded = ""
+                match = re.match(r"data:([^;]+);base64,(.+)", request.file_base64)
+                if match:
+                    parsed_mime_type = match.group(1).strip().lower()
+                    encoded = match.group(2)
+                    if parsed_mime_type and not file_mime_type:
+                        file_mime_type = parsed_mime_type
+                else:
+                    encoded = request.file_base64
+
+                try:
+                    file_bytes = base64.b64decode(encoded)
+                except Exception as e:
+                    logger.warning(f"Failed to decode file attachment: {e}")
+                    parts.append(Part(text=f"[File decoding failed: {e}]"))
+
+            elif request.file_url:
+                loaded_bytes, loaded_mime_type, load_error = await self._read_file_bytes_from_url(
+                    request.file_url
+                )
+                if load_error:
+                    logger.warning(f"Failed to load file from URL: {load_error}")
+                    parts.append(Part(text=f"[File loading failed: {load_error}]"))
+                else:
+                    file_bytes = loaded_bytes
+                    if loaded_mime_type and not file_mime_type:
+                        file_mime_type = loaded_mime_type
+
+            if file_bytes:
+                file_mime_type = (
+                    (file_mime_type.split(";")[0].strip().lower())
+                    if file_mime_type
+                    else "application/octet-stream"
+                )
+                is_pdf = (
+                    file_mime_type == "application/pdf"
+                    or file_name.lower().endswith(".pdf")
+                )
+
+                if file_mime_type.startswith("image/"):
+                    vision_description = await self._analyze_image_if_available(
+                        file_bytes, file_mime_type, request.text
+                    )
+                    if vision_description:
+                        parts.append(Part(text=f"\n\n[Image analysis]\n{vision_description}"))
+                    else:
+                        parts.append(Part.from_bytes(data=file_bytes, mime_type=file_mime_type))
+                elif is_pdf:
+                    extracted_text, pdf_meta = await self._extract_pdf_text_layer(file_bytes)
+                    status = str(pdf_meta.get("status") or "insufficient")
+                    reason = str(pdf_meta.get("reason") or "unknown")
+                    page_count = int(pdf_meta.get("page_count") or 0)
+                    extracted_chars = int(pdf_meta.get("extracted_chars") or 0)
+
+                    if status == "sufficient" and extracted_text:
+                        header = (
+                            "[PDF text extraction]\n"
+                            f"file_name: {file_name or 'attached.pdf'}\n"
+                            f"page_count: {page_count}\n"
+                            f"extracted_chars: {extracted_chars}\n"
+                            "Use the extracted text below as the primary source."
+                        )
+                        parts.append(Part(text=header))
+                        parts.append(Part(text=f"[PDF extracted text]\n{extracted_text}"))
+                    else:
+                        rendered_pages, render_meta = await self._render_pdf_pages_as_images(file_bytes)
+                        rendered_count = int(render_meta.get("rendered_pages") or 0)
+                        rendered_bytes = int(render_meta.get("total_image_bytes") or 0)
+                        render_reason = str(render_meta.get("reason") or "unknown")
+                        truncated = bool(render_meta.get("truncated"))
+
+                        fallback_header = (
+                            "[PDF text extraction: INSUFFICIENT]\n"
+                            f"file_name: {file_name or 'attached.pdf'}\n"
+                            f"page_count: {page_count}\n"
+                            f"extracted_chars: {extracted_chars}\n"
+                            f"text_reason: {reason}\n"
+                            f"auto_image_fallback_pages: {rendered_count}\n"
+                            f"auto_image_fallback_bytes: {rendered_bytes}\n"
+                            f"auto_image_fallback_truncated: {truncated}\n"
+                            "Use the following rendered PDF page images as OCR source.\n"
+                            "Do not fabricate invoice fields."
+                        )
+                        parts.append(Part(text=fallback_header))
+                        if extracted_text:
+                            parts.append(Part(text=f"[PDF partial extracted text]\n{extracted_text}"))
+
+                        if rendered_pages:
+                            for page_no, image_bytes, image_mime in rendered_pages:
+                                parts.append(Part(text=f"[PDF page image]\npage: {page_no}"))
+                                parts.append(Part.from_bytes(data=image_bytes, mime_type=image_mime))
+                        else:
+                            parts.append(
+                                Part(
+                                    text=(
+                                        "[PDF image fallback failed]\n"
+                                        f"reason: {render_reason}\n"
+                                        "Unable to render page images from this PDF."
+                                    )
+                                )
+                            )
+                else:
+                    try:
+                        parts.append(Part.from_bytes(data=file_bytes, mime_type=file_mime_type))
+                        if file_name:
+                            parts.append(Part(text=f"[Attached file: {file_name} ({file_mime_type})]"))
+                    except Exception as e:
+                        logger.warning(f"Failed to attach file bytes ({file_mime_type}): {e}")
+                        fallback_name = file_name or "attached-file"
+                        parts.append(Part(text=f"[Attached file: {fallback_name} ({file_mime_type})]"))
 
         return Content(role="user", parts=parts)
 

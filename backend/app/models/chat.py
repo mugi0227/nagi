@@ -1,7 +1,7 @@
 """
 Chat model definitions.
 
-Models for the main chat interface between user and secretary agent.
+Models for the chat interface between user and secretary agent.
 """
 
 from typing import Any, Optional
@@ -16,65 +16,71 @@ settings = get_settings()
 
 
 class ChatRequest(BaseModel):
-    """Request model for chat endpoint."""
+    """Request model for chat endpoints."""
 
-    text: Optional[str] = Field(None, max_length=settings.MAX_TEXT_LENGTH, description="テキスト入力")
-    audio_url: Optional[str] = Field(None, description="音声ファイルURL")
-    image_url: Optional[str] = Field(None, description="画像ファイルURL")
-    image_base64: Optional[str] = Field(None, description="Base64エンコードされた画像データ（data:image/...形式）")
-    mode: ChatMode = Field(ChatMode.DUMP, description="チャットモード")
-    session_id: Optional[str] = Field(None, description="セッションID（継続会話用）")
-    context: dict[str, Any] = Field(default_factory=dict, description="追加コンテキスト")
+    text: Optional[str] = Field(None, max_length=settings.MAX_TEXT_LENGTH, description="Text input")
+    audio_url: Optional[str] = Field(None, description="Audio file URL")
+    image_url: Optional[str] = Field(None, description="Image file URL")
+    image_base64: Optional[str] = Field(
+        None,
+        description="Image data URL (data:image/...;base64,...)"
+    )
+    file_url: Optional[str] = Field(None, description="Generic file URL (e.g. PDF)")
+    file_base64: Optional[str] = Field(
+        None,
+        description="Generic file data URL (e.g. data:application/pdf;base64,...)"
+    )
+    file_name: Optional[str] = Field(None, max_length=255, description="Attached file name")
+    file_mime_type: Optional[str] = Field(None, max_length=120, description="Attached file MIME type")
+    mode: ChatMode = Field(ChatMode.DUMP, description="Chat mode")
+    session_id: Optional[str] = Field(None, description="Session ID for continuity")
+    context: dict[str, Any] = Field(default_factory=dict, description="Additional context")
     approval_mode: Optional[ToolApprovalMode] = Field(None, description="Tool approval mode")
-    proposal_mode: bool = Field(False, description="提案モード（True: AIが提案→ユーザー承諾、False: AI が直接作成）")
+    proposal_mode: bool = Field(False, description="If true, return proposals instead of executing")
 
 
 class SuggestedAction(BaseModel):
     """Suggested action for the user."""
 
-    action_type: str = Field(..., description="アクションタイプ")
-    label: str = Field(..., description="表示ラベル")
-    payload: dict[str, Any] = Field(default_factory=dict, description="アクション実行用データ")
+    action_type: str = Field(..., description="Action type")
+    label: str = Field(..., description="Display label")
+    payload: dict[str, Any] = Field(default_factory=dict, description="Action payload")
 
 
 class PendingQuestion(BaseModel):
     """A question awaiting user response."""
 
-    id: str = Field(..., description="質問ID（回答と紐付け用）")
-    question: str = Field(..., description="質問文")
-    options: list[str] = Field(default_factory=list, description="選択肢（UIで「その他」は自動追加）。空の場合は自由入力UI。")
-    allow_multiple: bool = Field(False, description="複数選択可能か（True: チェックボックス, False: ラジオボタン）")
-    placeholder: Optional[str] = Field(None, description="自由入力時のプレースホルダー")
+    id: str = Field(..., description="Question ID")
+    question: str = Field(..., description="Question text")
+    options: list[str] = Field(default_factory=list, description="Selectable options")
+    allow_multiple: bool = Field(False, description="Whether multiple selections are allowed")
+    placeholder: Optional[str] = Field(None, description="Placeholder for free-form input")
 
 
 class PendingQuestions(BaseModel):
     """Questions awaiting user response (for ask_user_questions tool)."""
 
-    questions: list[PendingQuestion] = Field(..., description="質問リスト")
-    context: Optional[str] = Field(None, description="質問全体の背景・文脈")
+    questions: list[PendingQuestion] = Field(..., description="Question list")
+    context: Optional[str] = Field(None, description="Question context")
 
 
 class ChatResponse(BaseModel):
     """Response model for chat endpoint."""
 
-    assistant_message: str = Field(..., description="アシスタントの応答メッセージ")
-    related_tasks: list[UUID] = Field(
-        default_factory=list, description="関連するタスクIDリスト"
-    )
-    suggested_actions: list[SuggestedAction] = Field(
-        default_factory=list, description="提案アクションリスト"
-    )
-    session_id: str = Field(..., description="セッションID")
-    capture_id: Optional[UUID] = Field(None, description="作成されたCaptureのID")
+    assistant_message: str = Field(..., description="Assistant response text")
+    related_tasks: list[UUID] = Field(default_factory=list, description="Related task IDs")
+    suggested_actions: list[SuggestedAction] = Field(default_factory=list, description="Suggested actions")
+    session_id: str = Field(..., description="Session ID")
+    capture_id: Optional[UUID] = Field(None, description="Created capture ID")
     pending_questions: Optional[PendingQuestions] = Field(
-        None, description="ユーザーへの質問（ask_user_questionsツール使用時）"
+        None, description="Pending user questions from ask_user_questions"
     )
 
 
 class StreamingChatChunk(BaseModel):
     """Streaming chat response chunk."""
 
-    chunk_type: str = Field(..., description="チャンクタイプ (text/tool_call/done)")
-    content: str = Field("", description="テキストコンテンツ")
-    tool_name: Optional[str] = Field(None, description="ツール名（tool_callの場合）")
-    tool_result: Optional[dict[str, Any]] = Field(None, description="ツール実行結果")
+    chunk_type: str = Field(..., description="Chunk type (text/tool_call/done)")
+    content: str = Field("", description="Chunk text content")
+    tool_name: Optional[str] = Field(None, description="Tool name for tool chunks")
+    tool_result: Optional[dict[str, Any]] = Field(None, description="Tool result payload")

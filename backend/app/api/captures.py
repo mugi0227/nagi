@@ -46,43 +46,78 @@ async def create_capture(
 ):
     """Create a new capture."""
     import base64
+    import mimetypes
+    from pathlib import Path
     from uuid import uuid4
 
+    def _split_data_url(data_url: str) -> tuple[str, str]:
+        """Split data URL into (mime_type, encoded_data)."""
+        if not data_url or "," not in data_url:
+            return "", ""
 
-    # Process base64 image if provided
+        header, encoded = data_url.split(",", 1)
+        mime_type = ""
+        if header.startswith("data:"):
+            mime_type = header[5:].split(";")[0].strip().lower()
+        return mime_type, encoded
+
+    def _guess_extension(mime_type: str, file_name: str | None = None) -> str:
+        if file_name:
+            suffix = Path(file_name).suffix.strip()
+            if suffix:
+                return suffix
+
+        mime_map = {
+            "image/jpeg": ".jpg",
+            "image/png": ".png",
+            "image/gif": ".gif",
+            "image/webp": ".webp",
+            "application/pdf": ".pdf",
+            "text/plain": ".txt",
+            "application/json": ".json",
+        }
+        if mime_type in mime_map:
+            return mime_map[mime_type]
+
+        guessed = mimetypes.guess_extension(mime_type or "")
+        if guessed:
+            return guessed
+        return ".bin"
+
+    # Process base64 image if provided.
     if capture.base64_image:
         try:
-            image_data_url = capture.base64_image
-            if image_data_url and image_data_url.startswith("data:image"):
-                # Decode base64 (remove prefix "data:image/jpeg;base64,")
-                header, encoded = image_data_url.split(",", 1)
+            image_mime_type, encoded = _split_data_url(capture.base64_image)
+            if image_mime_type.startswith("image/") and encoded:
                 image_bytes = base64.b64decode(encoded)
-
-                # Generate filename
-                ext = header.split(";")[0].split("/")[1]
-                filename = f"captures/{uuid4()}.{ext}"
-
-                # Save to storage
-                await storage.upload(filename, image_bytes)
-
-                # Update capture URL
+                ext = _guess_extension(image_mime_type)
+                filename = f"captures/{uuid4()}{ext}"
+                await storage.upload(filename, image_bytes, content_type=image_mime_type)
                 capture.content_url = storage.get_public_url(filename)
-
-                # If content_type was TEXT but we have an image, should we update it?
-                # The extension sends TEXT with metadata. Let's keep it as is,
-                # or maybe change to MIXED if we had such type.
-                # For now, having content_url implies it has an image.
-
-                # Clear the base64 data so it's not stored or passed around in memory unnecessarily
+                capture.file_content_type = image_mime_type
                 capture.base64_image = None
-
-        except (ValueError, IndexError):
-            # Invalid format, ignore image
+        except (ValueError, IndexError, TypeError):
             pass
 
-    # Clean up raw_text if it was used for JSON metadata validation but effectively empty?
-    # No, extension sends metadata in raw_text, so keep it.
+    # Process base64 file (PDF etc) if provided.
+    if capture.base64_file:
+        try:
+            file_mime_type, encoded = _split_data_url(capture.base64_file)
+            if not encoded:
+                # Accept plain base64 as fallback.
+                encoded = capture.base64_file
+            if not file_mime_type:
+                file_mime_type = (capture.file_content_type or "application/octet-stream").strip().lower()
 
+            file_bytes = base64.b64decode(encoded)
+            ext = _guess_extension(file_mime_type, capture.file_name)
+            filename = f"captures/{uuid4()}{ext}"
+            await storage.upload(filename, file_bytes, content_type=file_mime_type)
+            capture.content_url = storage.get_public_url(filename)
+            capture.file_content_type = file_mime_type
+            capture.base64_file = None
+        except (ValueError, IndexError, TypeError):
+            pass
 
     return await repo.create(user.id, capture)
 
