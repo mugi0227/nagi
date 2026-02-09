@@ -56,7 +56,18 @@ export function TasksPage() {
     return allTasks.filter(task => !task.project_id);
   }, [allTasks, showPersonalOnly]);
 
-  const hasNext = allTasks.length === PAGE_SIZE;
+  // Count only parent (top-level) tasks for display — matches visible card count
+  const visibleTaskCount = useMemo(
+    () => tasks.filter(task => !task.parent_id).length,
+    [tasks],
+  );
+
+  // Pagination is now parent-task based: hasNext when parent count equals PAGE_SIZE
+  const parentTaskCount = useMemo(
+    () => allTasks.filter(task => !task.parent_id).length,
+    [allTasks],
+  );
+  const hasNext = parentTaskCount === PAGE_SIZE;
 
   // Use the unified task modal hook
   const taskModal = useTaskModal({
@@ -183,7 +194,7 @@ export function TasksPage() {
             <FaFilter />
             {showPersonalOnly ? TEXT.filterMyTasks : TEXT.filterAll}
           </button>
-          <span className="task-total">{TEXT.showing} {tasks.length}{TEXT.countUnit}</span>
+          <span className="task-total">{TEXT.showing} {visibleTaskCount}{TEXT.countUnit}</span>
           <div className="pagination-controls">
             <button
               type="button"

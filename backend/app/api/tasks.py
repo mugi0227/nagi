@@ -263,7 +263,12 @@ async def list_tasks(
             query_user_id = user.id
         tasks = await _fetch_scoped_tasks(query_user_id, project_id)
         tasks = _apply_meeting_filters(tasks)
-        return tasks[offset : offset + limit]
+        # Paginate by parent tasks only, then include their subtasks
+        parent_tasks = [t for t in tasks if not t.parent_id]
+        paginated_parents = parent_tasks[offset : offset + limit]
+        parent_ids = {t.id for t in paginated_parents}
+        subtasks = [t for t in tasks if t.parent_id and t.parent_id in parent_ids]
+        return paginated_parents + subtasks
     else:
         # Special case: only_meetings - fetch all user's meetings across all projects
         if only_meetings:
@@ -315,7 +320,13 @@ async def list_tasks(
 
             tasks.sort(key=lambda t: t.created_at, reverse=True)
             tasks = _apply_meeting_filters(tasks)
-            return tasks[offset : offset + limit]
+
+            # Paginate by parent tasks only, then include their subtasks
+            parent_tasks = [t for t in tasks if not t.parent_id]
+            paginated_parents = parent_tasks[offset : offset + limit]
+            parent_ids = {t.id for t in paginated_parents}
+            subtasks = [t for t in tasks if t.parent_id and t.parent_id in parent_ids]
+            return paginated_parents + subtasks
 
     return []
 
