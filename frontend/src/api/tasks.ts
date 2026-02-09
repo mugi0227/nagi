@@ -78,8 +78,8 @@ export const tasksApi = {
     if (query?.capacityByWeekday && query.capacityByWeekday.length === 7) {
       params.set('capacity_by_weekday', JSON.stringify(query.capacityByWeekday));
     }
-    if (query?.filterByAssignee) {
-      params.set('filter_by_assignee', 'true');
+    if (query?.filterByAssignee !== undefined) {
+      params.set('filter_by_assignee', String(query.filterByAssignee));
     }
     const suffix = params.toString();
     return api.get<TodayTasksResponse>(`/tasks/today${suffix ? `?${suffix}` : ''}`);
@@ -109,8 +109,8 @@ export const tasksApi = {
     if (query?.maxDays !== undefined) {
       params.set('max_days', String(query.maxDays));
     }
-    if (query?.filterByAssignee) {
-      params.set('filter_by_assignee', 'true');
+    if (query?.filterByAssignee !== undefined) {
+      params.set('filter_by_assignee', String(query.filterByAssignee));
     }
     const suffix = params.toString();
     return api.get<ScheduleResponse>(`/tasks/schedule${suffix ? `?${suffix}` : ''}`);
@@ -133,8 +133,8 @@ export const tasksApi = {
     if (query?.fromNow) {
       params.set('from_now', 'true');
     }
-    if (query?.filterByAssignee) {
-      params.set('filter_by_assignee', 'true');
+    if (query?.filterByAssignee !== undefined) {
+      params.set('filter_by_assignee', String(query.filterByAssignee));
     }
     if (query?.applyPlanConstraints === false) {
       params.set('apply_plan_constraints', 'false');

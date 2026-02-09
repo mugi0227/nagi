@@ -21,6 +21,7 @@ def _build_task(
     start_time: datetime,
     end_time: datetime,
     is_all_day: bool = False,
+    is_fixed_time: bool = True,
 ) -> Task:
     now = datetime.now(timezone.utc)
     return Task(
@@ -32,7 +33,7 @@ def _build_task(
         created_by=CreatedBy.USER,
         created_at=now,
         updated_at=now,
-        is_fixed_time=True,
+        is_fixed_time=is_fixed_time,
         start_time=start_time,
         end_time=end_time,
         is_all_day=is_all_day,
@@ -184,3 +185,52 @@ def test_build_meeting_intervals_all_day_respects_target_date() -> None:
     assert same_day[0].start_minutes == 0
     assert same_day[0].end_minutes == 24 * 60
     assert other_day == []
+
+
+def test_filter_tasks_for_plan_excludes_unassigned_team_meeting() -> None:
+    team_project_id = uuid4()
+    private_project_id = uuid4()
+    user_id = "member-user"
+    start = datetime(2026, 2, 8, 9, 0, tzinfo=timezone.utc)
+    end = datetime(2026, 2, 8, 10, 0, tzinfo=timezone.utc)
+
+    assigned_team_task = _build_task(
+        uuid4(),
+        project_id=team_project_id,
+        start_time=start,
+        end_time=end,
+        is_fixed_time=False,
+    )
+    unassigned_team_meeting = _build_task(
+        uuid4(),
+        project_id=team_project_id,
+        start_time=start,
+        end_time=end,
+        is_fixed_time=True,
+    )
+    private_meeting = _build_task(
+        uuid4(),
+        project_id=private_project_id,
+        start_time=start,
+        end_time=end,
+        is_fixed_time=True,
+    )
+
+    assignments = [
+        SimpleNamespace(task_id=assigned_team_task.id, assignee_id=user_id, status=None),
+    ]
+    service = _build_service(AsyncMock(), AsyncMock())
+
+    filtered = service._filter_tasks_for_plan(
+        [assigned_team_task, unassigned_team_meeting, private_meeting],
+        assignments,
+        user_id,
+        True,
+        "UTC",
+        team_project_ids={team_project_id},
+    )
+    filtered_ids = {task.id for task in filtered}
+
+    assert assigned_team_task.id in filtered_ids
+    assert private_meeting.id in filtered_ids
+    assert unassigned_team_meeting.id not in filtered_ids

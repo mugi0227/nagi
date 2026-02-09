@@ -38,11 +38,11 @@ from app.models.postpone import DoTodayRequest, PostponeEvent, PostponeRequest, 
 from app.models.schedule import ScheduleResponse, TodayTasksResponse
 from app.models.schedule_plan import SchedulePlanResponse, ScheduleTimeBlock, TimeBlockMoveRequest
 from app.models.task import CompletionCheckResponse, Task, TaskCreate, TaskUpdate
+from app.services.assignee_utils import is_invitation_assignee
 from app.services.daily_schedule_plan_service import DEFAULT_PLAN_DAYS, DailySchedulePlanService
 from app.services.scheduler_service import SchedulerService
-from app.utils.datetime_utils import get_user_today
-from app.services.assignee_utils import is_invitation_assignee
 from app.services.task_utils import renumber_siblings
+from app.utils.datetime_utils import get_user_today
 from app.utils.dependency_validator import DependencyValidator
 
 router = APIRouter()
@@ -223,45 +223,53 @@ async def list_tasks(
     offset: int = Query(0, ge=0),
 ):
     """List tasks with optional filters."""
+    async def _fetch_scoped_tasks(
+        query_user_id: str,
+        query_project_id: Optional[UUID],
+    ) -> list[Task]:
+        batch_size = max(limit, 200)
+        scan_offset = 0
+        collected: list[Task] = []
+        while True:
+            batch = await repo.list(
+                query_user_id,
+                project_id=query_project_id,
+                status=status,
+                include_done=include_done,
+                limit=batch_size,
+                offset=scan_offset,
+            )
+            if not batch:
+                break
+            collected.extend(batch)
+            if len(batch) < batch_size:
+                break
+            scan_offset += batch_size
+        return collected
+
+    def _apply_meeting_filters(items: list[Task]) -> list[Task]:
+        if only_meetings:
+            return [task for task in items if task.is_fixed_time]
+        if exclude_meetings:
+            return [task for task in items if not task.is_fixed_time]
+        return items
+
     # If project_id is specified, check membership and use project owner's user_id
     if project_id:
         project = await project_repo.get(user.id, project_id)
         if project:
             query_user_id = project.user_id  # Use project owner's ID
-            tasks = await repo.list(
-                query_user_id,
-                project_id=project_id,
-                status=status,
-                include_done=include_done,
-                limit=limit,
-                offset=offset,
-            )
         else:
-            tasks = await repo.list(
-                user.id,
-                project_id=project_id,
-                status=status,
-                include_done=include_done,
-                limit=limit,
-                offset=offset,
-            )
-        # Apply meeting filters for project-scoped queries
-        if only_meetings:
-            tasks = [t for t in tasks if t.is_fixed_time]
-        elif exclude_meetings:
-            tasks = [t for t in tasks if not t.is_fixed_time]
+            query_user_id = user.id
+        tasks = await _fetch_scoped_tasks(query_user_id, project_id)
+        tasks = _apply_meeting_filters(tasks)
+        return tasks[offset : offset + limit]
     else:
         # Special case: only_meetings - fetch all user's meetings across all projects
         if only_meetings:
-            all_tasks = await repo.list(
-                user.id,
-                project_id=None,
-                status=status,
-                include_done=include_done,
-                limit=limit,
-                offset=offset,
-            )
-            tasks = [t for t in all_tasks if t.is_fixed_time]
+            all_tasks = await _fetch_scoped_tasks(user.id, None)
+            tasks = _apply_meeting_filters(all_tasks)
+            return tasks[offset : offset + limit]
         else:
             # My Tasks mode (No project_id):
             #   - Personal tasks (project_id NULL): all
@@ -269,14 +277,7 @@ async def list_tasks(
             #   - TEAM project tasks: only assigned to me
 
             # 1. Get all tasks owned by this user
-            all_user_tasks = await repo.list(
-                user.id,
-                project_id=None,
-                status=status,
-                include_done=include_done,
-                limit=1000,
-                offset=0,
-            )
+            all_user_tasks = await _fetch_scoped_tasks(user.id, None)
 
             # 2. Get assignments for TEAM project filtering
             assignments = await assignment_repo.list_for_assignee(user.id)
@@ -313,12 +314,10 @@ async def list_tasks(
                 tasks.append(t)
 
             tasks.sort(key=lambda t: t.created_at, reverse=True)
-            tasks = tasks[offset : offset + limit]
+            tasks = _apply_meeting_filters(tasks)
+            return tasks[offset : offset + limit]
 
-            if exclude_meetings:
-                tasks = [t for t in tasks if not t.is_fixed_time]
-
-    return tasks
+    return []
 
 
 @router.get("/schedule", response_model=SchedulePlanResponse)
@@ -340,7 +339,7 @@ async def get_task_schedule(
         description="JSON array of 7 daily capacity values (Sun..Sat)",
     ),
     max_days: int = Query(DEFAULT_PLAN_DAYS, ge=1, le=365, description="Maximum days to schedule"),
-    filter_by_assignee: bool = Query(False, description="Only show tasks assigned to me"),
+    filter_by_assignee: bool = Query(True, description="Only show tasks assigned to me"),
     apply_plan_constraints: bool = Query(True, description="Apply project plan windows"),
 ):
     """Build a multi-day schedule for tasks."""
@@ -377,7 +376,7 @@ async def recalculate_schedule_plan(
     start_date: Optional[date] = Query(None, description="Schedule start date"),
     max_days: int = Query(DEFAULT_PLAN_DAYS, ge=1, le=365, description="Maximum days to schedule"),
     from_now: bool = Query(False, description="Recalculate from current time for today"),
-    filter_by_assignee: bool = Query(False, description="Only show tasks assigned to me"),
+    filter_by_assignee: bool = Query(True, description="Only show tasks assigned to me"),
     apply_plan_constraints: bool = Query(True, description="Apply project plan windows"),
 ):
     plan_service = DailySchedulePlanService(
@@ -450,7 +449,7 @@ async def get_today_tasks(
         description="JSON array of 7 daily capacity values (Sun..Sat)",
     ),
     max_days: int = Query(30, ge=1, le=365, description="Maximum days to schedule"),
-    filter_by_assignee: bool = Query(False, description="Only show tasks assigned to me"),
+    filter_by_assignee: bool = Query(True, description="Only show tasks assigned to me"),
     apply_plan_constraints: bool = Query(True, description="Apply project plan windows"),
 ):
     """Get today's tasks derived from the schedule."""

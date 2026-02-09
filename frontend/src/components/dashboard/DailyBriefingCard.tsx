@@ -78,6 +78,7 @@ export function DailyBriefingCard({ onFocusTaskClick, onFinish }: DailyBriefingC
       bufferHours,
       capacityByWeekday,
       maxDays: 1,
+      filterByAssignee: true,
     }),
     staleTime: Infinity,
   });
