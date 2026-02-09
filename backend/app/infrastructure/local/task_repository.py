@@ -17,6 +17,7 @@ from app.infrastructure.local.database import TaskORM, get_session_factory
 from app.interfaces.task_repository import ITaskRepository
 from app.models.enums import TaskStatus
 from app.models.task import SimilarTask, Task, TaskCreate, TaskUpdate
+from app.utils.datetime_utils import now_utc
 
 
 class SqliteTaskRepository(ITaskRepository):
@@ -252,11 +253,11 @@ class SqliteTaskRepository(ITaskRepository):
                         status_value = value
                     setattr(orm, field, value)
 
-            orm.updated_at = datetime.utcnow()
+            orm.updated_at = now_utc()
 
             # Auto-set completed_at/completed_by when status changes to DONE
             if status_value == TaskStatus.DONE.value and orm.completed_at is None:
-                orm.completed_at = datetime.utcnow()
+                orm.completed_at = now_utc()
                 orm.completed_by = user_id
             elif status_value is not None and status_value != TaskStatus.DONE.value:
                 # Clear completed_at/completed_by if status changes from DONE to something else
@@ -279,10 +280,10 @@ class SqliteTaskRepository(ITaskRepository):
                     )
                 for subtask in subtask_result.scalars().all():
                     subtask.status = status_value
-                    subtask.updated_at = datetime.utcnow()
+                    subtask.updated_at = now_utc()
                     # Auto-set completed_at/completed_by for subtasks as well
                     if status_value == TaskStatus.DONE.value and subtask.completed_at is None:
-                        subtask.completed_at = datetime.utcnow()
+                        subtask.completed_at = now_utc()
                         subtask.completed_by = user_id
                     elif status_value != TaskStatus.DONE.value:
                         subtask.completed_at = None

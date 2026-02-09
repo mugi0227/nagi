@@ -13,6 +13,7 @@ from sqlalchemy import and_, desc, select
 from app.infrastructure.local.database import MeetingSessionORM, get_session_factory
 from app.interfaces.meeting_session_repository import IMeetingSessionRepository
 from app.models.enums import MeetingSessionStatus
+from app.utils.datetime_utils import now_utc
 from app.models.meeting_session import (
     MeetingSession,
     MeetingSessionCreate,
@@ -59,8 +60,8 @@ class SqliteMeetingSessionRepository(IMeetingSessionRepository):
                 summary=None,
                 started_at=None,
                 ended_at=None,
-                created_at=datetime.utcnow(),
-                updated_at=datetime.utcnow(),
+                created_at=now_utc(),
+                updated_at=now_utc(),
             )
             session.add(orm)
             await session.commit()
@@ -155,7 +156,7 @@ class SqliteMeetingSessionRepository(IMeetingSessionRepository):
                 elif value is not None:
                     setattr(orm, field, value)
 
-            orm.updated_at = datetime.utcnow()
+            orm.updated_at = now_utc()
             await session.commit()
             await session.refresh(orm)
             return self._orm_to_model(orm)
@@ -196,5 +197,30 @@ class SqliteMeetingSessionRepository(IMeetingSessionRepository):
                 .order_by(desc(MeetingSessionORM.created_at))
                 .limit(limit)
                 .offset(offset)
+            )
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]
+
+    async def list_by_recurring_meeting(
+        self,
+        user_id: str,
+        recurring_meeting_id: UUID,
+        limit: int = 50,
+    ) -> list[MeetingSession]:
+        """List COMPLETED sessions for tasks belonging to a recurring meeting."""
+        from app.infrastructure.local.database import TaskORM
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(MeetingSessionORM)
+                .join(TaskORM, TaskORM.id == MeetingSessionORM.task_id)
+                .where(
+                    and_(
+                        MeetingSessionORM.user_id == user_id,
+                        TaskORM.recurring_meeting_id == str(recurring_meeting_id),
+                        MeetingSessionORM.status == MeetingSessionStatus.COMPLETED.value,
+                    )
+                )
+                .order_by(desc(MeetingSessionORM.created_at))
+                .limit(limit)
             )
             return [self._orm_to_model(orm) for orm in result.scalars().all()]

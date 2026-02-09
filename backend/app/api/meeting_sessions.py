@@ -104,6 +104,16 @@ async def get_latest_session_by_task(
     return await repo.get_latest_by_task(user.id, task_id)
 
 
+@router.get("/recurring/{recurring_meeting_id}", response_model=list[MeetingSession])
+async def list_sessions_by_recurring_meeting(
+    recurring_meeting_id: UUID,
+    user: CurrentUser,
+    repo: MeetingSessionRepo,
+):
+    """List COMPLETED sessions for a recurring meeting, ordered by created_at desc."""
+    return await repo.list_by_recurring_meeting(user.id, recurring_meeting_id)
+
+
 @router.post("/{session_id}/start", response_model=MeetingSession)
 async def start_session(
     session_id: UUID,

@@ -27,6 +27,25 @@ async def create_memory(
     return await repo.create(user.id, memory)
 
 
+@router.get("/search", response_model=list[MemorySearchResult])
+async def search_memories(
+    user: CurrentUser,
+    repo: MemoryRepo,
+    query: str = Query(..., description="Search query"),
+    scope: Optional[MemoryScope] = Query(None, description="Filter by scope"),
+    project_id: Optional[UUID] = Query(None, description="Filter by project ID"),
+    limit: int = Query(5, ge=1, le=20),
+):
+    """Search memories by content."""
+    return await repo.search(
+        user.id,
+        query=query,
+        scope=scope,
+        project_id=project_id,
+        limit=limit,
+    )
+
+
 @router.get("/{memory_id}", response_model=Memory)
 async def get_memory(
     memory_id: UUID,
@@ -61,25 +80,6 @@ async def list_memories(
         project_id=project_id,
         limit=limit,
         offset=offset,
-    )
-
-
-@router.get("/search", response_model=list[MemorySearchResult])
-async def search_memories(
-    user: CurrentUser,
-    repo: MemoryRepo,
-    query: str = Query(..., description="Search query"),
-    scope: Optional[MemoryScope] = Query(None, description="Filter by scope"),
-    project_id: Optional[UUID] = Query(None, description="Filter by project ID"),
-    limit: int = Query(5, ge=1, le=20),
-):
-    """Search memories by content."""
-    return await repo.search(
-        user.id,
-        query=query,
-        scope=scope,
-        project_id=project_id,
-        limit=limit,
     )
 
 

@@ -82,3 +82,13 @@ class IMeetingSessionRepository(ABC):
     ) -> list[MeetingSession]:
         """List sessions for a user, ordered by created_at desc."""
         pass
+
+    @abstractmethod
+    async def list_by_recurring_meeting(
+        self,
+        user_id: str,
+        recurring_meeting_id: UUID,
+        limit: int = 50,
+    ) -> list[MeetingSession]:
+        """List COMPLETED sessions for a recurring meeting, ordered by created_at desc."""
+        pass
