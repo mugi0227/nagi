@@ -23,6 +23,15 @@ const MAX_SKILL_STEP_LINES = 12;
 const MAX_SKILL_SCREENSHOTS = 6;
 const MAX_SKILL_CONTENT_LENGTH = 4900;
 const MAX_ATTACHMENT_SIZE_BYTES = 15 * 1024 * 1024;
+const MAX_VOICE_INPUT_SIZE_BYTES = 10 * 1024 * 1024;
+const PTT_MIME_CANDIDATES = [
+    "audio/webm;codecs=opus",
+    "audio/webm",
+    "audio/ogg;codecs=opus",
+    "audio/mp4"
+];
+
+const SELECTED_MODEL_STORAGE_KEY = "selectedModel";
 
 const DEFAULT_SETTINGS = Object.freeze({
     appBaseUrl: "http://localhost:3000",
@@ -30,8 +39,6 @@ const DEFAULT_SETTINGS = Object.freeze({
     authMode: "bearer",
     accessToken: DEFAULT_BEARER_TOKEN,
     browserProvider: BROWSER_PROVIDERS.GEMINI_DIRECT,
-    browserModel: DEFAULT_PROVIDER_MODELS[BROWSER_PROVIDERS.GEMINI_DIRECT],
-    browserModelByProvider: { ...DEFAULT_PROVIDER_MODELS },
     browserApiKey: "",
     browserApiBaseUrl: "http://localhost:4000",
     browserBedrockRegion: "us-east-1",
@@ -55,7 +62,8 @@ let appTokenCache = {
     token: "",
     expiresAt: 0
 };
-let browserModelByProvider = { ...DEFAULT_PROVIDER_MODELS };
+let selectedModel = localStorage.getItem(SELECTED_MODEL_STORAGE_KEY) || undefined;
+let availableModelsCache = null;
 let browserRunHistory = [];
 let currentBrowserRun = null;
 let lastBrowserStatus = { running: false, step: 0 };
@@ -67,6 +75,12 @@ let proposalProcessing = false;
 let pendingQuestions = null;
 let questionAnswers = {};
 let captureLoading = false;
+let pttRecording = false;
+let pttRecorder = null;
+let pttStream = null;
+let pttChunks = [];
+let lastAgentInputAsset = null;
+let localQuestionRequest = null;
 
 const messagesDiv = document.getElementById("messages");
 const userInput = document.getElementById("user-input");
@@ -74,9 +88,12 @@ const sendBtn = document.getElementById("send-btn");
 const uploadFileBtn = document.getElementById("upload-file-btn");
 const fileUploadInput = document.getElementById("file-upload-input");
 const captureBtn = document.getElementById("capture-btn");
+const voicePttBtn = document.getElementById("voice-ptt-btn");
 const newChatBtn = document.getElementById("new-chat-btn");
 const historyBtn = document.getElementById("history-btn");
 const closeHistoryBtn = document.getElementById("close-history");
+const modelSelectorRow = document.getElementById("model-selector-row");
+const modelSelector = document.getElementById("model-selector");
 const settingsBtn = document.getElementById("settings-btn");
 const closeSettingsBtn = document.getElementById("close-settings");
 const thinkingIndicator = document.getElementById("thinking");
@@ -118,7 +135,6 @@ const authModeSelect = document.getElementById("auth-mode");
 const tokenField = document.getElementById("token-field");
 const accessTokenInput = document.getElementById("access-token");
 const browserProviderSelect = document.getElementById("browser-provider");
-const browserModelInput = document.getElementById("browser-model");
 const browserApiKeyField = document.getElementById("browser-api-key-field");
 const browserApiKeyInput = document.getElementById("browser-api-key");
 const browserApiBaseUrlField = document.getElementById("browser-api-base-url-field");
@@ -161,6 +177,10 @@ async function init() {
         addSystemMessage("API connection failed. Check Connection Settings.");
     }
 
+    if (reachable) {
+        await fetchAvailableModels();
+    }
+
     if (currentSessionId) {
         await loadHistory(currentSessionId);
     } else {
@@ -189,6 +209,26 @@ function bindEvents() {
     captureBtn.addEventListener("click", () => {
         void captureScreen();
     });
+
+    if (voicePttBtn) {
+        voicePttBtn.addEventListener("pointerdown", (event) => {
+            event.preventDefault();
+            void startPttRecording();
+        });
+        voicePttBtn.addEventListener("pointerup", (event) => {
+            event.preventDefault();
+            stopPttRecording();
+        });
+        voicePttBtn.addEventListener("pointercancel", (event) => {
+            event.preventDefault();
+            stopPttRecording();
+        });
+        voicePttBtn.addEventListener("pointerleave", (event) => {
+            if (pttRecording && event.buttons === 0) {
+                stopPttRecording();
+            }
+        });
+    }
 
     removeScreenshotBtn.addEventListener("click", () => {
         currentAttachment = null;
@@ -232,12 +272,18 @@ function bindEvents() {
     });
 
     browserProviderSelect.addEventListener("change", () => {
-        updateBrowserProviderUi({ retainCurrentModel: true });
+        updateBrowserProviderUi();
     });
 
-    browserModelInput.addEventListener("input", () => {
-        const provider = normalizeBrowserProvider(browserProviderSelect.value);
-        browserModelByProvider[provider] = String(browserModelInput.value || "").trim();
+    modelSelector.addEventListener("change", () => {
+        const value = modelSelector.value;
+        if (availableModelsCache && value === availableModelsCache.default_model_id) {
+            selectedModel = undefined;
+            localStorage.removeItem(SELECTED_MODEL_STORAGE_KEY);
+        } else {
+            selectedModel = value;
+            localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, value);
+        }
     });
 
     saveSettingsBtn.addEventListener("click", () => {
@@ -326,6 +372,12 @@ function bindEvents() {
     questionsCancelBtn.addEventListener("click", () => {
         handleQuestionsCancel();
     });
+
+    window.addEventListener("pointerup", () => {
+        if (pttRecording) {
+            stopPttRecording();
+        }
+    });
 }
 
 async function loadSettings() {
@@ -348,25 +400,6 @@ function normalizeBrowserProvider(value) {
     return BROWSER_PROVIDERS.LITELLM;
 }
 
-function normalizeProviderModelMap(input) {
-    const normalized = { ...DEFAULT_PROVIDER_MODELS };
-    if (!input || typeof input !== "object") {
-        return normalized;
-    }
-    for (const provider of Object.values(BROWSER_PROVIDERS)) {
-        const value = String(input[provider] || "").trim();
-        if (value) {
-            normalized[provider] = value;
-        }
-    }
-    return normalized;
-}
-
-function getProviderModel(provider, modelMap) {
-    const normalizedProvider = normalizeBrowserProvider(provider);
-    const normalizedMap = normalizeProviderModelMap(modelMap);
-    return normalizedMap[normalizedProvider] || DEFAULT_PROVIDER_MODELS[normalizedProvider];
-}
 
 function normalizeBedrockRegion(value) {
     const normalized = String(value || "").trim().toLowerCase();
@@ -380,12 +413,6 @@ function normalizeSettings(input) {
     next.authMode = next.authMode === "cookie" ? "cookie" : "bearer";
     next.accessToken = String(next.accessToken || "").trim();
     next.browserProvider = normalizeBrowserProvider(next.browserProvider);
-    next.browserModelByProvider = normalizeProviderModelMap(next.browserModelByProvider);
-    const legacyModel = String(next.browserModel || "").trim();
-    if (legacyModel) {
-        next.browserModelByProvider[next.browserProvider] = legacyModel;
-    }
-    next.browserModel = getProviderModel(next.browserProvider, next.browserModelByProvider);
     next.browserApiKey = String(next.browserApiKey || "").trim();
     next.browserApiBaseUrl = normalizeBaseUrl(next.browserApiBaseUrl, DEFAULT_SETTINGS.browserApiBaseUrl);
     next.browserBedrockRegion = normalizeBedrockRegion(next.browserBedrockRegion);
@@ -401,9 +428,6 @@ function applySettingsToUI() {
     authModeSelect.value = settings.authMode;
     accessTokenInput.value = settings.accessToken;
     browserProviderSelect.value = settings.browserProvider;
-    browserProviderSelect.dataset.prevProvider = settings.browserProvider;
-    browserModelByProvider = normalizeProviderModelMap(settings.browserModelByProvider);
-    browserModelInput.value = getProviderModel(settings.browserProvider, browserModelByProvider);
     browserApiKeyInput.value = settings.browserApiKey;
     browserApiBaseUrlInput.value = settings.browserApiBaseUrl;
     browserBedrockRegionInput.value = settings.browserBedrockRegion;
@@ -411,7 +435,7 @@ function applySettingsToUI() {
     browserBedrockSecretKeyInput.value = settings.browserBedrockSecretAccessKey;
     browserBedrockSessionTokenInput.value = settings.browserBedrockSessionToken;
     syncAuthModeUi();
-    updateBrowserProviderUi({ retainCurrentModel: false });
+    updateBrowserProviderUi();
 }
 
 function normalizeApprovalMode(value) {
@@ -446,10 +470,6 @@ function syncApprovalModeUI() {
 
 function readSettingsFromUI() {
     const provider = normalizeBrowserProvider(browserProviderSelect.value);
-    const providerModelMap = normalizeProviderModelMap({
-        ...browserModelByProvider,
-        [provider]: String(browserModelInput.value || "").trim()
-    });
 
     return normalizeSettings({
         appBaseUrl: appBaseUrlInput.value,
@@ -457,8 +477,6 @@ function readSettingsFromUI() {
         authMode: authModeSelect.value,
         accessToken: accessTokenInput.value,
         browserProvider: provider,
-        browserModel: getProviderModel(provider, providerModelMap),
-        browserModelByProvider: providerModelMap,
         browserApiKey: browserApiKeyInput.value,
         browserApiBaseUrl: browserApiBaseUrlInput.value,
         browserBedrockRegion: browserBedrockRegionInput.value,
@@ -473,21 +491,8 @@ function syncAuthModeUi() {
     tokenField.classList.toggle("hidden", cookieMode);
 }
 
-function updateBrowserProviderUi(options = {}) {
-    const retainCurrentModel = options.retainCurrentModel !== false;
+function updateBrowserProviderUi() {
     const provider = normalizeBrowserProvider(browserProviderSelect.value);
-    const previousProvider = normalizeBrowserProvider(browserProviderSelect.dataset.prevProvider);
-
-    if (retainCurrentModel && previousProvider) {
-        const currentValue = String(browserModelInput.value || "").trim();
-        if (currentValue) {
-            browserModelByProvider[previousProvider] = currentValue;
-        }
-    }
-
-    browserModelByProvider = normalizeProviderModelMap(browserModelByProvider);
-    browserModelInput.value = getProviderModel(provider, browserModelByProvider);
-    browserProviderSelect.dataset.prevProvider = provider;
 
     const isLiteLLM = provider === BROWSER_PROVIDERS.LITELLM;
     const isGemini = provider === BROWSER_PROVIDERS.GEMINI_DIRECT;
@@ -506,14 +511,6 @@ function updateBrowserProviderUi(options = {}) {
         apiKeyLabel.textContent = isGemini ? "Gemini API Key" : "LiteLLM API Key";
     }
     browserApiKeyInput.placeholder = isGemini ? "Gemini API key" : "LiteLLM API key";
-
-    if (isLiteLLM) {
-        browserModelInput.placeholder = "openai/gpt-4o-mini";
-    } else if (isBedrock) {
-        browserModelInput.placeholder = DEFAULT_PROVIDER_MODELS[BROWSER_PROVIDERS.BEDROCK_DIRECT];
-    } else {
-        browserModelInput.placeholder = DEFAULT_PROVIDER_MODELS[BROWSER_PROVIDERS.GEMINI_DIRECT];
-    }
 }
 
 async function saveSettings() {
@@ -557,6 +554,37 @@ async function checkConnection(showHint = true) {
             settingsHint.textContent = `Connection failed: ${error.message}`;
         }
         return false;
+    }
+}
+
+async function fetchAvailableModels() {
+    try {
+        const response = await apiFetch("/models", { method: "GET" });
+        if (!response.ok) {
+            return;
+        }
+        availableModelsCache = await response.json();
+        const models = availableModelsCache.models || [];
+        if (models.length <= 1) {
+            modelSelectorRow.classList.add("hidden");
+            return;
+        }
+
+        modelSelector.innerHTML = "";
+        for (const m of models) {
+            const option = document.createElement("option");
+            option.value = m.id;
+            option.textContent = m.id === availableModelsCache.default_model_id
+                ? `${m.name} (default)`
+                : m.name;
+            modelSelector.appendChild(option);
+        }
+
+        const effectiveModel = selectedModel || availableModelsCache.default_model_id;
+        modelSelector.value = effectiveModel;
+        modelSelectorRow.classList.remove("hidden");
+    } catch (error) {
+        console.warn("Failed to fetch available models:", error);
     }
 }
 
@@ -702,6 +730,126 @@ function readFileAsDataUrl(file) {
     });
 }
 
+function supportsPttRecording() {
+    return Boolean(
+        navigator?.mediaDevices?.getUserMedia
+        && typeof MediaRecorder !== "undefined"
+    );
+}
+
+function releasePttStream() {
+    if (pttStream) {
+        for (const track of pttStream.getTracks()) {
+            track.stop();
+        }
+    }
+    pttStream = null;
+}
+
+function setPttRecordingState(recording) {
+    pttRecording = Boolean(recording);
+    if (!voicePttBtn) {
+        return;
+    }
+    voicePttBtn.classList.toggle("recording", pttRecording);
+    voicePttBtn.title = pttRecording ? "Release to send voice input" : "Hold to Talk";
+    validateInput();
+}
+
+async function startPttRecording() {
+    if (pttRecording || isThinking || hasPendingInteraction()) {
+        return;
+    }
+    if (!supportsPttRecording()) {
+        addSystemMessage("PTT is not supported in this environment.");
+        return;
+    }
+
+    try {
+        pttStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        const mimeType = PTT_MIME_CANDIDATES.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || "";
+        pttRecorder = mimeType
+            ? new MediaRecorder(pttStream, { mimeType })
+            : new MediaRecorder(pttStream);
+        pttChunks = [];
+
+        pttRecorder.ondataavailable = (event) => {
+            if (event.data && event.data.size > 0) {
+                pttChunks.push(event.data);
+            }
+        };
+
+        pttRecorder.onstop = () => {
+            void finalizePttRecording(mimeType);
+        };
+
+        pttRecorder.onerror = (event) => {
+            addSystemMessage(`Voice recording failed: ${event.error?.message || "unknown error"}`);
+            releasePttStream();
+            pttRecorder = null;
+            pttChunks = [];
+            setPttRecordingState(false);
+        };
+
+        pttRecorder.start();
+        addActivity("voice", "Recording started");
+        setPttRecordingState(true);
+    } catch (error) {
+        addSystemMessage(`Microphone access failed: ${error.message}`);
+        releasePttStream();
+        pttRecorder = null;
+        pttChunks = [];
+        setPttRecordingState(false);
+    }
+}
+
+function stopPttRecording() {
+    if (!pttRecording) {
+        return;
+    }
+    setPttRecordingState(false);
+    try {
+        pttRecorder?.stop();
+    } catch (error) {
+        addSystemMessage(`Failed to stop recording: ${error.message}`);
+        releasePttStream();
+        pttRecorder = null;
+        pttChunks = [];
+    }
+}
+
+async function finalizePttRecording(fallbackMimeType = "audio/webm") {
+    try {
+        const mimeType = String(pttRecorder?.mimeType || fallbackMimeType || "audio/webm");
+        const blob = new Blob(pttChunks, { type: mimeType });
+        pttChunks = [];
+        pttRecorder = null;
+        releasePttStream();
+
+        if (blob.size === 0) {
+            addActivity("voice", "Recording skipped (empty blob)");
+            return;
+        }
+        if (blob.size > MAX_VOICE_INPUT_SIZE_BYTES) {
+            addSystemMessage("Voice input is too large. Please keep it shorter.");
+            return;
+        }
+
+        const dataUrl = await readFileAsDataUrl(blob);
+        addActivity("voice", "Voice input captured");
+        await sendMessage({
+            audioInput: {
+                dataUrl,
+                mimeType
+            }
+        });
+    } catch (error) {
+        addSystemMessage(`Voice processing failed: ${error.message}`);
+    } finally {
+        setPttRecordingState(false);
+    }
+}
+
 function getAttachmentPreviewImage(attachment) {
     if (!attachment || attachment.kind !== "image") {
         return null;
@@ -745,20 +893,32 @@ function truncateText(value, maxLength) {
     return `${text.slice(0, Math.max(0, maxLength - 3))}...`;
 }
 
-async function sendMessage() {
+async function sendMessage(options = {}) {
     if (hasPendingInteraction()) {
         addActivity("chat", "Resolve pending approvals/questions before sending a new message.");
         return;
     }
 
-    const text = userInput.value.trim();
-    if ((!text && !currentAttachment) || isThinking) {
+    const textOverride = typeof options.textOverride === "string"
+        ? options.textOverride
+        : userInput.value;
+    const text = String(textOverride || "").trim();
+    const audioInput = options.audioInput && typeof options.audioInput === "object"
+        ? {
+            dataUrl: String(options.audioInput.dataUrl || "").trim(),
+            mimeType: String(options.audioInput.mimeType || "").trim() || "audio/webm"
+        }
+        : null;
+    const hasAudioInput = Boolean(audioInput?.dataUrl);
+
+    if ((!text && !currentAttachment && !hasAudioInput) || isThinking) {
         return;
     }
 
+    const userDisplayText = text || (hasAudioInput ? "[Voice input]" : "");
     addMessage(
         "user",
-        text,
+        userDisplayText,
         getAttachmentPreviewImage(currentAttachment),
         getAttachmentLabel(currentAttachment)
     );
@@ -816,10 +976,20 @@ async function sendMessage() {
                     fileUrl = uploadedUrl;
                 }
             }
+
+            rememberLatestAgentInputAsset({
+                kind: sendingAttachment.kind,
+                dataUrl: sendingAttachment.dataUrl || "",
+                fileName: sendingAttachment.fileName || "",
+                mimeType: sendingAttachment.mimeType || "",
+                contentUrl: sendingAttachment.kind === "pdf" ? fileUrl : imageUrl
+            });
         }
 
         const chatPayload = {
             text: originalText,
+            audio_base64: hasAudioInput ? audioInput.dataUrl : null,
+            audio_mime_type: hasAudioInput ? audioInput.mimeType : null,
             image_base64: sendingAttachment?.kind === "image" ? sendingAttachment.dataUrl : null,
             image_url: imageUrl,
             file_base64: sendingAttachment?.kind === "pdf" && !fileUrl ? sendingAttachment.dataUrl : null,
@@ -829,7 +999,8 @@ async function sendMessage() {
             mode: "dump",
             session_id: currentSessionId,
             approval_mode: approvalMode,
-            proposal_mode: approvalMode === APPROVAL_MODES.MANUAL
+            proposal_mode: approvalMode === APPROVAL_MODES.MANUAL,
+            model: selectedModel || undefined
         };
 
         const response = await apiFetch("/chat/stream", {
@@ -1068,7 +1239,26 @@ function normalizePendingQuestions(rawQuestions, rawContext) {
     };
 }
 
+function resolveAndClearLocalQuestionRequest(result = {}) {
+    if (!localQuestionRequest || typeof localQuestionRequest.resolve !== "function") {
+        localQuestionRequest = null;
+        return;
+    }
+    const resolver = localQuestionRequest.resolve;
+    localQuestionRequest = null;
+    try {
+        resolver(result);
+    } catch {
+        // no-op
+    }
+}
+
 function handleQuestionsChunk(chunk) {
+    resolveAndClearLocalQuestionRequest({
+        cancelled: true,
+        approved: false,
+        reason: "replaced_by_agent_question"
+    });
     const normalized = normalizePendingQuestions(
         chunk.questions,
         chunk.context || chunk.questions_context
@@ -1338,11 +1528,11 @@ function updateQuestionsSubmitState() {
     questionsSubmitBtn.disabled = !pendingQuestions.questions.every((question) => isQuestionAnswered(question));
 }
 
-function buildQuestionsAnswerText() {
+function buildQuestionsAnswerEntries() {
     if (!pendingQuestions || !Array.isArray(pendingQuestions.questions)) {
-        return "";
+        return [];
     }
-    const lines = [];
+    const entries = [];
     for (const question of pendingQuestions.questions) {
         const answer = questionAnswers[question.id] || {
             selectedOptions: [],
@@ -1350,12 +1540,13 @@ function buildQuestionsAnswerText() {
             freeText: ""
         };
         let value = "";
+        let selectedOptions = [];
         if (!Array.isArray(question.options) || question.options.length === 0) {
             value = String(answer.freeText || "").trim();
         } else {
-            const selected = Array.isArray(answer.selectedOptions) ? answer.selectedOptions : [];
-            const base = selected.filter((entry) => entry !== "Other (type manually)");
-            if (selected.includes("Other (type manually)")) {
+            selectedOptions = Array.isArray(answer.selectedOptions) ? answer.selectedOptions.slice() : [];
+            const base = selectedOptions.filter((entry) => entry !== "Other (type manually)");
+            if (selectedOptions.includes("Other (type manually)")) {
                 const otherText = String(answer.otherText || "").trim();
                 if (otherText) {
                     base.push(otherText);
@@ -1366,30 +1557,122 @@ function buildQuestionsAnswerText() {
         if (!value) {
             value = "(no answer)";
         }
-        lines.push(`${question.question}: ${value}`);
+        entries.push({
+            id: question.id,
+            question: question.question,
+            value,
+            selectedOptions
+        });
     }
-    return lines.join("\n");
+    return entries;
+}
+
+function buildQuestionsAnswerText() {
+    return buildQuestionsAnswerEntries()
+        .map((entry) => `${entry.question}: ${entry.value}`)
+        .join("\n");
+}
+
+function extractLocalDecisionFromQuestionEntries(requestKind, entries) {
+    if (requestKind !== "scenario_optimization") {
+        return { approved: false };
+    }
+    const first = Array.isArray(entries) && entries.length > 0 ? entries[0] : null;
+    if (!first) {
+        return { approved: false };
+    }
+    const selected = Array.isArray(first.selectedOptions) ? first.selectedOptions : [];
+    const answerText = String(selected[0] || first.value || "").trim().toLowerCase();
+    const approved = answerText.startsWith("apply optimization");
+    return { approved };
+}
+
+function askLocalQuestions(prompt = {}) {
+    const normalized = normalizePendingQuestions(prompt.questions, prompt.context);
+    if (!normalized) {
+        return Promise.resolve({
+            cancelled: true,
+            approved: false,
+            reason: "invalid_prompt"
+        });
+    }
+
+    resolveAndClearLocalQuestionRequest({
+        cancelled: true,
+        approved: false,
+        reason: "replaced_by_new_local_prompt"
+    });
+    pendingQuestions = normalized;
+    questionAnswers = {};
+    for (const question of pendingQuestions.questions) {
+        questionAnswers[question.id] = {
+            selectedOptions: [],
+            otherText: "",
+            freeText: ""
+        };
+    }
+
+    return new Promise((resolve) => {
+        localQuestionRequest = {
+            kind: String(prompt.kind || "local"),
+            resolve
+        };
+        renderInteractionPanel();
+    });
 }
 
 async function handleQuestionsSubmit() {
     if (!pendingQuestions) {
         return;
     }
+    const entries = buildQuestionsAnswerEntries();
     const message = buildQuestionsAnswerText();
     if (!message.trim()) {
         return;
     }
+    const localRequest = localQuestionRequest;
     pendingQuestions = null;
     questionAnswers = {};
+    localQuestionRequest = null;
     renderInteractionPanel();
+    if (localRequest) {
+        const decision = extractLocalDecisionFromQuestionEntries(localRequest.kind, entries);
+        addActivity("questions", "Submitted local decision.");
+        try {
+            localRequest.resolve({
+                cancelled: false,
+                entries,
+                message,
+                ...decision
+            });
+        } catch {
+            // no-op
+        }
+        return;
+    }
     addActivity("questions", "Submitted answers to agent.");
     await sendAutomatedFollowup(message);
 }
 
 function handleQuestionsCancel() {
+    const localRequest = localQuestionRequest;
     pendingQuestions = null;
     questionAnswers = {};
+    localQuestionRequest = null;
     renderInteractionPanel();
+    if (localRequest) {
+        addActivity("questions", "Local decision dismissed.");
+        try {
+            localRequest.resolve({
+                cancelled: true,
+                approved: false,
+                reason: "cancelled"
+            });
+        } catch {
+            // no-op
+        }
+        return;
+    }
     addActivity("questions", "Question prompt dismissed.");
 }
 
@@ -1536,6 +1819,13 @@ async function maybeDelegateBrowserTask(resultPayload) {
             scenarioName,
             startUrl: String(scenario.start_url || startUrl || "").trim(),
             steps: Array.isArray(scenario.steps) ? scenario.steps : [],
+            scenarioAssets: scenario.assets && typeof scenario.assets === "object" ? scenario.assets : {},
+            assets:
+                (resultPayload?.assets && typeof resultPayload.assets === "object"
+                    ? resultPayload.assets
+                    : (resultPayload?.payload?.assets && typeof resultPayload.payload.assets === "object"
+                        ? resultPayload.payload.assets
+                        : {})),
             aiFallback: scenario.ai_fallback !== false,
             aiFallbackMaxSteps: Number(scenario.ai_fallback_max_steps) || 3,
             stepRetryLimit: Number(scenario.step_retry_limit) >= 0
@@ -1864,6 +2154,13 @@ function normalizeHybridRpaPayload(resultPayload) {
         scenarioName,
         startUrl,
         steps,
+        scenarioAssets:
+            source.scenario_assets && typeof source.scenario_assets === "object"
+                ? source.scenario_assets
+                : (source.scenarioAssets && typeof source.scenarioAssets === "object"
+                    ? source.scenarioAssets
+                    : {}),
+        assets: source.assets && typeof source.assets === "object" ? source.assets : {},
         aiFallback: source.ai_fallback !== false,
         aiFallbackMaxSteps: Number.isFinite(aiFallbackMaxRaw)
             ? Math.max(1, Math.min(10, Math.round(aiFallbackMaxRaw)))
@@ -2046,8 +2343,8 @@ function validateInput() {
     const interactionLocked = hasPendingInteraction();
     const hasText = userInput.value.trim().length > 0;
     const hasAttachment = Boolean(currentAttachment);
-    const composerLocked = isThinking || interactionLocked;
-    const fileActionDisabled = composerLocked || captureLoading;
+    const composerLocked = isThinking || interactionLocked || pttRecording;
+    const fileActionDisabled = composerLocked || captureLoading || pttRecording;
 
     sendBtn.disabled = composerLocked || !(hasText || hasAttachment);
     userInput.disabled = composerLocked;
@@ -2058,6 +2355,11 @@ function validateInput() {
     captureBtn.disabled = fileActionDisabled;
     uploadFileBtn.style.opacity = fileActionDisabled ? "0.5" : "1";
     captureBtn.style.opacity = fileActionDisabled ? "0.5" : "1";
+    if (voicePttBtn) {
+        const voiceDisabled = fileActionDisabled || !supportsPttRecording();
+        voicePttBtn.disabled = voiceDisabled;
+        voicePttBtn.style.opacity = voiceDisabled ? "0.5" : "1";
+    }
 }
 
 function showPreview(attachment) {
@@ -2100,17 +2402,31 @@ function scrollToBottom() {
 }
 
 function clearView() {
+    if (pttRecording) {
+        stopPttRecording();
+    }
+    releasePttStream();
+    pttRecorder = null;
+    pttChunks = [];
+    setPttRecordingState(false);
+
     const messages = Array.from(messagesDiv.children).filter((child) => child.id !== "thinking");
     for (const message of messages) {
         message.remove();
     }
 
+    resolveAndClearLocalQuestionRequest({
+        cancelled: true,
+        approved: false,
+        reason: "chat_cleared"
+    });
     pendingProposals = [];
     pendingProposalIndex = 0;
     proposalApprovedBuffer = [];
     proposalProcessing = false;
     pendingQuestions = null;
     questionAnswers = {};
+    lastAgentInputAsset = null;
     hideProposalError();
     renderInteractionPanel();
 
@@ -2333,19 +2649,187 @@ async function startBrowserAgent(goal) {
     addActivity("browser", `Started browser task: ${goal}`);
 }
 
+function normalizeRpaAssetSlotName(value) {
+    return String(value || "")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "_")
+        .replace(/^_+|_+$/g, "")
+        .slice(0, 64);
+}
+
+function toRuntimeAssetPayload(input) {
+    if (!input || typeof input !== "object") {
+        return null;
+    }
+    const dataUrl = String(input.data_url || input.dataUrl || "").trim();
+    const fileName = String(input.file_name || input.fileName || "").trim();
+    const mimeType = String(input.mime_type || input.mimeType || "").trim();
+    const fileUrl = String(input.file_url || input.fileUrl || "").trim();
+    if (!dataUrl.startsWith("data:") && !fileUrl) {
+        return null;
+    }
+    return {
+        data_url: dataUrl.startsWith("data:") ? dataUrl : "",
+        file_url: fileUrl,
+        file_name: fileName || "input-file.bin",
+        mime_type: mimeType || "application/octet-stream"
+    };
+}
+
+function rememberLatestAgentInputAsset(input) {
+    const normalized = toRuntimeAssetPayload(input);
+    if (!normalized) {
+        return;
+    }
+    lastAgentInputAsset = {
+        ...normalized,
+        capturedAt: Date.now()
+    };
+}
+
+function extractAttachFileSlots(steps) {
+    const slots = [];
+    const seen = new Set();
+    const source = Array.isArray(steps) ? steps : [];
+    for (const step of source) {
+        if (!step || typeof step !== "object") {
+            continue;
+        }
+        const type = String(step.type || "").trim().toLowerCase();
+        if (type !== "attach_file") {
+            continue;
+        }
+        const slot = normalizeRpaAssetSlotName(step.asset_slot || step.assetSlot || "input_file") || "input_file";
+        if (seen.has(slot)) {
+            continue;
+        }
+        seen.add(slot);
+        slots.push(slot);
+    }
+    return slots;
+}
+
+function normalizeTaskAssetMap(rawAssets) {
+    if (!rawAssets || typeof rawAssets !== "object") {
+        return {};
+    }
+    const normalized = {};
+    for (const [rawSlot, rawAsset] of Object.entries(rawAssets)) {
+        const slot = normalizeRpaAssetSlotName(rawSlot);
+        if (!slot) {
+            continue;
+        }
+        const asset = toRuntimeAssetPayload(rawAsset);
+        if (!asset) {
+            continue;
+        }
+        normalized[slot] = asset;
+    }
+    return normalized;
+}
+
+function buildAttachSlotAcceptMap(steps) {
+    const accepts = {};
+    const source = Array.isArray(steps) ? steps : [];
+    for (const step of source) {
+        if (!step || typeof step !== "object") {
+            continue;
+        }
+        const type = String(step.type || "").trim().toLowerCase();
+        if (type !== "attach_file") {
+            continue;
+        }
+        const slot = normalizeRpaAssetSlotName(step.asset_slot || step.assetSlot || "input_file") || "input_file";
+        const accept = String(step.accept || "").trim();
+        if (!accept) {
+            continue;
+        }
+        if (!accepts[slot]) {
+            accepts[slot] = accept;
+        }
+    }
+    return accepts;
+}
+
+function isAssetCompatibleWithAccept(asset, acceptRaw) {
+    const accept = String(acceptRaw || "").trim().toLowerCase();
+    if (!accept) {
+        return true;
+    }
+    const mimeType = String(asset?.mime_type || asset?.mimeType || "").trim().toLowerCase();
+    const fileName = String(asset?.file_name || asset?.fileName || "").trim().toLowerCase();
+    const rules = accept
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter((entry) => Boolean(entry));
+    if (rules.length === 0) {
+        return true;
+    }
+    return rules.some((rule) => {
+        if (rule.endsWith("/*")) {
+            const prefix = rule.slice(0, -1);
+            return mimeType.startsWith(prefix);
+        }
+        if (rule.startsWith(".")) {
+            return fileName.endsWith(rule);
+        }
+        return mimeType === rule;
+    });
+}
+
+function buildHybridRpaAssets(task, scenarioSteps) {
+    const assets = normalizeTaskAssetMap(task?.assets);
+    const requiredSlots = extractAttachFileSlots(scenarioSteps);
+    if (requiredSlots.length === 0) {
+        return assets;
+    }
+
+    const candidate = toRuntimeAssetPayload(lastAgentInputAsset);
+    if (!candidate) {
+        return assets;
+    }
+    const slotAcceptMap = buildAttachSlotAcceptMap(scenarioSteps);
+
+    for (const slot of requiredSlots) {
+        if (!assets[slot]) {
+            if (!isAssetCompatibleWithAccept(candidate, slotAcceptMap[slot])) {
+                continue;
+            }
+            assets[slot] = { ...candidate };
+        }
+    }
+    return assets;
+}
+
 async function startHybridRpaTask(task) {
+    const scenarioSteps = Array.isArray(task.steps) ? task.steps : [];
+    const runtimeAssets = buildHybridRpaAssets(task, scenarioSteps);
+    const requiredSlots = extractAttachFileSlots(scenarioSteps);
+    const missingSlots = requiredSlots.filter((slot) => !runtimeAssets[slot]);
+    if (missingSlots.length > 0) {
+        addActivity(
+            "rpa",
+            `Missing file assets for slots: ${missingSlots.join(", ")}. Attach PDF/file in chat first.`
+        );
+    }
+
     const payload = {
         goal: task.goal,
         scenario: {
             name: task.scenarioName || task.goal,
             start_url: task.startUrl || "",
-            steps: Array.isArray(task.steps) ? task.steps : [],
+            steps: scenarioSteps,
+            ...(task.scenarioAssets && typeof task.scenarioAssets === "object"
+                ? { assets: task.scenarioAssets }
+                : {}),
             ai_fallback: task.aiFallback !== false,
             ai_fallback_max_steps: task.aiFallbackMaxSteps,
             step_retry_limit: task.stepRetryLimit,
             stop_on_failure: task.stopOnFailure !== false,
             notes: task.notes || ""
         },
+        assets: runtimeAssets,
         config: buildBrowserAgentConfig()
     };
 
@@ -2399,6 +2883,12 @@ function convertScenarioStepToSkillLine(step) {
         const hint = String(step.text_hint || step.textHint || step.selector || "").trim();
         return hint ? `Click ${hint}` : "Click the target element";
     }
+    if (type === "attach_file") {
+        const slot = String(step.asset_slot || step.assetSlot || "input_file").trim() || "input_file";
+        const selector = String(step.selector || "").trim();
+        const target = selector || String(step.text_hint || step.textHint || "file input").trim();
+        return `Attach file slot "${slot}" to ${target}`;
+    }
     if (type === "type") {
         const selector = String(step.selector || "").trim();
         const value = String(step.text || "").trim();
@@ -2451,6 +2941,17 @@ function normalizeScenarioForSkill(rawScenario) {
         if (typeof rawStep.text === "string" && rawStep.text) {
             step.text = rawStep.text.slice(0, 240);
         }
+        if (typeof rawStep.asset_slot === "string" && rawStep.asset_slot.trim()) {
+            step.asset_slot = rawStep.asset_slot.trim().slice(0, 64);
+        } else if (typeof rawStep.assetSlot === "string" && rawStep.assetSlot.trim()) {
+            step.asset_slot = rawStep.assetSlot.trim().slice(0, 64);
+        }
+        if (typeof rawStep.accept === "string" && rawStep.accept.trim()) {
+            step.accept = rawStep.accept.trim().slice(0, 200);
+        }
+        if (rawStep.multiple === true) {
+            step.multiple = true;
+        }
         if (typeof rawStep.key === "string" && rawStep.key.trim()) {
             step.key = rawStep.key.trim().slice(0, 40);
         }
@@ -2490,6 +2991,27 @@ function normalizeScenarioForSkill(rawScenario) {
     const name = String(source.name || source.scenario_name || source.scenarioName || "RPA Scenario")
         .trim()
         .slice(0, 120);
+    const normalizedAssets = {};
+    if (source.assets && typeof source.assets === "object") {
+        for (const [rawSlot, rawAsset] of Object.entries(source.assets)) {
+            const slot = normalizeRpaAssetSlotName(rawSlot);
+            if (!slot || !rawAsset || typeof rawAsset !== "object") {
+                continue;
+            }
+            const descriptor = {};
+            const description = String(rawAsset.description || "").trim();
+            const mimeTypes = Array.isArray(rawAsset.mime_types)
+                ? rawAsset.mime_types.map((mime) => String(mime || "").trim()).filter((mime) => Boolean(mime)).slice(0, 6)
+                : [];
+            if (description) {
+                descriptor.description = description.slice(0, 220);
+            }
+            if (mimeTypes.length > 0) {
+                descriptor.mime_types = mimeTypes;
+            }
+            normalizedAssets[slot] = descriptor;
+        }
+    }
     return {
         name: name || "RPA Scenario",
         start_url: String(source.start_url || source.startUrl || "").trim().slice(0, 400),
@@ -2497,7 +3019,8 @@ function normalizeScenarioForSkill(rawScenario) {
         ai_fallback_max_steps: Number(source.ai_fallback_max_steps) > 0 ? Number(source.ai_fallback_max_steps) : 3,
         step_retry_limit: Number(source.step_retry_limit) >= 0 ? Number(source.step_retry_limit) : 1,
         stop_on_failure: source.stop_on_failure !== false,
-        steps: normalizedSteps
+        steps: normalizedSteps,
+        ...(Object.keys(normalizedAssets).length > 0 ? { assets: normalizedAssets } : {})
     };
 }
 
@@ -2579,6 +3102,96 @@ async function saveScenarioAsSkill(options = {}) {
     };
 }
 
+function buildScenarioOptimizationQuestionContext(summary, changes) {
+    const lines = [];
+    lines.push("RPA optimization suggestion is available.");
+    if (summary) {
+        lines.push("");
+        lines.push(`Summary: ${summary}`);
+    }
+    if (Array.isArray(changes) && changes.length > 0) {
+        lines.push("");
+        lines.push("Proposed changes:");
+        for (const change of changes.slice(0, 6)) {
+            const stepLabel = `Step ${Number(change?.stepIndex) || "?"}`;
+            const from = String(change?.from || "").trim() || "step";
+            const to = String(change?.to || "").trim() || "step";
+            const reason = String(change?.reason || "").trim();
+            lines.push(`- ${stepLabel}: ${from} -> ${to}${reason ? ` (${reason})` : ""}`);
+        }
+        if (changes.length > 6) {
+            lines.push(`- ...and ${changes.length - 6} more`);
+        }
+    }
+    return lines.join("\n");
+}
+
+async function askScenarioOptimizationApproval(summary, changes) {
+    const context = buildScenarioOptimizationQuestionContext(summary, changes);
+    const decision = await askLocalQuestions({
+        kind: "scenario_optimization",
+        context,
+        questions: [
+            {
+                id: "scenario_optimization_decision",
+                question: "Apply this optimization to the recorded scenario?",
+                options: [
+                    "Apply optimization (Recommended)",
+                    "Keep original scenario"
+                ],
+                allow_multiple: false
+            }
+        ]
+    });
+    return Boolean(decision && !decision.cancelled && decision.approved === true);
+}
+
+async function maybeOptimizeRecordedScenario(scenario, goal) {
+    const normalizedScenario = normalizeScenarioForSkill(scenario || {});
+    if (!Array.isArray(normalizedScenario.steps) || normalizedScenario.steps.length === 0) {
+        return normalizedScenario;
+    }
+
+    const response = await sendRuntimeMessage({
+        type: "rpa.scenario.optimize",
+        payload: {
+            goal: String(goal || normalizedScenario.name || "Hybrid RPA Task"),
+            scenario: normalizedScenario,
+            config: buildBrowserAgentConfig()
+        }
+    });
+    if (!response?.ok) {
+        if (response?.error) {
+            addActivity("rpa.record", `Scenario optimization skipped: ${response.error}`);
+        }
+        return normalizedScenario;
+    }
+
+    if (!response.changed || !response.scenario) {
+        const summary = String(response.summary || "").trim();
+        if (summary) {
+            addActivity("rpa.record", `Scenario optimization: ${summary}`);
+        }
+        return normalizedScenario;
+    }
+
+    const summary = String(response.summary || "").trim();
+    const changes = Array.isArray(response.changes) ? response.changes : [];
+    const accepted = await askScenarioOptimizationApproval(summary, changes);
+    if (!accepted) {
+        addActivity("rpa.record", "Scenario optimization rejected by user.");
+        return normalizedScenario;
+    }
+
+    addActivity(
+        "rpa.record",
+        summary
+            ? `Scenario optimization applied: ${summary}`
+            : "Scenario optimization applied."
+    );
+    return normalizeScenarioForSkill(response.scenario);
+}
+
 async function stopRpaRecordingAndSave() {
     const response = await sendRuntimeMessage({
         type: "rpa.record.stop",
@@ -2589,9 +3202,18 @@ async function stopRpaRecordingAndSave() {
         return;
     }
 
-    const scenario = response?.scenario;
+    const baseScenario = response?.scenario;
+    const baseStepCount = Array.isArray(baseScenario?.steps) ? baseScenario.steps.length : 0;
+    let scenario = normalizeScenarioForSkill(baseScenario || {});
+    scenario = await maybeOptimizeRecordedScenario(
+        scenario,
+        response?.goal || scenario?.name || "Recorded scenario"
+    );
     const stepCount = Array.isArray(scenario?.steps) ? scenario.steps.length : 0;
     addActivity("rpa.record", `Recording stopped. Generated ${stepCount} scenario steps.`);
+    if (baseStepCount !== stepCount) {
+        addActivity("rpa.record", `Scenario steps updated: ${baseStepCount} -> ${stepCount}`);
+    }
 
     const saveResult = await saveScenarioAsSkill({
         scenario,
@@ -2622,11 +3244,15 @@ async function stopBrowserAgent() {
 function buildBrowserAgentConfig() {
     const normalizedSettings = normalizeSettings(settings);
     const provider = normalizeBrowserProvider(normalizedSettings.browserProvider);
-    const providerModelMap = normalizeProviderModelMap(normalizedSettings.browserModelByProvider);
+    const effectiveModel = selectedModel
+        || (availableModelsCache?.default_model_id)
+        || DEFAULT_PROVIDER_MODELS[provider];
     const config = {
         provider,
-        model: getProviderModel(provider, providerModelMap),
-        providerModels: providerModelMap,
+        model: effectiveModel,
+        providerModels: {
+            [provider]: effectiveModel
+        },
         responseLanguage: "Japanese",
         apiBaseUrl: normalizedSettings.browserApiBaseUrl,
         bedrockRegion: normalizedSettings.browserBedrockRegion,

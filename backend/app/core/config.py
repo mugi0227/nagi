@@ -53,6 +53,11 @@ class Settings(BaseSettings):
     # LiteLLM custom API key (optional, for custom endpoints)
     LITELLM_API_KEY: str = ""
 
+    # Available models for model selection UI (comma-separated).
+    # For gemini-api/vertex-ai: list Gemini model names.
+    # For litellm: leave empty to fetch from proxy server, or list model IDs.
+    AVAILABLE_MODELS: str = ""
+
     # LiteLLM Vision model (optional, uses separate model for image processing)
     # If set, images will be processed by this model instead of the main model.
     # Example: "openai/qwen3-vl" or "bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0"
@@ -144,8 +149,12 @@ class Settings(BaseSettings):
     # ===========================================
     # Speech-to-Text
     # ===========================================
+    SPEECH_PROVIDER: Literal["whisper", "google-stt-v2"] = "whisper"
     # Whisper model size for local development
     WHISPER_MODEL_SIZE: str = "base"  # tiny, base, small, medium, large
+    STT_V2_LOCATION: str = "us"
+    STT_V2_MODEL: str = "chirp_3"
+    STT_V2_LANGUAGE: str = "ja-JP"
 
     # ===========================================
     # Developer Accounts
@@ -161,6 +170,13 @@ class Settings(BaseSettings):
     MAX_TEXT_LENGTH: int = 10000
     MAX_TRANSCRIPTION_LENGTH: int = 10000
     MAX_IMAGE_ANALYSIS_LENGTH: int = 5000
+
+    @property
+    def available_models(self) -> list[str]:
+        """Get list of available model identifiers."""
+        if not self.AVAILABLE_MODELS:
+            return []
+        return [m.strip() for m in self.AVAILABLE_MODELS.split(",") if m.strip()]
 
     @property
     def developer_emails(self) -> set[str]:

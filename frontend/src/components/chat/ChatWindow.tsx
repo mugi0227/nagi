@@ -66,6 +66,8 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
     sessionId,
     isLoadingSessions,
     isLoadingHistory,
+    selectedModel,
+    setSelectedModel,
   } = useChat();
   const [activeDraftCard, setActiveDraftCard] = useState<DraftCardData | null>(null);
   const [processedProposalIds, setProcessedProposalIds] = useState<Set<string>>(new Set());
@@ -583,7 +585,16 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
         />
       ) : (
         <ChatInput
-          onSend={(message, imageBase64) => sendMessageStream(message, imageBase64, undefined, projectContext)}
+          onSend={(message, imageBase64, audioBase64, audioMimeType) =>
+            sendMessageStream(
+              message,
+              imageBase64,
+              undefined,
+              projectContext,
+              audioBase64,
+              audioMimeType,
+            )
+          }
           onCancel={cancelStream}
           disabled={isLoading}
           isStreaming={isStreaming}
@@ -591,6 +602,8 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
           onImageClear={() => setDraggedImage(null)}
           initialValue={initialMessage}
           onInitialValueConsumed={onInitialMessageConsumed}
+          selectedModel={selectedModel}
+          onModelChange={setSelectedModel}
         />
       )}
 

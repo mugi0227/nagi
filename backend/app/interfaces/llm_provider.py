@@ -54,3 +54,22 @@ class ILLMProvider(ABC):
             True if function calling is supported
         """
         pass
+
+    @abstractmethod
+    def get_available_models(self) -> list[str]:
+        """
+        Get list of available model identifiers for selection.
+
+        Returns:
+            List of model identifier strings
+        """
+        pass
+
+    def with_model(self, model_id: str) -> "ILLMProvider":
+        """
+        Create a new provider instance using a different model.
+
+        Returns a new ILLMProvider configured for the given model_id.
+        Default implementation returns self (no override).
+        """
+        return self

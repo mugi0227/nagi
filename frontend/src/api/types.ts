@@ -232,6 +232,9 @@ export type ToolApprovalMode = 'manual' | 'auto';
 export interface ChatRequest {
   text?: string;
   audio_url?: string;
+  audio_base64?: string;
+  audio_mime_type?: string;
+  audio_language?: string;
   image_url?: string;
   image_base64?: string;
   mode?: ChatMode;
@@ -239,6 +242,18 @@ export interface ChatRequest {
   context?: Record<string, unknown>;
   approval_mode?: ToolApprovalMode;
   proposal_mode?: boolean; // AI提案モード（true: 提案→承諾、false: 直接作成）
+  model?: string; // Model ID override for this message
+}
+
+export interface AvailableModel {
+  id: string;
+  name: string;
+}
+
+export interface AvailableModelsResponse {
+  provider: string;
+  default_model_id: string;
+  models: AvailableModel[];
 }
 
 export interface SuggestedAction {

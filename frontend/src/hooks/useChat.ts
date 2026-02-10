@@ -1,4 +1,4 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
+﻿import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { chatApi } from '../api/chat';
 import { heartbeatApi } from '../api/heartbeat';
@@ -164,6 +164,19 @@ export function useChat() {
     }
   }, []);
 
+  const [selectedModel, setSelectedModelState] = useState<string | undefined>(() => {
+    return userStorage.get('selectedModel') || undefined;
+  });
+
+  const setSelectedModel = useCallback((model?: string) => {
+    setSelectedModelState(model);
+    if (model) {
+      userStorage.set('selectedModel', model);
+    } else {
+      userStorage.remove('selectedModel');
+    }
+  }, []);
+
   const mutation = useMutation({
     mutationFn: (request: ChatRequest) => chatApi.sendMessage(request),
     onSuccess: (response: ChatResponse) => {
@@ -272,7 +285,7 @@ export function useChat() {
       setMessages((prev) =>
         prev.map((msg) =>
           msg.isStreaming
-            ? { ...msg, isStreaming: false, content: msg.content || '（中断されました）' }
+            ? { ...msg, isStreaming: false, content: msg.content || '[Stream cancelled]' }
             : msg
         )
       );
@@ -285,6 +298,8 @@ export function useChat() {
       imageBase64?: string,
       mode?: ChatMode,
       projectContext?: { projectId: string; projectName: string } | null,
+      audioBase64?: string,
+      audioMimeType?: string,
     ) => {
       // Cancel any ongoing stream
       if (abortControllerRef.current) {
@@ -295,7 +310,7 @@ export function useChat() {
       const userMessage: Message = {
         id: crypto.randomUUID(),
         role: 'user',
-        content: text,
+        content: text || (audioBase64 ? '[Voice input]' : ''),
         timestamp: nowInTimezone(timezone).toJSDate(),
         imageUrl: imageBase64,
       };
@@ -327,12 +342,15 @@ export function useChat() {
 
         for await (const chunk of chatApi.streamMessage({
           text,
+          audio_base64: audioBase64,
+          audio_mime_type: audioMimeType,
           image_base64: imageBase64,
           mode,
           session_id: sessionId,
           approval_mode: approvalMode,
           proposal_mode: approvalMode === 'manual',
           context,
+          model: selectedModel || undefined,
         }, abortControllerRef.current.signal)) {
           switch (chunk.chunk_type) {
             case 'tool_start': {
@@ -604,7 +622,7 @@ export function useChat() {
                   msg.id === assistantMessageId
                     ? {
                       ...msg,
-                      content: chunk.content || 'エラーが発生しました',
+                      content: chunk.content || '繧ｨ繝ｩ繝ｼ縺檎匱逕溘＠縺ｾ縺励◆',
                       isStreaming: false,
                     }
                     : msg
@@ -624,7 +642,7 @@ export function useChat() {
             msg.id === assistantMessageId
               ? {
                 ...msg,
-                content: 'エラーが発生しました',
+                content: '繧ｨ繝ｩ繝ｼ縺檎匱逕溘＠縺ｾ縺励◆',
                 isStreaming: false,
               }
               : msg
@@ -715,5 +733,8 @@ export function useChat() {
     isLoading: mutation.isPending || isStreaming,
     isStreaming,
     error: mutation.error,
+    selectedModel,
+    setSelectedModel,
   };
 }
+

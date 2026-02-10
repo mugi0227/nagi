@@ -1,9 +1,24 @@
-import { useState, useRef, useEffect, KeyboardEvent, ChangeEvent, ClipboardEvent } from 'react';
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  KeyboardEvent,
+  ChangeEvent,
+  ClipboardEvent,
+  type PointerEvent as ReactPointerEvent,
+} from 'react';
 import { FaMicrophone, FaPaperPlane, FaImage, FaXmark, FaStop } from 'react-icons/fa6';
+import { ModelSelector } from './ModelSelector';
 import './ChatInput.css';
 
 interface ChatInputProps {
-  onSend: (message: string, imageBase64?: string) => void;
+  onSend: (
+    message: string,
+    imageBase64?: string,
+    audioBase64?: string,
+    audioMimeType?: string,
+  ) => void;
   onCancel?: () => void;
   disabled?: boolean;
   isStreaming?: boolean;
@@ -11,101 +26,293 @@ interface ChatInputProps {
   onImageClear?: () => void;
   initialValue?: string | null;
   onInitialValueConsumed?: () => void;
+  selectedModel?: string;
+  onModelChange?: (model?: string) => void;
 }
 
 const MAX_HISTORY = 50;
+const MAX_IMAGE_SIZE = 5 * 1024 * 1024;
+const MAX_AUDIO_SIZE = 10 * 1024 * 1024;
+const PTT_MIME_CANDIDATES = [
+  'audio/webm;codecs=opus',
+  'audio/webm',
+  'audio/ogg;codecs=opus',
+  'audio/mp4',
+];
 
-export function ChatInput({ onSend, onCancel, disabled, isStreaming, externalImage, onImageClear, initialValue, onInitialValueConsumed }: ChatInputProps) {
+const blobToDataUrl = (blob: Blob): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ''));
+    reader.onerror = () => reject(new Error('audio_read_failed'));
+    reader.readAsDataURL(blob);
+  });
+
+export function ChatInput({
+  onSend,
+  onCancel,
+  disabled,
+  isStreaming,
+  externalImage,
+  onImageClear,
+  initialValue,
+  onInitialValueConsumed,
+  selectedModel,
+  onModelChange,
+}: ChatInputProps) {
   const [input, setInput] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [inputHistory, setInputHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [tempInput, setTempInput] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const audioChunksRef = useRef<BlobPart[]>([]);
+
   const effectiveImage = externalImage ?? selectedImage;
   const hasExternalImage = Boolean(externalImage);
+  const isPttSupported =
+    typeof navigator !== 'undefined'
+    && typeof MediaRecorder !== 'undefined'
+    && Boolean(navigator.mediaDevices?.getUserMedia);
 
-  // Set initial value when provided (without auto-submit)
-  useEffect(() => {
-    if (initialValue) {
-      setInput(initialValue);
-      onInitialValueConsumed?.();
-      // Focus the textarea after setting initial value
-      setTimeout(() => textareaRef.current?.focus(), 100);
+  const clearComposer = useCallback(() => {
+    setInput('');
+    setSelectedImage(null);
+    if (hasExternalImage && onImageClear) {
+      onImageClear();
     }
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
+  }, [hasExternalImage, onImageClear]);
+
+  const releaseMediaStream = useCallback(() => {
+    const stream = mediaStreamRef.current;
+    if (!stream) {
+      return;
+    }
+    stream.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+  }, []);
+
+  const stopRecording = useCallback(() => {
+    if (!isRecording) {
+      return;
+    }
+    setIsRecording(false);
+    try {
+      mediaRecorderRef.current?.stop();
+    } catch (error) {
+      console.error('Failed to stop recorder:', error);
+      releaseMediaStream();
+    }
+  }, [isRecording, releaseMediaStream]);
+
+  const startRecording = useCallback(async () => {
+    if (!isPttSupported || isRecording || disabled || isStreaming) {
+      return;
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      mediaStreamRef.current = stream;
+
+      const mimeType =
+        PTT_MIME_CANDIDATES.find((candidate) => MediaRecorder.isTypeSupported(candidate)) || '';
+      const recorder = mimeType
+        ? new MediaRecorder(stream, { mimeType })
+        : new MediaRecorder(stream);
+      mediaRecorderRef.current = recorder;
+      audioChunksRef.current = [];
+
+      recorder.ondataavailable = (event: BlobEvent) => {
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        void (async () => {
+          try {
+            const blobType = recorder.mimeType || mimeType || 'audio/webm';
+            const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
+            audioChunksRef.current = [];
+            releaseMediaStream();
+
+            if (audioBlob.size === 0) {
+              return;
+            }
+            if (audioBlob.size > MAX_AUDIO_SIZE) {
+              alert('Voice input is too large. Please keep it shorter.');
+              return;
+            }
+
+            const audioBase64 = await blobToDataUrl(audioBlob);
+            const trimmed = input.trim();
+            if (trimmed) {
+              setInputHistory((prev) => {
+                const next = [trimmed, ...prev.filter((value) => value !== trimmed)];
+                return next.slice(0, MAX_HISTORY);
+              });
+            }
+            setHistoryIndex(-1);
+            setTempInput('');
+            onSend(trimmed, effectiveImage || undefined, audioBase64, blobType);
+            clearComposer();
+          } catch (error) {
+            console.error('Failed to process recorded audio:', error);
+            alert('Failed to process voice input.');
+          }
+        })();
+      };
+
+      recorder.onerror = (event) => {
+        console.error('Audio recorder error:', event);
+        releaseMediaStream();
+        setIsRecording(false);
+      };
+
+      recorder.start();
+      setIsRecording(true);
+    } catch (error) {
+      console.error('Microphone access denied or unavailable:', error);
+      alert('Microphone access failed. Please check browser permission settings.');
+      releaseMediaStream();
+      setIsRecording(false);
+    }
+  }, [
+    clearComposer,
+    disabled,
+    effectiveImage,
+    input,
+    isPttSupported,
+    isRecording,
+    isStreaming,
+    onSend,
+    releaseMediaStream,
+  ]);
+
+  useEffect(() => {
+    if (!initialValue) {
+      return;
+    }
+    setInput(initialValue);
+    onInitialValueConsumed?.();
+    window.setTimeout(() => textareaRef.current?.focus(), 100);
   }, [initialValue, onInitialValueConsumed]);
 
-  // Auto-resize textarea based on content
   useEffect(() => {
     const textarea = textareaRef.current;
-    if (textarea) {
-      textarea.style.height = 'auto';
-      textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+    if (!textarea) {
+      return;
     }
+    textarea.style.height = 'auto';
+    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
   }, [input]);
 
-  // Global Escape key handler for cancelling stream
   useEffect(() => {
-    const handleGlobalKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape' && isStreaming && onCancel) {
-        e.preventDefault();
+    return () => {
+      try {
+        mediaRecorderRef.current?.stop();
+      } catch {
+        // no-op
+      }
+      releaseMediaStream();
+    };
+  }, [releaseMediaStream]);
+
+  useEffect(() => {
+    const handleGlobalKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key !== 'Escape') {
+        return;
+      }
+      if (isRecording) {
+        event.preventDefault();
+        stopRecording();
+        return;
+      }
+      if (isStreaming && onCancel) {
+        event.preventDefault();
         onCancel();
       }
     };
 
     window.addEventListener('keydown', handleGlobalKeyDown);
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [isStreaming, onCancel]);
+  }, [isRecording, isStreaming, onCancel, stopRecording]);
+
+  const pushHistory = (value: string) => {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      return;
+    }
+    setInputHistory((prev) => {
+      const next = [trimmed, ...prev.filter((item) => item !== trimmed)];
+      return next.slice(0, MAX_HISTORY);
+    });
+  };
 
   const handleSubmit = () => {
-    if ((input.trim() || effectiveImage) && !disabled) {
-      const trimmed = input.trim();
-      // Add to input history
-      if (trimmed) {
-        setInputHistory((prev) => {
-          const newHistory = [trimmed, ...prev.filter((h) => h !== trimmed)];
-          return newHistory.slice(0, MAX_HISTORY);
-        });
-      }
-      setHistoryIndex(-1);
-      setTempInput('');
-      onSend(trimmed, effectiveImage || undefined);
-      setInput('');
-      setSelectedImage(null);
-      if (hasExternalImage && onImageClear) {
-        onImageClear();
-      }
-      // Reset textarea height
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
+    if (disabled || isRecording || isStreaming) {
+      return;
     }
+    if (!input.trim() && !effectiveImage) {
+      return;
+    }
+    pushHistory(input);
+    setHistoryIndex(-1);
+    setTempInput('');
+    onSend(input.trim(), effectiveImage || undefined);
+    clearComposer();
   };
 
-  const handleImageSelect = (e: ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (hasExternalImage && onImageClear) {
-        onImageClear();
-      }
-      processImageFile(file);
+  const processImageFile = (file: File) => {
+    if (file.size > MAX_IMAGE_SIZE) {
+      alert('Image file must be 5MB or smaller.');
+      return;
     }
+    if (!file.type.startsWith('image/')) {
+      alert('Please select an image file.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setSelectedImage(String(reader.result || ''));
+    };
+    reader.readAsDataURL(file);
   };
 
-  const handlePaste = (e: ClipboardEvent<HTMLTextAreaElement>) => {
+  const handleImageSelect = (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+    if (hasExternalImage && onImageClear) {
+      onImageClear();
+    }
+    processImageFile(file);
+  };
+
+  const handlePaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
     if (disabled) {
       return;
     }
-    const items = Array.from(e.clipboardData?.items ?? []);
+
+    const items = Array.from(event.clipboardData?.items ?? []);
     const imageItem = items.find((item) => item.type.startsWith('image/'));
     if (!imageItem) {
       return;
     }
 
-    const pastedText = e.clipboardData?.getData('text/plain');
+    const pastedText = event.clipboardData?.getData('text/plain');
     if (!pastedText) {
-      e.preventDefault();
+      event.preventDefault();
     }
 
     const file = imageItem.getAsFile();
@@ -128,89 +335,86 @@ export function ChatInput({ onSend, onCancel, disabled, isStreaming, externalIma
     }
   };
 
-  const processImageFile = (file: File) => {
-    // Check file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      alert('画像ファイルは5MB以下にしてください');
-      return;
-    }
-
-    // Check file type
-    if (!file.type.startsWith('image/')) {
-      alert('画像ファイルを選択してください');
-      return;
-    }
-
-    // Convert to Base64
-    const reader = new FileReader();
-    reader.onload = () => {
-      setSelectedImage(reader.result as string);
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // Escape = Cancel streaming
-    if (e.key === 'Escape') {
+  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (event.key === 'Escape') {
+      if (isRecording) {
+        event.preventDefault();
+        stopRecording();
+        return;
+      }
       if (isStreaming && onCancel) {
-        e.preventDefault();
+        event.preventDefault();
         onCancel();
       }
       return;
     }
 
-    // Enter without Shift = Submit
-    // Shift+Enter = New line (default behavior)
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault();
       handleSubmit();
       return;
     }
 
-    // Arrow Up = Previous history (when cursor is at start or input is empty)
-    if (e.key === 'ArrowUp' && inputHistory.length > 0) {
+    if (event.key === 'ArrowUp' && inputHistory.length > 0) {
       const textarea = textareaRef.current;
-      const cursorAtStart = textarea && textarea.selectionStart === 0 && textarea.selectionEnd === 0;
+      const cursorAtStart =
+        textarea !== null && textarea.selectionStart === 0 && textarea.selectionEnd === 0;
       const isEmpty = input === '';
-
       if (cursorAtStart || isEmpty) {
-        e.preventDefault();
+        event.preventDefault();
         if (historyIndex === -1) {
           setTempInput(input);
         }
-        const newIndex = Math.min(historyIndex + 1, inputHistory.length - 1);
-        setHistoryIndex(newIndex);
-        setInput(inputHistory[newIndex]);
+        const nextIndex = Math.min(historyIndex + 1, inputHistory.length - 1);
+        setHistoryIndex(nextIndex);
+        setInput(inputHistory[nextIndex]);
       }
       return;
     }
 
-    // Arrow Down = Next history (when cursor is at end and navigating history)
-    if (e.key === 'ArrowDown' && historyIndex >= 0) {
+    if (event.key === 'ArrowDown' && historyIndex >= 0) {
       const textarea = textareaRef.current;
-      const cursorAtEnd = textarea &&
-        textarea.selectionStart === textarea.value.length &&
-        textarea.selectionEnd === textarea.value.length;
-
+      const cursorAtEnd = textarea !== null
+        && textarea.selectionStart === textarea.value.length
+        && textarea.selectionEnd === textarea.value.length;
       if (cursorAtEnd) {
-        e.preventDefault();
-        const newIndex = historyIndex - 1;
-        setHistoryIndex(newIndex);
-        if (newIndex === -1) {
+        event.preventDefault();
+        const nextIndex = historyIndex - 1;
+        setHistoryIndex(nextIndex);
+        if (nextIndex === -1) {
           setInput(tempInput);
         } else {
-          setInput(inputHistory[newIndex]);
+          setInput(inputHistory[nextIndex]);
         }
       }
     }
   };
 
+  const handlePttPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    void startRecording();
+  };
+
+  const handlePttPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    event.preventDefault();
+    stopRecording();
+  };
+
+  const handlePttPointerLeave = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (isRecording && event.buttons === 0) {
+      stopRecording();
+    }
+  };
+
   return (
     <div className="chat-input-container">
+      {onModelChange && (
+        <ModelSelector selectedModel={selectedModel} onModelChange={onModelChange} />
+      )}
       {effectiveImage && (
         <div className="image-preview">
           <img src={effectiveImage} alt="Selected" />
-          <button className="remove-image-btn" onClick={handleRemoveImage} title="画像を削除">
+          <button className="remove-image-btn" onClick={handleRemoveImage} title="Remove image">
             <FaXmark />
           </button>
         </div>
@@ -226,8 +430,8 @@ export function ChatInput({ onSend, onCancel, disabled, isStreaming, externalIma
         <button
           className="input-action-btn"
           onClick={() => fileInputRef.current?.click()}
-          disabled={disabled}
-          title="画像を添付"
+          disabled={disabled || isRecording || Boolean(isStreaming)}
+          title="Attach image"
         >
           <FaImage />
         </button>
@@ -235,31 +439,45 @@ export function ChatInput({ onSend, onCancel, disabled, isStreaming, externalIma
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={(event) => setInput(event.target.value)}
             onKeyDown={handleKeyDown}
             onPaste={handlePaste}
-            placeholder="メッセージを入力... (Shift+Enterで改行)"
-            disabled={disabled}
+            placeholder={
+              isRecording
+                ? 'Recording... release mic button to send.'
+                : 'Type a message... (Shift+Enter for newline)'
+            }
+            disabled={disabled || isRecording}
             rows={1}
           />
         </div>
-        <button className="mic-btn" title="音声入力" disabled>
-          <FaMicrophone />
+        <button
+          className={`mic-btn ${isRecording ? 'recording' : ''}`}
+          onPointerDown={handlePttPointerDown}
+          onPointerUp={handlePttPointerUp}
+          onPointerCancel={handlePttPointerUp}
+          onPointerLeave={handlePttPointerLeave}
+          title={
+            isPttSupported
+              ? isRecording
+                ? 'Recording: release to send'
+                : 'Hold to talk (PTT)'
+              : 'Voice input is not supported in this browser'
+          }
+          disabled={disabled || Boolean(isStreaming) || !isPttSupported}
+        >
+          {isRecording ? <FaStop /> : <FaMicrophone />}
         </button>
         {isStreaming ? (
-          <button
-            className="send-btn stop-btn"
-            onClick={onCancel}
-            title="停止 (Esc)"
-          >
+          <button className="send-btn stop-btn" onClick={onCancel} title="Stop (Esc)">
             <FaStop />
           </button>
         ) : (
           <button
             className="send-btn"
             onClick={handleSubmit}
-            disabled={(!input.trim() && !effectiveImage) || disabled}
-            title="送信"
+            disabled={(!input.trim() && !effectiveImage) || disabled || isRecording}
+            title="Send"
           >
             <FaPaperPlane />
           </button>

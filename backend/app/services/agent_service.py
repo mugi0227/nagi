@@ -33,6 +33,7 @@ from app.interfaces.project_repository import IProjectRepository
 from app.interfaces.proposal_repository import IProposalRepository
 from app.interfaces.recurring_meeting_repository import IRecurringMeetingRepository
 from app.interfaces.recurring_task_repository import IRecurringTaskRepository
+from app.interfaces.speech_provider import ISpeechToTextProvider
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.interfaces.user_repository import IUserRepository
@@ -40,9 +41,9 @@ from app.models.capture import CaptureCreate
 from app.models.chat import ChatRequest, ChatResponse
 from app.models.enums import ContentType, ToolApprovalMode
 
-# Global cache for runners (keyed by user_id + session_id)
+# Global cache for runners (keyed by user_id + session_id + model)
 # This allows session state to persist across requests
-_runner_cache: dict[tuple[str, str], tuple[InMemoryRunner, bool]] = {}
+_runner_cache: dict[tuple[str, str, str], tuple[InMemoryRunner, bool]] = {}
 _session_index: dict[str, dict[str, dict[str, Any]]] = {}
 
 
@@ -78,6 +79,7 @@ class AgentService:
         checkin_repo: ICheckinRepository,
         recurring_meeting_repo: IRecurringMeetingRepository,
         recurring_task_repo: IRecurringTaskRepository,
+        speech_provider: ISpeechToTextProvider | None = None,
         user_repo: IUserRepository | None = None,
     ):
         """
@@ -115,7 +117,14 @@ class AgentService:
         self._checkin_repo = checkin_repo
         self._recurring_meeting_repo = recurring_meeting_repo
         self._recurring_task_repo = recurring_task_repo
+        self._speech_provider = speech_provider
         self._user_repo = user_repo
+
+    def _resolve_llm_provider(self, model_id: str | None) -> ILLMProvider:
+        """Resolve the effective LLM provider, optionally overriding the model."""
+        if not model_id:
+            return self._llm_provider
+        return self._llm_provider.with_model(model_id)
 
     async def _get_or_create_runner(
         self,
@@ -123,13 +132,15 @@ class AgentService:
         session_id: str,
         auto_approve: bool = True,
         allow_auto_approve_mismatch: bool = False,
+        model_id: str | None = None,
     ) -> InMemoryRunner:
         """Get cached runner or create a new one for the user.
 
         Note: All tools are now proposal-based, but auto_approve determines
         whether proposals are automatically approved or require user confirmation.
         """
-        cache_key = (user_id, session_id)
+        effective_model_key = model_id or "default"
+        cache_key = (user_id, session_id, effective_model_key)
 
         # Check if we already have a runner
         cached = _runner_cache.get(cache_key)
@@ -139,8 +150,9 @@ class AgentService:
                 return runner
 
         # Create new agent (always with proposal tools + auto_approve setting)
+        effective_provider = self._resolve_llm_provider(model_id)
         agent = await create_secretary_agent(
-            llm_provider=self._llm_provider,
+            llm_provider=effective_provider,
             task_repo=self._task_repo,
             project_repo=self._project_repo,
             phase_repo=self._phase_repo,
@@ -200,6 +212,8 @@ class AgentService:
         """Get a storable user message text."""
         if request.text:
             return request.text
+        if request.audio_base64 or request.audio_url:
+            return "[Voice input]"
         if request.image_base64 or request.image_url:
             return "[Image attached]"
         if request.file_base64 or request.file_url:
@@ -555,6 +569,85 @@ class AgentService:
         except Exception as e:
             return None, None, f"Failed to fetch file: {e}"
 
+    def _decode_data_url(
+        self,
+        data_url: str,
+        fallback_mime_type: str = "application/octet-stream",
+    ) -> tuple[bytes | None, str]:
+        import base64
+
+        if not data_url:
+            return None, fallback_mime_type
+
+        raw = data_url.strip()
+        mime_type = fallback_mime_type
+        encoded = raw
+
+        if raw.startswith("data:"):
+            if "," not in raw:
+                return None, fallback_mime_type
+            header, encoded_part = raw.split(",", 1)
+            encoded = encoded_part
+
+            metadata = header[5:]  # strip "data:"
+            segments = [segment.strip() for segment in metadata.split(";") if segment.strip()]
+            if segments:
+                mime_candidate = segments[0].lower()
+                if "/" in mime_candidate:
+                    mime_type = mime_candidate
+            is_base64 = any(segment.lower() == "base64" for segment in segments[1:])
+            if not is_base64:
+                return None, mime_type
+
+        try:
+            return base64.b64decode(encoded), mime_type
+        except Exception:
+            return None, mime_type
+
+    async def _transcribe_request_audio(
+        self,
+        request: ChatRequest,
+    ) -> str | None:
+        if not request.audio_base64 and not request.audio_url:
+            return None
+        if not self._speech_provider:
+            logger.warning("Audio input received but speech provider is not configured")
+            return None
+
+        mime_hint = (request.audio_mime_type or "audio/webm").strip().lower()
+        audio_bytes: bytes | None = None
+        mime_type = mime_hint
+
+        if request.audio_base64:
+            audio_bytes, parsed_mime_type = self._decode_data_url(request.audio_base64, mime_hint)
+            mime_type = parsed_mime_type or mime_hint
+        elif request.audio_url:
+            loaded_bytes, loaded_mime_type, load_error = await self._read_file_bytes_from_url(request.audio_url)
+            if load_error:
+                logger.warning(f"Failed to load audio_url for transcription: {load_error}")
+                return None
+            audio_bytes = loaded_bytes
+            if loaded_mime_type:
+                mime_type = loaded_mime_type
+
+        if not audio_bytes:
+            logger.warning("Audio transcription skipped because decoded audio bytes are empty")
+            return None
+
+        language = (request.audio_language or "ja-JP").strip() or "ja-JP"
+        try:
+            transcript = await self._speech_provider.transcribe_bytes(
+                audio_bytes=audio_bytes,
+                content_type=mime_type,
+                language=language,
+            )
+        except Exception as e:
+            logger.warning(f"Audio transcription failed: {e}")
+            return None
+
+        transcript = (transcript or "").strip()
+        return transcript or None
+
     async def _extract_pdf_text_layer(
         self,
         pdf_bytes: bytes,
@@ -721,7 +814,11 @@ class AgentService:
             "truncated": truncated,
         }
 
-    async def _construct_user_message(self, request: ChatRequest) -> Content:
+    async def _construct_user_message(
+        self,
+        request: ChatRequest,
+        audio_transcription: str | None = None,
+    ) -> Content:
         """Construct multimodal user message.
 
         If LITELLM_VISION_MODEL is configured and image is present,
@@ -745,6 +842,13 @@ class AgentService:
 
         if request.text:
             parts.append(Part(text=request.text))
+        if audio_transcription:
+            if request.text:
+                parts.append(Part(text=f"[音声文字起こし]\n{audio_transcription}"))
+            else:
+                parts.append(Part(text=audio_transcription))
+        elif request.audio_base64 or request.audio_url:
+            parts.append(Part(text="[音声入力がありましたが文字起こしできませんでした]"))
 
         # Handle Base64 image (priority over image_url)
         if request.image_base64:
@@ -1012,7 +1116,9 @@ class AgentService:
         title = self._derive_session_title(request.text)
         await self._record_session(user_id, session_id, title=title)
 
-        # Create capture if input provided (Text only for now as auto-capture)
+        audio_transcription = await self._transcribe_request_audio(request)
+
+        # Create capture if input provided
         capture_id = None
         if request.text:
             capture = await self._capture_repo.create(
@@ -1023,12 +1129,22 @@ class AgentService:
                 ),
             )
             capture_id = capture.id
+        elif audio_transcription:
+            capture = await self._capture_repo.create(
+                user_id,
+                CaptureCreate(
+                    content_type=ContentType.AUDIO,
+                    transcription=audio_transcription,
+                ),
+            )
+            capture_id = capture.id
 
         # Get or create runner with auto_approve setting
         runner = await self._get_or_create_runner(
             user_id,
             session_id=session_id,
             auto_approve=self._resolve_auto_approve(request),
+            model_id=request.model,
         )
 
         # Run agent with user message
@@ -1036,7 +1152,7 @@ class AgentService:
             await self._ensure_session(runner, user_id, session_id)
             await self._hydrate_session_history(runner, user_id, session_id)
 
-            user_message_text = self._get_user_message_text(request)
+            user_message_text = request.text or audio_transcription or self._get_user_message_text(request)
             if user_message_text:
                 await self._record_message(
                     user_id=user_id,
@@ -1045,7 +1161,10 @@ class AgentService:
                     content=user_message_text,
                     title=title,
                 )
-            new_message = await self._construct_user_message(request)
+            new_message = await self._construct_user_message(
+                request=request,
+                audio_transcription=audio_transcription,
+            )
 
             assistant_message_parts: list[str] = []
             async for event in runner.run_async(
@@ -1108,6 +1227,7 @@ class AgentService:
         session_id_str = session_id or str(uuid4())
         title = self._derive_session_title(request.text)
         await self._record_session(user_id, session_id_str, title=title)
+        audio_transcription = await self._transcribe_request_audio(request)
 
         # Create capture if input provided
         capture_id = None
@@ -1120,19 +1240,29 @@ class AgentService:
                 ),
             )
             capture_id = capture.id
+        elif audio_transcription:
+            capture = await self._capture_repo.create(
+                user_id,
+                CaptureCreate(
+                    content_type=ContentType.AUDIO,
+                    transcription=audio_transcription,
+                ),
+            )
+            capture_id = capture.id
 
         # Get or create runner with auto_approve setting
         runner = await self._get_or_create_runner(
             user_id,
             session_id=session_id_str,
             auto_approve=self._resolve_auto_approve(request),
+            model_id=request.model,
         )
 
         try:
             await self._ensure_session(runner, user_id, session_id_str)
             await self._hydrate_session_history(runner, user_id, session_id_str)
 
-            user_message_text = self._get_user_message_text(request)
+            user_message_text = request.text or audio_transcription or self._get_user_message_text(request)
             if user_message_text:
                 await self._record_message(
                     user_id=user_id,
@@ -1141,7 +1271,10 @@ class AgentService:
                     content=user_message_text,
                     title=title,
                 )
-            new_message = await self._construct_user_message(request)
+            new_message = await self._construct_user_message(
+                request=request,
+                audio_transcription=audio_transcription,
+            )
 
             # Stream agent execution
             assistant_message_parts: list[str] = []

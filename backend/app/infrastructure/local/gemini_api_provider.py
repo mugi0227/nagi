@@ -50,3 +50,18 @@ class GeminiAPIProvider(ILLMProvider):
         """Gemini models support function calling."""
         return True
 
+    def get_available_models(self) -> list[str]:
+        """Return models from AVAILABLE_MODELS config, or default model."""
+        models = self._settings.available_models
+        if not models:
+            return [self._model_name]
+        if self._model_name not in models:
+            return [self._model_name] + models
+        return models
+
+    def with_model(self, model_id: str) -> "GeminiAPIProvider":
+        """Create a new provider with a different model name."""
+        if model_id == self._model_name:
+            return self
+        return GeminiAPIProvider(model_name=model_id)
+

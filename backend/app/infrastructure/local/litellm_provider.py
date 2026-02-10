@@ -104,6 +104,25 @@ class LiteLLMProvider(ILLMProvider):
         """
         return True
 
+    def get_available_models(self) -> list[str]:
+        """Return models from AVAILABLE_MODELS config, or default model."""
+        models = self._settings.available_models
+        if not models:
+            return [self._model_name]
+        if self._model_name not in models:
+            return [self._model_name] + models
+        return models
+
+    def with_model(self, model_id: str) -> "LiteLLMProvider":
+        """Create a new provider with a different model."""
+        if model_id == self._model_name:
+            return self
+        return LiteLLMProvider(
+            model_name=model_id,
+            api_base=self._api_base,
+            api_key=self._api_key,
+        )
+
     def has_vision_model(self) -> bool:
         """Check if a separate vision model is configured."""
         return bool(self._vision_model)

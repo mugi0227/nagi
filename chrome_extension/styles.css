@@ -579,6 +579,12 @@ body {
     background: rgba(34, 139, 230, 0.1);
 }
 
+#voice-ptt-btn.recording {
+    color: #ef4444;
+    background: rgba(239, 68, 68, 0.15);
+    animation: pttPulse 1.2s ease-in-out infinite;
+}
+
 #user-input {
     flex: 1;
     border: none;
@@ -705,6 +711,15 @@ body {
 
 .hidden {
     display: none !important;
+}
+
+@keyframes pttPulse {
+    0%, 100% {
+        box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.3);
+    }
+    50% {
+        box-shadow: 0 0 0 8px rgba(239, 68, 68, 0);
+    }
 }
 
 /* Tool Usage */
@@ -1013,4 +1028,31 @@ body {
     color: #334155;
     line-height: 1.4;
     white-space: pre-wrap;
+}
+
+/* Model Selector */
+.model-selector-row {
+    display: flex;
+    align-items: center;
+    padding: 4px 20px;
+}
+
+.model-selector {
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: white;
+    color: var(--text-muted);
+    max-width: 200px;
+    cursor: pointer;
+    outline: none;
+}
+
+.model-selector:hover {
+    border-color: var(--primary-light);
+}
+
+.model-selector:focus {
+    border-color: var(--primary);
 }

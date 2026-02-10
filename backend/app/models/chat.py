@@ -20,6 +20,20 @@ class ChatRequest(BaseModel):
 
     text: Optional[str] = Field(None, max_length=settings.MAX_TEXT_LENGTH, description="Text input")
     audio_url: Optional[str] = Field(None, description="Audio file URL")
+    audio_base64: Optional[str] = Field(
+        None,
+        description="Audio data URL (data:audio/...;base64,...)",
+    )
+    audio_mime_type: Optional[str] = Field(
+        None,
+        max_length=120,
+        description="Audio MIME type (e.g. audio/webm;codecs=opus)",
+    )
+    audio_language: Optional[str] = Field(
+        None,
+        max_length=20,
+        description="Language hint for speech-to-text (e.g. ja-JP)",
+    )
     image_url: Optional[str] = Field(None, description="Image file URL")
     image_base64: Optional[str] = Field(
         None,
@@ -37,6 +51,7 @@ class ChatRequest(BaseModel):
     context: dict[str, Any] = Field(default_factory=dict, description="Additional context")
     approval_mode: Optional[ToolApprovalMode] = Field(None, description="Tool approval mode")
     proposal_mode: bool = Field(False, description="If true, return proposals instead of executing")
+    model: Optional[str] = Field(None, max_length=200, description="Model ID override for this message")
 
 
 class SuggestedAction(BaseModel):
