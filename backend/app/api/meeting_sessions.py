@@ -1,5 +1,7 @@
 """
 Meeting session API endpoints.
+
+Project-aware: sessions are accessible to all project members, not just the creator.
 """
 
 from datetime import datetime
@@ -12,9 +14,13 @@ from app.api.deps import (
     LLMProvider,
     MeetingAgendaRepo,
     MeetingSessionRepo,
+    ProjectMemberRepo,
+    ProjectRepo,
+    RecurringMeetingRepo,
     TaskAssignmentRepo,
     TaskRepo,
 )
+from app.api.permissions import require_project_member
 from app.models.enums import CreatedBy, EnergyLevel, MeetingSessionStatus, Priority
 from app.models.meeting_session import (
     MeetingSession,
@@ -34,6 +40,59 @@ from app.utils.datetime_utils import now_utc
 router = APIRouter(prefix="/meeting-sessions", tags=["meeting-sessions"])
 
 
+# ---- Access resolution helpers ----
+
+
+async def _get_owner_id_from_task(
+    user: CurrentUser,
+    task_id: UUID,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
+) -> str:
+    """Resolve owner_id from a task's project. Verifies project membership."""
+    task = await task_repo.get(user.id, task_id)
+    if not task:
+        projects = await project_repo.list(user.id, limit=1000)
+        for project in projects:
+            task = await task_repo.get(user.id, task_id, project_id=project.id)
+            if task:
+                access = await require_project_member(
+                    user, project.id, project_repo, member_repo,
+                )
+                return access.owner_id
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    if task.project_id:
+        access = await require_project_member(
+            user, task.project_id, project_repo, member_repo,
+        )
+        return access.owner_id
+    return user.id
+
+
+async def _get_session_with_access(
+    session_id: UUID,
+    user: CurrentUser,
+    repo: MeetingSessionRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
+) -> MeetingSession:
+    """Get a session by ID and verify the user has access (owner or project member)."""
+    session = await repo.get_by_id(session_id)
+    if not session:
+        raise HTTPException(status_code=404, detail="Session not found")
+
+    await _get_owner_id_from_task(
+        user, session.task_id, task_repo, project_repo, member_repo,
+    )
+    return session
+
+
+# ---- Endpoints ----
+
+
 @router.post("", response_model=MeetingSession)
 async def create_session(
     data: MeetingSessionCreate,
@@ -49,12 +108,14 @@ async def get_session(
     session_id: UUID,
     user: CurrentUser,
     repo: MeetingSessionRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
-    """Get a session by ID."""
-    session = await repo.get(user.id, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-    return session
+    """Get a session by ID (accessible to all project members)."""
+    return await _get_session_with_access(
+        session_id, user, repo, task_repo, project_repo, member_repo,
+    )
 
 
 @router.patch("/{session_id}", response_model=MeetingSession)
@@ -63,9 +124,15 @@ async def update_session(
     data: MeetingSessionUpdate,
     user: CurrentUser,
     repo: MeetingSessionRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
-    """Update a session."""
-    session = await repo.update(user.id, session_id, data)
+    """Update a session (accessible to all project members)."""
+    await _get_session_with_access(
+        session_id, user, repo, task_repo, project_repo, member_repo,
+    )
+    session = await repo.update_by_id(session_id, data)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
@@ -76,9 +143,15 @@ async def delete_session(
     session_id: UUID,
     user: CurrentUser,
     repo: MeetingSessionRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
-    """Delete a session."""
-    success = await repo.delete(user.id, session_id)
+    """Delete a session (accessible to all project members)."""
+    await _get_session_with_access(
+        session_id, user, repo, task_repo, project_repo, member_repo,
+    )
+    success = await repo.delete_by_id(session_id)
     if not success:
         raise HTTPException(status_code=404, detail="Session not found")
     return {"success": True}
@@ -89,9 +162,15 @@ async def get_session_by_task(
     task_id: UUID,
     user: CurrentUser,
     repo: MeetingSessionRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
-    """Get the active (non-COMPLETED) session for a task."""
-    return await repo.get_by_task(user.id, task_id)
+    """Get the active (non-COMPLETED) session for a task (accessible to all project members)."""
+    await _get_owner_id_from_task(
+        user, task_id, task_repo, project_repo, member_repo,
+    )
+    return await repo.get_active_by_task_id(task_id)
 
 
 @router.get("/task/{task_id}/latest", response_model=MeetingSession | None)
@@ -99,9 +178,15 @@ async def get_latest_session_by_task(
     task_id: UUID,
     user: CurrentUser,
     repo: MeetingSessionRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
-    """Get the most recent session for a task (any status)."""
-    return await repo.get_latest_by_task(user.id, task_id)
+    """Get the most recent session for a task (accessible to all project members)."""
+    await _get_owner_id_from_task(
+        user, task_id, task_repo, project_repo, member_repo,
+    )
+    return await repo.get_latest_by_task_id(task_id)
 
 
 @router.get("/recurring/{recurring_meeting_id}", response_model=list[MeetingSession])
@@ -109,8 +194,29 @@ async def list_sessions_by_recurring_meeting(
     recurring_meeting_id: UUID,
     user: CurrentUser,
     repo: MeetingSessionRepo,
+    meeting_repo: RecurringMeetingRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
-    """List COMPLETED sessions for a recurring meeting, ordered by created_at desc."""
+    """List COMPLETED sessions for a recurring meeting (accessible to all project members)."""
+    meeting = await meeting_repo.get(user.id, recurring_meeting_id)
+    if not meeting:
+        projects = await project_repo.list(user.id, limit=1000)
+        for project in projects:
+            meeting = await meeting_repo.get(
+                user.id, recurring_meeting_id, project_id=project.id,
+            )
+            if meeting:
+                break
+    if not meeting:
+        raise HTTPException(status_code=404, detail="Meeting not found")
+
+    if meeting.project_id:
+        await require_project_member(
+            user, meeting.project_id, project_repo, member_repo,
+        )
+        return await repo.list_completed_by_recurring_meeting_id(recurring_meeting_id)
+
     return await repo.list_by_recurring_meeting(user.id, recurring_meeting_id)
 
 
@@ -119,12 +225,14 @@ async def start_session(
     session_id: UUID,
     user: CurrentUser,
     repo: MeetingSessionRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
-    """Start a meeting session (change status to IN_PROGRESS)."""
-    session = await repo.get(user.id, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
+    """Start a meeting session (accessible to all project members)."""
+    session = await _get_session_with_access(
+        session_id, user, repo, task_repo, project_repo, member_repo,
+    )
     if session.status == MeetingSessionStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Cannot start a completed session")
 
@@ -133,7 +241,7 @@ async def start_session(
         started_at=now_utc(),
         current_agenda_index=0,
     )
-    return await repo.update(user.id, session_id, update_data)
+    return await repo.update_by_id(session_id, update_data)
 
 
 @router.post("/{session_id}/end", response_model=MeetingSession)
@@ -141,12 +249,14 @@ async def end_session(
     session_id: UUID,
     user: CurrentUser,
     repo: MeetingSessionRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
-    """End a meeting session (change status to COMPLETED)."""
-    session = await repo.get(user.id, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
+    """End a meeting session (accessible to all project members)."""
+    session = await _get_session_with_access(
+        session_id, user, repo, task_repo, project_repo, member_repo,
+    )
     if session.status == MeetingSessionStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Session is already completed")
 
@@ -154,7 +264,7 @@ async def end_session(
         status=MeetingSessionStatus.COMPLETED,
         ended_at=now_utc(),
     )
-    return await repo.update(user.id, session_id, update_data)
+    return await repo.update_by_id(session_id, update_data)
 
 
 @router.post("/{session_id}/next-agenda", response_model=MeetingSession)
@@ -162,18 +272,20 @@ async def next_agenda(
     session_id: UUID,
     user: CurrentUser,
     repo: MeetingSessionRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
-    """Move to the next agenda item."""
-    session = await repo.get(user.id, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
+    """Move to the next agenda item (accessible to all project members)."""
+    session = await _get_session_with_access(
+        session_id, user, repo, task_repo, project_repo, member_repo,
+    )
     if session.status != MeetingSessionStatus.IN_PROGRESS:
         raise HTTPException(status_code=400, detail="Session is not in progress")
 
     current_index = session.current_agenda_index or 0
     update_data = MeetingSessionUpdate(current_agenda_index=current_index + 1)
-    return await repo.update(user.id, session_id, update_data)
+    return await repo.update_by_id(session_id, update_data)
 
 
 @router.post("/{session_id}/prev-agenda", response_model=MeetingSession)
@@ -181,19 +293,21 @@ async def prev_agenda(
     session_id: UUID,
     user: CurrentUser,
     repo: MeetingSessionRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
-    """Move to the previous agenda item."""
-    session = await repo.get(user.id, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
+    """Move to the previous agenda item (accessible to all project members)."""
+    session = await _get_session_with_access(
+        session_id, user, repo, task_repo, project_repo, member_repo,
+    )
     if session.status != MeetingSessionStatus.IN_PROGRESS:
         raise HTTPException(status_code=400, detail="Session is not in progress")
 
     current_index = session.current_agenda_index or 0
     if current_index > 0:
         update_data = MeetingSessionUpdate(current_agenda_index=current_index - 1)
-        return await repo.update(user.id, session_id, update_data)
+        return await repo.update_by_id(session_id, update_data)
     return session
 
 
@@ -202,17 +316,19 @@ async def reset_session(
     session_id: UUID,
     user: CurrentUser,
     repo: MeetingSessionRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
-    """Reset a meeting session (reset agenda index to 0, keep IN_PROGRESS status)."""
-    session = await repo.get(user.id, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
+    """Reset a meeting session (accessible to all project members)."""
+    session = await _get_session_with_access(
+        session_id, user, repo, task_repo, project_repo, member_repo,
+    )
     if session.status != MeetingSessionStatus.IN_PROGRESS:
         raise HTTPException(status_code=400, detail="Session is not in progress")
 
     update_data = MeetingSessionUpdate(current_agenda_index=0)
-    return await repo.update(user.id, session_id, update_data)
+    return await repo.update_by_id(session_id, update_data)
 
 
 @router.post("/{session_id}/reopen", response_model=MeetingSession)
@@ -220,12 +336,14 @@ async def reopen_session(
     session_id: UUID,
     user: CurrentUser,
     repo: MeetingSessionRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
-    """Reopen a completed meeting session (change status back to IN_PROGRESS)."""
-    session = await repo.get(user.id, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
+    """Reopen a completed meeting session (accessible to all project members)."""
+    session = await _get_session_with_access(
+        session_id, user, repo, task_repo, project_repo, member_repo,
+    )
     if session.status != MeetingSessionStatus.COMPLETED:
         raise HTTPException(status_code=400, detail="Session is not completed")
 
@@ -234,7 +352,7 @@ async def reopen_session(
         ended_at=None,
         current_agenda_index=0,
     )
-    return await repo.update(user.id, session_id, update_data)
+    return await repo.update_by_id(session_id, update_data)
 
 
 @router.post("/{session_id}/reset-to-preparation", response_model=MeetingSession)
@@ -242,12 +360,14 @@ async def reset_to_preparation(
     session_id: UUID,
     user: CurrentUser,
     repo: MeetingSessionRepo,
+    task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
 ):
-    """Reset a session to PREPARATION status (before meeting started)."""
-    session = await repo.get(user.id, session_id)
-    if not session:
-        raise HTTPException(status_code=404, detail="Session not found")
-
+    """Reset a session to PREPARATION status (accessible to all project members)."""
+    session = await _get_session_with_access(
+        session_id, user, repo, task_repo, project_repo, member_repo,
+    )
     if session.status == MeetingSessionStatus.PREPARATION:
         raise HTTPException(status_code=400, detail="Session is already in preparation")
 
@@ -257,7 +377,7 @@ async def reset_to_preparation(
         ended_at=None,
         current_agenda_index=None,
     )
-    return await repo.update(user.id, session_id, update_data)
+    return await repo.update_by_id(session_id, update_data)
 
 
 @router.post("/{session_id}/analyze-transcript", response_model=MeetingSummary)
@@ -268,27 +388,25 @@ async def analyze_transcript(
     repo: MeetingSessionRepo,
     agenda_repo: MeetingAgendaRepo,
     task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
     llm_provider: LLMProvider,
 ):
     """
     Analyze meeting transcript to extract summary, decisions, and next actions.
 
-    The transcript will be analyzed using AI to extract:
-    - Overall meeting summary
-    - Discussion summary per agenda item
-    - Decisions made during the meeting
-    - Next actions with assignees and due dates
-
-    If project_id is provided, existing project tasks are included as context
-    to prevent duplicate task creation.
+    Accessible to all project members.
     """
-    # Get session
-    session = await repo.get(user.id, session_id)
+    session = await repo.get_by_id(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Get agenda items for context
-    agenda_items = await agenda_repo.list_by_task(user.id, session.task_id)
+    owner_id = await _get_owner_id_from_task(
+        user, session.task_id, task_repo, project_repo, member_repo,
+    )
+
+    # Get agenda items using owner_id for project-aware access
+    agenda_items = await agenda_repo.list_by_task(owner_id, session.task_id)
 
     # Get existing project tasks for duplicate prevention
     existing_tasks = None
@@ -296,17 +414,16 @@ async def analyze_transcript(
         try:
             project_id = UUID(request.project_id)
             existing_tasks = await task_repo.list(
-                user_id=user.id,
+                user_id=owner_id,
                 project_id=project_id,
                 include_done=False,
                 limit=200,
             )
-            # Exclude meeting tasks (is_fixed_time) to keep context focused
             existing_tasks = [
                 t for t in existing_tasks if not t.is_fixed_time
             ]
         except ValueError:
-            pass  # Invalid project_id, skip task fetching
+            pass
 
     # Analyze transcript
     service = MeetingSummaryService(llm_provider)
@@ -322,7 +439,7 @@ async def analyze_transcript(
         transcript=request.transcript,
         summary=summary.overall_summary,
     )
-    await repo.update(user.id, session_id, update_data)
+    await repo.update_by_id(session_id, update_data)
 
     return summary
 
@@ -334,24 +451,23 @@ async def apply_actions(
     user: CurrentUser,
     repo: MeetingSessionRepo,
     task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
     assignment_repo: TaskAssignmentRepo,
 ):
     """
     Apply next actions from meeting transcript analysis.
 
-    Handles three action types:
-    - create: Create a new task
-    - update: Update an existing task (description, priority, due_date, etc.)
-    - add_subtask: Add a subtask to an existing task
-
-    Returns summary of all operations performed.
+    Accessible to all project members.
     """
-    # Verify session exists
-    session = await repo.get(user.id, session_id)
+    session = await repo.get_by_id(session_id)
     if not session:
         raise HTTPException(status_code=404, detail="Session not found")
 
-    # Parse project_id if provided
+    owner_id = await _get_owner_id_from_task(
+        user, session.task_id, task_repo, project_repo, member_repo,
+    )
+
     project_id = None
     if request.project_id:
         try:
@@ -384,25 +500,22 @@ async def apply_actions(
         action_type = action.action_type
 
         if action_type == ActionType.UPDATE and action.existing_task_id:
-            # Update existing task
             result = await _handle_update_action(
-                user, task_repo, assignment_repo, action,
+                user, owner_id, task_repo, assignment_repo, action,
                 priority, energy_level, due_date,
             )
             results.append(result)
 
         elif action_type == ActionType.ADD_SUBTASK and action.existing_task_id:
-            # Add subtask to existing task
             result = await _handle_add_subtask_action(
-                user, task_repo, assignment_repo, action,
+                user, owner_id, task_repo, assignment_repo, action,
                 project_id, priority, energy_level, due_date,
             )
             results.append(result)
 
         else:
-            # Create new task (default)
             result = await _handle_create_action(
-                user, task_repo, assignment_repo, action,
+                user, owner_id, task_repo, assignment_repo, action,
                 project_id, priority, energy_level, due_date,
             )
             results.append(result)
@@ -427,13 +540,15 @@ async def create_tasks_from_actions(
     user: CurrentUser,
     repo: MeetingSessionRepo,
     task_repo: TaskRepo,
+    project_repo: ProjectRepo,
+    member_repo: ProjectMemberRepo,
     assignment_repo: TaskAssignmentRepo,
 ):
     """Legacy endpoint: Create tasks from next actions. Delegates to apply-actions."""
     response = await apply_actions(
-        session_id, request, user, repo, task_repo, assignment_repo,
+        session_id, request, user, repo, task_repo,
+        project_repo, member_repo, assignment_repo,
     )
-    # Return legacy format for backward compat
     created_tasks = [r for r in response["results"] if r["action_type"] == "create"]
     return {
         "created_count": len(created_tasks),
@@ -441,8 +556,11 @@ async def create_tasks_from_actions(
     }
 
 
+# ---- Action handlers ----
+
+
 async def _handle_create_action(
-    user, task_repo, assignment_repo, action,
+    user, owner_id, task_repo, assignment_repo, action,
     project_id, priority, energy_level, due_date,
 ) -> dict:
     """Handle a 'create' action — create a new task."""
@@ -458,13 +576,13 @@ async def _handle_create_action(
         due_date=due_date,
         created_by=CreatedBy.AGENT,
     )
-    task = await task_repo.create(user.id, task_data)
+    task = await task_repo.create(owner_id, task_data)
 
     if action.assignee_id:
         try:
             from app.models.collaboration import TaskAssignmentCreate
             await assignment_repo.assign(
-                user.id, task.id,
+                owner_id, task.id,
                 TaskAssignmentCreate(assignee_id=action.assignee_id),
             )
         except Exception:
@@ -481,13 +599,12 @@ async def _handle_create_action(
 
 
 async def _handle_update_action(
-    user, task_repo, assignment_repo, action,
+    user, owner_id, task_repo, assignment_repo, action,
     priority, energy_level, due_date,
 ) -> dict:
     """Handle an 'update' action — update an existing task."""
     existing_task_id = UUID(action.existing_task_id)
 
-    # Build update data from the action fields
     update_fields: dict = {}
     if action.description:
         update_fields["description"] = action.description
@@ -505,13 +622,13 @@ async def _handle_update_action(
 
     if update_fields:
         task_update = TaskUpdate(**update_fields)
-        await task_repo.update(user.id, existing_task_id, task_update)
+        await task_repo.update(owner_id, existing_task_id, task_update)
 
     if action.assignee_id:
         try:
             from app.models.collaboration import TaskAssignmentCreate
             await assignment_repo.assign(
-                user.id, existing_task_id,
+                owner_id, existing_task_id,
                 TaskAssignmentCreate(assignee_id=action.assignee_id),
             )
         except Exception:
@@ -530,7 +647,7 @@ async def _handle_update_action(
 
 
 async def _handle_add_subtask_action(
-    user, task_repo, assignment_repo, action,
+    user, owner_id, task_repo, assignment_repo, action,
     project_id, priority, energy_level, due_date,
 ) -> dict:
     """Handle an 'add_subtask' action — create a subtask under an existing task."""
@@ -549,13 +666,13 @@ async def _handle_add_subtask_action(
         due_date=due_date,
         created_by=CreatedBy.AGENT,
     )
-    task = await task_repo.create(user.id, task_data)
+    task = await task_repo.create(owner_id, task_data)
 
     if action.assignee_id:
         try:
             from app.models.collaboration import TaskAssignmentCreate
             await assignment_repo.assign(
-                user.id, task.id,
+                owner_id, task.id,
                 TaskAssignmentCreate(assignee_id=action.assignee_id),
             )
         except Exception:
