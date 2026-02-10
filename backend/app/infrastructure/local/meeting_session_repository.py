@@ -224,3 +224,123 @@ class SqliteMeetingSessionRepository(IMeetingSessionRepository):
                 .limit(limit)
             )
             return [self._orm_to_model(orm) for orm in result.scalars().all()]
+
+    # ---- Project-aware methods (no user_id filter) ----
+
+    async def get_by_id(
+        self,
+        session_id: UUID,
+    ) -> Optional[MeetingSession]:
+        """Get a session by ID without user_id filter."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(MeetingSessionORM).where(
+                    MeetingSessionORM.id == str(session_id),
+                )
+            )
+            orm = result.scalar_one_or_none()
+            return self._orm_to_model(orm) if orm else None
+
+    async def get_active_by_task_id(
+        self,
+        task_id: UUID,
+    ) -> Optional[MeetingSession]:
+        """Get the active session (not COMPLETED) for a task without user_id filter."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(MeetingSessionORM)
+                .where(
+                    and_(
+                        MeetingSessionORM.task_id == str(task_id),
+                        MeetingSessionORM.status != MeetingSessionStatus.COMPLETED.value,
+                    )
+                )
+                .order_by(desc(MeetingSessionORM.created_at))
+                .limit(1)
+            )
+            orm = result.scalar_one_or_none()
+            return self._orm_to_model(orm) if orm else None
+
+    async def get_latest_by_task_id(
+        self,
+        task_id: UUID,
+    ) -> Optional[MeetingSession]:
+        """Get the most recent session for a task without user_id filter."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(MeetingSessionORM)
+                .where(MeetingSessionORM.task_id == str(task_id))
+                .order_by(desc(MeetingSessionORM.created_at))
+                .limit(1)
+            )
+            orm = result.scalar_one_or_none()
+            return self._orm_to_model(orm) if orm else None
+
+    async def update_by_id(
+        self,
+        session_id: UUID,
+        data: MeetingSessionUpdate,
+    ) -> Optional[MeetingSession]:
+        """Update a session without user_id filter."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(MeetingSessionORM).where(
+                    MeetingSessionORM.id == str(session_id),
+                )
+            )
+            orm = result.scalar_one_or_none()
+            if not orm:
+                return None
+
+            update_fields = data.model_dump(exclude_unset=True)
+            for field, value in update_fields.items():
+                if field == "status" and value is not None:
+                    setattr(orm, field, value.value)
+                elif value is not None:
+                    setattr(orm, field, value)
+
+            orm.updated_at = now_utc()
+            await session.commit()
+            await session.refresh(orm)
+            return self._orm_to_model(orm)
+
+    async def delete_by_id(
+        self,
+        session_id: UUID,
+    ) -> bool:
+        """Delete a session without user_id filter."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(MeetingSessionORM).where(
+                    MeetingSessionORM.id == str(session_id),
+                )
+            )
+            orm = result.scalar_one_or_none()
+            if not orm:
+                return False
+            await session.delete(orm)
+            await session.commit()
+            return True
+
+    async def list_completed_by_recurring_meeting_id(
+        self,
+        recurring_meeting_id: UUID,
+        limit: int = 50,
+    ) -> list[MeetingSession]:
+        """List COMPLETED sessions for a recurring meeting without user_id filter."""
+        from app.infrastructure.local.database import TaskORM
+
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(MeetingSessionORM)
+                .join(TaskORM, TaskORM.id == MeetingSessionORM.task_id)
+                .where(
+                    and_(
+                        TaskORM.recurring_meeting_id == str(recurring_meeting_id),
+                        MeetingSessionORM.status == MeetingSessionStatus.COMPLETED.value,
+                    )
+                )
+                .order_by(desc(MeetingSessionORM.created_at))
+                .limit(limit)
+            )
+            return [self._orm_to_model(orm) for orm in result.scalars().all()]

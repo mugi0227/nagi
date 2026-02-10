@@ -92,3 +92,55 @@ class IMeetingSessionRepository(ABC):
     ) -> list[MeetingSession]:
         """List COMPLETED sessions for a recurring meeting, ordered by created_at desc."""
         pass
+
+    # ---- Project-aware methods (no user_id filter) ----
+
+    @abstractmethod
+    async def get_by_id(
+        self,
+        session_id: UUID,
+    ) -> Optional[MeetingSession]:
+        """Get a session by ID without user_id filter."""
+        pass
+
+    @abstractmethod
+    async def get_active_by_task_id(
+        self,
+        task_id: UUID,
+    ) -> Optional[MeetingSession]:
+        """Get the active session (not COMPLETED) for a task without user_id filter."""
+        pass
+
+    @abstractmethod
+    async def get_latest_by_task_id(
+        self,
+        task_id: UUID,
+    ) -> Optional[MeetingSession]:
+        """Get the most recent session for a task without user_id filter."""
+        pass
+
+    @abstractmethod
+    async def update_by_id(
+        self,
+        session_id: UUID,
+        data: MeetingSessionUpdate,
+    ) -> Optional[MeetingSession]:
+        """Update a session without user_id filter."""
+        pass
+
+    @abstractmethod
+    async def delete_by_id(
+        self,
+        session_id: UUID,
+    ) -> bool:
+        """Delete a session without user_id filter."""
+        pass
+
+    @abstractmethod
+    async def list_completed_by_recurring_meeting_id(
+        self,
+        recurring_meeting_id: UUID,
+        limit: int = 50,
+    ) -> list[MeetingSession]:
+        """List COMPLETED sessions for a recurring meeting without user_id filter."""
+        pass
