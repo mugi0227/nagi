@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="styles.css">
+  <title>HUD</title>
+  <style>
+    html, body {
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    .hud-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      cursor: pointer;
+      animation: fadeIn 150ms ease-out;
+    }
+
+    .hud-container.glow-red {
+      animation: glowRed 1.2s ease-in-out infinite, fadeIn 150ms ease-out;
+    }
+
+    .hud-container.glow-blue {
+      animation: glowBlue 1.2s ease-in-out infinite, fadeIn 150ms ease-out;
+    }
+
+    .hud-container.glow-green {
+      animation: glowGreen 1.5s ease-in-out infinite, fadeIn 150ms ease-out;
+    }
+
+    /* ── Recording state ───────────────────────────────────── */
+
+    .state-recording {
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      height: 100%;
+      gap: 20px;
+    }
+
+    .waveform-canvas {
+      flex-shrink: 0;
+    }
+
+    .recording-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .recording-info .title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .recording-info .hint {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* ── Processing state ──────────────────────────────────── */
+
+    .state-processing {
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      height: 100%;
+      gap: 20px;
+    }
+
+    .dots-container {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      height: 30px;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--primary);
+      animation: dotBounce 0.8s ease-in-out infinite;
+    }
+
+    .dot:nth-child(2) { animation-delay: 0.15s; }
+    .dot:nth-child(3) { animation-delay: 0.3s; }
+
+    .processing-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .processing-info .title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .processing-info .hint {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    /* ── Preview state ─────────────────────────────────────── */
+
+    .state-preview {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+      padding: 14px 18px 12px;
+    }
+
+    .preview-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 6px;
+      flex-shrink: 0;
+    }
+
+    .preview-header .title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .preview-hint {
+      font-size: 11px;
+      color: var(--primary);
+      font-weight: 600;
+      margin-bottom: 10px;
+      flex-shrink: 0;
+    }
+
+    .preview-text-area {
+      flex: 1;
+      min-height: 0;
+      background: var(--bg-main);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-family: var(--font-family);
+      font-size: 13px;
+      color: var(--text-main);
+      line-height: 1.6;
+      overflow-y: auto;
+      outline: none;
+      white-space: pre-wrap;
+      word-break: break-word;
+      cursor: text;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    .preview-text-area:focus {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+    }
+
+    .preview-text-area:empty::before {
+      content: 'テキストを編集...';
+      color: var(--text-muted);
+    }
+
+    /* ── Sent state ────────────────────────────────────────── */
+
+    .state-sent {
+      display: flex;
+      align-items: center;
+      padding: 0 24px;
+      height: 100%;
+      gap: 16px;
+    }
+
+    .check-circle {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: var(--success);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      animation: checkPop 300ms ease-out;
+    }
+
+    .check-circle svg {
+      width: 18px;
+      height: 18px;
+      stroke: var(--bg-main);
+      fill: none;
+      stroke-width: 3;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+    }
+
+    .sent-info {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .sent-info .title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .sent-info .response-preview {
+      font-size: 11px;
+      color: var(--text-muted);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      line-height: 1.4;
+    }
+
+    /* ── Idle state ────────────────────────────────────────── */
+
+    .state-idle {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      padding: 0 24px;
+      height: 100%;
+    }
+
+    .state-idle .title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .state-idle .hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    .state-idle .idle-preview {
+      margin-top: 10px;
+      background: var(--bg-main);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      font-size: 12px;
+      color: var(--text-main);
+      line-height: 1.5;
+      overflow-y: auto;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* ── Utility: hide all states ──────────────────────────── */
+
+    .state-recording,
+    .state-processing,
+    .state-preview,
+    .state-sent,
+    .state-idle {
+      display: none;
+    }
+
+    .hud-container[data-state="recording"] .state-recording,
+    .hud-container[data-state="processing"] .state-processing,
+    .hud-container[data-state="preview"] .state-preview,
+    .hud-container[data-state="sent"] .state-sent,
+    .hud-container[data-state="idle"] .state-idle {
+      display: flex;
+    }
+  </style>
+</head>
+<body>
+  <div class="hud-container" id="hudContainer">
+
+    <!-- RECORDING -->
+    <div class="state-recording">
+      <canvas class="waveform-canvas" id="waveformCanvas" width="160" height="50"></canvas>
+      <div class="recording-info">
+        <span class="title">聞き取り中...</span>
+        <span class="hint">キーを離すと文字起こし</span>
+      </div>
+    </div>
+
+    <!-- PROCESSING -->
+    <div class="state-processing">
+      <div class="dots-container">
+        <div class="dot"></div>
+        <div class="dot"></div>
+        <div class="dot"></div>
+      </div>
+      <div class="processing-info">
+        <span class="title">変換中...</span>
+        <span class="hint">音声を解析しています</span>
+      </div>
+    </div>
+
+    <!-- PREVIEW -->
+    <div class="state-preview">
+      <div class="preview-header">
+        <span class="title">プレビュー準備完了</span>
+      </div>
+      <div class="preview-hint" id="previewHint">Enter で送信 / Esc でキャンセル</div>
+      <div class="preview-text-area" id="previewText" contenteditable="true"></div>
+    </div>
+
+    <!-- SENT -->
+    <div class="state-sent">
+      <div class="check-circle">
+        <svg viewBox="0 0 24 24"><polyline points="6 12 10 16 18 8"></polyline></svg>
+      </div>
+      <div class="sent-info">
+        <span class="title">送信完了</span>
+        <span class="response-preview" id="sentResponsePreview"></span>
+      </div>
+    </div>
+
+    <!-- IDLE -->
+    <div class="state-idle">
+      <span class="title" id="idleTitle"></span>
+      <span class="hint" id="idleHint"></span>
+      <div class="idle-preview" id="idlePreview" style="display:none;"></div>
+    </div>
+  </div>
+
+  <script src="hud.js"></script>
+</body>
+</html>
