@@ -18,6 +18,7 @@ import { LoginPage } from './pages/LoginPage';
 import { RequireAuth } from './components/auth/RequireAuth';
 import { InvitationAcceptPage } from './pages/InvitationAcceptPage';
 import { OidcCallbackPage } from './pages/OidcCallbackPage';
+import { NativeLinkPage } from './pages/NativeLinkPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -50,6 +51,7 @@ function AppRoutes() {
         <Route path="achievement" element={<AchievementPage />} />
         <Route path="memories" element={<MemoriesPage />} />
         <Route path="issues" element={<IssuesPage />} />
+        <Route path="native-link" element={<NativeLinkPage />} />
       </Route>
     </Routes>
   );

@@ -6,9 +6,10 @@ import {
   KeyboardEvent,
   ChangeEvent,
   ClipboardEvent,
-  type PointerEvent as ReactPointerEvent,
 } from 'react';
 import { FaMicrophone, FaPaperPlane, FaImage, FaXmark, FaStop } from 'react-icons/fa6';
+import { ApiError } from '../../api/client';
+import { chatApi } from '../../api/chat';
 import { ModelSelector } from './ModelSelector';
 import './ChatInput.css';
 
@@ -48,6 +49,39 @@ const blobToDataUrl = (blob: Blob): Promise<string> =>
     reader.readAsDataURL(blob);
   });
 
+const getVoiceInputErrorMessage = (error: unknown): string => {
+  if (error instanceof ApiError) {
+    const data = error.data;
+    if (data && typeof data === 'object' && 'detail' in data) {
+      const detail = (data as { detail?: unknown }).detail;
+      if (typeof detail === 'string' && detail.trim()) {
+        return `Voice transcription failed: ${detail}`;
+      }
+    }
+    return `Voice transcription failed: HTTP ${error.status}`;
+  }
+  if (error instanceof Error && error.message.trim()) {
+    return `Voice transcription failed: ${error.message}`;
+  }
+  return 'Voice transcription failed.';
+};
+
+const resolveSpeechLanguage = (languageHint?: string): string => {
+  const raw = String(languageHint || '').trim();
+  if (!raw) {
+    return 'ja-JP';
+  }
+  const normalized = raw.replace('_', '-');
+  const lower = normalized.toLowerCase();
+  if (lower === 'ja') {
+    return 'ja-JP';
+  }
+  if (lower === 'en') {
+    return 'en-US';
+  }
+  return normalized;
+};
+
 export function ChatInput({
   onSend,
   onCancel,
@@ -66,6 +100,7 @@ export function ChatInput({
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [tempInput, setTempInput] = useState('');
   const [isRecording, setIsRecording] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -113,8 +148,31 @@ export function ChatInput({
     }
   }, [isRecording, releaseMediaStream]);
 
+  const appendTranscriptionToInput = useCallback((transcription: string) => {
+    const normalized = transcription.trim();
+    if (!normalized) {
+      return;
+    }
+    setInput((prev) => {
+      if (!prev.trim()) {
+        return normalized;
+      }
+      const separator = prev.endsWith('\n') || prev.endsWith(' ') ? '' : '\n';
+      return `${prev}${separator}${normalized}`;
+    });
+    window.setTimeout(() => {
+      const textarea = textareaRef.current;
+      if (!textarea) {
+        return;
+      }
+      textarea.focus();
+      const end = textarea.value.length;
+      textarea.setSelectionRange(end, end);
+    }, 0);
+  }, []);
+
   const startRecording = useCallback(async () => {
-    if (!isPttSupported || isRecording || disabled || isStreaming) {
+    if (!isPttSupported || isRecording || isTranscribing || disabled || isStreaming) {
       return;
     }
 
@@ -138,6 +196,7 @@ export function ChatInput({
 
       recorder.onstop = () => {
         void (async () => {
+          setIsTranscribing(true);
           try {
             const blobType = recorder.mimeType || mimeType || 'audio/webm';
             const audioBlob = new Blob(audioChunksRef.current, { type: blobType });
@@ -153,20 +212,17 @@ export function ChatInput({
             }
 
             const audioBase64 = await blobToDataUrl(audioBlob);
-            const trimmed = input.trim();
-            if (trimmed) {
-              setInputHistory((prev) => {
-                const next = [trimmed, ...prev.filter((value) => value !== trimmed)];
-                return next.slice(0, MAX_HISTORY);
-              });
-            }
-            setHistoryIndex(-1);
-            setTempInput('');
-            onSend(trimmed, effectiveImage || undefined, audioBase64, blobType);
-            clearComposer();
+            const response = await chatApi.transcribeAudio({
+              audio_base64: audioBase64,
+              audio_mime_type: blobType,
+              audio_language: resolveSpeechLanguage(navigator.language),
+            });
+            appendTranscriptionToInput(response.transcription);
           } catch (error) {
             console.error('Failed to process recorded audio:', error);
-            alert('Failed to process voice input.');
+            alert(getVoiceInputErrorMessage(error));
+          } finally {
+            setIsTranscribing(false);
           }
         })();
       };
@@ -175,6 +231,7 @@ export function ChatInput({
         console.error('Audio recorder error:', event);
         releaseMediaStream();
         setIsRecording(false);
+        setIsTranscribing(false);
       };
 
       recorder.start();
@@ -184,16 +241,15 @@ export function ChatInput({
       alert('Microphone access failed. Please check browser permission settings.');
       releaseMediaStream();
       setIsRecording(false);
+      setIsTranscribing(false);
     }
   }, [
-    clearComposer,
+    appendTranscriptionToInput,
     disabled,
-    effectiveImage,
-    input,
     isPttSupported,
     isRecording,
+    isTranscribing,
     isStreaming,
-    onSend,
     releaseMediaStream,
   ]);
 
@@ -211,8 +267,12 @@ export function ChatInput({
     if (!textarea) {
       return;
     }
+    const chatWindow = textarea.closest('.chat-window');
+    const maxHeight = chatWindow
+      ? Math.max(chatWindow.clientHeight / 3, 120)
+      : 120;
     textarea.style.height = 'auto';
-    textarea.style.height = `${Math.min(textarea.scrollHeight, 120)}px`;
+    textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
   }, [input]);
 
   useEffect(() => {
@@ -258,7 +318,7 @@ export function ChatInput({
   };
 
   const handleSubmit = () => {
-    if (disabled || isRecording || isStreaming) {
+    if (disabled || isRecording || isTranscribing || isStreaming) {
       return;
     }
     if (!input.trim() && !effectiveImage) {
@@ -390,19 +450,11 @@ export function ChatInput({
     }
   };
 
-  const handlePttPointerDown = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    void startRecording();
-  };
-
-  const handlePttPointerUp = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    event.preventDefault();
-    stopRecording();
-  };
-
-  const handlePttPointerLeave = (event: ReactPointerEvent<HTMLButtonElement>) => {
-    if (isRecording && event.buttons === 0) {
+  const handleMicClick = () => {
+    if (isRecording) {
       stopRecording();
+    } else {
+      void startRecording();
     }
   };
 
@@ -430,7 +482,7 @@ export function ChatInput({
         <button
           className="input-action-btn"
           onClick={() => fileInputRef.current?.click()}
-          disabled={disabled || isRecording || Boolean(isStreaming)}
+          disabled={disabled || isRecording || isTranscribing || Boolean(isStreaming)}
           title="Attach image"
         >
           <FaImage />
@@ -444,27 +496,28 @@ export function ChatInput({
             onPaste={handlePaste}
             placeholder={
               isRecording
-                ? 'Recording... release mic button to send.'
+                ? 'Listening...'
+                : isTranscribing
+                  ? 'Thinking... transcribing speech to text...'
                 : 'Type a message... (Shift+Enter for newline)'
             }
-            disabled={disabled || isRecording}
+            disabled={disabled || isRecording || isTranscribing}
             rows={1}
           />
         </div>
         <button
-          className={`mic-btn ${isRecording ? 'recording' : ''}`}
-          onPointerDown={handlePttPointerDown}
-          onPointerUp={handlePttPointerUp}
-          onPointerCancel={handlePttPointerUp}
-          onPointerLeave={handlePttPointerLeave}
+          className={`mic-btn ${isRecording ? 'recording' : ''} ${isTranscribing ? 'transcribing' : ''}`}
+          onClick={handleMicClick}
           title={
             isPttSupported
               ? isRecording
-                ? 'Recording: release to send'
-                : 'Hold to talk (PTT)'
+                ? 'Recording... click to stop'
+                : isTranscribing
+                  ? 'Transcribing voice...'
+                : 'Click to start voice input'
               : 'Voice input is not supported in this browser'
           }
-          disabled={disabled || Boolean(isStreaming) || !isPttSupported}
+          disabled={disabled || isTranscribing || Boolean(isStreaming) || !isPttSupported}
         >
           {isRecording ? <FaStop /> : <FaMicrophone />}
         </button>
@@ -476,7 +529,7 @@ export function ChatInput({
           <button
             className="send-btn"
             onClick={handleSubmit}
-            disabled={(!input.trim() && !effectiveImage) || disabled || isRecording}
+            disabled={(!input.trim() && !effectiveImage) || disabled || isRecording || isTranscribing}
             title="Send"
           >
             <FaPaperPlane />

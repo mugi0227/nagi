@@ -1,4 +1,4 @@
-/**
+﻿/**
  * TypeScript types - Mirror backend Pydantic models
  */
 
@@ -241,8 +241,18 @@ export interface ChatRequest {
   session_id?: string;
   context?: Record<string, unknown>;
   approval_mode?: ToolApprovalMode;
-  proposal_mode?: boolean; // AI提案モード（true: 提案→承諾、false: 直接作成）
-  model?: string; // Model ID override for this message
+  proposal_mode?: boolean;
+  model?: string;
+}
+
+export interface AudioTranscriptionRequest {
+  audio_base64: string;
+  audio_mime_type?: string;
+  audio_language?: string;
+}
+
+export interface AudioTranscriptionResponse {
+  transcription: string;
 }
 
 export interface AvailableModel {
@@ -262,12 +272,21 @@ export interface SuggestedAction {
   payload: Record<string, unknown>;
 }
 
+export interface TokenUsage {
+  input_tokens: number;
+  output_tokens: number;
+  total_tokens: number;
+  cost_usd?: number;
+  model?: string;
+}
+
 export interface ChatResponse {
   assistant_message: string;
   related_tasks: string[];
   suggested_actions: SuggestedAction[];
   session_id: string;
   capture_id?: string;
+  usage?: TokenUsage;
 }
 
 export interface ChatSession {
@@ -323,7 +342,7 @@ export interface Project {
   description?: string;
   visibility: ProjectVisibility;
   context_summary?: string;
-  context?: string;  // 詳細コンテキスト（README）
+  context?: string;  // 隧ｳ邏ｰ繧ｳ繝ｳ繝・く繧ｹ繝茨ｼ・EADME・・
   priority: number;  // 1-10
   goals: string[];
   key_points: string[];
@@ -968,7 +987,7 @@ export interface CaptureCreate {
   base64_image?: string;
 }
 
-// Proposal models (AI提案承諾機能)
+// Proposal models (AI謠先｡域価隲ｾ讖溯・)
 export type ProposalType = 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown' | 'tool_action';
 
 export interface ToolActionProposalPayload {
@@ -1352,3 +1371,4 @@ export interface ProjectAchievementListResponse {
   achievements: ProjectAchievement[];
   total: number;
 }
+

@@ -27,7 +27,19 @@ export interface LoginRequest {
   password: string;
 }
 
+export interface NativeLinkStartResponse {
+  code: string;
+  expires_at: string;
+}
+
+export interface NativeLinkExchangeRequest {
+  code: string;
+}
+
 export const authApi = {
   login: (data: LoginRequest) => api.post<AuthResponse>('/auth/login', data),
   register: (data: RegisterRequest) => api.post<AuthResponse>('/auth/register', data),
+  startNativeLink: () => api.post<NativeLinkStartResponse>('/auth/native-link/start', {}),
+  exchangeNativeLink: (data: NativeLinkExchangeRequest) =>
+    api.post<AuthResponse>('/auth/native-link/exchange', data),
 };

@@ -3,7 +3,7 @@ import { FaSpinner, FaCheck, FaTriangleExclamation } from 'react-icons/fa6';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { ToolCall, ProposalInfo, TimelineEvent } from '../../hooks/useChat';
-import type { Task } from '../../api/types';
+import type { Task, TokenUsage } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, toDateKey, toDateTime } from '../../utils/dateTime';
 import { CreatedTaskCards } from './CreatedTaskCards';
@@ -250,6 +250,7 @@ interface ChatMessageProps {
   toolPlacement?: 'before' | 'after';
   timeline?: TimelineEvent[];
   onTaskClick?: (taskId: string) => void;
+  usage?: TokenUsage;
 }
 
 export function ChatMessage({
@@ -264,6 +265,7 @@ export function ChatMessage({
   toolPlacement = 'before',
   timeline,
   onTaskClick,
+  usage,
 }: ChatMessageProps) {
   const timezone = useTimezone();
   const combinedPreview = buildCombinedMeetingPreview(proposals, meetingTasks, timezone);
@@ -503,7 +505,19 @@ export function ChatMessage({
 
         {toolPlacement === 'after' && toolChips}
 
-        <div className="message-time">{formatTime(timestamp)}</div>
+        <div className="message-time">
+          {formatTime(timestamp)}
+          {role === 'assistant' && usage && usage.total_tokens > 0 && (
+            <span className="message-usage">
+              {usage.total_tokens.toLocaleString()} tokens
+              {usage.cost_usd != null && usage.cost_usd > 0 && (
+                <> / ${usage.cost_usd < 0.01
+                  ? usage.cost_usd.toFixed(4)
+                  : usage.cost_usd.toFixed(2)}</>
+              )}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

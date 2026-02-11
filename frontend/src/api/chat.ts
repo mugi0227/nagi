@@ -1,6 +1,13 @@
 import { api } from './client';
 import { getAuthToken } from './auth';
-import type { ChatRequest, ChatResponse, ChatSession, ChatHistoryMessage } from './types';
+import type {
+  AudioTranscriptionRequest,
+  AudioTranscriptionResponse,
+  ChatHistoryMessage,
+  ChatRequest,
+  ChatResponse,
+  ChatSession,
+} from './types';
 
 export interface StreamChunk {
   chunk_type: 'tool_start' | 'tool_end' | 'tool_error' | 'text' | 'done' | 'error' | 'proposal' | 'questions';
@@ -26,11 +33,21 @@ export interface StreamChunk {
     allow_multiple: boolean;
   }>;
   context?: string;
+  // Usage fields (in done chunk)
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    total_tokens: number;
+    cost_usd?: number;
+    model?: string;
+  };
 }
 
 export const chatApi = {
   sendMessage: (request: ChatRequest) =>
     api.post<ChatResponse>('/chat', request),
+  transcribeAudio: (request: AudioTranscriptionRequest) =>
+    api.post<AudioTranscriptionResponse>('/chat/transcribe', request),
   listSessions: () =>
     api.get<ChatSession[]>('/chat/sessions'),
   getHistory: (sessionId: string) =>

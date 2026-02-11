@@ -553,6 +553,7 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
             toolPlacement={message.toolPlacement}
             timeline={message.timeline}
             onTaskClick={taskModal.openTaskDetailById}
+            usage={message.usage}
           />
         ))}
         <div ref={messagesEndRef} />

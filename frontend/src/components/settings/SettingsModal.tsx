@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   FaTimes,
   FaMoon,
@@ -7,6 +7,7 @@ import {
   FaUser,
   FaClock,
   FaCog,
+  FaLink,
 } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 import { useQueryClient } from '@tanstack/react-query';
@@ -32,6 +33,7 @@ import { scheduleSettingsApi } from '../../api/scheduleSettings';
 import { heartbeatApi } from '../../api/heartbeat';
 import type { HeartbeatIntensity } from '../../api/types';
 import { ApiError } from '../../api/client';
+import { authApi } from '../../api/authApi';
 import { useScheduleSettings } from '../../hooks/useScheduleSettings';
 import { useHeartbeatSettings } from '../../hooks/useHeartbeatSettings';
 import './SettingsModal.css';
@@ -116,6 +118,21 @@ const getErrorMessage = (error: unknown, fallback: string) => {
   return fallback;
 };
 
+const formatLinkRemaining = (expiresAt: string | null, nowTick: number): string => {
+  if (!expiresAt) {
+    return '';
+  }
+  void nowTick;
+  const expiresAtMs = new Date(expiresAt).getTime();
+  if (Number.isNaN(expiresAtMs)) {
+    return '';
+  }
+  const remaining = Math.max(0, Math.floor((expiresAtMs - Date.now()) / 1000));
+  const minutes = Math.floor(remaining / 60);
+  const seconds = remaining % 60;
+  return `${minutes}:${String(seconds).padStart(2, '0')}`;
+};
+
 interface SettingsModalProps {
   onClose: () => void;
 }
@@ -177,6 +194,12 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   const [heartbeatDailyCapacity, setHeartbeatDailyCapacity] = useState(60);
   const [heartbeatCooldownHours, setHeartbeatCooldownHours] = useState(24);
   const [hasSyncedHeartbeatSettings, setHasSyncedHeartbeatSettings] = useState(false);
+  const [nativeLinkCode, setNativeLinkCode] = useState('');
+  const [nativeLinkExpiresAt, setNativeLinkExpiresAt] = useState<string | null>(null);
+  const [nativeLinkError, setNativeLinkError] = useState<string | null>(null);
+  const [isGeneratingNativeLink, setIsGeneratingNativeLink] = useState(false);
+  const [nativeLinkCopied, setNativeLinkCopied] = useState(false);
+  const [nativeLinkTick, setNativeLinkTick] = useState(() => Date.now());
 
   useEffect(() => {
     if (!currentUser) return;
@@ -260,6 +283,14 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     hasSyncedHeartbeatSettings,
     queryClient,
   ]);
+
+  useEffect(() => {
+    if (!nativeLinkExpiresAt) return;
+    const timer = window.setInterval(() => {
+      setNativeLinkTick(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [nativeLinkExpiresAt]);
 
   const handleUserNameChange = (value: string) => {
     setUserName(value);
@@ -527,6 +558,47 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
     }
   };
 
+  const handleGenerateNativeLink = async () => {
+    setNativeLinkError(null);
+    setNativeLinkCopied(false);
+    setIsGeneratingNativeLink(true);
+    try {
+      const response = await authApi.startNativeLink();
+      setNativeLinkCode(response.code);
+      setNativeLinkExpiresAt(response.expires_at);
+      setNativeLinkTick(Date.now());
+    } catch (error) {
+      setNativeLinkError(getErrorMessage(error, '連携コードの発行に失敗しました'));
+    } finally {
+      setIsGeneratingNativeLink(false);
+    }
+  };
+
+  const handleCopyNativeLink = async () => {
+    if (!nativeLinkCode) return;
+    try {
+      await navigator.clipboard.writeText(nativeLinkCode);
+      setNativeLinkCopied(true);
+      window.setTimeout(() => setNativeLinkCopied(false), 1500);
+    } catch {
+      setNativeLinkCopied(false);
+      setNativeLinkError('クリップボードへのコピーに失敗しました');
+    }
+  };
+
+  const nativeLinkExpired = useMemo(() => {
+    if (!nativeLinkExpiresAt) return false;
+    void nativeLinkTick;
+    const expiresAtMs = new Date(nativeLinkExpiresAt).getTime();
+    if (Number.isNaN(expiresAtMs)) return false;
+    return expiresAtMs <= Date.now();
+  }, [nativeLinkExpiresAt, nativeLinkTick]);
+
+  const nativeLinkRemaining = useMemo(
+    () => formatLinkRemaining(nativeLinkExpiresAt, nativeLinkTick),
+    [nativeLinkExpiresAt, nativeLinkTick],
+  );
+
   const heartbeatControlsDisabled = !heartbeatEnabled;
 
   return (
@@ -727,6 +799,53 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
               ) : null}
               {accountSuccess ? (
                 <p className="setting-description setting-success">{accountSuccess}</p>
+              ) : null}
+            </div>
+          </div>
+
+          <div className="settings-section">
+            <h3 className="section-title">
+              <FaLink />
+              ネイティブ連携
+            </h3>
+            <div className="setting-item">
+              <span className="setting-label">ワンタイム連携コード</span>
+              <p className="setting-description">
+                Windowsネイティブアプリ側に貼り付けて連携します。コードは120秒で失効します。
+              </p>
+              <div className="native-link-actions-row">
+                <button
+                  type="button"
+                  className="setting-action-btn"
+                  onClick={handleGenerateNativeLink}
+                  disabled={isGeneratingNativeLink}
+                >
+                  {isGeneratingNativeLink ? '発行中...' : 'コードを発行'}
+                </button>
+                <button
+                  type="button"
+                  className="setting-action-btn secondary"
+                  onClick={handleCopyNativeLink}
+                  disabled={!nativeLinkCode || nativeLinkExpired}
+                >
+                  {nativeLinkCopied ? 'コピー済み' : 'コピー'}
+                </button>
+              </div>
+              <div className={`native-link-code-box ${nativeLinkExpired ? 'expired' : ''}`}>
+                {nativeLinkCode || '未発行'}
+              </div>
+              {nativeLinkExpiresAt && !nativeLinkExpired ? (
+                <p className="setting-description">
+                  期限まで {nativeLinkRemaining}
+                </p>
+              ) : null}
+              {nativeLinkExpiresAt && nativeLinkExpired ? (
+                <p className="setting-description">
+                  コードの期限が切れました。再発行してください。
+                </p>
+              ) : null}
+              {nativeLinkError ? (
+                <p className="setting-description setting-error">{nativeLinkError}</p>
               ) : null}
             </div>
           </div>

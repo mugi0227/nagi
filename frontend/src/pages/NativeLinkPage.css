@@ -1,0 +1,109 @@
+.native-link-page {
+  min-height: calc(100vh - 120px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.native-link-card {
+  width: 100%;
+  max-width: 720px;
+  background: var(--bg-card);
+  border-radius: 20px;
+  box-shadow: var(--shadow-card);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.native-link-title {
+  margin: 0;
+  font-size: 1.4rem;
+  color: var(--text-main);
+}
+
+.native-link-subtitle {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+
+.native-link-steps {
+  margin: 0;
+  padding-left: 22px;
+  color: var(--text-main);
+  display: grid;
+  gap: 6px;
+  font-size: 0.95rem;
+}
+
+.native-link-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.native-link-generate-btn,
+.native-link-copy-btn {
+  border: none;
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.native-link-generate-btn {
+  background: var(--primary);
+  color: #fff;
+}
+
+.native-link-copy-btn {
+  background: rgba(148, 163, 184, 0.2);
+  color: var(--text-main);
+}
+
+.native-link-generate-btn:disabled,
+.native-link-copy-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.native-link-code-box {
+  background: #0f172a;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 12px;
+  padding: 14px;
+  font-family: "Consolas", "Courier New", monospace;
+  color: #e2e8f0;
+  font-size: 1rem;
+  word-break: break-all;
+}
+
+.native-link-code-box.expired {
+  opacity: 0.55;
+}
+
+.native-link-meta {
+  min-height: 20px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.native-link-error {
+  margin: 0;
+  color: #dc2626;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+@media (max-width: 768px) {
+  .native-link-page {
+    padding: 14px;
+  }
+
+  .native-link-card {
+    padding: 18px;
+  }
+}

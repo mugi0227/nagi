@@ -14,6 +14,7 @@ import type {
   ProjectCreate,
   TaskAssignmentProposal,
   TaskCreate,
+  TokenUsage,
   ToolActionProposalPayload,
 } from '../api/types';
 import { useTimezone } from './useTimezone';
@@ -67,6 +68,7 @@ export interface Message {
   suppressText?: boolean;
   toolPlacement?: 'before' | 'after';
   timeline?: TimelineEvent[];
+  usage?: TokenUsage;
 }
 
 const SESSION_STORAGE_KEY = 'chat_session_id';
@@ -544,6 +546,7 @@ export function useChat() {
                     ? {
                       ...msg,
                       isStreaming: false,
+                      usage: chunk.usage,
                     }
                     : msg
                 )
