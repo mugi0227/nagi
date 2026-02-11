@@ -97,7 +97,10 @@ class WhisperProvider(ISpeechToTextProvider):
             "audio/mp3": ".mp3",
             "audio/mpeg": ".mp3",
             "audio/m4a": ".m4a",
+            "audio/mp4": ".mp4",
             "audio/ogg": ".ogg",
+            "audio/webm": ".webm",
+            "audio/webm;codecs=opus": ".webm",
         }
         ext = ext_map.get(content_type, ".wav")
 
@@ -121,6 +124,9 @@ class WhisperProvider(ISpeechToTextProvider):
             "audio/mp3",
             "audio/mpeg",
             "audio/m4a",
+            "audio/mp4",
             "audio/ogg",
+            "audio/webm",
+            "audio/webm;codecs=opus",
             "audio/flac",
         ]

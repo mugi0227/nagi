@@ -149,12 +149,17 @@ class Settings(BaseSettings):
     # ===========================================
     # Speech-to-Text
     # ===========================================
-    SPEECH_PROVIDER: Literal["whisper", "google-stt-v2"] = "whisper"
+    SPEECH_PROVIDER: Literal["whisper", "google-stt-v2", "amazon-transcribe"] = "whisper"
     # Whisper model size for local development
     WHISPER_MODEL_SIZE: str = "base"  # tiny, base, small, medium, large
     STT_V2_LOCATION: str = "us"
     STT_V2_MODEL: str = "chirp_3"
     STT_V2_LANGUAGE: str = "ja-JP"
+    AWS_TRANSCRIBE_S3_BUCKET: str = ""
+    AWS_TRANSCRIBE_S3_PREFIX: str = "transcribe-input"
+    AWS_TRANSCRIBE_LANGUAGE: str = "ja-JP"
+    AWS_TRANSCRIBE_POLL_SECONDS: float = 1.0
+    AWS_TRANSCRIBE_TIMEOUT_SECONDS: int = 180
 
     # ===========================================
     # Developer Accounts

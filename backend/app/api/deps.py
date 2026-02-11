@@ -469,12 +469,32 @@ def get_storage_provider() -> IStorageProvider:
 def get_speech_provider() -> ISpeechToTextProvider:
     """Get speech-to-text provider instance."""
     settings = get_settings()
-    if settings.is_gcp:
-        # TODO: Implement Google Cloud Speech provider
-        raise NotImplementedError("Google Cloud Speech not implemented yet")
-    else:
-        from app.infrastructure.local.whisper_provider import WhisperProvider
-        return WhisperProvider(settings.WHISPER_MODEL_SIZE)
+    if settings.SPEECH_PROVIDER == "google-stt-v2":
+        from app.infrastructure.gcp.speech_v2_provider import GoogleSpeechV2Provider
+
+        project_id = (settings.GOOGLE_CLOUD_PROJECT or "").strip() or None
+        return GoogleSpeechV2Provider(
+            project_id=project_id,
+            location=settings.STT_V2_LOCATION,
+            model=settings.STT_V2_MODEL,
+            default_language=settings.STT_V2_LANGUAGE,
+        )
+
+    if settings.SPEECH_PROVIDER == "amazon-transcribe":
+        from app.infrastructure.aws.transcribe_provider import AmazonTranscribeProvider
+
+        return AmazonTranscribeProvider(
+            region_name=settings.AWS_REGION,
+            bucket_name=settings.AWS_TRANSCRIBE_S3_BUCKET,
+            key_prefix=settings.AWS_TRANSCRIBE_S3_PREFIX,
+            default_language=settings.AWS_TRANSCRIBE_LANGUAGE,
+            poll_interval_seconds=settings.AWS_TRANSCRIBE_POLL_SECONDS,
+            timeout_seconds=settings.AWS_TRANSCRIBE_TIMEOUT_SECONDS,
+        )
+
+    from app.infrastructure.local.whisper_provider import WhisperProvider
+
+    return WhisperProvider(settings.WHISPER_MODEL_SIZE)
 
 
 # ===========================================

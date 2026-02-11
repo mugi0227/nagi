@@ -48,6 +48,10 @@ class VertexAIProvider(ILLMProvider):
         """Get human-readable model name."""
         return f"Vertex AI ({self._model_name})"
 
+    def get_model_id(self) -> str:
+        """Get raw model identifier for API/cost lookups."""
+        return self._model_name
+
     def supports_vision(self) -> bool:
         """Gemini models support vision."""
         return True

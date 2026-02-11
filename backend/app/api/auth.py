@@ -4,17 +4,26 @@ Local authentication endpoints (register/login).
 
 from __future__ import annotations
 
-from typing import Optional
+import asyncio
+import hashlib
+import secrets
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
+from typing import Annotated, Optional
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Header, HTTPException, status
 from pydantic import BaseModel, Field
 
-from app.api.deps import UserRepo
+from app.api.deps import CurrentUser, UserRepo
 from app.core.config import Settings, get_settings
 from app.core.security import create_access_token, hash_password, verify_password
 from app.models.user import UserCreate
 
 router = APIRouter()
+
+_NATIVE_LINK_CODE_TTL_SECONDS = 120
+_NATIVE_LINK_CODE_BYTES = 18
+_NATIVE_LINK_MAX_ACTIVE_CODES = 1000
 
 
 class RegisterRequest(BaseModel):
@@ -42,6 +51,26 @@ class AuthResponse(BaseModel):
     access_token: str
     token_type: str = "bearer"
     user: AuthUser
+
+
+@dataclass
+class _NativeLinkRecord:
+    token: str
+    user: AuthUser
+    expires_at: datetime
+
+
+_native_link_lock = asyncio.Lock()
+_native_link_store: dict[str, _NativeLinkRecord] = {}
+
+
+class NativeLinkStartResponse(BaseModel):
+    code: str
+    expires_at: datetime
+
+
+class NativeLinkExchangeRequest(BaseModel):
+    code: str = Field(..., min_length=8, max_length=512)
 
 
 def _normalize_email(value: str) -> str:
@@ -84,6 +113,108 @@ def _check_email_whitelist(email: str, settings: Settings) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This email address is not allowed to register",
         )
+
+
+def _utcnow() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _extract_bearer_token(authorization: str | None) -> str:
+    if not authorization:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authorization header required",
+        )
+    parts = authorization.strip().split(" ", 1)
+    if len(parts) != 2 or parts[0].lower() != "bearer" or not parts[1].strip():
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authorization header format",
+        )
+    return parts[1].strip()
+
+
+def _hash_native_link_code(code: str) -> str:
+    return hashlib.sha256(code.encode("utf-8")).hexdigest()
+
+
+def _cleanup_expired_native_links(now: datetime) -> None:
+    expired_keys = [
+        code_hash for code_hash, record in _native_link_store.items() if record.expires_at <= now
+    ]
+    for code_hash in expired_keys:
+        _native_link_store.pop(code_hash, None)
+
+
+def _evict_oldest_native_link() -> None:
+    if not _native_link_store:
+        return
+    oldest_code_hash = min(
+        _native_link_store.items(),
+        key=lambda item: item[1].expires_at,
+    )[0]
+    _native_link_store.pop(oldest_code_hash, None)
+
+
+def _clear_native_link_store() -> None:
+    _native_link_store.clear()
+
+
+@router.post("/native-link/start", response_model=NativeLinkStartResponse)
+async def start_native_link(
+    user: CurrentUser,
+    authorization: Annotated[str | None, Header()] = None,
+) -> NativeLinkStartResponse:
+    token = _extract_bearer_token(authorization)
+    now = _utcnow()
+    expires_at = now + timedelta(seconds=_NATIVE_LINK_CODE_TTL_SECONDS)
+    code = secrets.token_urlsafe(_NATIVE_LINK_CODE_BYTES)
+    code_hash = _hash_native_link_code(code)
+
+    async with _native_link_lock:
+        _cleanup_expired_native_links(now)
+        if len(_native_link_store) >= _NATIVE_LINK_MAX_ACTIVE_CODES:
+            _evict_oldest_native_link()
+        _native_link_store[code_hash] = _NativeLinkRecord(
+            token=token,
+            user=AuthUser(
+                id=user.id,
+                email=user.email,
+                display_name=user.display_name,
+            ),
+            expires_at=expires_at,
+        )
+
+    return NativeLinkStartResponse(code=code, expires_at=expires_at)
+
+
+@router.post("/native-link/exchange", response_model=AuthResponse)
+async def exchange_native_link(data: NativeLinkExchangeRequest) -> AuthResponse:
+    code = data.code.strip()
+    if not code:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Code is required",
+        )
+
+    now = _utcnow()
+    code_hash = _hash_native_link_code(code)
+
+    async with _native_link_lock:
+        _cleanup_expired_native_links(now)
+        record = _native_link_store.pop(code_hash, None)
+
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired code",
+        )
+
+    return AuthResponse(
+        access_token=record.token,
+        token_type="bearer",
+        user=record.user,
+    )
 
 
 @router.post("/register", response_model=AuthResponse)

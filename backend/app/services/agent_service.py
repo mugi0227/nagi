@@ -604,6 +604,26 @@ class AgentService:
         except Exception:
             return None, mime_type
 
+    def _normalize_speech_language(self, language_hint: str | None) -> str:
+        raw = (language_hint or "").strip()
+        if not raw:
+            return "ja-JP"
+
+        normalized = raw.replace("_", "-")
+        lower = normalized.lower()
+        language_map = {
+            "ja": "ja-JP",
+            "en": "en-US",
+            "ko": "ko-KR",
+            "zh": "zh-CN",
+            "fr": "fr-FR",
+            "de": "de-DE",
+            "es": "es-ES",
+            "it": "it-IT",
+            "pt": "pt-BR",
+        }
+        return language_map.get(lower, normalized)
+
     async def _transcribe_request_audio(
         self,
         request: ChatRequest,
@@ -634,7 +654,7 @@ class AgentService:
             logger.warning("Audio transcription skipped because decoded audio bytes are empty")
             return None
 
-        language = (request.audio_language or "ja-JP").strip() or "ja-JP"
+        language = self._normalize_speech_language(request.audio_language)
         try:
             transcript = await self._speech_provider.transcribe_bytes(
                 audio_bytes=audio_bytes,
@@ -1167,11 +1187,16 @@ class AgentService:
             )
 
             assistant_message_parts: list[str] = []
+            total_input_tokens = 0
+            total_output_tokens = 0
             async for event in runner.run_async(
                 user_id=user_id,
                 session_id=session_id,
                 new_message=new_message,
             ):
+                if hasattr(event, "usage_metadata") and event.usage_metadata:
+                    total_input_tokens += event.usage_metadata.prompt_token_count or 0
+                    total_output_tokens += event.usage_metadata.candidates_token_count or 0
                 if not event.content or not getattr(event.content, "parts", None):
                     continue
                 for part in event.content.parts or []:
@@ -1190,12 +1215,27 @@ class AgentService:
                 content=assistant_message,
             )
 
+            usage = None
+            if total_input_tokens > 0 or total_output_tokens > 0:
+                from app.models.chat import TokenUsage
+                from app.services.cost_utils import calculate_cost
+
+                model_id = self._resolve_llm_provider(request.model).get_model_id()
+                usage = TokenUsage(
+                    input_tokens=total_input_tokens,
+                    output_tokens=total_output_tokens,
+                    total_tokens=total_input_tokens + total_output_tokens,
+                    cost_usd=calculate_cost(model_id, total_input_tokens, total_output_tokens),
+                    model=model_id,
+                )
+
             return ChatResponse(
                 assistant_message=assistant_message,
                 related_tasks=[],
                 suggested_actions=[],
                 session_id=session_id,
                 capture_id=capture_id,
+                usage=usage,
             )
 
         except Exception as e:
@@ -1278,6 +1318,8 @@ class AgentService:
 
             # Stream agent execution
             assistant_message_parts: list[str] = []
+            total_input_tokens = 0
+            total_output_tokens = 0
             # FIFO queue per tool name to correlate tool_start with tool_end
             _pending_tool_ids: dict[str, list[str]] = {}
             async for event in runner.run_async(
@@ -1285,6 +1327,11 @@ class AgentService:
                 session_id=session_id_str,
                 new_message=new_message,
             ):
+                # Accumulate token usage from each event
+                if hasattr(event, "usage_metadata") and event.usage_metadata:
+                    total_input_tokens += event.usage_metadata.prompt_token_count or 0
+                    total_output_tokens += event.usage_metadata.candidates_token_count or 0
+
                 # ... (Tool handling logic remains same as original) ...
 
                 # Check for function_call in part
@@ -1410,11 +1457,25 @@ class AgentService:
                 content=assistant_message,
             )
 
+            usage_data = None
+            if total_input_tokens > 0 or total_output_tokens > 0:
+                from app.services.cost_utils import calculate_cost
+
+                model_id = self._resolve_llm_provider(request.model).get_model_id()
+                usage_data = {
+                    "input_tokens": total_input_tokens,
+                    "output_tokens": total_output_tokens,
+                    "total_tokens": total_input_tokens + total_output_tokens,
+                    "cost_usd": calculate_cost(model_id, total_input_tokens, total_output_tokens),
+                    "model": model_id,
+                }
+
             yield {
                 "chunk_type": "done",
                 "assistant_message": assistant_message,
                 "session_id": session_id_str,
                 "capture_id": str(capture_id) if capture_id else None,
+                "usage": usage_data,
             }
 
         except Exception as e:

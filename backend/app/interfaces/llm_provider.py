@@ -36,6 +36,16 @@ class ILLMProvider(ABC):
         pass
 
     @abstractmethod
+    def get_model_id(self) -> str:
+        """
+        Get the raw model identifier for API/cost lookups.
+
+        Returns:
+            Raw model ID string (e.g., "gemini-2.0-flash", "bedrock/anthropic.claude-3-5-sonnet-...")
+        """
+        pass
+
+    @abstractmethod
     def supports_vision(self) -> bool:
         """
         Check if the model supports vision (image) inputs.

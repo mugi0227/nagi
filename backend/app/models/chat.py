@@ -54,6 +54,32 @@ class ChatRequest(BaseModel):
     model: Optional[str] = Field(None, max_length=200, description="Model ID override for this message")
 
 
+class AudioTranscriptionRequest(BaseModel):
+    """Request model for audio transcription endpoint."""
+
+    audio_base64: str = Field(
+        ...,
+        min_length=1,
+        description="Audio data URL (data:audio/...;base64,...)",
+    )
+    audio_mime_type: Optional[str] = Field(
+        None,
+        max_length=120,
+        description="Audio MIME type (e.g. audio/webm;codecs=opus)",
+    )
+    audio_language: Optional[str] = Field(
+        None,
+        max_length=20,
+        description="Language hint for speech-to-text (e.g. ja-JP)",
+    )
+
+
+class AudioTranscriptionResponse(BaseModel):
+    """Response model for audio transcription endpoint."""
+
+    transcription: str = Field(..., description="Transcribed text")
+
+
 class SuggestedAction(BaseModel):
     """Suggested action for the user."""
 
@@ -79,6 +105,16 @@ class PendingQuestions(BaseModel):
     context: Optional[str] = Field(None, description="Question context")
 
 
+class TokenUsage(BaseModel):
+    """Token usage for a single chat turn."""
+
+    input_tokens: int = Field(0, description="Total input/prompt tokens")
+    output_tokens: int = Field(0, description="Total output/completion tokens")
+    total_tokens: int = Field(0, description="Total tokens (input + output)")
+    cost_usd: Optional[float] = Field(None, description="Estimated cost in USD")
+    model: Optional[str] = Field(None, description="Model used")
+
+
 class ChatResponse(BaseModel):
     """Response model for chat endpoint."""
 
@@ -90,6 +126,7 @@ class ChatResponse(BaseModel):
     pending_questions: Optional[PendingQuestions] = Field(
         None, description="Pending user questions from ask_user_questions"
     )
+    usage: Optional[TokenUsage] = Field(None, description="Token usage for this turn")
 
 
 class StreamingChatChunk(BaseModel):
