@@ -168,7 +168,16 @@
             </div>
 
             <div id="model-selector-row" class="model-selector-row hidden">
-                <select id="model-selector" class="model-selector" title="AI model"></select>
+                <span class="model-selector-label">Model</span>
+                <div class="model-selector-dropdown" id="model-selector-dropdown">
+                    <button type="button" class="model-selector-trigger" id="model-selector-trigger" title="AI model">
+                        <span class="model-selector-value" id="model-selector-value"></span>
+                        <svg class="model-selector-chevron" width="12" height="12" viewBox="0 0 12 12" fill="none">
+                            <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </button>
+                    <ul class="model-selector-menu hidden" id="model-selector-menu"></ul>
+                </div>
             </div>
             <div class="input-box-wrapper">
                 <div class="input-actions-left">
@@ -188,7 +197,7 @@
                             <circle cx="12" cy="13" r="4" />
                         </svg>
                     </button>
-                    <button id="voice-ptt-btn" class="input-action-btn" title="Hold to Talk">
+                    <button id="voice-ptt-btn" class="input-action-btn" title="Click to start voice input">
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                             stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" />
@@ -275,6 +284,13 @@
             <label id="browser-bedrock-session-token-field" class="setting-field hidden">
                 <span>Bedrock Session Token (Optional)</span>
                 <input id="browser-bedrock-session-token" type="password" placeholder="STS session token" />
+            </label>
+            <div class="setting-divider"></div>
+            <label class="setting-field">
+                <span>Voice Shortcut Key</span>
+                <input id="voice-shortcut-key" type="text" readonly
+                    placeholder="Press any key to set (hold = record)" />
+                <span class="setting-hint">Hold this key to record voice. Press Esc/Backspace to clear.</span>
             </label>
             <div class="settings-actions">
                 <button id="save-settings-btn" class="mini-btn">Save</button>

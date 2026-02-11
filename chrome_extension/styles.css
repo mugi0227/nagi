@@ -585,6 +585,11 @@ body {
     animation: pttPulse 1.2s ease-in-out infinite;
 }
 
+#voice-ptt-btn.transcribing {
+    color: var(--primary);
+    background: rgba(34, 139, 230, 0.15);
+}
+
 #user-input {
     flex: 1;
     border: none;
@@ -594,7 +599,7 @@ body {
     font-family: inherit;
     font-size: 0.95rem;
     min-height: 20px;
-    max-height: 120px;
+    max-height: 33vh;
     line-height: 1.4;
     color: var(--text-main);
 }
@@ -896,6 +901,30 @@ body {
     color: var(--text-main);
 }
 
+.setting-divider {
+    border-top: 1px solid var(--border-light);
+    margin: 4px 0;
+}
+
+.setting-hint {
+    font-size: 10px !important;
+    font-weight: 400 !important;
+    color: var(--text-muted) !important;
+    opacity: 0.8;
+}
+
+#voice-shortcut-key {
+    cursor: pointer;
+    text-align: center;
+    font-weight: 600;
+    letter-spacing: 0.03em;
+}
+
+#voice-shortcut-key:focus {
+    border-color: var(--primary);
+    box-shadow: 0 0 0 3px rgba(34, 139, 230, 0.15);
+}
+
 .settings-actions {
     display: flex;
     gap: 8px;
@@ -1034,25 +1063,141 @@ body {
 .model-selector-row {
     display: flex;
     align-items: center;
-    padding: 4px 20px;
+    gap: 8px;
+    padding: 6px 20px;
 }
 
-.model-selector {
-    font-size: 0.75rem;
-    padding: 2px 6px;
+.model-selector-label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    flex-shrink: 0;
+    user-select: none;
+}
+
+.model-selector-dropdown {
+    position: relative;
+}
+
+.model-selector-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px 4px 10px;
     border: 1px solid var(--border);
     border-radius: 6px;
-    background: white;
+    background: rgba(241, 245, 249, 0.6);
     color: var(--text-muted);
-    max-width: 200px;
     cursor: pointer;
     outline: none;
+    font-size: 0.75rem;
+    font-weight: 500;
+    font-family: inherit;
+    line-height: 1.4;
+    transition: all 0.15s ease;
+    max-width: 240px;
 }
 
-.model-selector:hover {
+.model-selector-trigger:hover {
     border-color: var(--primary-light);
+    background: rgba(241, 245, 249, 0.9);
+    color: var(--text-main);
 }
 
-.model-selector:focus {
+.model-selector-trigger.open {
     border-color: var(--primary);
+    box-shadow: 0 0 0 2px rgba(34, 139, 230, 0.12);
+    color: var(--text-main);
+}
+
+.model-selector-value {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.model-selector-chevron {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.model-selector-trigger.open .model-selector-chevron {
+    transform: rotate(180deg);
+}
+
+.model-selector-trigger:hover .model-selector-chevron {
+    color: var(--text-main);
+}
+
+.model-selector-menu {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0;
+    min-width: 100%;
+    max-width: 280px;
+    margin: 0;
+    padding: 4px;
+    list-style: none;
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1), 0 1px 4px rgba(0, 0, 0, 0.06);
+    z-index: 50;
+    animation: modelMenuIn 0.12s ease-out;
+}
+
+@keyframes modelMenuIn {
+    from { opacity: 0; transform: translateY(-4px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.model-selector-option {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 6px 10px;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.1s ease;
+    text-align: left;
+    line-height: 1.4;
+}
+
+.model-selector-option:hover {
+    background: rgba(241, 245, 249, 0.8);
+    color: var(--text-main);
+}
+
+.model-selector-option.active {
+    background: rgba(34, 139, 230, 0.08);
+    color: var(--primary);
+}
+
+.model-option-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.model-option-badge {
+    flex-shrink: 0;
+    font-size: 0.6rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 1px 5px;
+    border-radius: 4px;
+    background: rgba(34, 139, 230, 0.08);
+    color: var(--primary);
+    line-height: 1.5;
 }

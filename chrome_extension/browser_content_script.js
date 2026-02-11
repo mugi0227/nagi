@@ -157,6 +157,34 @@
       };
     }
 
+    if (type === "attach_file") {
+      const element = resolveTargetElement(action.target);
+      if (!(element instanceof HTMLInputElement)) {
+        return { ok: false, message: "File target element was not found." };
+      }
+      if (String(element.type || "").toLowerCase() !== "file") {
+        return { ok: false, message: "Target element is not file input." };
+      }
+
+      const fileResult = await resolveFileFromActionAsset(action.args?.asset, action.args);
+      if (!fileResult.ok) {
+        return { ok: false, message: fileResult.message || "Failed to prepare file for upload." };
+      }
+
+      if (typeof DataTransfer === "undefined") {
+        return { ok: false, message: "DataTransfer is unavailable in this page context." };
+      }
+      const transfer = new DataTransfer();
+      transfer.items.add(fileResult.file);
+      element.files = transfer.files;
+      element.dispatchEvent(new Event("input", { bubbles: true }));
+      element.dispatchEvent(new Event("change", { bubbles: true }));
+      return {
+        ok: true,
+        message: `Attached file "${fileResult.file.name}" (${fileResult.file.type || "application/octet-stream"})`
+      };
+    }
+
     if (type === "keypress") {
       const key = typeof action.args?.key === "string" && action.args.key.trim() ? action.args.key : "Enter";
       const target = resolveTargetElement(action.target) || document.activeElement || document.body;
@@ -837,6 +865,7 @@
     renderIndicator();
     window.addEventListener("click", onRecordingClick, true);
     window.addEventListener("input", onRecordingInput, true);
+    window.addEventListener("change", onRecordingFileChange, true);
     window.addEventListener("keydown", onRecordingKeydown, true);
     window.addEventListener("scroll", onRecordingScroll, { capture: true, passive: true });
   }
@@ -849,6 +878,7 @@
     }
     window.removeEventListener("click", onRecordingClick, true);
     window.removeEventListener("input", onRecordingInput, true);
+    window.removeEventListener("change", onRecordingFileChange, true);
     window.removeEventListener("keydown", onRecordingKeydown, true);
     window.removeEventListener("scroll", onRecordingScroll, true);
 
@@ -933,7 +963,7 @@
     }
     if (
       target instanceof HTMLInputElement &&
-      ["password", "hidden"].includes(String(target.type || "").toLowerCase())
+      ["password", "hidden", "file"].includes(String(target.type || "").toLowerCase())
     ) {
       return;
     }
@@ -956,6 +986,35 @@
       type: "type",
       selector,
       text: String(text || "").slice(0, 240)
+    });
+  }
+
+  function onRecordingFileChange(event) {
+    if (!recordingState.active) {
+      return;
+    }
+    const target = event.target;
+    if (!(target instanceof HTMLInputElement)) {
+      return;
+    }
+    if (String(target.type || "").toLowerCase() !== "file") {
+      return;
+    }
+    const selector = buildCssPath(target);
+    if (!selector) {
+      return;
+    }
+    const fileCount = target.files ? target.files.length : 0;
+    if (fileCount <= 0) {
+      return;
+    }
+    emitRecordingEvent({
+      type: "file_select",
+      selector,
+      text_hint: getElementLabel(target),
+      accept: String(target.accept || "").slice(0, 200),
+      multiple: Boolean(target.multiple),
+      file_count: fileCount
     });
   }
 
@@ -996,6 +1055,80 @@
       type: "scroll",
       dy
     });
+  }
+
+  async function resolveFileFromActionAsset(asset, fallbackArgs) {
+    const source = asset && typeof asset === "object" ? asset : {};
+    const dataUrl = String(source.dataUrl || source.data_url || "").trim();
+    const fileUrl = String(source.fileUrl || source.file_url || "").trim();
+    const fallbackMime = String(
+      source.mimeType ||
+        source.mime_type ||
+        fallbackArgs?.mime_type ||
+        "application/octet-stream"
+    ).trim();
+    const fallbackName = String(
+      source.fileName ||
+        source.file_name ||
+        fallbackArgs?.file_name ||
+        `${String(fallbackArgs?.asset_slot || "input_file").trim() || "input_file"}.bin`
+    ).trim();
+
+    if (dataUrl.startsWith("data:")) {
+      const parsed = dataUrlToBytes(dataUrl);
+      if (!parsed.ok) {
+        return parsed;
+      }
+      const file = new File([parsed.bytes], fallbackName, {
+        type: parsed.mimeType || fallbackMime || "application/octet-stream"
+      });
+      return { ok: true, file };
+    }
+
+    if (fileUrl) {
+      try {
+        const response = await fetch(fileUrl, {
+          method: "GET",
+          credentials: "include"
+        });
+        if (!response.ok) {
+          return { ok: false, message: `Failed to fetch file asset (${response.status}).` };
+        }
+        const buffer = await response.arrayBuffer();
+        const contentType =
+          String(response.headers.get("content-type") || "").trim() ||
+          fallbackMime ||
+          "application/octet-stream";
+        const file = new File([buffer], fallbackName, { type: contentType });
+        return { ok: true, file };
+      } catch (error) {
+        return { ok: false, message: `Failed to fetch file asset: ${error.message}` };
+      }
+    }
+
+    return { ok: false, message: "No file asset was provided." };
+  }
+
+  function dataUrlToBytes(dataUrl) {
+    const match = String(dataUrl || "").match(/^data:([^;,]+)?;base64,(.+)$/);
+    if (!match) {
+      return { ok: false, message: "Invalid data URL for file asset." };
+    }
+    const mimeType = String(match[1] || "").trim().toLowerCase();
+    const encoded = String(match[2] || "").trim();
+    if (!encoded) {
+      return { ok: false, message: "File asset data is empty." };
+    }
+    try {
+      const binary = atob(encoded);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i += 1) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return { ok: true, mimeType, bytes };
+    } catch (error) {
+      return { ok: false, message: `Failed to decode file asset: ${error.message}` };
+    }
   }
 
   function hashString(value) {

@@ -47,6 +47,7 @@ const RPA_SUPPORTED_STEP_TYPES = new Set([
   "navigate",
   "new_tab",
   "click",
+  "attach_file",
   "type",
   "scroll",
   "wait",
@@ -72,6 +73,7 @@ const HIGH_RISK_KEYWORDS = [
   "transfer",
   "send money"
 ];
+const MAX_RPA_RUNTIME_ASSETS = 8;
 
 const panelPorts = new Set();
 const state = {
@@ -167,9 +169,14 @@ async function handleMessage(message, sender) {
     return startHybridRpa(
       message?.payload?.goal,
       message?.payload?.scenario,
+      message?.payload?.assets,
       message?.payload?.config,
       sender
     );
+  }
+
+  if (type === "rpa.scenario.optimize") {
+    return optimizeRpaScenario(message?.payload);
   }
 
   if (type === "rpa.record.start") {
@@ -338,6 +345,57 @@ function normalizeRpaScenario(rawScenario, fallbackGoal) {
   };
 }
 
+function normalizeRpaRuntimeAssets(rawAssets) {
+  const source = rawAssets && typeof rawAssets === "object" ? rawAssets : {};
+  const normalized = {};
+  const entries = Object.entries(source).slice(0, MAX_RPA_RUNTIME_ASSETS);
+
+  for (const [rawSlot, rawAsset] of entries) {
+    const slot = normalizeAssetSlotName(rawSlot);
+    if (!slot || !rawAsset || typeof rawAsset !== "object") {
+      continue;
+    }
+    const dataUrl = String(
+      rawAsset.data_url ||
+        rawAsset.dataUrl ||
+        rawAsset.base64 ||
+        ""
+    ).trim();
+    const fileUrl = String(rawAsset.file_url || rawAsset.fileUrl || "").trim();
+    const fileName = truncate(
+      String(rawAsset.file_name || rawAsset.fileName || `${slot}.bin`).trim() || `${slot}.bin`,
+      180
+    );
+    const mimeType = truncate(
+      String(rawAsset.mime_type || rawAsset.mimeType || "application/octet-stream").trim() ||
+        "application/octet-stream",
+      120
+    );
+
+    if (!dataUrl.startsWith("data:") && !fileUrl) {
+      continue;
+    }
+
+    normalized[slot] = {
+      slot,
+      dataUrl: dataUrl.startsWith("data:") ? dataUrl : "",
+      fileUrl,
+      fileName,
+      mimeType
+    };
+  }
+  return normalized;
+}
+
+function normalizeAssetSlotName(value) {
+  const base = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return truncate(base, 64);
+}
+
 function normalizeRpaStep(rawStep, index) {
   if (!rawStep || typeof rawStep !== "object") {
     return null;
@@ -387,6 +445,15 @@ function normalizeRpaStep(rawStep, index) {
     selector,
     elementId,
     text,
+    assetSlot: String(
+      rawStep.asset_slot ||
+        rawStep.assetSlot ||
+        args.asset_slot ||
+        args.assetSlot ||
+        ""
+    ).trim(),
+    accept: String(rawStep.accept || args.accept || "").trim(),
+    multiple: Boolean(rawStep.multiple ?? args.multiple),
     textHint,
     key: String(rawStep.key || args.key || "").trim(),
     url: normalizeNavigationUrl(String(rawStep.url || args.url || "").trim()),
@@ -413,6 +480,14 @@ function normalizeRpaStep(rawStep, index) {
 
   if (type === "type" && !step.text) {
     return null;
+  }
+  if (type === "attach_file") {
+    if (!step.selector) {
+      return null;
+    }
+    if (!step.assetSlot) {
+      step.assetSlot = "input_file";
+    }
   }
   if (type === "navigate" || type === "new_tab") {
     if (!step.url) {
@@ -452,6 +527,11 @@ function describeRpaStep(step) {
       return `click target containing "${truncate(step.textHint, 60)}"`;
     }
     return "click target";
+  }
+  if (step.type === "attach_file") {
+    const slot = step.assetSlot || "input_file";
+    const target = step.selector || step.textHint || "file input";
+    return `attach file "${slot}" to ${truncate(target, 100)}`;
   }
   if (step.type === "type") {
     const target = step.selector || step.textHint || step.elementId || "target";
@@ -508,7 +588,7 @@ function resolveSelectorFromHint(step, observation) {
   return null;
 }
 
-function toActionFromRpaStep(step, observation) {
+function toActionFromRpaStep(step, observation, runtimeAssets = {}) {
   if (!step || typeof step !== "object") {
     return null;
   }
@@ -538,6 +618,25 @@ function toActionFromRpaStep(step, observation) {
       return null;
     }
     return { type: "click", target, args: {} };
+  }
+  if (step.type === "attach_file") {
+    if (!target.selector) {
+      return null;
+    }
+    const assetSlot = String(step.assetSlot || "input_file").trim() || "input_file";
+    const asset = runtimeAssets && typeof runtimeAssets === "object"
+      ? runtimeAssets[assetSlot]
+      : null;
+    return {
+      type: "attach_file",
+      target,
+      args: {
+        asset_slot: assetSlot,
+        accept: String(step.accept || "").trim(),
+        multiple: Boolean(step.multiple),
+        asset: asset || null
+      }
+    };
   }
   if (step.type === "type") {
     if (!target.selector) {
@@ -754,7 +853,13 @@ async function executeHybridRpaStep(scenario, step, stepIndex) {
         return { ok: false, message: "Session stopped." };
       }
       const before = await collectObservation(state.tabId);
-      const action = toActionFromRpaStep(step, before);
+      const action = toActionFromRpaStep(
+        step,
+        before,
+        state.activeRpa?.assets && typeof state.activeRpa.assets === "object"
+          ? state.activeRpa.assets
+          : {}
+      );
       if (!action) {
         return { ok: false, message: "RPA step could not be mapped to an executable browser action." };
       }
@@ -917,7 +1022,7 @@ async function runHybridRpaLoop(scenario) {
   await persistChat();
 }
 
-async function startHybridRpa(goal, rawScenario, incomingConfig, sender) {
+async function startHybridRpa(goal, rawScenario, rawAssets, incomingConfig, sender) {
   const cleanGoal = typeof goal === "string" ? goal.trim() : "";
   if (!cleanGoal) {
     return { ok: false, error: "Goal is empty." };
@@ -947,6 +1052,7 @@ async function startHybridRpa(goal, rawScenario, incomingConfig, sender) {
   }
 
   const scenario = normalizeRpaScenario(rawScenario, cleanGoal);
+  const runtimeAssets = normalizeRpaRuntimeAssets(rawAssets);
 
   state.running = true;
   state.mode = "hybrid_rpa";
@@ -965,7 +1071,8 @@ async function startHybridRpa(goal, rawScenario, incomingConfig, sender) {
     totalSteps: scenario.steps.length,
     completedSteps: 0,
     fallbacks: 0,
-    startedAt: Date.now()
+    startedAt: Date.now(),
+    assets: runtimeAssets
   };
   state.activeRecording = null;
   clearPendingApproval();
@@ -1082,6 +1189,27 @@ function normalizeRecordedEvent(rawEvent) {
     };
   }
 
+  if (type === "file_select") {
+    const selector = String(rawEvent.selector || "").trim();
+    if (!selector) {
+      return null;
+    }
+    const slotRaw = String(rawEvent.asset_slot || rawEvent.assetSlot || "").trim();
+    const accept = String(rawEvent.accept || "").trim();
+    const multiple = Boolean(rawEvent.multiple);
+    const inferredSlot = normalizeAssetSlotName(
+      slotRaw || inferAssetSlotFromText(rawEvent.text_hint || rawEvent.textHint || selector)
+    );
+    return {
+      ...base,
+      selector: truncate(selector, 300),
+      textHint: truncate(String(rawEvent.text_hint || rawEvent.textHint || "").trim(), 160),
+      accept: truncate(accept, 200),
+      multiple,
+      assetSlot: inferredSlot || "input_file"
+    };
+  }
+
   if (type === "type") {
     const selector = String(rawEvent.selector || "").trim();
     if (!selector) {
@@ -1117,6 +1245,38 @@ function normalizeRecordedEvent(rawEvent) {
   }
 
   return null;
+}
+
+function inferAssetSlotFromText(value) {
+  const normalized = String(value || "").toLowerCase();
+  if (!normalized) {
+    return "input_file";
+  }
+  if (/invoice|請求|bill|receipt/.test(normalized)) {
+    return "invoice_pdf";
+  }
+  if (/pdf/.test(normalized)) {
+    return "document_pdf";
+  }
+  if (/image|写真|画像|png|jpg|jpeg/.test(normalized)) {
+    return "image_file";
+  }
+  return "input_file";
+}
+
+function shouldReplaceClickWithAttachStep(previousStep, attachStep) {
+  if (!previousStep || previousStep.type !== "click") {
+    return false;
+  }
+  const previousSelector = String(previousStep.selector || "").trim();
+  const attachSelector = String(attachStep.selector || "").trim();
+  if (previousSelector && attachSelector && previousSelector === attachSelector) {
+    return true;
+  }
+  const previousHint = String(previousStep.text_hint || previousStep.textHint || "").toLowerCase();
+  const attachHint = String(attachStep.text_hint || attachStep.textHint || "").toLowerCase();
+  const joined = `${previousHint} ${attachHint} ${previousSelector} ${attachSelector}`.toLowerCase();
+  return /upload|file|attach|参照|選択|添付/.test(joined);
 }
 
 function buildScenarioFromRecording(recording) {
@@ -1182,6 +1342,29 @@ function buildScenarioFromRecording(recording) {
         selector,
         text_hint: String(event?.textHint || "").trim()
       });
+      continue;
+    }
+
+    if (type === "file_select") {
+      const selector = String(event?.selector || "").trim();
+      if (!selector) {
+        continue;
+      }
+      const nextAttachStep = {
+        type: "attach_file",
+        selector,
+        text_hint: String(event?.textHint || "").trim(),
+        asset_slot: String(event?.assetSlot || "").trim() || "input_file",
+        accept: String(event?.accept || "").trim(),
+        multiple: Boolean(event?.multiple)
+      };
+      if (steps.length > 0) {
+        const previousStep = steps[steps.length - 1];
+        if (shouldReplaceClickWithAttachStep(previousStep, nextAttachStep)) {
+          steps.pop();
+        }
+      }
+      appendStep(nextAttachStep);
       continue;
     }
 
@@ -1695,6 +1878,331 @@ async function suggestSkillMetadata(payload = {}) {
   }
 }
 
+async function optimizeRpaScenario(payload = {}) {
+  const source = payload && typeof payload === "object" ? payload : {};
+  const goal = String(source.goal || source.scenario_name || "Hybrid RPA Task").trim() || "Hybrid RPA Task";
+  const scenario = normalizeRpaScenario(source.scenario, goal);
+  if (!Array.isArray(scenario.steps) || scenario.steps.length === 0) {
+    return { ok: false, error: "Scenario has no steps." };
+  }
+
+  const configOverride = sanitizeConfig(source.config ?? {});
+  const effectiveConfig = normalizeConfigObject({ ...state.config, ...configOverride });
+  const fallback = applyHeuristicFileStepOptimization(scenario);
+
+  try {
+    const promptText = buildRpaOptimizationPromptText({
+      goal,
+      scenario,
+      responseLanguage: effectiveConfig.responseLanguage
+    });
+    const rawContent = await requestTextFromProvider(
+      promptText,
+      effectiveConfig,
+      "You optimize recorded browser RPA scenarios. Return strict JSON only. Do not include markdown.",
+      {
+        maxTokens: 1000,
+        temperature: 0.1
+      }
+    );
+    const parsed = parseJsonLoose(rawContent);
+    if (!parsed || typeof parsed !== "object") {
+      if (fallback.changed) {
+        return {
+          ok: true,
+          changed: true,
+          scenario: serializeRpaScenario(fallback.scenario),
+          summary: fallback.summary,
+          changes: fallback.changes
+        };
+      }
+      return {
+        ok: false,
+        error: "Optimization response was not valid JSON."
+      };
+    }
+
+    const optimized = applyRpaOptimizationSuggestion(scenario, parsed);
+    if (optimized.changed) {
+      return {
+        ok: true,
+        changed: true,
+        scenario: serializeRpaScenario(optimized.scenario),
+        summary: optimized.summary,
+        changes: optimized.changes
+      };
+    }
+
+    if (fallback.changed) {
+      return {
+        ok: true,
+        changed: true,
+        scenario: serializeRpaScenario(fallback.scenario),
+        summary: fallback.summary,
+        changes: fallback.changes
+      };
+    }
+
+    return {
+      ok: true,
+      changed: false,
+      scenario: serializeRpaScenario(scenario),
+      summary: String(parsed.summary || "").trim() || "No safe optimization was suggested.",
+      changes: []
+    };
+  } catch (error) {
+    if (fallback.changed) {
+      return {
+        ok: true,
+        changed: true,
+        scenario: serializeRpaScenario(fallback.scenario),
+        summary: fallback.summary,
+        changes: fallback.changes
+      };
+    }
+    return {
+      ok: false,
+      error: error?.message || "Failed to optimize scenario."
+    };
+  }
+}
+
+function buildRpaOptimizationPromptText({ goal, scenario, responseLanguage }) {
+  const lines = [
+    "Return strict JSON only.",
+    "Schema:",
+    "{",
+    '  "summary": "string",',
+    '  "replacements": [',
+    "    {",
+    '      "step_index": 1,',
+    '      "reason": "string",',
+    '      "new_step": {',
+    '        "type": "attach_file",',
+    '        "selector": "css selector",',
+    '        "text_hint": "optional",',
+    '        "asset_slot": "invoice_pdf",',
+    '        "accept": "application/pdf",',
+    '        "multiple": false',
+    "      }",
+    "    }",
+    "  ]",
+    "}",
+    "",
+    "Rules:",
+    `1. Write summary and reason fields in ${normalizeResponseLanguage(responseLanguage)}.`,
+    "2. Only replace steps when confident they are file upload points.",
+    "3. Prefer replacing click on file chooser related controls with attach_file.",
+    "4. Keep step_index 1-based and within range.",
+    "5. Do not output markdown or code fences.",
+    "",
+    "Target goal:",
+    truncate(String(goal || ""), 320),
+    "",
+    "Scenario JSON:",
+    JSON.stringify(serializeRpaScenario(scenario), null, 2)
+  ];
+  return lines.join("\n");
+}
+
+function applyRpaOptimizationSuggestion(baseScenario, suggestion) {
+  const steps = Array.isArray(baseScenario.steps)
+    ? baseScenario.steps.map((step) => ({ ...step }))
+    : [];
+  const replacements = Array.isArray(suggestion?.replacements) ? suggestion.replacements : [];
+  const changes = [];
+
+  for (const replacement of replacements) {
+    if (!replacement || typeof replacement !== "object") {
+      continue;
+    }
+    const rawIndex = Number(replacement.step_index ?? replacement.stepIndex);
+    if (!Number.isFinite(rawIndex)) {
+      continue;
+    }
+    const index = Math.round(rawIndex) - 1;
+    if (index < 0 || index >= steps.length) {
+      continue;
+    }
+
+    const rawNewStep =
+      replacement.new_step && typeof replacement.new_step === "object"
+        ? replacement.new_step
+        : null;
+    if (!rawNewStep) {
+      continue;
+    }
+
+    const normalized = normalizeRpaStep(rawNewStep, index);
+    if (!normalized || normalized.type !== "attach_file") {
+      continue;
+    }
+    const previousStep = steps[index];
+    if (!previousStep || previousStep.type === "attach_file") {
+      continue;
+    }
+
+    steps[index] = normalized;
+    changes.push({
+      stepIndex: index + 1,
+      from: previousStep.type,
+      to: normalized.type,
+      reason: truncate(String(replacement.reason || "").trim(), 200)
+    });
+  }
+
+  return {
+    changed: changes.length > 0,
+    summary: truncate(String(suggestion?.summary || "").trim(), 260) || "Applied LLM scenario optimization.",
+    scenario: {
+      ...baseScenario,
+      steps
+    },
+    changes
+  };
+}
+
+function applyHeuristicFileStepOptimization(baseScenario) {
+  const steps = Array.isArray(baseScenario.steps)
+    ? baseScenario.steps.map((step) => ({ ...step }))
+    : [];
+
+  for (let i = 0; i < steps.length; i += 1) {
+    const step = steps[i];
+    if (!step || step.type !== "click") {
+      continue;
+    }
+    const selector = String(step.selector || "");
+    const hint = String(step.textHint || "");
+    const signal = `${selector} ${hint}`.toLowerCase();
+    const looksLikeFileUpload =
+      /input\s*\[\s*type\s*=\s*["']?file/.test(signal) ||
+      /upload|attach|file|choose|browse|参照|添付|アップロード|ファイル/.test(signal);
+    if (!looksLikeFileUpload) {
+      continue;
+    }
+    const replacement = normalizeRpaStep(
+      {
+        type: "attach_file",
+        selector,
+        text_hint: hint,
+        asset_slot: inferAssetSlotFromText(hint || selector),
+        accept: "application/pdf",
+        multiple: false
+      },
+      i
+    );
+    if (!replacement) {
+      continue;
+    }
+    steps[i] = replacement;
+    return {
+      changed: true,
+      summary: "Replaced one file-upload click step with attach_file by heuristic.",
+      scenario: {
+        ...baseScenario,
+        steps
+      },
+      changes: [
+        {
+          stepIndex: i + 1,
+          from: "click",
+          to: "attach_file",
+          reason: "heuristic_file_upload_detection"
+        }
+      ]
+    };
+  }
+
+  return {
+    changed: false,
+    summary: "No file upload step candidate found.",
+    scenario: baseScenario,
+    changes: []
+  };
+}
+
+function serializeRpaScenario(scenario) {
+  const source = scenario && typeof scenario === "object" ? scenario : {};
+  const steps = Array.isArray(source.steps)
+    ? source.steps.map((step) => serializeRpaStep(step)).filter((step) => Boolean(step))
+    : [];
+  return {
+    name: String(source.name || "Hybrid RPA Scenario").trim() || "Hybrid RPA Scenario",
+    start_url: String(source.startUrl || source.start_url || "").trim(),
+    steps,
+    ai_fallback: source.aiFallback !== false,
+    ai_fallback_max_steps: clampNumber(
+      source.aiFallbackMaxSteps ?? source.ai_fallback_max_steps,
+      1,
+      10,
+      RPA_FALLBACK_DEFAULT_STEPS
+    ),
+    step_retry_limit: clampNumber(
+      source.stepRetryLimit ?? source.step_retry_limit,
+      0,
+      3,
+      RPA_STEP_RETRY_DEFAULT
+    ),
+    stop_on_failure: source.stopOnFailure !== false,
+    notes: String(source.notes || "").trim()
+  };
+}
+
+function serializeRpaStep(step) {
+  if (!step || typeof step !== "object") {
+    return null;
+  }
+  const type = String(step.type || "").trim().toLowerCase();
+  if (!RPA_SUPPORTED_STEP_TYPES.has(type)) {
+    return null;
+  }
+  const serialized = { type };
+  if (step.selector) {
+    serialized.selector = String(step.selector).trim();
+  }
+  if (step.textHint) {
+    serialized.text_hint = String(step.textHint).trim();
+  }
+  if (type === "attach_file") {
+    serialized.asset_slot = String(step.assetSlot || "input_file").trim() || "input_file";
+    if (step.accept) {
+      serialized.accept = String(step.accept).trim();
+    }
+    if (step.multiple) {
+      serialized.multiple = true;
+    }
+  }
+  if (type === "type" && typeof step.text === "string") {
+    serialized.text = step.text;
+  }
+  if (type === "navigate" || type === "new_tab") {
+    serialized.url = String(step.url || "").trim();
+  }
+  if (type === "scroll") {
+    serialized.dy = Number(step.dy) || 0;
+    if (Number(step.dx)) {
+      serialized.dx = Number(step.dx);
+    }
+  }
+  if (type === "wait") {
+    serialized.ms = Number(step.waitMs) || 1000;
+  }
+  if (type === "keypress") {
+    serialized.key = String(step.key || "Enter");
+  }
+  if (type === "assert_text") {
+    serialized.assert_text = String(step.assertText || step.text || "").trim();
+  }
+  if (type === "assert_url") {
+    serialized.assert_url_contains = String(step.assertUrlContains || step.url || "").trim();
+  }
+  if (type === "ai") {
+    serialized.goal = String(step.aiGoal || "").trim();
+  }
+  return serialized;
+}
+
 function buildSkillMetadataPromptText(draft, language, retryHint = "") {
   const responseLanguage = normalizeResponseLanguage(language || DEFAULT_CONFIG.responseLanguage);
   const promptData = {
@@ -1763,6 +2271,167 @@ function normalizeSkillMetadataSuggestion(raw, fallback) {
     whenToUse,
     description
   };
+}
+
+async function requestTextFromProvider(promptText, config, systemInstruction, options = {}) {
+  const provider = normalizeProvider(config?.provider);
+  if (provider === PROVIDERS.GEMINI_DIRECT) {
+    return requestTextViaGemini(promptText, config, systemInstruction, options);
+  }
+  if (provider === PROVIDERS.BEDROCK_DIRECT) {
+    return requestTextViaBedrock(promptText, config, systemInstruction, options);
+  }
+  return requestTextViaLiteLLM(promptText, config, systemInstruction, options);
+}
+
+async function requestTextViaLiteLLM(promptText, config, systemInstruction, options = {}) {
+  const endpoint = normalizeApiBase(config.apiBaseUrl);
+  const model = getModelForProvider(PROVIDERS.LITELLM, config.providerModels);
+  const requestBody = {
+    model,
+    temperature: clampNumber(
+      options.temperature ?? config.temperature,
+      0,
+      1.2,
+      0.2
+    ),
+    max_tokens: clampNumber(
+      options.maxTokens ?? Math.min(config.maxTokens, 900),
+      160,
+      1400,
+      520
+    ),
+    messages: [
+      { role: "system", content: String(systemInstruction || "").trim() || "Return strict JSON only." },
+      { role: "user", content: promptText }
+    ]
+  };
+
+  const headers = { "Content-Type": "application/json" };
+  if (config.apiKeyLiteLLM) {
+    headers.Authorization = `Bearer ${config.apiKeyLiteLLM}`;
+  }
+
+  const response = await fetch(`${endpoint}/v1/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(requestBody)
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`LLM request failed (${response.status}): ${errorText.slice(0, 300)}`);
+  }
+  const payload = await response.json();
+  return extractAssistantContent(payload);
+}
+
+async function requestTextViaGemini(promptText, config, systemInstruction, options = {}) {
+  if (!config.apiKeyGemini) {
+    throw new Error("Gemini direct mode requires API key.");
+  }
+
+  const model = normalizeGeminiModel(
+    getModelForProvider(PROVIDERS.GEMINI_DIRECT, config.providerModels)
+  );
+  if (!model) {
+    throw new Error("Gemini model is empty.");
+  }
+
+  const endpoint =
+    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`;
+  const requestBody = {
+    systemInstruction: {
+      parts: [{ text: String(systemInstruction || "").trim() || "Return strict JSON only." }]
+    },
+    contents: [{ role: "user", parts: [{ text: promptText }] }],
+    generationConfig: {
+      temperature: clampNumber(options.temperature ?? config.temperature, 0, 1.2, 0.2),
+      maxOutputTokens: clampNumber(
+        options.maxTokens ?? Math.min(config.maxTokens, 900),
+        160,
+        1400,
+        520
+      )
+    }
+  };
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": config.apiKeyGemini
+    },
+    body: JSON.stringify(requestBody)
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Gemini API request failed (${response.status}): ${errorText.slice(0, 300)}`);
+  }
+
+  const payload = await response.json();
+  return extractGeminiContent(payload);
+}
+
+async function requestTextViaBedrock(promptText, config, systemInstruction, options = {}) {
+  const region = normalizeBedrockRegion(config.bedrockRegion);
+  const model = normalizeBedrockModel(
+    getModelForProvider(PROVIDERS.BEDROCK_DIRECT, config.providerModels)
+  );
+  const accessKeyId = String(config.bedrockAccessKeyId || "").trim();
+  const secretAccessKey = String(config.bedrockSecretAccessKey || "").trim();
+  const sessionToken = String(config.bedrockSessionToken || "").trim();
+
+  if (!region) {
+    throw new Error("Bedrock region is empty.");
+  }
+  if (!model) {
+    throw new Error("Bedrock model is empty.");
+  }
+  if (!accessKeyId || !secretAccessKey) {
+    throw new Error("Bedrock direct mode requires AWS access key ID and secret access key.");
+  }
+
+  const host = `bedrock-runtime.${region}.amazonaws.com`;
+  const path = `/model/${encodeURIComponent(model)}/converse`;
+  const endpoint = `https://${host}${path}`;
+  const requestBody = {
+    system: [{ text: String(systemInstruction || "").trim() || "Return strict JSON only." }],
+    messages: [{ role: "user", content: [{ text: promptText }] }],
+    inferenceConfig: {
+      temperature: clampNumber(options.temperature ?? config.temperature, 0, 1.2, 0.2),
+      maxTokens: clampNumber(
+        options.maxTokens ?? Math.min(config.maxTokens, 900),
+        160,
+        1400,
+        520
+      )
+    }
+  };
+  const bodyText = JSON.stringify(requestBody);
+  const signedHeaders = await buildBedrockSigV4Headers({
+    region,
+    host,
+    path,
+    bodyText,
+    accessKeyId,
+    secretAccessKey,
+    sessionToken
+  });
+
+  const response = await fetch(endpoint, {
+    method: "POST",
+    headers: signedHeaders,
+    body: bodyText
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Bedrock API request failed (${response.status}): ${errorText.slice(0, 300)}`);
+  }
+
+  const payload = await response.json();
+  return extractBedrockContent(payload);
 }
 
 async function requestSkillMetadataFromProvider(promptText, config) {

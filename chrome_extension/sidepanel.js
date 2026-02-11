@@ -32,6 +32,7 @@ const PTT_MIME_CANDIDATES = [
 ];
 
 const SELECTED_MODEL_STORAGE_KEY = "selectedModel";
+const VOICE_SHORTCUT_KEY_STORAGE_KEY = "voiceShortcutKey";
 
 const DEFAULT_SETTINGS = Object.freeze({
     appBaseUrl: "http://localhost:3000",
@@ -76,11 +77,14 @@ let pendingQuestions = null;
 let questionAnswers = {};
 let captureLoading = false;
 let pttRecording = false;
+let pttTranscribing = false;
 let pttRecorder = null;
 let pttStream = null;
 let pttChunks = [];
 let lastAgentInputAsset = null;
 let localQuestionRequest = null;
+let voiceShortcutKey = localStorage.getItem(VOICE_SHORTCUT_KEY_STORAGE_KEY) || "";
+let shortcutRecording = false;
 
 const messagesDiv = document.getElementById("messages");
 const userInput = document.getElementById("user-input");
@@ -93,7 +97,10 @@ const newChatBtn = document.getElementById("new-chat-btn");
 const historyBtn = document.getElementById("history-btn");
 const closeHistoryBtn = document.getElementById("close-history");
 const modelSelectorRow = document.getElementById("model-selector-row");
-const modelSelector = document.getElementById("model-selector");
+const modelSelectorDropdown = document.getElementById("model-selector-dropdown");
+const modelSelectorTrigger = document.getElementById("model-selector-trigger");
+const modelSelectorValue = document.getElementById("model-selector-value");
+const modelSelectorMenu = document.getElementById("model-selector-menu");
 const settingsBtn = document.getElementById("settings-btn");
 const closeSettingsBtn = document.getElementById("close-settings");
 const thinkingIndicator = document.getElementById("thinking");
@@ -151,6 +158,7 @@ const saveSettingsBtn = document.getElementById("save-settings-btn");
 const testConnectionBtn = document.getElementById("test-connection-btn");
 const openLoginBtn = document.getElementById("open-login-btn");
 
+const voiceShortcutKeyInput = document.getElementById("voice-shortcut-key");
 const browserGoalInput = document.getElementById("browser-goal-input");
 const browserRunBtn = document.getElementById("browser-run-btn");
 const browserStopBtn = document.getElementById("browser-stop-btn");
@@ -213,19 +221,10 @@ function bindEvents() {
     if (voicePttBtn) {
         voicePttBtn.addEventListener("pointerdown", (event) => {
             event.preventDefault();
-            void startPttRecording();
-        });
-        voicePttBtn.addEventListener("pointerup", (event) => {
-            event.preventDefault();
-            stopPttRecording();
-        });
-        voicePttBtn.addEventListener("pointercancel", (event) => {
-            event.preventDefault();
-            stopPttRecording();
-        });
-        voicePttBtn.addEventListener("pointerleave", (event) => {
-            if (pttRecording && event.buttons === 0) {
+            if (pttRecording) {
                 stopPttRecording();
+            } else {
+                void startPttRecording();
             }
         });
     }
@@ -275,14 +274,24 @@ function bindEvents() {
         updateBrowserProviderUi();
     });
 
-    modelSelector.addEventListener("change", () => {
-        const value = modelSelector.value;
-        if (availableModelsCache && value === availableModelsCache.default_model_id) {
-            selectedModel = undefined;
-            localStorage.removeItem(SELECTED_MODEL_STORAGE_KEY);
+    modelSelectorTrigger.addEventListener("click", () => {
+        const isOpen = !modelSelectorMenu.classList.contains("hidden");
+        if (isOpen) {
+            closeModelDropdown();
         } else {
-            selectedModel = value;
-            localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, value);
+            openModelDropdown();
+        }
+    });
+
+    document.addEventListener("mousedown", (e) => {
+        if (!modelSelectorDropdown.contains(e.target)) {
+            closeModelDropdown();
+        }
+    });
+
+    document.addEventListener("keydown", (e) => {
+        if (e.key === "Escape") {
+            closeModelDropdown();
         }
     });
 
@@ -310,8 +319,7 @@ function bindEvents() {
     });
 
     userInput.addEventListener("input", () => {
-        userInput.style.height = "auto";
-        userInput.style.height = `${userInput.scrollHeight}px`;
+        resizeUserInput();
         validateInput();
     });
 
@@ -373,10 +381,54 @@ function bindEvents() {
         handleQuestionsCancel();
     });
 
-    window.addEventListener("pointerup", () => {
-        if (pttRecording) {
-            stopPttRecording();
+    if (voiceShortcutKeyInput) {
+        voiceShortcutKeyInput.addEventListener("keydown", (event) => {
+            event.preventDefault();
+            const key = event.key;
+            if (key === "Escape") {
+                voiceShortcutKey = "";
+                voiceShortcutKeyInput.value = "";
+                localStorage.removeItem(VOICE_SHORTCUT_KEY_STORAGE_KEY);
+                return;
+            }
+            if (key === "Backspace" || key === "Delete") {
+                voiceShortcutKey = "";
+                voiceShortcutKeyInput.value = "";
+                localStorage.removeItem(VOICE_SHORTCUT_KEY_STORAGE_KEY);
+                return;
+            }
+            voiceShortcutKey = key;
+            voiceShortcutKeyInput.value = formatKeyName(key);
+            localStorage.setItem(VOICE_SHORTCUT_KEY_STORAGE_KEY, key);
+        });
+    }
+
+    window.addEventListener("keydown", (event) => {
+        if (!voiceShortcutKey || event.key !== voiceShortcutKey) {
+            return;
         }
+        if (event.repeat) {
+            return;
+        }
+        const tag = (event.target?.tagName || "").toLowerCase();
+        if (tag === "input" || tag === "textarea" || tag === "select") {
+            return;
+        }
+        event.preventDefault();
+        shortcutRecording = true;
+        void startPttRecording();
+    });
+
+    window.addEventListener("keyup", (event) => {
+        if (!voiceShortcutKey || event.key !== voiceShortcutKey) {
+            return;
+        }
+        if (!shortcutRecording) {
+            return;
+        }
+        event.preventDefault();
+        shortcutRecording = false;
+        stopPttRecording();
     });
 }
 
@@ -434,6 +486,9 @@ function applySettingsToUI() {
     browserBedrockAccessKeyInput.value = settings.browserBedrockAccessKeyId;
     browserBedrockSecretKeyInput.value = settings.browserBedrockSecretAccessKey;
     browserBedrockSessionTokenInput.value = settings.browserBedrockSessionToken;
+    if (voiceShortcutKeyInput) {
+        voiceShortcutKeyInput.value = voiceShortcutKey ? formatKeyName(voiceShortcutKey) : "";
+    }
     syncAuthModeUi();
     updateBrowserProviderUi();
 }
@@ -557,6 +612,57 @@ async function checkConnection(showHint = true) {
     }
 }
 
+function openModelDropdown() {
+    modelSelectorMenu.classList.remove("hidden");
+    modelSelectorTrigger.classList.add("open");
+}
+
+function closeModelDropdown() {
+    modelSelectorMenu.classList.add("hidden");
+    modelSelectorTrigger.classList.remove("open");
+}
+
+function selectModel(modelId) {
+    if (availableModelsCache && modelId === availableModelsCache.default_model_id) {
+        selectedModel = undefined;
+        localStorage.removeItem(SELECTED_MODEL_STORAGE_KEY);
+    } else {
+        selectedModel = modelId;
+        localStorage.setItem(SELECTED_MODEL_STORAGE_KEY, modelId);
+    }
+    renderModelDropdown();
+    closeModelDropdown();
+}
+
+function renderModelDropdown() {
+    if (!availableModelsCache) return;
+    const models = availableModelsCache.models || [];
+    const effectiveModel = selectedModel || availableModelsCache.default_model_id;
+    const current = models.find((m) => m.id === effectiveModel);
+    modelSelectorValue.textContent = current ? current.name : effectiveModel;
+
+    modelSelectorMenu.innerHTML = "";
+    for (const m of models) {
+        const li = document.createElement("li");
+        const btn = document.createElement("button");
+        btn.type = "button";
+        btn.className = "model-selector-option" + (m.id === effectiveModel ? " active" : "");
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "model-option-name";
+        nameSpan.textContent = m.name;
+        btn.appendChild(nameSpan);
+        if (m.id === availableModelsCache.default_model_id) {
+            const badge = document.createElement("span");
+            badge.className = "model-option-badge";
+            badge.textContent = "default";
+            btn.appendChild(badge);
+        }
+        btn.addEventListener("click", () => selectModel(m.id));
+        li.appendChild(btn);
+        modelSelectorMenu.appendChild(li);
+    }
+}
+
 async function fetchAvailableModels() {
     try {
         const response = await apiFetch("/models", { method: "GET" });
@@ -570,18 +676,7 @@ async function fetchAvailableModels() {
             return;
         }
 
-        modelSelector.innerHTML = "";
-        for (const m of models) {
-            const option = document.createElement("option");
-            option.value = m.id;
-            option.textContent = m.id === availableModelsCache.default_model_id
-                ? `${m.name} (default)`
-                : m.name;
-            modelSelector.appendChild(option);
-        }
-
-        const effectiveModel = selectedModel || availableModelsCache.default_model_id;
-        modelSelector.value = effectiveModel;
+        renderModelDropdown();
         modelSelectorRow.classList.remove("hidden");
     } catch (error) {
         console.warn("Failed to fetch available models:", error);
@@ -730,11 +825,117 @@ function readFileAsDataUrl(file) {
     });
 }
 
+function resizeUserInput() {
+    userInput.style.height = "auto";
+    const appEl = document.getElementById("app");
+    const maxH = appEl ? Math.max(appEl.clientHeight / 3, 120) : 120;
+    userInput.style.height = `${Math.min(userInput.scrollHeight, maxH)}px`;
+}
+
+function resolveSpeechLanguage(languageHint) {
+    const raw = String(languageHint || "").trim();
+    if (!raw) {
+        return "ja-JP";
+    }
+    const normalized = raw.replace("_", "-");
+    const lower = normalized.toLowerCase();
+    const languageMap = {
+        ja: "ja-JP",
+        en: "en-US",
+        ko: "ko-KR",
+        zh: "zh-CN",
+        fr: "fr-FR",
+        de: "de-DE",
+        es: "es-ES",
+        it: "it-IT",
+        pt: "pt-BR"
+    };
+    return languageMap[lower] || normalized;
+}
+
+function updatePttButtonState() {
+    if (!voicePttBtn) {
+        return;
+    }
+    voicePttBtn.classList.toggle("recording", pttRecording);
+    voicePttBtn.classList.toggle("transcribing", pttTranscribing);
+    if (pttRecording) {
+        voicePttBtn.title = "Recording... click to stop";
+        return;
+    }
+    if (pttTranscribing) {
+        voicePttBtn.title = "Transcribing voice...";
+        return;
+    }
+    voicePttBtn.title = "Click to start voice input";
+}
+
+function appendTranscriptionToInput(transcription) {
+    const normalized = String(transcription || "").trim();
+    if (!normalized) {
+        return false;
+    }
+    const prev = userInput.value;
+    if (!prev.trim()) {
+        userInput.value = normalized;
+    } else {
+        const separator = prev.endsWith("\n") || prev.endsWith(" ") ? "" : "\n";
+        userInput.value = `${prev}${separator}${normalized}`;
+    }
+    resizeUserInput();
+    validateInput();
+    userInput.focus();
+    const end = userInput.value.length;
+    userInput.setSelectionRange(end, end);
+    return true;
+}
+
+async function readResponseErrorMessage(response) {
+    try {
+        const payload = await response.json();
+        const detail = payload?.detail;
+        if (typeof detail === "string" && detail.trim()) {
+            return detail.trim();
+        }
+    } catch {
+        // no-op
+    }
+    return `HTTP ${response.status}`;
+}
+
+async function transcribeVoiceInput(audioBase64, mimeType) {
+    const response = await apiFetch("/chat/transcribe", {
+        method: "POST",
+        body: {
+            audio_base64: audioBase64,
+            audio_mime_type: mimeType || "audio/webm",
+            audio_language: resolveSpeechLanguage(navigator?.language)
+        }
+    });
+    if (!response.ok) {
+        throw new Error(await readResponseErrorMessage(response));
+    }
+    const payload = await response.json();
+    return String(payload?.transcription || "").trim();
+}
+
 function supportsPttRecording() {
     return Boolean(
         navigator?.mediaDevices?.getUserMedia
         && typeof MediaRecorder !== "undefined"
     );
+}
+
+function formatKeyName(key) {
+    const names = {
+        " ": "Space",
+        "Control": "Ctrl",
+        "Meta": "Meta",
+        "Alt": "Alt",
+        "Shift": "Shift",
+        "CapsLock": "CapsLock",
+    };
+    return names[key] || (key.length === 1 ? key.toUpperCase() : key);
 }
 
 function releasePttStream() {
@@ -748,16 +949,18 @@ function releasePttStream() {
 
 function setPttRecordingState(recording) {
     pttRecording = Boolean(recording);
-    if (!voicePttBtn) {
-        return;
-    }
-    voicePttBtn.classList.toggle("recording", pttRecording);
-    voicePttBtn.title = pttRecording ? "Release to send voice input" : "Hold to Talk";
+    updatePttButtonState();
+    validateInput();
+}
+
+function setPttTranscribingState(transcribing) {
+    pttTranscribing = Boolean(transcribing);
+    updatePttButtonState();
     validateInput();
 }
 
 async function startPttRecording() {
-    if (pttRecording || isThinking || hasPendingInteraction()) {
+    if (pttRecording || pttTranscribing || isThinking || hasPendingInteraction()) {
         return;
     }
     if (!supportsPttRecording()) {
@@ -789,6 +992,7 @@ async function startPttRecording() {
             pttRecorder = null;
             pttChunks = [];
             setPttRecordingState(false);
+            setPttTranscribingState(false);
         };
 
         pttRecorder.start();
@@ -800,6 +1004,7 @@ async function startPttRecording() {
         pttRecorder = null;
         pttChunks = [];
         setPttRecordingState(false);
+        setPttTranscribingState(false);
     }
 }
 
@@ -815,6 +1020,7 @@ function stopPttRecording() {
         releasePttStream();
         pttRecorder = null;
         pttChunks = [];
+        setPttTranscribingState(false);
     }
 }
 
@@ -835,17 +1041,19 @@ async function finalizePttRecording(fallbackMimeType = "audio/webm") {
             return;
         }
 
+        setPttTranscribingState(true);
         const dataUrl = await readFileAsDataUrl(blob);
-        addActivity("voice", "Voice input captured");
-        await sendMessage({
-            audioInput: {
-                dataUrl,
-                mimeType
-            }
-        });
+        const transcription = await transcribeVoiceInput(dataUrl, mimeType);
+        const appended = appendTranscriptionToInput(transcription);
+        if (appended) {
+            addActivity("voice", "Voice transcription inserted into composer.");
+        } else {
+            addActivity("voice", "Voice transcription was empty.");
+        }
     } catch (error) {
-        addSystemMessage(`Voice processing failed: ${error.message}`);
+        addSystemMessage(`Voice transcription failed: ${error.message}`);
     } finally {
+        setPttTranscribingState(false);
         setPttRecordingState(false);
     }
 }
@@ -2343,20 +2551,26 @@ function validateInput() {
     const interactionLocked = hasPendingInteraction();
     const hasText = userInput.value.trim().length > 0;
     const hasAttachment = Boolean(currentAttachment);
-    const composerLocked = isThinking || interactionLocked || pttRecording;
-    const fileActionDisabled = composerLocked || captureLoading || pttRecording;
+    const composerLocked = isThinking || interactionLocked || pttRecording || pttTranscribing;
+    const fileActionDisabled = composerLocked || captureLoading;
 
     sendBtn.disabled = composerLocked || !(hasText || hasAttachment);
     userInput.disabled = composerLocked;
-    userInput.placeholder = interactionLocked
-        ? "Resolve approval/questions first..."
-        : defaultUserInputPlaceholder;
+    if (interactionLocked) {
+        userInput.placeholder = "Resolve approval/questions first...";
+    } else if (pttRecording) {
+        userInput.placeholder = "Listening...";
+    } else if (pttTranscribing) {
+        userInput.placeholder = "Thinking... transcribing speech to text...";
+    } else {
+        userInput.placeholder = defaultUserInputPlaceholder;
+    }
     uploadFileBtn.disabled = fileActionDisabled;
     captureBtn.disabled = fileActionDisabled;
     uploadFileBtn.style.opacity = fileActionDisabled ? "0.5" : "1";
     captureBtn.style.opacity = fileActionDisabled ? "0.5" : "1";
     if (voicePttBtn) {
-        const voiceDisabled = fileActionDisabled || !supportsPttRecording();
+        const voiceDisabled = isThinking || interactionLocked || captureLoading || pttTranscribing || !supportsPttRecording();
         voicePttBtn.disabled = voiceDisabled;
         voicePttBtn.style.opacity = voiceDisabled ? "0.5" : "1";
     }
@@ -2408,6 +2622,7 @@ function clearView() {
     releasePttStream();
     pttRecorder = null;
     pttChunks = [];
+    setPttTranscribingState(false);
     setPttRecordingState(false);
 
     const messages = Array.from(messagesDiv.children).filter((child) => child.id !== "thinking");
@@ -4221,4 +4436,3 @@ function sendRuntimeMessage(message) {
         });
     });
 }
-

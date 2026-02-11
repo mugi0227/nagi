@@ -21,6 +21,8 @@ This extension now supports:
 - Human demo to RPA:
   - record your manual browser operation from side panel
   - auto-generate structured RPA scenario steps
+  - post-record LLM optimization prompt (interactive apply/reject)
+  - auto-convert file upload steps to `attach_file` when applicable
   - save the scenario as a normal WORK/RULE skill
 - Activity log for tool and browser-agent events
 
@@ -96,9 +98,17 @@ that contains `RPA Scenario (JSON)`. If found, it auto-switches to hybrid RPA ex
 3. Perform the workflow manually.
 4. While recording, the page border glows in red and shows `RPA Recording in Progress`.
 5. Click `Stop & Save Skill`.
-6. The extension generates a structured scenario and saves it to `/api/memories` as a standard skill.
+6. The extension generates a structured scenario.
+7. If optimization is suggested, choose in the existing Questions panel whether to apply it.
+8. The final scenario is saved to `/api/memories` as a standard skill.
 
 Saved skill content includes an `RPA Scenario (JSON)` section, so the scenario can be reused later.
+
+### File Upload Automation (`attach_file`)
+
+- Recorded `input[type=file]` changes are captured as `attach_file` steps.
+- During replay, the extension can inject an attached file directly into file inputs without opening OS file chooser dialogs.
+- To supply the file payload, attach the PDF/image in chat before delegation so the runtime can bind it to scenario `asset_slot`s.
 
 ## Save Browser Run As Skill (With Screenshots)
 
