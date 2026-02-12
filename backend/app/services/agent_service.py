@@ -18,6 +18,7 @@ from google.genai.types import Content, Part
 from app.agents.secretary_agent import create_secretary_agent
 from app.core.config import get_settings
 from app.core.logger import logger
+from app.utils.datetime_utils import ensure_utc
 from app.interfaces.agent_task_repository import IAgentTaskRepository
 from app.interfaces.capture_repository import ICaptureRepository
 from app.interfaces.chat_session_repository import IChatSessionRepository
@@ -371,7 +372,7 @@ class AgentService:
                     entry = {
                         "session_id": session.session_id,
                         "title": session.title or "New Chat",
-                        "updated_at": session.updated_at.isoformat() if session.updated_at else None,
+                        "updated_at": ensure_utc(session.updated_at).isoformat() if session.updated_at else None,
                     }
                     result.append(entry)
                     self._touch_session_index(user_id, session.session_id, title=session.title)
@@ -451,7 +452,7 @@ class AgentService:
                         {
                             "role": msg.role,
                             "content": msg.content,
-                            "created_at": msg.created_at.isoformat() if msg.created_at else None,
+                            "created_at": ensure_utc(msg.created_at).isoformat() if msg.created_at else None,
                         }
                     )
                 return result
@@ -478,7 +479,7 @@ class AgentService:
             result.append({
                 "role": msg.role,
                 "content": content,
-                "created_at": msg.created_at.isoformat() if hasattr(msg, "created_at") else None
+                "created_at": ensure_utc(msg.created_at).isoformat() if hasattr(msg, "created_at") and msg.created_at else None
             })
         return result
 
