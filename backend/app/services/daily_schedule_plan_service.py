@@ -598,7 +598,9 @@ class DailySchedulePlanService:
         return [
             task
             for task in tasks
-            if is_my_task(task) or (task.pinned_date and task.pinned_date.date() >= today)
+            if task.is_fixed_time
+            or is_my_task(task)
+            or (task.pinned_date and task.pinned_date.date() >= today)
         ]
 
     async def _load_settings(self, user_id: str) -> ScheduleSettings:

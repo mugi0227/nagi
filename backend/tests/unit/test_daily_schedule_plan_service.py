@@ -187,7 +187,9 @@ def test_build_meeting_intervals_all_day_respects_target_date() -> None:
     assert other_day == []
 
 
-def test_filter_tasks_for_plan_excludes_unassigned_team_meeting() -> None:
+def test_filter_tasks_for_plan_always_includes_fixed_time_meetings() -> None:
+    """Fixed-time meetings must always be included so that _build_time_blocks
+    can correctly classify them as meeting blocks instead of auto blocks."""
     team_project_id = uuid4()
     private_project_id = uuid4()
     user_id = "member-user"
@@ -233,4 +235,6 @@ def test_filter_tasks_for_plan_excludes_unassigned_team_meeting() -> None:
 
     assert assigned_team_task.id in filtered_ids
     assert private_meeting.id in filtered_ids
-    assert unassigned_team_meeting.id not in filtered_ids
+    # Fixed-time meetings are always included regardless of assignment
+    # to prevent them from being auto-scheduled like regular tasks
+    assert unassigned_team_meeting.id in filtered_ids
