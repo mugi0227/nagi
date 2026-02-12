@@ -1051,7 +1051,7 @@ class SchedulerService:
         tasks: list[Task],
         project_priorities: dict[UUID, int] | None = None,
         today: Optional[date] = None,
-        user_timezone: str = "UTC",
+        user_timezone: str = "Asia/Tokyo",
     ) -> TodayTasksResponse:
         """Extract today's tasks and top3 from schedule."""
         today_date = today or datetime.now(ZoneInfo(user_timezone)).date()
