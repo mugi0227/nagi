@@ -580,6 +580,45 @@
     min-width: 0;
 }
 
+/* Check-in Panel Toggle Button */
+.checkin-panel-toggle {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    width: 24px;
+    flex-shrink: 0;
+    padding: 8px 0;
+    background-color: #f1f5f9;
+    border: none;
+    border-left: 1px solid #e2e8f0;
+    border-right: 1px solid #e2e8f0;
+    color: #64748b;
+    cursor: pointer;
+    transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.checkin-panel-toggle:hover {
+    background-color: #e2e8f0;
+    color: #1e293b;
+}
+
+.checkin-panel-toggle-label {
+    writing-mode: vertical-rl;
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+}
+
+/* Calendar view toggle: standalone card style */
+.meetings-tab-calendar-with-checkin > .checkin-panel-toggle {
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    background-color: #f8fafc;
+}
+
 /* Check-in Panel Styles */
 .meetings-checkin-panel {
     width: 380px;

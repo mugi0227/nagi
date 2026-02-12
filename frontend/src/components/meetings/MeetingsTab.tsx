@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { FaCalendarAlt, FaList, FaPlus, FaArrowLeft, FaCog, FaTrash, FaRobot, FaEdit } from 'react-icons/fa';
+import { FaCalendarAlt, FaList, FaPlus, FaArrowLeft, FaCog, FaTrash, FaRobot, FaEdit, FaChevronRight, FaChevronLeft } from 'react-icons/fa';
 import { api as client } from '../../api/client';
 import { projectsApi } from '../../api/projects';
 import { tasksApi } from '../../api/tasks';
@@ -58,6 +58,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
     const [expandedCheckinId, setExpandedCheckinId] = useState<string | null>(null);
     const [showRecurringMeetingsModal, setShowRecurringMeetingsModal] = useState(false);
     const [showCreateMeetingModal, setShowCreateMeetingModal] = useState(false);
+    const [isCheckinPanelCollapsed, setIsCheckinPanelCollapsed] = useState(false);
 
     const getMemberName = (memberUserId: string) => {
         const member = members.find(m => m.member_user_id === memberUserId);
@@ -279,6 +280,15 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
                         onUpdateTask={handleUpdateTask}
                         onDeleteTask={handleDeleteTask}
                     />
+                    <button
+                        className="checkin-panel-toggle"
+                        onClick={() => setIsCheckinPanelCollapsed(!isCheckinPanelCollapsed)}
+                        title={isCheckinPanelCollapsed ? 'Check-inパネルを開く' : 'Check-inパネルを閉じる'}
+                    >
+                        {isCheckinPanelCollapsed ? <FaChevronLeft /> : <FaChevronRight />}
+                        {isCheckinPanelCollapsed && <span className="checkin-panel-toggle-label">Check-in</span>}
+                    </button>
+                    {!isCheckinPanelCollapsed && (
                     <div className="meetings-checkin-panel">
                         {showCheckinForm ? (
                             <>
@@ -399,6 +409,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
                             </div>
                         )}
                     </div>
+                    )}
                 </div>
             ) : (
                 <div className="meetings-tab-calendar-with-checkin">
@@ -420,6 +431,15 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
                             </div>
                         )}
                     </div>
+                    <button
+                        className="checkin-panel-toggle"
+                        onClick={() => setIsCheckinPanelCollapsed(!isCheckinPanelCollapsed)}
+                        title={isCheckinPanelCollapsed ? 'Check-inパネルを開く' : 'Check-inパネルを閉じる'}
+                    >
+                        {isCheckinPanelCollapsed ? <FaChevronLeft /> : <FaChevronRight />}
+                        {isCheckinPanelCollapsed && <span className="checkin-panel-toggle-label">Check-in</span>}
+                    </button>
+                    {!isCheckinPanelCollapsed && (
                     <div className="meetings-checkin-panel">
                         {showCheckinForm ? (
                             <>
@@ -540,6 +560,7 @@ export function MeetingsTab({ projectId, members, tasks, currentUserId, canDelet
                             </div>
                         )}
                     </div>
+                    )}
                 </div>
             )}
 
