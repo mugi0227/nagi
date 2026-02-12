@@ -149,10 +149,13 @@ function AchievementCard({
   onRegenerate,
   onUpdate,
   onSummarize,
+  onShare,
   isDeleting,
   isRegenerating,
   isUpdating,
   isSummarizing,
+  isSharing,
+  shareSuccess,
 }: {
   achievement: Achievement;
   projectMap: Map<string, string>;
