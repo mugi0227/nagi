@@ -84,6 +84,10 @@ from app.tools import (
     update_recurring_task_tool,
     update_task_tool,
 )
+from app.tools import (
+    create_checkin_tool,
+    list_checkins_tool,
+)
 
 
 def get_current_datetime_section() -> str:
@@ -466,6 +470,21 @@ async def create_secretary_agent(
             user_repo=user_repo,
         ),
         list_recurring_meetings_tool(recurring_meeting_repo, project_repo, project_member_repo, user_id),
+        create_checkin_tool(
+            checkin_repo,
+            project_repo,
+            project_member_repo,
+            user_id,
+            proposal_repo=proposal_repo,
+            session_id=session_id,
+            auto_approve=auto_approve,
+        ),
+        list_checkins_tool(
+            checkin_repo,
+            project_repo,
+            project_member_repo,
+            user_id,
+        ),
         create_recurring_task_tool(recurring_task_repo, task_repo, user_id),
         list_recurring_tasks_tool(recurring_task_repo, user_id),
         update_recurring_task_tool(recurring_task_repo, user_id),

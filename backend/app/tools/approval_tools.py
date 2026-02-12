@@ -75,6 +75,8 @@ def _default_tool_action_description(tool_name: str, args: dict[str, Any]) -> st
             return "Update a milestone."
         case "delete_milestone":
             return "Delete a milestone."
+        case "create_checkin":
+            return "Create a check-in."
         case _:
             return f"Run tool action: {tool_name}."
 

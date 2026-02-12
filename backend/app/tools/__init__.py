@@ -5,6 +5,10 @@ from app.tools.browser_automation_tools import (
     run_browser_task_tool,
     run_hybrid_rpa_tool,
 )
+from app.tools.checkin_tools import (
+    create_checkin_tool,
+    list_checkins_tool,
+)
 from app.tools.meeting_agenda_tools import (
     add_agenda_item_tool,
     delete_agenda_item_tool,
@@ -132,4 +136,6 @@ __all__ = [
     "run_browser_task_tool",
     "run_hybrid_rpa_tool",
     "register_browser_skill_tool",
+    "create_checkin_tool",
+    "list_checkins_tool",
 ]
