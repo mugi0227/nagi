@@ -92,8 +92,13 @@ ACHIEVEMENT_RESPONSE_SCHEMA = {
             "items": {"type": "string"},
             "description": "次への提案・アドバイス（2-3項目）",
         },
+        "weekly_activities": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "今週やったことの簡潔なリスト（5-8項目、事実ベース）",
+        },
     },
-    "required": ["summary", "growth_points", "skill_analysis", "next_suggestions"],
+    "required": ["summary", "growth_points", "skill_analysis", "next_suggestions", "weekly_activities"],
 }
 
 
@@ -200,18 +205,24 @@ def _generate_achievement_prompt(
 
 1. **サマリー（summary）**: 期間中の達成内容を2-3文で要約してください。具体的な成果に言及してください。
 
-2. **成長ポイント（growth_points）**: 経験を通じて得られた成長を3-5項目で挙げてください。
+2. **今週やったこと（weekly_activities）**: 完了タスクから、実際に行った活動を簡潔にリストアップしてください（5-8項目）。
+   - 分析や評価ではなく、事実ベースの活動記述
+   - 「〜した」「〜を行った」という完了形で記述
+   - 例: "フロントエンドのログイン画面をリファクタリングした"
+   - 例: "API認証のバグを修正した"
+
+3. **成長ポイント（growth_points）**: 経験を通じて得られた成長を3-5項目で挙げてください。
    - 具体的なスキルや知識の習得
    - 経験値の蓄積
    - 新しい挑戦や領域の開拓
 
-3. **スキル分析（skill_analysis）**:
+4. **スキル分析（skill_analysis）**:
    - 各タスクを上記カテゴリに分類し、経験タスク数をカウント
    - 複数のカテゴリに該当する場合は両方にカウント
    - 強み: 特に経験が多い/深い領域を2-3つ
    - 伸びしろ: まだ経験が少ない/これから伸ばせる領域を2-3つ
 
-4. **次への提案（next_suggestions）**: キャリア形成の観点から、次に取り組むと良いことを2-3項目で提案してください。
+5. **次への提案（next_suggestions）**: キャリア形成の観点から、次に取り組むと良いことを2-3項目で提案してください。
    - 強みをさらに伸ばす方向
    - 弱点を補強する方向
    - 新しい挑戦の方向
@@ -227,6 +238,7 @@ def _generate_achievement_prompt(
 ## JSON出力例（この形式で返してください）
 {{
   "summary": "今週は要件整理と実装を進め、品質改善にも貢献しました。",
+  "weekly_activities": ["ログイン画面のUIをリファクタリングした", "API認証のバグを修正した", "新規ユーザー登録フローを実装した"],
   "growth_points": ["API設計の理解が深まった", "見積もり精度が上がった"],
   "skill_analysis": {{
     "domain_skills": [
@@ -272,6 +284,9 @@ def _generate_achievement_prompt_with_edits(achievement: Achievement) -> str:
 ### サマリー
 {achievement.summary}
 
+### 今週やったこと
+{_format_bullet_list(achievement.weekly_activities)}
+
 ### 成長ポイント
 {_format_bullet_list(achievement.growth_points)}
 
@@ -297,6 +312,7 @@ def _generate_achievement_prompt_with_edits(achievement: Achievement) -> str:
 ## JSON出力例（この形式で返してください）
 {{
   "summary": "今週は要件整理と実装を進め、品質改善にも貢献しました。",
+  "weekly_activities": ["ログイン画面のUIをリファクタリングした", "API認証のバグを修正した"],
   "growth_points": ["API設計の理解が深まった", "見積もり精度が上がった"],
   "skill_analysis": {{
     "domain_skills": [
@@ -401,6 +417,7 @@ async def generate_achievement(
         period_end=period_end,
         period_label=period_label,
         summary=ai_result.get("summary", "この期間の達成内容をまとめられませんでした。"),
+        weekly_activities=ai_result.get("weekly_activities", []),
         growth_points=ai_result.get("growth_points", []),
         skill_analysis=skill_analysis,
         next_suggestions=ai_result.get("next_suggestions", []),
@@ -783,6 +800,7 @@ async def generate_achievement_with_answers(
         period_end=period_end,
         period_label=period_label,
         summary=ai_result.get("summary", "この期間の達成内容をまとめられませんでした。"),
+        weekly_activities=ai_result.get("weekly_activities", []),
         growth_points=ai_result.get("growth_points", []),
         skill_analysis=skill_analysis,
         next_suggestions=ai_result.get("next_suggestions", []),
@@ -829,6 +847,10 @@ async def summarize_achievement_with_edits(
     if not isinstance(next_suggestions, list):
         next_suggestions = achievement.next_suggestions
 
+    weekly_activities = ai_result.get("weekly_activities")
+    if not isinstance(weekly_activities, list):
+        weekly_activities = achievement.weekly_activities
+
     raw_skill_analysis = ai_result.get("skill_analysis")
     if isinstance(raw_skill_analysis, dict):
         skill_analysis = _build_skill_analysis(raw_skill_analysis, len(achievement.task_snapshots))
@@ -839,6 +861,7 @@ async def summarize_achievement_with_edits(
         user_id=achievement.user_id,
         achievement_id=achievement.id,
         summary=summary,
+        weekly_activities=weekly_activities,
         growth_points=growth_points,
         next_suggestions=next_suggestions,
         skill_analysis=skill_analysis,

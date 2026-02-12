@@ -73,10 +73,12 @@
 /* Dropdown menu */
 .model-selector-menu {
   position: absolute;
-  top: calc(100% + 4px);
+  bottom: calc(100% + 4px);
   left: 0;
   min-width: 100%;
   max-width: 280px;
+  max-height: 240px;
+  overflow-y: auto;
   margin: 0;
   padding: 4px;
   list-style: none;
@@ -93,7 +95,7 @@
 @keyframes modelMenuIn {
   from {
     opacity: 0;
-    transform: translateY(-4px);
+    transform: translateY(4px);
   }
   to {
     opacity: 1;

@@ -272,6 +272,7 @@ export function useTaskModal(options: UseTaskModalOptions): UseTaskModalReturn {
       }
     } catch (error) {
       console.error('Failed to create subtask:', error);
+      throw error;
     } finally {
       setIsCreating(false);
     }

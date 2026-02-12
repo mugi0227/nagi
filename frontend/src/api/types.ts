@@ -1179,6 +1179,7 @@ export interface Achievement {
   period_end: string;
   period_label?: string;
   summary: string;
+  weekly_activities: string[];
   growth_points: string[];
   skill_analysis: SkillAnalysis;
   next_suggestions: string[];
@@ -1186,9 +1187,29 @@ export interface Achievement {
   project_ids: string[];
   task_snapshots: CompletedTaskPreview[];
   append_note?: string;
+  share_token?: string;
   generation_type: GenerationType;
   created_at: string;
   updated_at: string;
+}
+
+export interface ShareLinkResponse {
+  share_token: string;
+  share_url: string;
+}
+
+export interface SharedAchievement {
+  id: string;
+  period_start: string;
+  period_end: string;
+  period_label?: string;
+  summary: string;
+  weekly_activities: string[];
+  growth_points: string[];
+  skill_analysis: SkillAnalysis;
+  next_suggestions: string[];
+  task_count: number;
+  created_at: string;
 }
 
 export interface AchievementCreate {
@@ -1199,6 +1220,7 @@ export interface AchievementCreate {
 
 export interface AchievementUpdate {
   summary?: string;
+  weekly_activities?: string[];
   growth_points?: string[];
   next_suggestions?: string[];
   strengths?: string[];

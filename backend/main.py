@@ -283,6 +283,7 @@ def create_app() -> FastAPI:
         recurring_meetings,
         recurring_tasks,
         schedule_settings,
+        shared_achievements,
         tasks,
         today,
         users,
@@ -308,6 +309,7 @@ def create_app() -> FastAPI:
     app.include_router(users.router, prefix="/api/users", tags=["users"])
     app.include_router(issues.router, prefix="/api/issues", tags=["issues"])
     app.include_router(achievements.router, prefix="/api/achievements", tags=["achievements"])
+    app.include_router(shared_achievements.router, prefix="/api/shared/achievements", tags=["shared_achievements"])
     app.include_router(project_achievements.router, prefix="/api/projects", tags=["project_achievements"])
     app.include_router(notifications.router, prefix="/api/notifications", tags=["notifications"])
     app.include_router(realtime.router, prefix="/api/realtime", tags=["realtime"])

@@ -17,9 +17,14 @@ import {
   FaChevronDown,
   FaChevronUp,
   FaTrash,
+  FaFolder,
+  FaClipboardList,
+  FaLink,
+  FaCheck,
 } from 'react-icons/fa';
 import { achievementsApi } from '../api/achievements';
-import type { Achievement, AchievementUpdate, SkillExperience } from '../api/types';
+import type { Achievement, AchievementUpdate, CompletedTaskPreview, SkillExperience } from '../api/types';
+import { useProjects } from '../hooks/useProjects';
 import { useTimezone } from '../hooks/useTimezone';
 import { formatDate, nowInTimezone, toDateTime } from '../utils/dateTime';
 import { WeeklyProgress } from '../components/dashboard/WeeklyProgress';
@@ -109,10 +114,37 @@ const isSamePeriod = (
   );
 };
 
-type EditableSection = 'summary' | 'growth_points' | 'next_suggestions' | 'strengths' | 'growth_areas';
+type EditableSection = 'summary' | 'weekly_activities' | 'growth_points' | 'next_suggestions' | 'strengths' | 'growth_areas';
+
+interface TaskGroup {
+  projectId: string;
+  projectName: string;
+  tasks: CompletedTaskPreview[];
+}
+
+function groupTasksByProject(
+  tasks: CompletedTaskPreview[],
+  projectMap: Map<string, string>,
+): TaskGroup[] {
+  const groups: Record<string, CompletedTaskPreview[]> = {};
+  for (const task of tasks) {
+    const key = task.project_id ?? '__personal__';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(task);
+  }
+  return Object.entries(groups).map(([key, groupTasks]) => ({
+    projectId: key,
+    projectName:
+      key === '__personal__'
+        ? '個人タスク'
+        : (projectMap.get(key) ?? '不明なプロジェクト'),
+    tasks: groupTasks,
+  }));
+}
 
 function AchievementCard({
   achievement,
+  projectMap,
   onDelete,
   onRegenerate,
   onUpdate,
@@ -123,14 +155,18 @@ function AchievementCard({
   isSummarizing,
 }: {
   achievement: Achievement;
+  projectMap: Map<string, string>;
   onDelete: (achievement: Achievement) => void;
   onRegenerate: (achievement: Achievement) => void;
   onUpdate: (achievementId: string, payload: AchievementUpdate) => Promise<Achievement>;
   onSummarize: (achievement: Achievement) => void;
+  onShare: (achievement: Achievement) => void;
   isDeleting: boolean;
   isRegenerating: boolean;
   isUpdating: boolean;
   isSummarizing: boolean;
+  isSharing: boolean;
+  shareSuccess: string | null;
 }) {
   const timezone = useTimezone();
   const [expanded, setExpanded] = useState(false);
@@ -142,6 +178,10 @@ function AchievementCard({
   } | null>(null);
   const [appendNote, setAppendNote] = useState(achievement.append_note ?? '');
   const taskSnapshots = achievement.task_snapshots ?? [];
+  const groupedTasks = useMemo(
+    () => groupTasksByProject(taskSnapshots, projectMap),
+    [taskSnapshots, projectMap],
+  );
   const periodLabel =
     achievement.period_label ||
     formatPeriodLabel(achievement.period_start, achievement.period_end, timezone);
@@ -168,6 +208,8 @@ function AchievementCard({
 
   const buildListPayload = (section: EditableSection, list: string[]): AchievementUpdate => {
     switch (section) {
+      case 'weekly_activities':
+        return { weekly_activities: list };
       case 'growth_points':
         return { growth_points: list };
       case 'next_suggestions':
@@ -191,13 +233,15 @@ function AchievementCard({
       return;
     }
     const listSource =
-      editing.section === 'growth_points'
-        ? achievement.growth_points
-        : editing.section === 'next_suggestions'
-          ? achievement.next_suggestions
-          : editing.section === 'strengths'
-            ? achievement.skill_analysis.strengths
-            : achievement.skill_analysis.growth_areas;
+      editing.section === 'weekly_activities'
+        ? achievement.weekly_activities
+        : editing.section === 'growth_points'
+          ? achievement.growth_points
+          : editing.section === 'next_suggestions'
+            ? achievement.next_suggestions
+            : editing.section === 'strengths'
+              ? achievement.skill_analysis.strengths
+              : achievement.skill_analysis.growth_areas;
     const updatedList = listSource.map((item, index) =>
       index === editing.index ? trimmed : item
     );
@@ -208,13 +252,15 @@ function AchievementCard({
   const handleDeleteItem = async (section: EditableSection, index: number) => {
     if (!window.confirm('削除しますか？')) return;
     const listSource =
-      section === 'growth_points'
-        ? achievement.growth_points
-        : section === 'next_suggestions'
-          ? achievement.next_suggestions
-          : section === 'strengths'
-            ? achievement.skill_analysis.strengths
-            : achievement.skill_analysis.growth_areas;
+      section === 'weekly_activities'
+        ? achievement.weekly_activities
+        : section === 'growth_points'
+          ? achievement.growth_points
+          : section === 'next_suggestions'
+            ? achievement.next_suggestions
+            : section === 'strengths'
+              ? achievement.skill_analysis.strengths
+              : achievement.skill_analysis.growth_areas;
     const updatedList = listSource.filter((_, itemIndex) => itemIndex !== index);
     await onUpdate(achievement.id, buildListPayload(section, updatedList));
   };
@@ -234,6 +280,29 @@ function AchievementCard({
           <span className={`generation-type ${achievement.generation_type.toLowerCase()}`}>
             {achievement.generation_type === 'AUTO' ? '自動生成' : '手動生成'}
           </span>
+          <button
+            className={`achievement-action-btn share${shareSuccess === achievement.id ? ' success' : ''}`}
+            type="button"
+            onClick={() => onShare(achievement)}
+            disabled={isBusy || isSharing}
+          >
+            {isSharing ? (
+              <>
+                <FaSpinner className="spinner" />
+                共有中
+              </>
+            ) : shareSuccess === achievement.id ? (
+              <>
+                <FaCheck />
+                コピー済み
+              </>
+            ) : (
+              <>
+                <FaLink />
+                リンクをコピー
+              </>
+            )}
+          </button>
           <button
             className="achievement-action-btn summarize"
             type="button"
@@ -347,6 +416,90 @@ function AchievementCard({
             )}
         </div>
       </div>
+
+      {(achievement.weekly_activities ?? []).length > 0 && (
+        <div className="weekly-activities-section">
+          <h3>
+            <FaClipboardList className="section-icon" />
+            今週やったこと
+          </h3>
+          <ul className="weekly-activities-list">
+            {achievement.weekly_activities.map((activity, i) => {
+              const isEditingActivity =
+                editing?.section === 'weekly_activities' && editing.index === i;
+              return (
+                <li key={i} className="editable-list-item">
+                  <div className="item-content">
+                    <FaCheckCircle className="activity-icon" />
+                    {isEditingActivity ? (
+                      <textarea
+                        className="edit-textarea"
+                        rows={2}
+                        value={editing.value}
+                        onChange={(event) =>
+                          setEditing((current) =>
+                            current
+                              ? { ...current, value: event.target.value }
+                              : current
+                          )
+                        }
+                        disabled={isBusy}
+                      />
+                    ) : (
+                      <span className="activity-text">{activity}</span>
+                    )}
+                  </div>
+                  <div className={`item-actions${isEditingActivity ? '' : ' hover-actions'}`}>
+                    {isEditingActivity ? (
+                      <>
+                        <button
+                          className="item-action-btn save"
+                          type="button"
+                          onClick={handleEditSave}
+                          disabled={isBusy}
+                        >
+                          {isUpdating ? '保存中' : '保存'}
+                        </button>
+                        <button
+                          className="item-action-btn cancel"
+                          type="button"
+                          onClick={handleEditCancel}
+                          disabled={isBusy}
+                        >
+                          キャンセル
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          className="item-action-btn icon edit"
+                          type="button"
+                          onClick={() => handleEditStart('weekly_activities', activity, i)}
+                          disabled={isBusy || editing !== null}
+                          aria-label="編集"
+                          title="編集"
+                        >
+                          <FaEdit />
+                        </button>
+                        <button
+                          className="item-action-btn icon delete"
+                          type="button"
+                          onClick={() => handleDeleteItem('weekly_activities', i)}
+                          disabled={isBusy || editing !== null}
+                          aria-label="削除"
+                          title="削除"
+                        >
+                          <FaTrash />
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
 
       <div className="achievement-week-stats">
         <div className="achievement-week-stat">
@@ -780,23 +933,34 @@ function AchievementCard({
                 </button>
 
                 {showTasks && (
-                  <ul className="task-preview-list achievement-task-list">
-                    {taskSnapshots.map((task) => (
-                      <li key={task.id} className="task-preview-item">
-                        <FaCheckCircle className="check-icon" />
-                        <div className="task-info">
-                          <span className="task-title">{task.title}</span>
-                          <span className="task-date">
-                            {formatDate(
-                              task.completed_at,
-                              { month: 'numeric', day: 'numeric' },
-                              timezone
-                            )}
-                          </span>
+                  <div className="grouped-task-list">
+                    {groupedTasks.map((group) => (
+                      <div key={group.projectId} className="task-group">
+                        <div className="task-group-header">
+                          <FaFolder className="task-group-icon" />
+                          <span className="task-group-name">{group.projectName}</span>
+                          <span className="task-group-count">{group.tasks.length}件</span>
                         </div>
-                      </li>
+                        <ul className="task-preview-list achievement-task-list">
+                          {group.tasks.map((task) => (
+                            <li key={task.id} className="task-preview-item">
+                              <FaCheckCircle className="check-icon" />
+                              <div className="task-info">
+                                <span className="task-title">{task.title}</span>
+                                <span className="task-date">
+                                  {formatDate(
+                                    task.completed_at,
+                                    { month: 'numeric', day: 'numeric' },
+                                    timezone
+                                  )}
+                                </span>
+                              </div>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
                     ))}
-                  </ul>
+                  </div>
                 )}
               </>
             )}
@@ -811,6 +975,11 @@ export function AchievementPage() {
   const queryClient = useQueryClient();
   const timezone = useTimezone();
   const tour = usePageTour('achievement');
+  const { projects } = useProjects();
+  const projectMap = useMemo(
+    () => new Map(projects.map((p) => [p.id, p.name])),
+    [projects],
+  );
   const now = nowInTimezone(timezone);
   const { weekStart, weekEnd } = getLatestWeekPeriod(now);
   const [showPreviewTasks, setShowPreviewTasks] = useState(false);
@@ -938,6 +1107,36 @@ export function AchievementPage() {
     onSettled: () => setSummarizeTargetId(null),
   });
 
+  const [shareTargetId, setShareTargetId] = useState<string | null>(null);
+  const [shareSuccess, setShareSuccess] = useState<string | null>(null);
+
+  const shareMutation = useMutation({
+    mutationFn: (achievementId: string) => achievementsApi.createShareLink(achievementId),
+    onMutate: (achievementId) => {
+      setShareTargetId(achievementId);
+      setShareSuccess(null);
+      setErrorMessage(null);
+    },
+    onSuccess: async (data, achievementId) => {
+      const url = `${window.location.origin}/shared/achievements/${data.share_token}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        setShareSuccess(achievementId);
+        setTimeout(() => setShareSuccess(null), 3000);
+      } catch {
+        window.prompt('共有リンクをコピーしてください:', url);
+      }
+    },
+    onError: () => {
+      setErrorMessage('共有リンクの生成に失敗しました。');
+    },
+    onSettled: () => setShareTargetId(null),
+  });
+
+  const handleShare = (achievement: Achievement) => {
+    shareMutation.mutate(achievement.id);
+  };
+
   const handleUpdate = (achievementId: string, payload: AchievementUpdate) =>
     updateMutation.mutateAsync({ achievementId, payload });
 
@@ -1041,23 +1240,34 @@ export function AchievementPage() {
               </button>
 
               {showPreviewTasks && (
-                <ul className="task-preview-list">
-                  {previewData.tasks.map((task) => (
-                    <li key={task.id} className="task-preview-item">
-                      <FaCheckCircle className="check-icon" />
-                      <div className="task-info">
-                        <span className="task-title">{task.title}</span>
-                        <span className="task-date">
-                          {formatDate(
-                            task.completed_at,
-                            { month: 'numeric', day: 'numeric' },
-                            timezone
-                          )}
-                        </span>
+                <div className="grouped-task-list">
+                  {groupTasksByProject(previewData.tasks, projectMap).map((group) => (
+                    <div key={group.projectId} className="task-group">
+                      <div className="task-group-header">
+                        <FaFolder className="task-group-icon" />
+                        <span className="task-group-name">{group.projectName}</span>
+                        <span className="task-group-count">{group.tasks.length}件</span>
                       </div>
-                    </li>
+                      <ul className="task-preview-list">
+                        {group.tasks.map((task) => (
+                          <li key={task.id} className="task-preview-item">
+                            <FaCheckCircle className="check-icon" />
+                            <div className="task-info">
+                              <span className="task-title">{task.title}</span>
+                              <span className="task-date">
+                                {formatDate(
+                                  task.completed_at,
+                                  { month: 'numeric', day: 'numeric' },
+                                  timezone
+                                )}
+                              </span>
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ))}
-                </ul>
+                </div>
               )}
             </div>
           </div>
@@ -1085,16 +1295,20 @@ export function AchievementPage() {
             <AchievementCard
               key={achievement.id}
               achievement={achievement}
+              projectMap={projectMap}
               onDelete={handleDelete}
               onRegenerate={handleRegenerate}
               onUpdate={handleUpdate}
               onSummarize={handleSummarize}
+              onShare={handleShare}
               isDeleting={deleteTargetId === achievement.id && deleteMutation.isPending}
               isRegenerating={regenerateTargetId === achievement.id && regenerateMutation.isPending}
               isUpdating={updateTargetId === achievement.id && updateMutation.isPending}
               isSummarizing={
                 summarizeTargetId === achievement.id && summarizeMutation.isPending
               }
+              isSharing={shareTargetId === achievement.id && shareMutation.isPending}
+              shareSuccess={shareSuccess}
             />
           ))}
         </div>

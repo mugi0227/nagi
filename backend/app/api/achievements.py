@@ -6,9 +6,9 @@ Endpoints for generating and retrieving achievement summaries.
 
 from datetime import datetime
 from typing import Optional
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 from pydantic import BaseModel, Field
 
 from app.api.deps import (
@@ -57,6 +57,7 @@ class AchievementResponse(BaseModel):
     period_end: datetime
     period_label: Optional[str]
     summary: str
+    weekly_activities: list[str]
     growth_points: list[str]
     skill_analysis: SkillAnalysis
     next_suggestions: list[str]
@@ -64,6 +65,7 @@ class AchievementResponse(BaseModel):
     project_ids: list[str]
     task_snapshots: list[TaskSnapshot]
     append_note: Optional[str]
+    share_token: Optional[str]
     generation_type: str
     created_at: datetime
     updated_at: datetime
@@ -77,6 +79,7 @@ class AchievementResponse(BaseModel):
             period_end=achievement.period_end,
             period_label=achievement.period_label,
             summary=achievement.summary,
+            weekly_activities=achievement.weekly_activities,
             growth_points=achievement.growth_points,
             skill_analysis=achievement.skill_analysis,
             next_suggestions=achievement.next_suggestions,
@@ -84,6 +87,7 @@ class AchievementResponse(BaseModel):
             project_ids=[str(pid) for pid in achievement.project_ids],
             task_snapshots=achievement.task_snapshots,
             append_note=achievement.append_note,
+            share_token=achievement.share_token,
             generation_type=achievement.generation_type.value,
             created_at=achievement.created_at,
             updated_at=achievement.updated_at,
@@ -94,11 +98,19 @@ class AchievementUpdateRequest(BaseModel):
     """Request to update an achievement."""
 
     summary: Optional[str] = None
+    weekly_activities: Optional[list[str]] = None
     growth_points: Optional[list[str]] = None
     next_suggestions: Optional[list[str]] = None
     strengths: Optional[list[str]] = None
     growth_areas: Optional[list[str]] = None
     append_note: Optional[str] = None
+
+
+class ShareLinkResponse(BaseModel):
+    """Response for share link creation."""
+
+    share_token: str
+    share_url: str
 
 
 class AchievementListResponse(BaseModel):
@@ -242,6 +254,7 @@ async def update_achievement(
             user_id=user.id,
             achievement_id=achievement_id,
             summary=request.summary,
+            weekly_activities=request.weekly_activities,
             growth_points=request.growth_points,
             next_suggestions=request.next_suggestions,
             strengths=request.strengths,
@@ -296,6 +309,38 @@ async def delete_achievement(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Achievement {achievement_id} not found",
         )
+
+
+@router.post("/{achievement_id}/share", response_model=ShareLinkResponse)
+async def share_achievement(
+    achievement_id: UUID,
+    request: Request,
+    user: CurrentUser,
+    achievement_repo: AchievementRepo,
+):
+    """
+    Generate a share link for an achievement.
+
+    If a share token already exists, returns the existing link.
+    Otherwise, generates a new UUID4 token.
+    """
+    achievement = await achievement_repo.get(user.id, achievement_id)
+    if not achievement:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Achievement {achievement_id} not found",
+        )
+
+    if achievement.share_token:
+        token = achievement.share_token
+    else:
+        token = str(uuid4())
+        await achievement_repo.set_share_token(user.id, achievement_id, token)
+
+    base_url = str(request.base_url).rstrip("/")
+    share_url = f"{base_url}/shared/achievements/{token}"
+
+    return ShareLinkResponse(share_token=token, share_url=share_url)
 
 
 @router.post("/auto-generate", response_model=Optional[AchievementResponse])

@@ -168,6 +168,17 @@
   color: var(--accent-orange);
 }
 
+.achievement-action-btn.share:hover:not(:disabled) {
+  border-color: rgba(14, 165, 233, 0.5);
+  color: var(--primary);
+}
+
+.achievement-action-btn.share.success {
+  border-color: rgba(34, 197, 94, 0.5);
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.1);
+}
+
 .achievement-action-btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
@@ -976,4 +987,85 @@
   .action-buttons {
     justify-content: center;
   }
+}
+
+/* Weekly Activities Section */
+.weekly-activities-section {
+  background: rgba(var(--accent-green-rgb, 74, 222, 128), 0.06);
+  border: 1px solid rgba(var(--accent-green-rgb, 74, 222, 128), 0.15);
+  border-radius: var(--radius-md);
+  padding: 1rem 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.weekly-activities-section h3 {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-main);
+  margin: 0 0 0.75rem;
+}
+
+.weekly-activities-section .section-icon {
+  color: var(--accent-green, #4ade80);
+  font-size: 0.9rem;
+}
+
+.weekly-activities-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.weekly-activities-list .activity-icon {
+  color: var(--accent-green, #4ade80);
+  font-size: 0.75rem;
+  margin-top: 0.25rem;
+  flex-shrink: 0;
+}
+
+.weekly-activities-list .activity-text {
+  font-size: 0.9rem;
+  color: var(--text-main);
+  line-height: 1.5;
+}
+
+/* Task Group Styles */
+.grouped-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  margin-top: 0.75rem;
+}
+
+.task-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0;
+  font-weight: 600;
+  font-size: 0.85rem;
+  color: var(--text-main);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  margin-bottom: 0.25rem;
+}
+
+.task-group-icon {
+  color: var(--primary);
+  font-size: 0.8rem;
+}
+
+.task-group-name {
+  flex: 1;
+}
+
+.task-group-count {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-weight: 500;
 }

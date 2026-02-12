@@ -104,6 +104,12 @@ class Achievement(AchievementBase):
         description="次への提案・アドバイス",
     )
 
+    # Activity list (simple, scannable)
+    weekly_activities: list[str] = Field(
+        default_factory=list,
+        description="今週やったこと（事実ベースの活動リスト）",
+    )
+
     # Statistics
     task_count: int = Field(0, ge=0, description="対象タスク数")
     project_ids: list[UUID] = Field(
@@ -117,6 +123,12 @@ class Achievement(AchievementBase):
     append_note: Optional[str] = Field(
         None,
         description="ユーザー追記",
+    )
+
+    # Sharing
+    share_token: Optional[str] = Field(
+        None,
+        description="共有用トークン（UUID4文字列）",
     )
 
     # Metadata

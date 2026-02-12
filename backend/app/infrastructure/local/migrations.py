@@ -389,6 +389,13 @@ async def run_migrations():
                 await conn.execute(text("ALTER TABLE achievements ADD COLUMN task_snapshots JSON"))
             if "append_note" not in achievement_columns:
                 await conn.execute(text("ALTER TABLE achievements ADD COLUMN append_note TEXT"))
+            if "weekly_activities" not in achievement_columns:
+                await conn.execute(text("ALTER TABLE achievements ADD COLUMN weekly_activities JSON"))
+            if "share_token" not in achievement_columns:
+                await conn.execute(text("ALTER TABLE achievements ADD COLUMN share_token VARCHAR(36)"))
+                await conn.execute(
+                    text("CREATE UNIQUE INDEX IF NOT EXISTS idx_achievements_share_token ON achievements(share_token)")
+                )
 
         project_achievement_result = await conn.execute(
             text("SELECT name FROM sqlite_master WHERE type='table' AND name='project_achievements'")

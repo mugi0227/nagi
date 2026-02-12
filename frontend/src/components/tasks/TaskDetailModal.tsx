@@ -926,6 +926,8 @@ ${filledSummary}${emptySummary}
                               // Pass false for openModal since modal is already open
                               await onCreateSubtask(task.id, newSubtaskTitle.trim(), false);
                               setNewSubtaskTitle('');
+                            } catch {
+                              alert('サブタスクの作成に失敗しました。');
                             } finally {
                               setIsCreatingSubtask(false);
                             }

@@ -19,6 +19,7 @@ import { RequireAuth } from './components/auth/RequireAuth';
 import { InvitationAcceptPage } from './pages/InvitationAcceptPage';
 import { OidcCallbackPage } from './pages/OidcCallbackPage';
 import { NativeLinkPage } from './pages/NativeLinkPage';
+import { SharedAchievementPage } from './pages/SharedAchievementPage';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -35,6 +36,7 @@ function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/auth/callback" element={<OidcCallbackPage />} />
       <Route path="/invite/accept" element={<InvitationAcceptPage />} />
+      <Route path="/shared/achievements/:token" element={<SharedAchievementPage />} />
       <Route
         path="/"
         element={(

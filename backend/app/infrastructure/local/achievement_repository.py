@@ -60,7 +60,9 @@ class SqliteAchievementRepository(IAchievementRepository):
             task_count=orm.task_count or 0,
             project_ids=[UUID(pid) for pid in (orm.project_ids or [])],
             task_snapshots=[TaskSnapshot(**s) for s in (orm.task_snapshots or [])],
+            weekly_activities=orm.weekly_activities or [],
             append_note=orm.append_note,
+            share_token=orm.share_token,
             generation_type=GenerationType(orm.generation_type) if orm.generation_type else GenerationType.MANUAL,
             created_at=orm.created_at,
             updated_at=orm.updated_at,
@@ -88,7 +90,9 @@ class SqliteAchievementRepository(IAchievementRepository):
             "task_snapshots": [
                 snapshot.model_dump(mode="json") for snapshot in achievement.task_snapshots
             ],
+            "weekly_activities": achievement.weekly_activities,
             "append_note": achievement.append_note,
+            "share_token": achievement.share_token,
             "generation_type": achievement.generation_type.value,
         }
 
@@ -174,6 +178,40 @@ class SqliteAchievementRepository(IAchievementRepository):
             await session.commit()
             return True
 
+    async def get_by_share_token(self, share_token: str) -> Optional[Achievement]:
+        """Get an achievement by its share token."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(AchievementORM).where(
+                    AchievementORM.share_token == share_token
+                )
+            )
+            orm = result.scalar_one_or_none()
+            return self._orm_to_model(orm) if orm else None
+
+    async def set_share_token(
+        self, user_id: str, achievement_id: UUID, share_token: str
+    ) -> Achievement:
+        """Set share token for an achievement."""
+        async with self._session_factory() as session:
+            result = await session.execute(
+                select(AchievementORM).where(
+                    and_(
+                        AchievementORM.id == str(achievement_id),
+                        AchievementORM.user_id == user_id,
+                    )
+                )
+            )
+            orm = result.scalar_one_or_none()
+            if not orm:
+                raise NotFoundError(f"Achievement {achievement_id} not found")
+
+            orm.share_token = share_token
+            orm.updated_at = datetime.utcnow()
+            await session.commit()
+            await session.refresh(orm)
+            return self._orm_to_model(orm)
+
     async def update(
         self,
         user_id: str,
@@ -185,6 +223,7 @@ class SqliteAchievementRepository(IAchievementRepository):
         strengths: Optional[list[str]] = None,
         growth_areas: Optional[list[str]] = None,
         append_note: Optional[str] = None,
+        weekly_activities: Optional[list[str]] = None,
     ) -> Achievement:
         """Update an achievement (partial update)."""
         async with self._session_factory() as session:
@@ -224,6 +263,8 @@ class SqliteAchievementRepository(IAchievementRepository):
                 orm.skill_analysis = skill_analysis_data
             if append_note is not None:
                 orm.append_note = append_note
+            if weekly_activities is not None:
+                orm.weekly_activities = weekly_activities
 
             orm.updated_at = datetime.utcnow()
 

@@ -2,13 +2,15 @@
  * Achievements API client
  */
 
-import { api } from './client';
+import { api, getBaseUrl } from './client';
 import type {
   Achievement,
   AchievementCreate,
   AchievementListResponse,
   AchievementUpdate,
   CompletedTasksPreviewResponse,
+  SharedAchievement,
+  ShareLinkResponse,
 } from './types';
 
 export const achievementsApi = {
@@ -60,6 +62,24 @@ export const achievementsApi = {
    */
   autoGenerate: () =>
     api.post<Achievement | null>('/achievements/auto-generate', {}),
+
+  /**
+   * Create a share link for an achievement
+   */
+  createShareLink: (id: string) =>
+    api.post<ShareLinkResponse>(`/achievements/${id}/share`, {}),
+
+  /**
+   * Get a shared achievement by token (no auth required)
+   */
+  getShared: async (token: string): Promise<SharedAchievement> => {
+    const base = getBaseUrl();
+    const res = await fetch(`${base}/shared/achievements/${token}`);
+    if (!res.ok) {
+      throw new Error(res.status === 404 ? 'Not found' : 'Failed to fetch');
+    }
+    return res.json();
+  },
 
   /**
    * Preview completed tasks for a period

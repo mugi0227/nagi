@@ -128,7 +128,12 @@ async def _get_task_or_404(
     # First try personal access (Inbox tasks)
     task = await repo.get(user.id, task_id)
     if task:
-        return task, user.id
+        if task.project_id and project_repo:
+            project = await project_repo.get(user.id, task.project_id)
+            if project:
+                return task, project.user_id
+        else:
+            return task, user.id
 
     # If not found and project_repo is provided, try project-based access
     if project_repo:
@@ -153,12 +158,25 @@ async def create_task(
     assignment_repo: TaskAssignmentRepo,
 ):
     """Create a new task."""
+    owner_user_id = user.id
+    task_project_id = task.project_id
+    project = None
+    if task_project_id:
+        project = await project_repo.get(user.id, task_project_id)
+        if not project:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Project {task_project_id} not found",
+            )
+        owner_user_id = project.user_id
+
     # Validate dependencies before creating
     if task.dependency_ids or task.parent_id:
         validator = DependencyValidator(repo)
 
         # For new tasks, use a temporary UUID for validation
         from uuid import uuid4
+
         temp_task_id = uuid4()
 
         try:
@@ -166,15 +184,16 @@ async def create_task(
                 await validator.validate_dependencies(
                     temp_task_id,
                     task.dependency_ids,
-                    user.id,
+                    owner_user_id,
                     task.parent_id,
+                    project_id=task_project_id,
                 )
 
             if task.parent_id:
                 await validator.validate_parent_child_consistency(
                     temp_task_id,
                     task.parent_id,
-                    user.id,
+                    owner_user_id,
                 )
         except BusinessLogicError as e:
             raise HTTPException(
@@ -184,26 +203,33 @@ async def create_task(
 
     # Shift existing siblings when inserting at a specific position
     if task.parent_id and task.order_in_parent is not None:
-        existing_siblings = await repo.get_subtasks(user.id, task.parent_id)
+        existing_siblings = await repo.get_subtasks(
+            owner_user_id,
+            task.parent_id,
+            project_id=task_project_id,
+        )
         for sibling in existing_siblings:
-            if sibling.order_in_parent is not None and sibling.order_in_parent >= task.order_in_parent:
+            if (
+                sibling.order_in_parent is not None
+                and sibling.order_in_parent >= task.order_in_parent
+            ):
                 await repo.update(
-                    user.id, sibling.id,
+                    owner_user_id,
+                    sibling.id,
                     TaskUpdate(order_in_parent=sibling.order_in_parent + 1),
+                    project_id=task_project_id,
                 )
 
-    created_task = await repo.create(user.id, task)
+    created_task = await repo.create(owner_user_id, task)
 
     # Auto-assign user for PRIVATE projects
-    if task.project_id:
-        project = await project_repo.get(user.id, task.project_id)
-        if project and project.visibility == ProjectVisibility.PRIVATE:
-            # Automatically assign the current user to the task
-            await assignment_repo.assign_multiple(
-                user.id,
-                created_task.id,
-                TaskAssignmentsCreate(assignee_ids=[user.id]),
-            )
+    if task_project_id and project and project.visibility == ProjectVisibility.PRIVATE:
+        # Automatically assign the current user to the task
+        await assignment_repo.assign_multiple(
+            owner_user_id,
+            created_task.id,
+            TaskAssignmentsCreate(assignee_ids=[user.id]),
+        )
 
     return created_task
 
@@ -223,6 +249,7 @@ async def list_tasks(
     offset: int = Query(0, ge=0),
 ):
     """List tasks with optional filters."""
+
     async def _fetch_scoped_tasks(
         query_user_id: str,
         query_project_id: Optional[UUID],
@@ -290,10 +317,7 @@ async def list_tasks(
 
             # 3. Build TEAM project ID set
             projects = await project_repo.list(user.id, limit=1000)
-            team_project_ids = {
-                p.id for p in projects
-                if p.visibility == ProjectVisibility.TEAM
-            }
+            team_project_ids = {p.id for p in projects if p.visibility == ProjectVisibility.TEAM}
 
             # 4. Filter: keep personal + PRIVATE project + assigned TEAM project
             def should_include(task: Task) -> bool:
@@ -343,7 +367,9 @@ async def get_task_schedule(
     plan_repo: DailySchedulePlanRepo,
     scheduler_service: SchedulerService = Depends(get_scheduler_service),
     start_date: Optional[date] = Query(None, description="Schedule start date"),
-    capacity_hours: Optional[float] = Query(None, description="Daily capacity in hours (default: 8)"),
+    capacity_hours: Optional[float] = Query(
+        None, description="Daily capacity in hours (default: 8)"
+    ),
     buffer_hours: Optional[float] = Query(None, description="Daily buffer hours"),
     capacity_by_weekday: Optional[str] = Query(
         None,
@@ -453,7 +479,9 @@ async def get_today_tasks(
     plan_repo: DailySchedulePlanRepo,
     scheduler_service: SchedulerService = Depends(get_scheduler_service),
     target_date: Optional[date] = Query(None, description="Target date (default: today)"),
-    capacity_hours: Optional[float] = Query(None, description="Daily capacity in hours (default: 8)"),
+    capacity_hours: Optional[float] = Query(
+        None, description="Daily capacity in hours (default: 8)"
+    ),
     buffer_hours: Optional[float] = Query(None, description="Daily buffer hours"),
     capacity_by_weekday: Optional[str] = Query(
         None,
@@ -586,6 +614,7 @@ async def update_task(
     """Update a task."""
     # Find task - try personal access first, then project-based
     current_task = await repo.get(user.id, task_id)
+    task_owner_user_id = user.id
     task_project_id = None
 
     if not current_task:
@@ -596,10 +625,17 @@ async def update_task(
             project = await project_repo.get(user.id, current_task.project_id)
             if project:
                 task_project_id = current_task.project_id
+                task_owner_user_id = project.user_id
             else:
                 current_task = None  # No access
     else:
         task_project_id = current_task.project_id
+        if task_project_id:
+            project = await project_repo.get(user.id, task_project_id)
+            if project:
+                task_owner_user_id = project.user_id
+            else:
+                current_task = None
 
     if not current_task:
         raise HTTPException(
@@ -631,16 +667,14 @@ async def update_task(
                 else current_task.dependency_ids
             )
             new_parent_id = (
-                update.parent_id
-                if update.parent_id is not None
-                else current_task.parent_id
+                update.parent_id if update.parent_id is not None else current_task.parent_id
             )
 
             if new_dependency_ids:
                 await validator.validate_dependencies(
                     task_id,
                     new_dependency_ids,
-                    user.id,
+                    task_owner_user_id,
                     new_parent_id,
                     project_id=task_project_id,
                 )
@@ -649,7 +683,7 @@ async def update_task(
                 await validator.validate_parent_child_consistency(
                     task_id,
                     update.parent_id,
-                    user.id,
+                    task_owner_user_id,
                 )
 
         except BusinessLogicError as e:
@@ -714,9 +748,11 @@ async def get_subtasks(
     task_id: UUID,
     user: CurrentUser,
     repo: TaskRepo,
+    project_repo: ProjectRepo,
 ):
     """Get all subtasks of a parent task."""
-    return await repo.get_subtasks(user.id, task_id)
+    task, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+    return await repo.get_subtasks(owner_user_id, task_id, project_id=task.project_id)
 
 
 def _extract_action_items(text: str) -> list[str]:
@@ -727,7 +763,7 @@ def _extract_action_items(text: str) -> list[str]:
             continue
         for prefix in ("- [ ]", "* [ ]", "- TODO", "* TODO", "TODO:"):
             if line.startswith(prefix):
-                line = line[len(prefix):].strip()
+                line = line[len(prefix) :].strip()
                 break
         else:
             continue
@@ -736,7 +772,9 @@ def _extract_action_items(text: str) -> list[str]:
     return items
 
 
-@router.post("/{task_id}/action-items", response_model=list[Task], status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{task_id}/action-items", response_model=list[Task], status_code=status.HTTP_201_CREATED
+)
 async def create_action_items(
     task_id: UUID,
     user: CurrentUser,
@@ -744,7 +782,7 @@ async def create_action_items(
     project_repo: ProjectRepo,
 ):
     """Create action item subtasks from meeting notes."""
-    task, _ = await _get_task_or_404(user, repo, task_id, project_repo)
+    task, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
     if not task.meeting_notes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -754,7 +792,11 @@ async def create_action_items(
     if not action_items:
         return []
 
-    existing_subtasks = await repo.get_subtasks(user.id, task_id)
+    existing_subtasks = await repo.get_subtasks(
+        owner_user_id,
+        task_id,
+        project_id=task.project_id,
+    )
     existing_titles = {subtask.title for subtask in existing_subtasks}
     max_order = max([subtask.order_in_parent or 0 for subtask in existing_subtasks] + [0])
 
@@ -763,7 +805,7 @@ async def create_action_items(
         if title in existing_titles:
             continue
         created = await repo.create(
-            user.id,
+            owner_user_id,
             TaskCreate(
                 title=title,
                 project_id=task.project_id,
@@ -864,7 +906,9 @@ async def list_task_assignments(
     return await assignment_repo.list_by_task(owner_user_id, task_id)
 
 
-@router.post("/{task_id}/assignment", response_model=TaskAssignment, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{task_id}/assignment", response_model=TaskAssignment, status_code=status.HTTP_201_CREATED
+)
 async def assign_task(
     task_id: UUID,
     assignment: TaskAssignmentCreate,
@@ -877,7 +921,11 @@ async def assign_task(
     """Assign a task to a member (upsert)."""
     task, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
     await _validate_assignees_are_project_members(
-        [assignment.assignee_id], task, project_repo, member_repo, user.id,
+        [assignment.assignee_id],
+        task,
+        project_repo,
+        member_repo,
+        user.id,
     )
     return await assignment_repo.assign(owner_user_id, task_id, assignment)
 
@@ -895,7 +943,11 @@ async def assign_task_multiple(
     """Assign a task to multiple members. Replaces existing assignments."""
     task, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
     await _validate_assignees_are_project_members(
-        assignments.assignee_ids, task, project_repo, member_repo, user.id,
+        assignments.assignee_ids,
+        task,
+        project_repo,
+        member_repo,
+        user.id,
     )
     return await assignment_repo.assign_multiple(owner_user_id, task_id, assignments)
 
@@ -1042,6 +1094,7 @@ async def postpone_task(
 
     # Build update: set start_not_before to target date
     from datetime import datetime as dt
+
     target_datetime = dt.combine(request.to_date, dt.min.time())
     update_data = TaskUpdate(start_not_before=target_datetime)
 
@@ -1072,6 +1125,7 @@ async def do_today(
         user_timezone = user_account.timezone
     today = get_user_today(user_timezone)
     from datetime import datetime as dt
+
     today_datetime = dt.combine(today, dt.min.time())
 
     update_data = TaskUpdate()
@@ -1095,8 +1149,5 @@ async def get_postpone_history(
     project_repo: ProjectRepo,
 ):
     """Get postponement history for a specific task."""
-    await _get_task_or_404(user, repo, task_id, project_repo)
-    return await postpone_repo.list_by_task(user.id, task_id)
-
-
-
+    _, owner_user_id = await _get_task_or_404(user, repo, task_id, project_repo)
+    return await postpone_repo.list_by_task(owner_user_id, task_id)

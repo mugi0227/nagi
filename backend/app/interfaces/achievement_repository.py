@@ -95,6 +95,36 @@ class IAchievementRepository(ABC):
         pass
 
     @abstractmethod
+    async def get_by_share_token(self, share_token: str) -> Optional[Achievement]:
+        """
+        Get an achievement by its share token.
+
+        Args:
+            share_token: Share token string
+
+        Returns:
+            Achievement if found, None otherwise
+        """
+        pass
+
+    @abstractmethod
+    async def set_share_token(
+        self, user_id: str, achievement_id: UUID, share_token: str
+    ) -> Achievement:
+        """
+        Set share token for an achievement.
+
+        Args:
+            user_id: User ID
+            achievement_id: Achievement ID
+            share_token: Share token to set
+
+        Returns:
+            Updated achievement
+        """
+        pass
+
+    @abstractmethod
     async def update(
         self,
         user_id: str,
@@ -106,6 +136,7 @@ class IAchievementRepository(ABC):
         strengths: Optional[List[str]] = None,
         growth_areas: Optional[List[str]] = None,
         append_note: Optional[str] = None,
+        weekly_activities: Optional[List[str]] = None,
     ) -> Achievement:
         """
         Update an achievement (partial update).

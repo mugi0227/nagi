@@ -584,11 +584,17 @@ class AchievementORM(Base):
     skill_analysis = Column(JSON, nullable=True)  # SkillAnalysis as JSON
     next_suggestions = Column(JSON, nullable=True, default=list)
 
+    # Activity list
+    weekly_activities = Column(JSON, nullable=True, default=list)
+
     # Statistics
     task_count = Column(Integer, default=0)
     project_ids = Column(JSON, nullable=True, default=list)
     task_snapshots = Column(JSON, nullable=True, default=list)
     append_note = Column(Text, nullable=True)
+
+    # Sharing
+    share_token = Column(String(36), nullable=True, unique=True, index=True)
 
     # Metadata
     generation_type = Column(String(20), default="MANUAL")  # AUTO or MANUAL
