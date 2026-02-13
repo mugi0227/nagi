@@ -18,7 +18,6 @@ from google.genai.types import Content, Part
 from app.agents.secretary_agent import create_secretary_agent
 from app.core.config import get_settings
 from app.core.logger import logger
-from app.utils.datetime_utils import ensure_utc
 from app.interfaces.agent_task_repository import IAgentTaskRepository
 from app.interfaces.capture_repository import ICaptureRepository
 from app.interfaces.chat_session_repository import IChatSessionRepository
@@ -41,6 +40,7 @@ from app.interfaces.user_repository import IUserRepository
 from app.models.capture import CaptureCreate
 from app.models.chat import ChatRequest, ChatResponse
 from app.models.enums import ContentType, ToolApprovalMode
+from app.utils.datetime_utils import ensure_utc
 
 # Global cache for runners (keyed by user_id + session_id + model)
 # This allows session state to persist across requests
@@ -134,23 +134,24 @@ class AgentService:
         auto_approve: bool = True,
         allow_auto_approve_mismatch: bool = False,
         model_id: str | None = None,
+        routing_message: str | None = None,
     ) -> InMemoryRunner:
         """Get cached runner or create a new one for the user.
 
         Note: All tools are now proposal-based, but auto_approve determines
         whether proposals are automatically approved or require user confirmation.
         """
+        use_cache = not (routing_message or "").strip()
         effective_model_key = model_id or "default"
         cache_key = (user_id, session_id, effective_model_key)
 
-        # Check if we already have a runner
-        cached = _runner_cache.get(cache_key)
-        if cached:
-            runner, cached_auto_approve = cached
-            if cached_auto_approve == auto_approve or allow_auto_approve_mismatch:
-                return runner
+        if use_cache:
+            cached = _runner_cache.get(cache_key)
+            if cached:
+                runner, cached_auto_approve = cached
+                if cached_auto_approve == auto_approve or allow_auto_approve_mismatch:
+                    return runner
 
-        # Create new agent (always with proposal tools + auto_approve setting)
         effective_provider = self._resolve_llm_provider(model_id)
         agent = await create_secretary_agent(
             llm_provider=effective_provider,
@@ -172,10 +173,12 @@ class AgentService:
             session_id=session_id,
             auto_approve=auto_approve,
             user_repo=self._user_repo,
+            user_message=routing_message,
         )
 
         runner = InMemoryRunner(agent=agent, app_name=self.APP_NAME)
-        _runner_cache[cache_key] = (runner, auto_approve)
+        if use_cache:
+            _runner_cache[cache_key] = (runner, auto_approve)
         return runner
 
     def _touch_session_index(self, user_id: str, session_id: str, title: str | None = None) -> None:
@@ -1160,12 +1163,14 @@ class AgentService:
             )
             capture_id = capture.id
 
-        # Get or create runner with auto_approve setting
+        user_message_text = request.text or audio_transcription or self._get_user_message_text(request)
+
         runner = await self._get_or_create_runner(
             user_id,
             session_id=session_id,
             auto_approve=self._resolve_auto_approve(request),
             model_id=request.model,
+            routing_message=user_message_text,
         )
 
         # Run agent with user message
@@ -1173,7 +1178,6 @@ class AgentService:
             await self._ensure_session(runner, user_id, session_id)
             await self._hydrate_session_history(runner, user_id, session_id)
 
-            user_message_text = request.text or audio_transcription or self._get_user_message_text(request)
             if user_message_text:
                 await self._record_message(
                     user_id=user_id,
@@ -1291,19 +1295,20 @@ class AgentService:
             )
             capture_id = capture.id
 
-        # Get or create runner with auto_approve setting
+        user_message_text = request.text or audio_transcription or self._get_user_message_text(request)
+
         runner = await self._get_or_create_runner(
             user_id,
             session_id=session_id_str,
             auto_approve=self._resolve_auto_approve(request),
             model_id=request.model,
+            routing_message=user_message_text,
         )
 
         try:
             await self._ensure_session(runner, user_id, session_id_str)
             await self._hydrate_session_history(runner, user_id, session_id_str)
 
-            user_message_text = request.text or audio_transcription or self._get_user_message_text(request)
             if user_message_text:
                 await self._record_message(
                     user_id=user_id,
@@ -1417,7 +1422,7 @@ class AgentService:
                             if isinstance(result, dict) and "proposal_id" in result:
                                 proposal_id = result.get("proposal_id")
                                 proposal_type = result.get("proposal_type")
-                                if hasattr(proposal_type, "value"):
+                                if proposal_type is not None and hasattr(proposal_type, "value"):
                                     proposal_type = proposal_type.value
                                 yield {
                                     "chunk_type": "proposal",
@@ -1502,7 +1507,7 @@ class AgentService:
         """
         import json
 
-        from app.agents.prompts.secretary_prompt import SECRETARY_SYSTEM_PROMPT
+        from app.agents.prompts.secretary_core_prompt import SECRETARY_CORE_PROMPT
 
         capture = await self._capture_repo.get(user_id, capture_id)
         if not capture:
@@ -1512,7 +1517,7 @@ class AgentService:
         # We perform a "stateless" execution here using the same model and system prompt
         # to ensure consistency without managing a full session state for this one-off analysis.
 
-        system_instruction = SECRETARY_SYSTEM_PROMPT
+        system_instruction = SECRETARY_CORE_PROMPT
 
         prompt_text = "Analyze the following captured content and extract a Task.\n"
         prompt_text += (

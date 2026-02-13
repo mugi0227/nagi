@@ -4,8 +4,9 @@ Skills service for managing WorkMemory-based skills.
 Skills are stored as WorkMemory (scope=WORK, memory_type=RULE).
 This service provides:
 - Parsing skill content to extract title and when_to_use
-- Generating a compact skills index for the system prompt
+- Generating a compact skills index for system prompt
 - Loading full skill content
+- Selecting relevant skills for dynamic prompt injection
 """
 
 from __future__ import annotations
@@ -20,9 +21,14 @@ from app.interfaces.memory_repository import IMemoryRepository
 from app.models.enums import MemoryScope, MemoryType
 from app.models.memory import Memory
 
+_RELEVANCE_TOKEN_PATTERN = re.compile(
+    r"[a-z0-9]+|[\u3041-\u3093\u30a1-\u30f3\u4e00-\u9fff]{2,}",
+    re.IGNORECASE,
+)
+
 
 class SkillIndexItem(BaseModel):
-    """Compact skill info for system prompt index."""
+    """Compact skill info for prompt index."""
 
     id: str = Field(..., description="Skill (Memory) ID")
     title: str = Field(..., description="Skill title")
@@ -48,10 +54,10 @@ def parse_skill(memory: Memory) -> SkillIndexItem:
     ```markdown
     # <Title>
 
-    ## いつ使うか
+    ## When to use
     <when to use description>
 
-    ## 内容
+    ## Content
     <full content>
     ```
 
@@ -62,29 +68,19 @@ def parse_skill(memory: Memory) -> SkillIndexItem:
 
     <rest = content>
     ```
-
-    Args:
-        memory: WorkMemory instance
-
-    Returns:
-        SkillIndexItem with title and when_to_use
     """
-    content = memory.content.strip()
+    content = (memory.content or "").strip()
 
-    # Try structured format first
     title = _extract_title(content)
     when_to_use = _extract_when_to_use(content)
 
-    # Fallback: use first line as title, second paragraph as when_to_use
     if not title:
         lines = content.split("\n")
         title = lines[0].lstrip("#").strip() if lines else "Untitled Skill"
 
     if not when_to_use:
-        # Use first non-title paragraph as when_to_use
         when_to_use = _extract_first_paragraph(content)
 
-    # Truncate when_to_use if too long
     if len(when_to_use) > 200:
         when_to_use = when_to_use[:197] + "..."
 
@@ -97,16 +93,8 @@ def parse_skill(memory: Memory) -> SkillIndexItem:
 
 
 def parse_skill_full(memory: Memory) -> SkillContent:
-    """
-    Parse a WorkMemory to get full skill content.
-
-    Args:
-        memory: WorkMemory instance
-
-    Returns:
-        SkillContent with all details
-    """
-    content = memory.content.strip()
+    """Parse a WorkMemory to get full skill content."""
+    content = (memory.content or "").strip()
     title = _extract_title(content)
     when_to_use = _extract_when_to_use(content)
     full_content = _extract_content_section(content)
@@ -131,7 +119,6 @@ def parse_skill_full(memory: Memory) -> SkillContent:
 
 
 def _extract_title(content: str) -> str:
-    """Extract title from # heading."""
     match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
     if match:
         return match.group(1).strip()
@@ -139,9 +126,7 @@ def _extract_title(content: str) -> str:
 
 
 def _extract_when_to_use(content: str) -> str:
-    """Extract when_to_use section from ## いつ使うか."""
-    # Match ## いつ使うか or ## When to use
-    pattern = r"##\s+(?:いつ使うか|When to use)\s*\n(.*?)(?=\n##|\Z)"
+    pattern = r"##\s+(?:When to use|\u4f7f\u3046\u3068\u304d|\u4f7f\u3044\u3069\u3053\u308d|\u7528\u9014)\s*\n(.*?)(?=\n##|\Z)"
     match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
     if match:
         return match.group(1).strip()
@@ -149,8 +134,7 @@ def _extract_when_to_use(content: str) -> str:
 
 
 def _extract_content_section(content: str) -> str:
-    """Extract content section from ## 内容 or ## Content."""
-    pattern = r"##\s+(?:内容|Content)\s*\n(.*?)(?=\n##|\Z)"
+    pattern = r"##\s+(?:Content|\u5185\u5bb9|\u624b\u9806|\u5b9f\u65bd\u624b\u9806)\s*\n(.*?)(?=\n##|\Z)"
     match = re.search(pattern, content, re.IGNORECASE | re.DOTALL)
     if match:
         return match.group(1).strip()
@@ -158,13 +142,11 @@ def _extract_content_section(content: str) -> str:
 
 
 def _extract_first_paragraph(content: str) -> str:
-    """Extract first non-heading paragraph as fallback when_to_use."""
     lines = content.split("\n")
-    paragraphs = []
-    current = []
+    paragraphs: list[str] = []
+    current: list[str] = []
 
     for line in lines:
-        # Skip headings
         if line.startswith("#"):
             if current:
                 paragraphs.append("\n".join(current))
@@ -180,36 +162,25 @@ def _extract_first_paragraph(content: str) -> str:
     if current:
         paragraphs.append("\n".join(current))
 
-    # Return first paragraph that isn't empty
-    for para in paragraphs:
-        if para.strip():
-            return para.strip()
+    for paragraph in paragraphs:
+        if paragraph.strip():
+            return paragraph.strip()
 
-    return "スキルの説明がありません"
+    return "No description"
 
 
 async def get_skills_index(
     user_id: str,
     memory_repo: IMemoryRepository,
+    limit: int = 100,
 ) -> list[SkillIndexItem]:
-    """
-    Get compact skills index from all WorkMemories.
-
-    Args:
-        user_id: User ID
-        memory_repo: Memory repository
-
-    Returns:
-        List of SkillIndexItem (title + when_to_use)
-    """
-    # Fetch all WorkMemories (scope=WORK, memory_type=RULE)
+    """Get compact skills index from WorkMemories."""
     memories = await memory_repo.list(
         user_id,
         scope=MemoryScope.WORK,
         memory_type=MemoryType.RULE,
-        limit=100,
+        limit=limit,
     )
-
     return [parse_skill(memory) for memory in memories]
 
 
@@ -218,46 +189,104 @@ async def get_skill_by_id(
     memory_repo: IMemoryRepository,
     skill_id: str,
 ) -> Optional[SkillContent]:
-    """
-    Get full skill content by ID.
-
-    Args:
-        user_id: User ID
-        memory_repo: Memory repository
-        skill_id: Skill (Memory) ID
-
-    Returns:
-        SkillContent if found, None otherwise
-    """
+    """Get full skill content by ID."""
     try:
         memory = await memory_repo.get(user_id, UUID(skill_id))
         if memory and memory.scope == MemoryScope.WORK:
             return parse_skill_full(memory)
     except (ValueError, TypeError):
-        pass
+        return None
     return None
 
 
-def format_skills_index_for_prompt(skills: list[SkillIndexItem]) -> str:
-    """
-    Format skills index for inclusion in system prompt.
+def _truncate_text(text: str, max_chars: int) -> str:
+    normalized = " ".join((text or "").split())
+    if len(normalized) <= max_chars:
+        return normalized
+    return normalized[: max_chars - 3].rstrip() + "..."
 
-    Args:
-        skills: List of SkillIndexItem
 
-    Returns:
-        Formatted markdown string
-    """
+def _tokenize_for_relevance(text: str) -> set[str]:
+    return {token.lower() for token in _RELEVANCE_TOKEN_PATTERN.findall(text)}
+
+
+def score_skill_relevance(skill: SkillIndexItem, query: str) -> float:
+    normalized_query = (query or "").strip().lower()
+    if not normalized_query:
+        return 0.0
+
+    haystack = " ".join([skill.title, skill.when_to_use, " ".join(skill.tags)]).lower()
+    query_tokens = _tokenize_for_relevance(normalized_query)
+    skill_tokens = _tokenize_for_relevance(haystack)
+
+    overlap_score = float(len(query_tokens.intersection(skill_tokens)))
+    score = overlap_score
+
+    title = skill.title.lower()
+    if title and title in normalized_query:
+        score += 2.0
+
+    for tag in skill.tags:
+        normalized_tag = tag.strip().lower()
+        if normalized_tag and normalized_tag in normalized_query:
+            score += 1.5
+
+    for token in query_tokens:
+        if len(token) >= 3 and token in haystack:
+            score += 0.2
+
+    return score
+
+
+def select_relevant_skills(
+    skills: list[SkillIndexItem],
+    query: str,
+    limit: int = 2,
+) -> list[SkillIndexItem]:
+    if not skills or limit <= 0:
+        return []
+
+    ranked: list[tuple[float, int, SkillIndexItem]] = []
+    for index, skill in enumerate(skills):
+        ranked.append((score_skill_relevance(skill, query), index, skill))
+
+    ranked.sort(key=lambda item: (-item[0], item[1]))
+    return [skill for score, _, skill in ranked if score > 0][:limit]
+
+
+def format_skills_index_for_prompt(
+    skills: list[SkillIndexItem],
+    max_items: int = 8,
+    max_when_chars: int = 60,
+) -> str:
+    """Format compact skills index for prompt."""
     if not skills:
         return ""
 
-    lines = ["## 利用可能なスキル一覧", ""]
-    lines.append("以下のスキルが登録されています。必要なときに`load_skill`で詳細を読み込んでください。")
-    lines.append("")
-
-    for skill in skills:
-        tags_str = f" [{', '.join(skill.tags)}]" if skill.tags else ""
-        lines.append(f"- **{skill.title}** (ID: `{skill.id}`){tags_str}")
-        lines.append(f"  - いつ使うか: {skill.when_to_use}")
-
+    shown = skills[:max_items]
+    lines = [
+        "## Skills Index",
+        "- Use `load_skill` with ID when full details are needed.",
+    ]
+    for skill in shown:
+        summary = _truncate_text(skill.when_to_use, max_when_chars)
+        lines.append(f"- `{skill.id}` {skill.title}: {summary}")
+    if len(skills) > max_items:
+        lines.append(f"- ...and {len(skills) - max_items} more")
     return "\n".join(lines)
+
+
+def format_loaded_skills_for_prompt(
+    skills: list[SkillContent],
+    max_chars_per_skill: int = 700,
+) -> str:
+    """Format loaded full skills for prompt injection."""
+    if not skills:
+        return ""
+
+    sections = ["## Loaded Skills"]
+    for skill in skills:
+        sections.append(f"### {skill.title} (`{skill.id}`)")
+        sections.append(f"When to use: {_truncate_text(skill.when_to_use, 120)}")
+        sections.append(_truncate_text(skill.content, max_chars_per_skill))
+    return "\n\n".join(sections)

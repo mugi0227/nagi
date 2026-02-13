@@ -1,16 +1,18 @@
 """
 Main Secretary Agent implementation using Google ADK.
-
-This is the primary agent that handles user interactions and orchestrates tasks.
 """
 
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
 from google.adk import Agent
 
-from app.agents.prompts.secretary_prompt import SECRETARY_SYSTEM_PROMPT
+from app.agents.prompts.secretary_core_prompt import SECRETARY_CORE_PROMPT
+from app.agents.prompts.secretary_skill_prompts import format_profile_skill_prompts
+from app.agents.runtime_router import build_secretary_runtime_routing
+from app.core.logger import logger
 from app.interfaces.agent_task_repository import IAgentTaskRepository
 from app.interfaces.checkin_repository import ICheckinRepository
 from app.interfaces.llm_provider import ILLMProvider
@@ -27,13 +29,20 @@ from app.interfaces.recurring_task_repository import IRecurringTaskRepository
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.interfaces.user_repository import IUserRepository
-from app.services.skills_service import format_skills_index_for_prompt, get_skills_index
+from app.services.skills_service import (
+    format_loaded_skills_for_prompt,
+    format_skills_index_for_prompt,
+    get_skill_by_id,
+    get_skills_index,
+    select_relevant_skills,
+)
 from app.tools import (
     add_agenda_item_tool,
     add_to_memory_tool,
     apply_schedule_request_tool,
     ask_user_questions_tool,
     assign_task_tool,
+    create_checkin_tool,
     create_meeting_tool,
     create_milestone_tool,
     create_phase_tool,
@@ -53,6 +62,7 @@ from app.tools import (
     get_task_tool,
     invite_project_member_tool,
     list_agenda_items_tool,
+    list_checkins_tool,
     list_kpi_templates_tool,
     list_milestones_tool,
     list_phases_tool,
@@ -84,59 +94,205 @@ from app.tools import (
     update_recurring_task_tool,
     update_task_tool,
 )
-from app.tools import (
-    create_checkin_tool,
-    list_checkins_tool,
-)
+
+_TOOL_HELP: dict[str, str] = {
+    "get_current_datetime": "現在日時を取得",
+    "ask_user_questions": "不足情報を質問",
+    "create_task": "タスク作成",
+    "update_task": "タスク更新",
+    "delete_task": "タスク削除",
+    "search_similar_tasks": "類似タスク検索",
+    "list_tasks": "タスク一覧",
+    "get_task": "タスク詳細",
+    "assign_task": "担当割り当て",
+    "list_task_assignments": "担当一覧",
+    "list_project_assignments": "プロジェクト担当一覧",
+    "create_project": "プロジェクト作成",
+    "update_project": "プロジェクト更新",
+    "list_projects": "プロジェクト一覧",
+    "list_project_members": "メンバー一覧",
+    "list_project_invitations": "招待一覧",
+    "load_project_context": "プロジェクト文脈読込",
+    "invite_project_member": "メンバー招待",
+    "create_project_summary": "プロジェクト要約作成",
+    "list_kpi_templates": "KPIテンプレート一覧",
+    "list_phases": "フェーズ一覧",
+    "get_phase": "フェーズ詳細",
+    "create_phase": "フェーズ作成",
+    "update_phase": "フェーズ更新",
+    "delete_phase": "フェーズ削除",
+    "list_milestones": "マイルストーン一覧",
+    "create_milestone": "マイルストーン作成",
+    "update_milestone": "マイルストーン更新",
+    "delete_milestone": "マイルストーン削除",
+    "add_agenda_item": "議題追加",
+    "update_agenda_item": "議題更新",
+    "delete_agenda_item": "議題削除",
+    "list_agenda_items": "議題一覧",
+    "reorder_agenda_items": "議題並び替え",
+    "fetch_meeting_context": "会議文脈取得",
+    "list_recurring_meetings": "定例会議一覧",
+    "create_checkin": "チェックイン作成",
+    "list_checkins": "チェックイン一覧",
+    "create_recurring_task": "定期タスク作成",
+    "list_recurring_tasks": "定期タスク一覧",
+    "update_recurring_task": "定期タスク更新",
+    "delete_recurring_task": "定期タスク削除",
+    "search_memories": "メモ検索",
+    "search_work_memory": "業務メモ検索",
+    "search_skills": "スキル検索",
+    "create_skill": "スキル作成",
+    "load_skill": "スキル詳細読込",
+    "list_skills_index": "スキル索引取得",
+    "add_to_memory": "メモ保存",
+    "refresh_user_profile": "プロフィール更新",
+    "schedule_agent_task": "将来実行の予約",
+    "apply_schedule_request": "日次予定の調整",
+    "run_browser_task": "ブラウザ自動操作",
+    "run_hybrid_rpa": "ハイブリッドRPA",
+    "register_browser_skill": "ブラウザ操作をスキル化",
+    "create_meeting": "会議タスク作成",
+}
+
+_TOOL_CATALOG_SECTIONS: dict[str, tuple[str, ...]] = {
+    "Task": (
+        "create_task",
+        "update_task",
+        "delete_task",
+        "search_similar_tasks",
+        "list_tasks",
+        "get_task",
+        "assign_task",
+    ),
+    "Project": (
+        "create_project",
+        "update_project",
+        "list_projects",
+        "list_project_members",
+        "list_project_invitations",
+        "load_project_context",
+        "invite_project_member",
+        "create_project_summary",
+    ),
+    "Phase": (
+        "list_phases",
+        "get_phase",
+        "create_phase",
+        "update_phase",
+        "delete_phase",
+        "list_milestones",
+        "create_milestone",
+        "update_milestone",
+        "delete_milestone",
+    ),
+    "Meeting": (
+        "add_agenda_item",
+        "update_agenda_item",
+        "delete_agenda_item",
+        "list_agenda_items",
+        "reorder_agenda_items",
+        "fetch_meeting_context",
+        "list_recurring_meetings",
+        "create_checkin",
+        "list_checkins",
+    ),
+    "Memory/Skill": (
+        "search_memories",
+        "search_work_memory",
+        "search_skills",
+        "create_skill",
+        "load_skill",
+        "list_skills_index",
+        "add_to_memory",
+        "refresh_user_profile",
+    ),
+    "Schedule": (
+        "schedule_agent_task",
+        "apply_schedule_request",
+        "create_recurring_task",
+        "list_recurring_tasks",
+        "update_recurring_task",
+        "delete_recurring_task",
+    ),
+    "Browser": (
+        "run_browser_task",
+        "run_hybrid_rpa",
+        "register_browser_skill",
+    ),
+}
 
 
 def get_current_datetime_section() -> str:
-    """
-    Get the current datetime section for the system prompt.
-
-    Returns:
-        Formatted datetime section in JST
-    """
-    # JST (UTC+9)
     jst = timezone(timedelta(hours=9))
     now = datetime.now(jst)
-
-    # Format: 2025年1月27日（月）15:30
-    weekday_names = ["月", "火", "水", "木", "金", "土", "日"]
+    weekday_names = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     weekday = weekday_names[now.weekday()]
+    return f"## Current DateTime\n{now.year:04d}-{now.month:02d}-{now.day:02d} {now.hour:02d}:{now.minute:02d} JST ({weekday})"
 
-    return f"""## 現在の日時
 
-{now.year}年{now.month}月{now.day}日（{weekday}）{now.hour:02d}:{now.minute:02d} (JST)
-"""
+def _filter_tools_by_name(tools: list[Any], allowed_tool_names: frozenset[str]) -> list[Any]:
+    filtered = [tool for tool in tools if getattr(tool, "name", "") in allowed_tool_names]
+    if filtered:
+        return filtered
+    fallback_names = {"get_current_datetime", "ask_user_questions"}
+    return [tool for tool in tools if getattr(tool, "name", "") in fallback_names]
+
+
+def _format_tools_for_prompt(
+    enabled_tool_names: list[str],
+    include_catalog: bool,
+) -> str:
+    lines = ["## Enabled Tools (This Turn)"]
+    for name in enabled_tool_names:
+        desc = _TOOL_HELP.get(name, "利用可能")
+        lines.append(f"- `{name}`: {desc}")
+
+    if not include_catalog:
+        return "\n".join(lines)
+
+    lines.append("")
+    lines.append("## Tool Catalog (All)")
+    lines.append("質問が能力確認の場合は、この一覧をベースに回答する。")
+    for section, names in _TOOL_CATALOG_SECTIONS.items():
+        lines.append(f"- {section}: " + ", ".join(f"`{name}`" for name in names))
+    return "\n".join(lines)
 
 
 async def build_system_prompt_with_skills(
     user_id: str,
     memory_repo: IMemoryRepository,
+    user_message: str | None,
+    profiles: tuple[str, ...],
+    enabled_tool_names: list[str],
+    include_tool_catalog: bool,
 ) -> str:
-    """
-    Build the system prompt with dynamic skills index.
-
-    Args:
-        user_id: User ID
-        memory_repo: Memory repository for fetching skills
-
-    Returns:
-        Complete system prompt with skills index appended
-    """
-    # Get current datetime section
     datetime_section = get_current_datetime_section()
+    profile_skill_section = format_profile_skill_prompts(profiles)
 
-    # Get skills index
-    skills = await get_skills_index(user_id, memory_repo)
-    skills_section = format_skills_index_for_prompt(skills)
+    skills = await get_skills_index(user_id, memory_repo, limit=30)
+    skills_index_section = format_skills_index_for_prompt(skills, max_items=8)
 
-    # Combine base prompt with datetime and skills index
-    prompt = f"{datetime_section}\n{SECRETARY_SYSTEM_PROMPT}"
-    if skills_section:
-        return f"{prompt}\n\n{skills_section}"
-    return prompt
+    selected = select_relevant_skills(skills, user_message or "", limit=2)
+    loaded_skills = []
+    for item in selected:
+        full_skill = await get_skill_by_id(user_id, memory_repo, item.id)
+        if full_skill:
+            loaded_skills.append(full_skill)
+    loaded_skills_section = format_loaded_skills_for_prompt(loaded_skills, max_chars_per_skill=600)
+    tools_section = _format_tools_for_prompt(
+        enabled_tool_names=enabled_tool_names,
+        include_catalog=include_tool_catalog,
+    )
+
+    sections = [
+        datetime_section,
+        SECRETARY_CORE_PROMPT,
+        tools_section,
+        profile_skill_section,
+        skills_index_section,
+        loaded_skills_section,
+    ]
+    return "\n\n".join(section for section in sections if section)
 
 
 async def create_secretary_agent(
@@ -159,34 +315,9 @@ async def create_secretary_agent(
     session_id: str,
     auto_approve: bool = True,
     user_repo: IUserRepository | None = None,
+    user_message: str | None = None,
 ) -> Agent:
-    """
-    Create the main Secretary Agent with all tools.
-
-    This is an async function that fetches the skills index to include
-    in the system prompt dynamically.
-
-    Args:
-        llm_provider: LLM provider instance
-        task_repo: Task repository
-        project_repo: Project repository
-        project_member_repo: Project member repository
-        project_invitation_repo: Project invitation repository
-        task_assignment_repo: Task assignment repository
-        memory_repo: Memory repository
-        agent_task_repo: Agent task repository
-        user_id: User ID
-        proposal_repo: Proposal repository
-        session_id: Session ID
-        auto_approve: If True, automatically approve proposals (False = show to user)
-
-    Returns:
-        Configured ADK Agent instance
-    """
-    # Build dynamic system prompt with skills index
-    system_prompt = await build_system_prompt_with_skills(user_id, memory_repo)
-
-    # Get model from provider
+    routing = build_secretary_runtime_routing(user_message)
     model = llm_provider.get_model()
 
     task_creation_tool = create_task_tool(
@@ -226,8 +357,7 @@ async def create_secretary_agent(
         auto_approve=auto_approve,
     )
 
-    # Create tools
-    tools = [
+    all_tools = [
         get_current_datetime_tool(),
         task_creation_tool,
         task_assignment_tool,
@@ -497,12 +627,25 @@ async def create_secretary_agent(
         ask_user_questions_tool(),
     ]
 
-    # Create agent
-    agent = Agent(
+    tools = _filter_tools_by_name(all_tools, routing.tool_names)
+    enabled_tool_names = [getattr(tool, "name", "") for tool in tools if getattr(tool, "name", "")]
+    system_prompt = await build_system_prompt_with_skills(
+        user_id=user_id,
+        memory_repo=memory_repo,
+        user_message=user_message,
+        profiles=routing.profiles,
+        enabled_tool_names=enabled_tool_names,
+        include_tool_catalog="capability" in routing.profiles,
+    )
+    logger.info(
+        "secretary_runtime profiles=%s tools=%s",
+        ",".join(routing.profiles),
+        ",".join(getattr(tool, "name", "") for tool in tools),
+    )
+
+    return Agent(
         name="secretary",
         model=model,
         instruction=system_prompt,
         tools=tools,
     )
-
-    return agent
