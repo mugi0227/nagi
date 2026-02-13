@@ -25,14 +25,14 @@ class AmazonTranscribeProvider(ISpeechToTextProvider):
         bucket_name: str = "",
         key_prefix: str = "transcribe-input",
         default_language: str = "ja-JP",
-        poll_interval_seconds: float = 1.0,
+        poll_interval_seconds: float = 0.35,
         timeout_seconds: float = 180.0,
     ):
         self.region_name = (region_name or "us-east-1").strip() or "us-east-1"
         self.bucket_name = (bucket_name or "").strip()
         self.key_prefix = (key_prefix or "transcribe-input").strip().strip("/")
         self.default_language = (default_language or "ja-JP").strip() or "ja-JP"
-        self.poll_interval_seconds = max(0.3, float(poll_interval_seconds))
+        self.poll_interval_seconds = max(0.2, float(poll_interval_seconds))
         self.timeout_seconds = max(10.0, float(timeout_seconds))
 
         if not self.bucket_name:

@@ -158,7 +158,7 @@ class Settings(BaseSettings):
     AWS_TRANSCRIBE_S3_BUCKET: str = ""
     AWS_TRANSCRIBE_S3_PREFIX: str = "transcribe-input"
     AWS_TRANSCRIBE_LANGUAGE: str = "ja-JP"
-    AWS_TRANSCRIBE_POLL_SECONDS: float = 1.0
+    AWS_TRANSCRIBE_POLL_SECONDS: float = 0.35
     AWS_TRANSCRIBE_TIMEOUT_SECONDS: int = 180
 
     # ===========================================

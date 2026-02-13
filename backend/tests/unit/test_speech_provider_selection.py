@@ -16,7 +16,7 @@ def _base_settings() -> SimpleNamespace:
         AWS_TRANSCRIBE_S3_BUCKET="transcribe-bucket",
         AWS_TRANSCRIBE_S3_PREFIX="transcribe-input",
         AWS_TRANSCRIBE_LANGUAGE="ja-JP",
-        AWS_TRANSCRIBE_POLL_SECONDS=1.0,
+        AWS_TRANSCRIBE_POLL_SECONDS=0.35,
         AWS_TRANSCRIBE_TIMEOUT_SECONDS=180,
     )
 
@@ -78,7 +78,7 @@ def test_get_speech_provider_selects_amazon_transcribe() -> None:
         bucket_name="transcribe-bucket",
         key_prefix="transcribe-input",
         default_language="ja-JP",
-        poll_interval_seconds=1.0,
+        poll_interval_seconds=0.35,
         timeout_seconds=180,
     )
 
