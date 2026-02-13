@@ -6,6 +6,7 @@ import { useIssueChat, type IssueChatMessage } from '../../hooks/useIssueChat';
 import { QuestionsPanel } from '../chat/QuestionsPanel';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate } from '../../utils/dateTime';
+import nagiIcon from '../../assets/nagi_icon.png';
 import './IssueChatWindow.css';
 
 interface Props {
@@ -239,7 +240,7 @@ function MessageBubble({ message, timezone }: MessageBubbleProps) {
   return (
     <div className={`issue-message ${isUser ? 'user' : 'assistant'}`}>
       <div className="issue-message-avatar">
-        {isUser ? '👤' : '🤖'}
+        {isUser ? '👤' : <img src={nagiIcon} alt="Nagi" className="avatar-icon-img" />}
       </div>
       <div className="issue-message-body">
         {toolChips}

@@ -12,6 +12,8 @@
   right: auto;
   z-index: 1;
   animation: fadeIn 0.3s ease-out;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
 }
 
 .chat-window.dragging {
@@ -71,13 +73,15 @@
   background: linear-gradient(135deg,
       rgba(14, 165, 233, 0.1) 0%,
       rgba(56, 189, 248, 0.05) 100%);
-  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  flex-wrap: wrap;
+  gap: 0.5rem;
 }
 
 .chat-header-controls {
   display: flex;
   align-items: center;
   gap: 0.75rem;
+  flex-shrink: 0;
 }
 
 .chat-approval-toggle {
@@ -172,6 +176,8 @@
   flex-direction: column;
   gap: 0.25rem;
   min-width: 0;
+  flex-shrink: 1;
+  overflow: hidden;
 }
 
 .chat-title {
@@ -186,6 +192,13 @@
 .chat-title svg {
   font-size: 1.5rem;
   color: var(--primary);
+}
+
+.chat-title-icon {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  object-fit: cover;
 }
 
 .chat-project-scope {

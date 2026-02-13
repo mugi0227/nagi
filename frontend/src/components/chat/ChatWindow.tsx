@@ -8,7 +8,6 @@ import {
   FaHeartPulse,
   FaImage,
   FaPlus,
-  FaRobot,
   FaXmark,
 } from 'react-icons/fa6';
 import { tasksApi } from '../../api/tasks';
@@ -30,6 +29,7 @@ import { DraftCard, DraftCardData } from './DraftCard';
 import { ProposalPanel } from './ProposalPanel';
 import { QuestionsPanel } from './QuestionsPanel';
 import { userStorage } from '../../utils/userStorage';
+import nagiIcon from '../../assets/nagi_icon.png';
 import './ChatWindow.css';
 
 const HEARTBEAT_SESSION_PREFIX = 'heartbeat-';
@@ -438,8 +438,8 @@ export function ChatWindow({ isOpen, onClose, initialMessage, onInitialMessageCo
       <div className="chat-header">
         <div className="chat-title-area">
           <div className="chat-title">
-            <FaRobot />
-            <span>Secretary Partner</span>
+            <img src={nagiIcon} alt="Nagi" className="chat-title-icon" />
+            <span>nagi</span>
           </div>
           {projectContext && (
             <div className="chat-project-scope">

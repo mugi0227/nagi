@@ -155,7 +155,7 @@ export function AppLayout() {
           </button>
           <div className="mobile-logo">
             <img src={nagiIcon} alt="Nagi AI" />
-            <span>凪</span>
+            <span>nagi</span>
           </div>
         </div>
       )}

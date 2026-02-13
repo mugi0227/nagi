@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
-import { FaRobot, FaPlay } from 'react-icons/fa6';
+import { FaPlay } from 'react-icons/fa6';
+import nagiIcon from '../../assets/nagi_icon.png';
 import { useCurrentUser } from '../../hooks/useCurrentUser';
 import { useTimezone } from '../../hooks/useTimezone';
 import { useTodayTasks } from '../../hooks/useTodayTasks';
@@ -105,12 +106,11 @@ export function AgentCard({ onOpenDailyBriefing }: AgentCardProps) {
               <div className="ring"></div>
             </div>
             <div className="agent-avatar-icon">
-              <FaRobot />
+              <img src={nagiIcon} alt="Nagi" className="agent-avatar-img" />
             </div>
           </div>
 
           <div className="agent-text-content">
-            <span className="agent-badge">AI ASSISTANT</span>
             <h2 className="agent-greeting">{getGreeting()}{displayName ? `、${displayName}さん` : ''}</h2>
             <p className="agent-message">{adviceMessage}</p>
           </div>

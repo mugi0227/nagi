@@ -7,6 +7,7 @@ import type { Task, TokenUsage } from '../../api/types';
 import { useTimezone } from '../../hooks/useTimezone';
 import { formatDate, toDateKey, toDateTime } from '../../utils/dateTime';
 import { CreatedTaskCards } from './CreatedTaskCards';
+import nagiIcon from '../../assets/nagi_icon.png';
 import './ChatMessage.css';
 
 const PREVIEW_DEFAULT_START = 0;
@@ -397,7 +398,9 @@ export function ChatMessage({
   return (
     <div className={`chat-message ${role}`}>
       <div className="message-avatar">
-        {role === 'assistant' ? '🤖' : '👤'}
+        {role === 'assistant' ? (
+          <img src={nagiIcon} alt="Nagi" className="avatar-icon-img" />
+        ) : '👤'}
       </div>
       <div className="message-content">
         {toolPlacement === 'before' && toolChips}

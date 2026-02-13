@@ -179,7 +179,14 @@
 }
 
 .issue-message.assistant .issue-message-avatar {
-  background: linear-gradient(135deg, var(--primary), var(--accent-pink, #f472b6));
+  background: transparent;
+}
+
+.issue-message-avatar .avatar-icon-img {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-full);
+  object-fit: cover;
 }
 
 .issue-message.user .issue-message-avatar {

@@ -10,6 +10,7 @@ import type { ProjectWithTaskCount } from '../../api/types';
 import { NotificationDropdown } from '../notifications/NotificationDropdown';
 import { resolveDisplayName } from '../../utils/displayName';
 import nagiIcon from '../../assets/nagi_icon.png';
+import nagiBanner from '../../assets/nagi_banner.png';
 import './Sidebar.css';
 
 interface SidebarProps {
@@ -122,21 +123,23 @@ export function Sidebar({ collapsed, onToggle, isMobile, mobileOpen, onMobileClo
         }) : undefined}
       >
       <div className="sidebar-header">
-        <div className="sidebar-logo">
-          <img
-            src={nagiIcon}
-            alt="Nagi AI"
-            className="logo-icon-img"
-          />
-          {!showCollapsed && <span className="logo-text">タスク管理AI 凪</span>}
-        </div>
-        <button
-          className="sidebar-toggle-btn"
-          onClick={onToggle}
-          title={showCollapsed ? 'サイドバーを展開' : 'サイドバーを折りたたむ'}
-        >
-          {showCollapsed ? <FaChevronRight /> : <FaChevronLeft />}
-        </button>
+        {showCollapsed ? (
+          <div className="sidebar-logo">
+            <img
+              src={nagiIcon}
+              alt="Nagi AI"
+              className="logo-icon-img"
+            />
+          </div>
+        ) : (
+          <div className="sidebar-banner">
+            <img
+              src={nagiBanner}
+              alt="Nagi AI"
+              className="logo-banner-img"
+            />
+          </div>
+        )}
       </div>
 
       <nav className="sidebar-nav">
@@ -212,14 +215,31 @@ export function Sidebar({ collapsed, onToggle, isMobile, mobileOpen, onMobileClo
       </nav>
 
       <div className={`sidebar-footer ${showCollapsed ? 'collapsed' : ''}`}>
-        {!showCollapsed && (
-          <div className="user-profile">
-            <div className="user-avatar">{avatarLabel}</div>
-            <div className="user-info">
-              <span className="user-name">{displayName}</span>
-              <span className="user-status">{token ? 'Signed in' : 'Guest'}</span>
+        {!showCollapsed ? (
+          <div className="user-profile-row">
+            <div className="user-profile">
+              <div className="user-avatar">{avatarLabel}</div>
+              <div className="user-info">
+                <span className="user-name">{displayName}</span>
+                <span className="user-status">{token ? 'Signed in' : 'Guest'}</span>
+              </div>
             </div>
+            <button
+              className="sidebar-toggle-btn"
+              onClick={onToggle}
+              title="サイドバーを折りたたむ"
+            >
+              <FaChevronLeft />
+            </button>
           </div>
+        ) : (
+          <button
+            className="sidebar-toggle-btn"
+            onClick={onToggle}
+            title="サイドバーを展開"
+          >
+            <FaChevronRight />
+          </button>
         )}
         <div className={`footer-actions ${showCollapsed ? 'collapsed' : ''}`}>
           <NotificationDropdown />
