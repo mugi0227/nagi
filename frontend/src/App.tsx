@@ -52,7 +52,9 @@ function AppRoutes() {
         <Route path="projects/:projectId/v2" element={<ProjectDetailV2Page />} />
         <Route path="achievement" element={<AchievementPage />} />
         <Route path="memories" element={<MemoriesPage />} />
-        <Route path="issues" element={<IssuesPage />} />
+        {import.meta.env.VITE_ENABLE_ISSUES === 'true' && (
+          <Route path="issues" element={<IssuesPage />} />
+        )}
         <Route path="native-link" element={<NativeLinkPage />} />
       </Route>
     </Routes>

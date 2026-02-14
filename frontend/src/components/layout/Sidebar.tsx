@@ -67,13 +67,15 @@ export function Sidebar({ collapsed, onToggle, isMobile, mobileOpen, onMobileClo
 
   const activeProjects = projects.filter(p => p.status === 'ACTIVE');
 
+  const enableIssues = import.meta.env.VITE_ENABLE_ISSUES === 'true';
+
   const navItems = [
     { path: '/', label: 'ダッシュボード', icon: FaChartPie },
     { path: '/tasks', label: 'タスク', icon: FaListCheck },
     { path: '/projects', label: 'プロジェクト', icon: FaFolderOpen },
     { path: '/memories', label: 'メモリー', icon: FaBookOpen },
     { path: '/achievement', label: '達成項目', icon: FaTrophy },
-    { path: '/issues', label: '要望', icon: FaComments },
+    ...(enableIssues ? [{ path: '/issues', label: '要望', icon: FaComments }] : []),
   ];
 
   const handleLogout = () => {

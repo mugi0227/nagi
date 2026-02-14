@@ -307,7 +307,8 @@ def create_app() -> FastAPI:
     app.include_router(today.router, prefix="/api/today", tags=["today"])
     app.include_router(schedule_settings.router, prefix="/api", tags=["schedule_settings"])
     app.include_router(users.router, prefix="/api/users", tags=["users"])
-    app.include_router(issues.router, prefix="/api/issues", tags=["issues"])
+    if settings.ENABLE_ISSUES:
+        app.include_router(issues.router, prefix="/api/issues", tags=["issues"])
     app.include_router(achievements.router, prefix="/api/achievements", tags=["achievements"])
     app.include_router(shared_achievements.router, prefix="/api/shared/achievements", tags=["shared_achievements"])
     app.include_router(project_achievements.router, prefix="/api/projects", tags=["project_achievements"])

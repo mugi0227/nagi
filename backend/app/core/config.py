@@ -170,6 +170,11 @@ class Settings(BaseSettings):
     DEVELOPER_EMAILS: str = ""
 
     # ===========================================
+    # Feature Flags
+    # ===========================================
+    ENABLE_ISSUES: bool = False
+
+    # ===========================================
     # Input Validation Limits
     # ===========================================
     MAX_TEXT_LENGTH: int = 10000
