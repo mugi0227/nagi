@@ -342,51 +342,51 @@ export function QuestionsPanel({ questions, context, onSubmit, onCancel }: Quest
       autoAdvanceTimer.current = null;
     }
 
-    setAnswers((prev) => {
-      const current = prev[questionId];
-      let newSelected: string[];
+    // Compute new answers outside the updater to avoid side-effects inside setState
+    const current = answers[questionId];
+    let newSelected: string[];
 
-      if (isMultiple) {
-        if (current.selectedOptions.includes(option)) {
-          newSelected = current.selectedOptions.filter((o) => o !== option);
-        } else {
-          newSelected = [...current.selectedOptions, option];
-        }
+    if (isMultiple) {
+      if (current.selectedOptions.includes(option)) {
+        newSelected = current.selectedOptions.filter((o) => o !== option);
       } else {
-        newSelected = [option];
+        newSelected = [...current.selectedOptions, option];
       }
+    } else {
+      newSelected = [option];
+    }
 
-      const newAnswers = {
-        ...prev,
-        [questionId]: { ...current, selectedOptions: newSelected },
-      };
+    const newAnswers = {
+      ...answers,
+      [questionId]: { ...current, selectedOptions: newSelected },
+    };
 
-      // Auto-advance for single-select (not "Other", not multi-select)
-      if (!isMultiple && option !== OTHER_OPTION) {
-        autoAdvanceTimer.current = setTimeout(() => {
-          if (!isLastQuestion) {
-            // Go to next question
-            setCurrentIndex((prevIdx) => Math.min(questions.length - 1, prevIdx + 1));
-          } else {
-            // Last question: check if all answered, then auto-submit
-            const allValid = questions.every((q) => {
-              const a = newAnswers[q.id];
-              if (isFreeTextQuestion(q)) return a.freeText.trim().length > 0;
-              const hasSel = a.selectedOptions.length > 0;
-              const validOther = a.selectedOptions.includes(OTHER_OPTION)
-                ? a.otherText.trim().length > 0
-                : true;
-              return hasSel && validOther;
-            });
-            if (allValid) {
-              onSubmit(formatAnswersAsText(newAnswers));
-            }
+    setAnswers(newAnswers);
+
+    // Auto-advance for single-select (not "Other", not multi-select)
+    // Timer MUST be outside setState to prevent double-fire in StrictMode
+    if (!isMultiple && option !== OTHER_OPTION) {
+      autoAdvanceTimer.current = setTimeout(() => {
+        if (!isLastQuestion) {
+          // Go to next question
+          setCurrentIndex((prevIdx) => Math.min(questions.length - 1, prevIdx + 1));
+        } else {
+          // Last question: check if all answered, then auto-submit
+          const allValid = questions.every((q) => {
+            const a = newAnswers[q.id];
+            if (isFreeTextQuestion(q)) return a.freeText.trim().length > 0;
+            const hasSel = a.selectedOptions.length > 0;
+            const validOther = a.selectedOptions.includes(OTHER_OPTION)
+              ? a.otherText.trim().length > 0
+              : true;
+            return hasSel && validOther;
+          });
+          if (allValid) {
+            onSubmit(formatAnswersAsText(newAnswers));
           }
-        }, 350);
-      }
-
-      return newAnswers;
-    });
+        }
+      }, 350);
+    }
   };
 
   const handleOtherTextChange = (questionId: string, text: string) => {
