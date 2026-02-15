@@ -39,7 +39,8 @@ interface ProjectDetailModalProps {
 export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetailModalProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [showPreview, setShowPreview] = useState(false);
+  const [isEditingReadme, setIsEditingReadme] = useState(false);
+  const readmeEditorRef = useRef<HTMLTextAreaElement>(null);
   const [showVisibilityConfirm, setShowVisibilityConfirm] = useState(false);
   const [activeTab, setActiveTab] = useState<'general' | 'roadmap' | 'kpi' | 'context' | 'members'>('general');
 
@@ -679,29 +680,34 @@ export function ProjectDetailModal({ project, onClose, onUpdate }: ProjectDetail
 
             {activeTab === 'context' && (
               <div className="section-content">
-                <div className="context-header">
-                  <label className="field-label">README (詳細コンテキスト)</label>
-                  <button className="preview-toggle" onClick={() => setShowPreview(!setShowPreview)}>
-                    {showPreview ? 'エディター' : 'プレビュー'}
-                  </button>
-                </div>
-                {showPreview ? (
-                  <div className="markdown-preview">
-                    <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
-                      {context || '*プレビューする内容がありません*'}
-                    </ReactMarkdown>
-                  </div>
-                ) : (
+                {isEditingReadme ? (
                   <textarea
+                    ref={readmeEditorRef}
                     className="text-area context-editor"
                     value={context}
+                    autoFocus
                     onChange={(e) => {
                       setContext(e.target.value);
                       setIsEditing(true);
                     }}
+                    onBlur={() => setIsEditingReadme(false)}
                     placeholder="プロジェクトの詳細な情報をMarkdown形式で記述..."
                     rows={20}
                   />
+                ) : (
+                  <div
+                    className="markdown-preview readme-clickable"
+                    onClick={() => setIsEditingReadme(true)}
+                    title="クリックして編集"
+                  >
+                    {context ? (
+                      <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                        {context}
+                      </ReactMarkdown>
+                    ) : (
+                      <p className="readme-placeholder">クリックしてREADMEを編集...</p>
+                    )}
+                  </div>
                 )}
               </div>
             )}

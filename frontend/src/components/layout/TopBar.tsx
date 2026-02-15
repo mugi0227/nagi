@@ -27,7 +27,7 @@ export function TopBar() {
     if (location.pathname === '/') return 'Dashboard';
     if (location.pathname === '/tasks') return 'Tasks';
     if (location.pathname === '/projects') return 'Projects';
-    if (location.pathname === '/skills') return 'Skills';
+    if (location.pathname === '/skills') return 'Memories';
     if (location.pathname === '/native-link') return 'Native Link';
     return 'Dashboard';
   };

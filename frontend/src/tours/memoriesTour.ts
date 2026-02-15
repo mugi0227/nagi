@@ -5,7 +5,7 @@ export const memoriesTourSteps: TourStep[] = [
     target: '.memories-tabs',
     title: 'メモリーのタブ',
     content:
-      'スキルズ・個人メモリ・プロジェクトメモリを切り替えられます。AIがここから情報を参照します。',
+      '仕事メモリ・個人メモリ・プロジェクトメモリを切り替えられます。AIはここから必要な情報を参照します。',
     placement: 'bottom',
     disableBeacon: true,
   },

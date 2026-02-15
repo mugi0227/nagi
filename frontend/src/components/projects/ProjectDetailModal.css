@@ -21,7 +21,7 @@
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;
-  padding: 1.5rem 0;
+  padding: 2.5rem 0 1.5rem;
   flex-shrink: 0;
 }
 
@@ -682,6 +682,23 @@
   border: 1px solid var(--border-color);
   line-height: 1.8;
   color: var(--text-main);
+  min-height: 500px;
+}
+
+.markdown-preview.readme-clickable {
+  cursor: text;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.markdown-preview.readme-clickable:hover {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(14, 165, 233, 0.12);
+}
+
+.readme-placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+  margin: 0;
 }
 
 .markdown-preview h1 {

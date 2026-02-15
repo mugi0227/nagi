@@ -34,8 +34,8 @@ const getBadgeLabel = (proposalType: string) => {
       return 'Approval required';
     case 'create_task':
       return 'Task draft';
-    case 'create_skill':
-      return 'Skill draft';
+    case 'create_work_memory':
+      return 'Work-memory draft';
     case 'assign_task':
       return 'Assignment draft';
     case 'phase_breakdown':
@@ -150,7 +150,7 @@ export function ProposalPanel({
     const { proposalType, payload, description } = currentProposal;
     const isTask = proposalType === 'create_task';
     const isProject = proposalType === 'create_project';
-    const isSkill = proposalType === 'create_skill';
+    const isWorkMemory = proposalType === 'create_work_memory';
     const isAssignment = proposalType === 'assign_task';
     const isPhaseBreakdown = proposalType === 'phase_breakdown';
     const isToolAction = proposalType === 'tool_action';
@@ -165,8 +165,8 @@ export function ProposalPanel({
         {isProject && (
           <ProjectDetails payload={payload as ProjectCreate} />
         )}
-        {isSkill && (
-          <SkillDetails payload={payload as MemoryCreate} />
+        {isWorkMemory && (
+          <WorkMemoryDetails payload={payload as MemoryCreate} />
         )}
         {isAssignment && (
           <AssignmentDetails payload={payload as TaskAssignmentProposal} />
@@ -324,7 +324,7 @@ function ProjectDetails({ payload }: { payload: ProjectCreate }) {
   );
 }
 
-function SkillDetails({ payload }: { payload: MemoryCreate }) {
+function WorkMemoryDetails({ payload }: { payload: MemoryCreate }) {
   return (
     <div className="proposal-panel-row">
       <span className="proposal-panel-label">内容:</span>

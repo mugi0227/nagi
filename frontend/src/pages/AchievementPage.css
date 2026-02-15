@@ -588,6 +588,9 @@
   font-weight: 600;
   color: var(--text-main);
   flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .skill-section-count {
@@ -613,12 +616,16 @@
   display: flex;
   justify-content: space-between;
   align-items: center;
+  min-width: 0;
 }
 
 .skill-name {
   font-size: 0.85rem;
   font-weight: 500;
   color: var(--text-main);
+  min-width: 0;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .skill-count {
@@ -698,6 +705,8 @@
   padding: 0.35rem 0;
   padding-left: 1rem;
   position: relative;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .insight-box li::before {

@@ -988,7 +988,13 @@ export interface CaptureCreate {
 }
 
 // Proposal models (AI謠先｡域価隲ｾ讖溯・)
-export type ProposalType = 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown' | 'tool_action';
+export type ProposalType =
+  'create_task'
+  | 'create_project'
+  | 'create_work_memory'
+  | 'assign_task'
+  | 'phase_breakdown'
+  | 'tool_action';
 
 export interface ToolActionProposalPayload {
   tool_name: string;

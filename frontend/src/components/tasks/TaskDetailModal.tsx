@@ -535,7 +535,15 @@ ${filledSummary}${emptySummary}
       promptTemplate: `タスク「${task.title}」をサブタスクに分解して。
 
 親タスクID: ${task.id}
-※サブタスク作成時は必ずparent_idに上記IDを指定してね
+※サブタスク作成時は必ずparent_idに上記IDを指定して
+※各サブタスクに description（何をするか・完了条件）と guide（進め方3-7ステップ）も入れて
+${task.project_id ? `※親と同じ project_id（${task.project_id}）で作成して` : ''}
+※guide は次の型で書いて
+## 進め方ガイド
+1. ...
+2. ...
+3. ...
+**完了の目安**: ...
 
 追加の指示があれば以下に記入:
 {instruction}`,

@@ -24,9 +24,14 @@ interface SkillFormState {
 
 const VALID_TABS: MemoryTabId[] = ['skills', 'user', 'project'];
 const TAB_LABELS: Record<MemoryTabId, string> = {
-  skills: 'スキルズ',
+  skills: '仕事メモリ',
   user: '個人メモリ',
   project: 'プロジェクトメモリ',
+};
+const TAB_DESCRIPTIONS: Record<MemoryTabId, string> = {
+  skills: '再利用したい手順・ルール・判断基準を保存します。',
+  user: 'あなた個人の好み・背景・依頼スタイルを保存します。',
+  project: 'プロジェクト固有の前提・決定事項・運用ルールを保存します。',
 };
 const TAB_ICONS: Record<MemoryTabId, React.ReactNode> = {
   skills: <FaLightbulb />,
@@ -110,7 +115,7 @@ export function MemoriesPage() {
     if (tabParam && VALID_TABS.includes(tabParam as MemoryTabId)) {
       return tabParam as MemoryTabId;
     }
-    return 'skills'; // デフォルトはスキルズ
+    return 'skills'; // デフォルトは仕事メモリ
   };
   const [activeTab, setActiveTab] = useState<MemoryTabId>(getInitialTab);
 
@@ -277,7 +282,7 @@ export function MemoriesPage() {
     if (isSaving) return;
     const content = buildContent(formState.title, formState.body);
     if (!content.trim()) {
-      alert('スキルの内容を入力してください。');
+      alert('仕事メモリの内容を入力してください。');
       return;
     }
     setIsSaving(true);
@@ -312,21 +317,21 @@ export function MemoriesPage() {
       setMemories(data);
     } catch (err) {
       console.error('Failed to save skill:', err);
-      alert('スキルの保存に失敗しました。');
+      alert('仕事メモリの保存に失敗しました。');
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleDeleteSkill = async (skill: Memory) => {
-    const confirmed = window.confirm('このスキルを削除しますか？');
+    const confirmed = window.confirm('この仕事メモリを削除しますか？');
     if (!confirmed) return;
     try {
       await memoriesApi.delete(skill.id);
       setMemories((prev) => prev.filter((item) => item.id !== skill.id));
     } catch (err) {
       console.error('Failed to delete skill:', err);
-      alert('スキルの削除に失敗しました。');
+      alert('仕事メモリの削除に失敗しました。');
     }
   };
 
@@ -369,7 +374,7 @@ export function MemoriesPage() {
                 id="skills-search"
                 className="filter-input"
                 type="search"
-                placeholder="スキルを検索..."
+                placeholder="仕事メモリを検索..."
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
               />
@@ -377,7 +382,7 @@ export function MemoriesPage() {
             <div className="toolbar-actions">
               <span className="memory-total">{memories.length} 件</span>
               <button className="button button-primary" onClick={() => openEditor()}>
-                <FaPlus /> 新規スキル
+                <FaPlus /> 新規仕事メモリ
               </button>
             </div>
           </div>
@@ -385,8 +390,8 @@ export function MemoriesPage() {
           <div className="skills-list">
             {skillsView.length === 0 ? (
               <div className="empty-state">
-                <p className="empty-title">スキルがまだありません。</p>
-                <p className="empty-hint">よく使う手順をスキルとして登録しましょう。</p>
+                <p className="empty-title">仕事メモリがまだありません。</p>
+                <p className="empty-hint">よく使う手順やルールを仕事メモリとして登録しましょう。</p>
               </div>
             ) : (
               skillsView.map((skill) => (
@@ -594,6 +599,7 @@ export function MemoriesPage() {
           </button>
         ))}
       </nav>
+      <p className="memories-tab-description">{TAB_DESCRIPTIONS[activeTab]}</p>
 
       <div className="memories-panel">
         {renderTabContent()}
@@ -603,7 +609,7 @@ export function MemoriesPage() {
         <div className="skills-modal-overlay" onClick={() => setIsEditorOpen(false)}>
           <div className="skills-modal" onClick={(e) => e.stopPropagation()}>
             <div className="skills-modal-header">
-              <h3>{editingSkill ? 'スキルを編集' : '新規スキル'}</h3>
+              <h3>{editingSkill ? '仕事メモリを編集' : '新規仕事メモリ'}</h3>
               <button
                 className="skills-modal-close"
                 type="button"

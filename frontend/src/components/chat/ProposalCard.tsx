@@ -15,7 +15,13 @@ import './ProposalCard.css';
 
 interface ProposalCardProps {
   proposalId: string;
-  proposalType: 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown' | 'tool_action';
+  proposalType:
+    | 'create_task'
+    | 'create_project'
+    | 'create_work_memory'
+    | 'assign_task'
+    | 'phase_breakdown'
+    | 'tool_action';
   description: string;
   payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal | ToolActionProposalPayload;
   onApprove?: () => void;
@@ -72,13 +78,13 @@ export function ProposalCard({
 
   const isTask = proposalType === 'create_task';
   const isProject = proposalType === 'create_project';
-  const isSkill = proposalType === 'create_skill';
+  const isWorkMemory = proposalType === 'create_work_memory';
   const isAssignment = proposalType === 'assign_task';
   const isPhaseBreakdown = proposalType === 'phase_breakdown';
   const isToolAction = proposalType === 'tool_action';
   const taskPayload = isTask ? (payload as TaskCreate) : null;
   const projectPayload = isProject ? (payload as ProjectCreate) : null;
-  const skillPayload = isSkill ? (payload as MemoryCreate) : null;
+  const workMemoryPayload = isWorkMemory ? (payload as MemoryCreate) : null;
   const assignmentPayload = isAssignment ? (payload as TaskAssignmentProposal) : null;
   const phasePayload = isPhaseBreakdown ? (payload as PhaseBreakdownProposal) : null;
   const toolPayload = isToolAction ? (payload as ToolActionProposalPayload) : null;
@@ -86,8 +92,8 @@ export function ProposalCard({
     ? 'Approval required'
     : isTask
       ? 'Task draft'
-      : isSkill
-        ? 'Skill draft'
+      : isWorkMemory
+        ? 'Work-memory draft'
         : isAssignment
           ? 'Assignment draft'
           : isPhaseBreakdown
@@ -238,19 +244,19 @@ export function ProposalCard({
             </>
           )}
 
-          {isSkill && skillPayload && (
+          {isWorkMemory && workMemoryPayload && (
             <>
               <div className="proposal-detail-row">
                 <span className="detail-label">内容:</span>
                 <span className="detail-value detail-value-pre">
-                  {skillPayload.content}
+                  {workMemoryPayload.content}
                 </span>
               </div>
-              {skillPayload.tags && skillPayload.tags.length > 0 && (
+              {workMemoryPayload.tags && workMemoryPayload.tags.length > 0 && (
                 <div className="proposal-detail-row">
                   <span className="detail-label">タグ:</span>
                   <span className="detail-value">
-                    {skillPayload.tags.join(', ')}
+                    {workMemoryPayload.tags.join(', ')}
                   </span>
                 </div>
               )}

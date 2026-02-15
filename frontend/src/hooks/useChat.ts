@@ -49,7 +49,13 @@ export type TimelineEvent =
 export interface ProposalInfo {
   id: string;
   proposalId: string;
-  proposalType: 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown' | 'tool_action';
+  proposalType:
+    | 'create_task'
+    | 'create_project'
+    | 'create_work_memory'
+    | 'assign_task'
+    | 'phase_breakdown'
+    | 'tool_action';
   description: string;
   payload: TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal | ToolActionProposalPayload;
 }
@@ -88,7 +94,7 @@ const APPROVAL_TOOL_NAMES = new Set([
   'update_project',
   'invite_project_member',
   'create_project_summary',
-  'create_skill',
+  'create_work_memory',
   'create_meeting',
   'add_to_memory',
   'refresh_user_profile',
@@ -567,10 +573,21 @@ export function useChat() {
 
             case 'proposal':
               if (chunk.proposal_id && chunk.proposal_type && chunk.payload) {
+                const rawProposalType = String(chunk.proposal_type ?? '');
+                const normalizedProposalType =
+                  rawProposalType === 'create_skill'
+                    ? 'create_work_memory'
+                    : rawProposalType;
                 const proposalInfo: ProposalInfo = {
                   id: crypto.randomUUID(),
                   proposalId: chunk.proposal_id,
-                  proposalType: chunk.proposal_type as 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown' | 'tool_action',
+                  proposalType: normalizedProposalType as
+                    | 'create_task'
+                    | 'create_project'
+                    | 'create_work_memory'
+                    | 'assign_task'
+                    | 'phase_breakdown'
+                    | 'tool_action',
                   description: chunk.description || '',
                   payload: chunk.payload as unknown as TaskCreate | ProjectCreate | MemoryCreate | TaskAssignmentProposal | PhaseBreakdownProposal | ToolActionProposalPayload,
                 };

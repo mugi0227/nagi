@@ -22,7 +22,13 @@ export interface StreamChunk {
   capture_id?: string;
   // Proposal-specific fields
   proposal_id?: string;
-  proposal_type?: 'create_task' | 'create_project' | 'create_skill' | 'assign_task' | 'phase_breakdown' | 'tool_action';
+  proposal_type?:
+    | 'create_task'
+    | 'create_project'
+    | 'create_work_memory'
+    | 'assign_task'
+    | 'phase_breakdown'
+    | 'tool_action';
   description?: string;
   payload?: Record<string, unknown>;
   // Questions-specific fields (ask_user_questions tool)
