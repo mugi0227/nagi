@@ -72,7 +72,7 @@ def _build_tasks_by_member_prompt(
     lines = ["## メンバー別の完了タスク", ""]
 
     for user_id, tasks in tasks_by_member.items():
-        name = member_names.get(user_id, "不明なメンバー")
+        name = member_names.get(user_id, user_id)
         lines.append(f"### {name} ({len(tasks)}タスク)")
         for task in tasks[:10]:  # Limit to 10 tasks per member
             lines.append(f"- {task.title}")
@@ -97,6 +97,24 @@ def _build_member_contributions_prompt(contributions: list[MemberContribution]) 
         lines.append("")
 
     return "\n".join(lines)
+
+
+async def _resolve_member_display_name(user_repo: IUserRepository, member_user_id: str) -> str:
+    user = None
+    try:
+        user = await user_repo.get(UUID(member_user_id))
+    except (ValueError, TypeError):
+        user = None
+
+    if not user and "@" in member_user_id:
+        user = await user_repo.get_by_email(member_user_id)
+    if not user:
+        user = await user_repo.get_by_username(member_user_id)
+
+    if not user:
+        return member_user_id
+
+    return user.display_name or user.username or member_user_id
 
 
 def _format_bullet_list(items: list[str]) -> str:
@@ -266,15 +284,8 @@ async def generate_project_achievement(
 
     # Get user display names
     member_names: dict[str, str] = {}
-    for uid in member_user_ids:
-        try:
-            user = await user_repo.get_by_id(UUID(uid))
-            if user:
-                member_names[uid] = user.display_name or user.username
-            else:
-                member_names[uid] = "不明"
-        except Exception:
-            member_names[uid] = "不明"
+    for uid in set(member_user_ids + [owner_id]):
+        member_names[uid] = await _resolve_member_display_name(user_repo, uid)
 
     # Fetch all completed tasks for the project using the owner's user_id
     # (all project tasks are stored under the project owner)
@@ -346,7 +357,7 @@ async def generate_project_achievement(
     for user_id, tasks in tasks_by_member.items():
         contribution = MemberContribution(
             user_id=user_id,
-            display_name=member_names.get(user_id, "不明"),
+            display_name=member_names.get(user_id, user_id),
             task_count=len(tasks),
             main_areas=member_areas.get(user_id, []),
             task_titles=[t.title for t in tasks[:10]],

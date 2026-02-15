@@ -298,6 +298,7 @@ async def run_migrations():
 
         # Migrate existing [1], [2], [3] patterns to order_in_parent
         await _migrate_step_numbers_to_order(conn)
+        await _backfill_subtask_project_ids(conn)
 
         # Ensure task_assignments supports multiple assignees per task.
         await _ensure_task_assignment_unique(conn)
@@ -783,6 +784,36 @@ async def _migrate_step_numbers_to_order(conn):
                 text("UPDATE tasks SET order_in_parent = :order, title = :title WHERE id = :id"),
                 {"order": step_number, "title": clean_title, "id": task_id}
             )
+
+
+async def _backfill_subtask_project_ids(conn):
+    """
+    Backfill missing subtask project_id from the parent task's project_id.
+
+    Older task creation flows could create subtasks with parent_id but project_id=NULL
+    even when the parent belonged to a project. This breaks parent modal subtask queries
+    that scope by project_id.
+    """
+    await conn.execute(
+        text(
+            """
+            UPDATE tasks
+            SET project_id = (
+                SELECT parent.project_id
+                FROM tasks AS parent
+                WHERE parent.id = tasks.parent_id
+            )
+            WHERE tasks.parent_id IS NOT NULL
+              AND tasks.project_id IS NULL
+              AND EXISTS (
+                  SELECT 1
+                  FROM tasks AS parent
+                  WHERE parent.id = tasks.parent_id
+                    AND parent.project_id IS NOT NULL
+              )
+            """
+        )
+    )
 
 
 async def _ensure_username_unique(conn):

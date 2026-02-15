@@ -1,7 +1,7 @@
 """
 Secretary Partner AI - Main Application Entry Point
 
-Brain Dump Partner: ADHD向け自律型秘書AI
+Brain Dump Partner: 自律型秘書AI
 """
 
 import json
@@ -50,7 +50,7 @@ def create_app() -> FastAPI:
 
     app = FastAPI(
         title="Secretary Partner AI",
-        description="Brain Dump Partner - ADHD向け自律型秘書AI (外付け前頭葉)",
+        description="Brain Dump Partner - 自律型秘書AI (外付け前頭葉)",
         version="0.1.0",
         lifespan=lifespan,
         docs_url="/docs" if settings.DEBUG else None,

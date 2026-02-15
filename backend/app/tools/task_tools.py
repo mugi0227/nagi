@@ -563,6 +563,27 @@ async def create_task(
         except ValueError:
             pass  # Invalid UUID format, ignore
 
+    if parent_id:
+        parent_task, parent_owner_id, parent_project_id, parent_error = await _resolve_task_access(
+            user_id,
+            parent_id,
+            repo,
+            project_repo,
+            member_repo,
+        )
+        if parent_error:
+            return parent_error
+        if not parent_task or not parent_owner_id:
+            return {"error": f"Parent task {parent_id} not found"}
+
+        owner_id = parent_owner_id
+        if project_id is None:
+            project_id = parent_project_id
+        elif project_id != parent_project_id:
+            return {
+                "error": "parent_id and project_id mismatch",
+            }
+
     # Parse due_date if provided
     due_date = None
     if input_data.due_date:
@@ -1488,6 +1509,7 @@ def create_task_tool(
             start_not_before (str, optional): 着手可能日時（ISO形式）
             parent_id (str, optional): 親タスクID（UUID文字列）- サブタスクとして作成する場合に必須
             order_in_parent (int, optional): 親タスク内での順序（1から開始）- サブタスクの場合に推奨
+            guide (str, optional): サブタスクの進め方ガイド（Markdown）
             dependency_ids (list[str], optional): このタスクが依存する他のタスクのIDリスト（UUID文字列）
             same_day_allowed (bool, optional): ?????????????????????????? true
             min_gap_days (int, optional): ????????????????????????? 0
