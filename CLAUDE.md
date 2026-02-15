@@ -141,3 +141,10 @@ AIが対話的に処理
 - Use Luxon for all date/time parsing and formatting in the frontend.
 - Always apply the user timezone via utils/dateTime helpers (currentUser.timezone or stored fallback).
 
+
+## Prompt Layering Policy
+- Keep `secretary_core_prompt` minimal: principles, safety, tone, and output rules only.
+- Do not add use-case specific procedures (e.g. exact task/project/meeting operation flows) to core.
+- Put use-case specific procedures in skill prompts (`secretary_skill_prompts`) and load them by runtime profile.
+- Tool details should be short and index-like in core/runtime sections; long operational playbooks belong to skills.
+- When migrating or adding behavior, update skill prompts first; only add to core if it is universally applicable.
