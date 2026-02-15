@@ -77,6 +77,7 @@ _PROFILE_KEYWORDS: dict[RuntimeProfile, tuple[str, ...]] = {
         "覚えて",
         "プロフィール",
         "スキル",
+        "仕事メモリ",
         "ルール",
     ),
     "recurring": (
@@ -93,12 +94,18 @@ _PROFILE_KEYWORDS: dict[RuntimeProfile, tuple[str, ...]] = {
         "todo",
         "subtask",
         "deadline",
+        "estimate",
         "priority",
         "タスク",
         "todo",
         "やること",
         "締切",
         "期限",
+        "見積",
+        "見積もり",
+        "工数",
+        "来週",
+        "来週中",
         "担当",
     ),
 }
@@ -119,6 +126,15 @@ _ALWAYS_ON_TOOL_NAMES = frozenset(
     {
         "get_current_datetime",
         "ask_user_questions",
+    }
+)
+
+_PROJECT_MUTATION_TOOL_NAMES = frozenset(
+    {
+        "create_project",
+        "update_project",
+        "invite_project_member",
+        "create_project_summary",
     }
 )
 
@@ -143,9 +159,8 @@ _PROFILE_TOOL_NAMES: dict[RuntimeProfile, frozenset[str]] = {
             "list_checkins",
             "search_memories",
             "search_work_memory",
-            "search_skills",
-            "load_skill",
-            "list_skills_index",
+            "load_work_memory",
+            "list_work_memory_index",
             "ask_user_questions",
         }
     ),
@@ -159,6 +174,8 @@ _PROFILE_TOOL_NAMES: dict[RuntimeProfile, frozenset[str]] = {
             "get_task",
             "assign_task",
             "list_task_assignments",
+            "list_projects",
+            "load_project_context",
         }
     ),
     "project": frozenset(
@@ -214,10 +231,9 @@ _PROFILE_TOOL_NAMES: dict[RuntimeProfile, frozenset[str]] = {
             "search_work_memory",
             "add_to_memory",
             "refresh_user_profile",
-            "create_skill",
-            "search_skills",
-            "load_skill",
-            "list_skills_index",
+            "create_work_memory",
+            "load_work_memory",
+            "list_work_memory_index",
         }
     ),
     "recurring": frozenset(
@@ -232,9 +248,9 @@ _PROFILE_TOOL_NAMES: dict[RuntimeProfile, frozenset[str]] = {
         {
             "run_browser_task",
             "run_hybrid_rpa",
-            "register_browser_skill",
-            "search_skills",
-            "load_skill",
+            "register_browser_work_memory",
+            "search_work_memory",
+            "load_work_memory",
         }
     ),
 }
@@ -295,6 +311,44 @@ def _score_profiles(text: str) -> dict[RuntimeProfile, int]:
     return scores
 
 
+def _has_explicit_project_management_intent(text: str) -> bool:
+    project_hints = ("project", "プロジェクト")
+    management_hints = (
+        "create_project",
+        "update_project",
+        "create",
+        "作成",
+        "新規",
+        "更新",
+        "修正",
+        "変更",
+        "招待",
+        "invite",
+        "member",
+        "メンバー",
+        "goal",
+        "goals",
+        "ゴール",
+        "kpi",
+        "context",
+        "readme",
+        "key_points",
+        "summary",
+        "要約",
+    )
+    return any(hint in text for hint in project_hints) and any(
+        hint in text for hint in management_hints
+    )
+
+
+def _is_agenda_operation_intent(text: str) -> bool:
+    agenda_hints = ("agenda", "アジェンダ", "議題")
+    operation_hints = ("add", "update", "delete", "reorder", "追加", "更新", "削除", "並び替え")
+    return any(hint in text for hint in agenda_hints) and any(
+        hint in text for hint in operation_hints
+    )
+
+
 def select_runtime_profiles(text: str | None) -> tuple[RuntimeProfile, ...]:
     normalized = _normalize_text(text)
     if not normalized:
@@ -330,16 +384,47 @@ def select_runtime_profiles(text: str | None) -> tuple[RuntimeProfile, ...]:
     return tuple(selected)
 
 
-def resolve_tool_names_for_profiles(profiles: tuple[RuntimeProfile, ...]) -> frozenset[str]:
+def resolve_tool_names_for_profiles(
+    profiles: tuple[RuntimeProfile, ...],
+    text: str | None = None,
+) -> frozenset[str]:
     names = set(_ALWAYS_ON_TOOL_NAMES)
     for profile in profiles:
         names.update(_PROFILE_TOOL_NAMES.get(profile, frozenset()))
+
+    normalized = _normalize_text(text)
+    if "task" in profiles and not _has_explicit_project_management_intent(normalized):
+        names.difference_update(_PROJECT_MUTATION_TOOL_NAMES)
+    if "meeting" in profiles and _is_agenda_operation_intent(normalized):
+        names.discard("update_task")
+
     return frozenset(names)
 
 
-def build_secretary_runtime_routing(text: str | None) -> SecretaryRuntimeRouting:
-    profiles = select_runtime_profiles(text)
-    tool_names = resolve_tool_names_for_profiles(profiles)
+def build_secretary_runtime_routing(
+    text: str | None,
+    *,
+    allow_browser: bool = False,
+    forced_profile: RuntimeProfile | None = None,
+) -> SecretaryRuntimeRouting:
+    normalized_forced = str(forced_profile or "").strip().lower()
+    if normalized_forced in _PROFILE_TOOL_NAMES and (
+        normalized_forced != "browser" or allow_browser
+    ):
+        profiles: tuple[RuntimeProfile, ...] = (normalized_forced,)
+    else:
+        selected = list(select_runtime_profiles(text))
+        if not allow_browser:
+            selected = [profile for profile in selected if profile != "browser"]
+            if not selected:
+                normalized = _normalize_text(text)
+                if _is_ambiguous_followup(normalized):
+                    selected = ["task", "project", "meeting"]
+                else:
+                    selected = ["task"]
+        profiles = tuple(selected)
+
+    tool_names = resolve_tool_names_for_profiles(profiles, text=text)
     return SecretaryRuntimeRouting(
         profiles=profiles,
         tool_names=tool_names,

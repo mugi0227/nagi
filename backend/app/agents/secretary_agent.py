@@ -29,12 +29,12 @@ from app.interfaces.recurring_task_repository import IRecurringTaskRepository
 from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.interfaces.user_repository import IUserRepository
-from app.services.skills_service import (
-    format_loaded_skills_for_prompt,
-    format_skills_index_for_prompt,
-    get_skill_by_id,
-    get_skills_index,
-    select_relevant_skills,
+from app.services.work_memory_service import (
+    format_loaded_work_memories_for_prompt,
+    format_work_memory_index_for_prompt,
+    get_work_memory_by_id,
+    get_work_memory_index,
+    select_relevant_work_memories,
 )
 from app.tools import (
     add_agenda_item_tool,
@@ -49,8 +49,8 @@ from app.tools import (
     create_project_summary_tool,
     create_project_tool,
     create_recurring_task_tool,
-    create_skill_tool,
     create_task_tool,
+    create_work_memory_tool,
     delete_agenda_item_tool,
     delete_milestone_tool,
     delete_phase_tool,
@@ -72,20 +72,19 @@ from app.tools import (
     list_projects_tool,
     list_recurring_meetings_tool,
     list_recurring_tasks_tool,
-    list_skills_index_tool,
     list_task_assignments_tool,
     list_tasks_tool,
+    list_work_memory_index_tool,
     load_project_context_tool,
-    load_skill_tool,
+    load_work_memory_tool,
     refresh_user_profile_tool,
-    register_browser_skill_tool,
+    register_browser_work_memory_tool,
     reorder_agenda_items_tool,
     run_browser_task_tool,
     run_hybrid_rpa_tool,
     schedule_agent_task_tool,
     search_memories_tool,
     search_similar_tasks_tool,
-    search_skills_tool,
     search_work_memory_tool,
     update_agenda_item_tool,
     update_milestone_tool,
@@ -96,62 +95,61 @@ from app.tools import (
 )
 
 _TOOL_HELP: dict[str, str] = {
-    "get_current_datetime": "現在日時を取得",
-    "ask_user_questions": "不足情報を質問",
-    "create_task": "タスク作成",
-    "update_task": "タスク更新",
-    "delete_task": "タスク削除",
-    "search_similar_tasks": "類似タスク検索",
-    "list_tasks": "タスク一覧",
-    "get_task": "タスク詳細",
-    "assign_task": "担当割り当て",
-    "list_task_assignments": "担当一覧",
-    "list_project_assignments": "プロジェクト担当一覧",
-    "create_project": "プロジェクト作成",
-    "update_project": "プロジェクト更新",
-    "list_projects": "プロジェクト一覧",
-    "list_project_members": "メンバー一覧",
-    "list_project_invitations": "招待一覧",
-    "load_project_context": "プロジェクト文脈読込",
-    "invite_project_member": "メンバー招待",
-    "create_project_summary": "プロジェクト要約作成",
-    "list_kpi_templates": "KPIテンプレート一覧",
-    "list_phases": "フェーズ一覧",
-    "get_phase": "フェーズ詳細",
-    "create_phase": "フェーズ作成",
-    "update_phase": "フェーズ更新",
-    "delete_phase": "フェーズ削除",
-    "list_milestones": "マイルストーン一覧",
-    "create_milestone": "マイルストーン作成",
-    "update_milestone": "マイルストーン更新",
-    "delete_milestone": "マイルストーン削除",
-    "add_agenda_item": "議題追加",
-    "update_agenda_item": "議題更新",
-    "delete_agenda_item": "議題削除",
-    "list_agenda_items": "議題一覧",
-    "reorder_agenda_items": "議題並び替え",
-    "fetch_meeting_context": "会議文脈取得",
-    "list_recurring_meetings": "定例会議一覧",
-    "create_checkin": "チェックイン作成",
-    "list_checkins": "チェックイン一覧",
-    "create_recurring_task": "定期タスク作成",
-    "list_recurring_tasks": "定期タスク一覧",
-    "update_recurring_task": "定期タスク更新",
-    "delete_recurring_task": "定期タスク削除",
-    "search_memories": "メモ検索",
-    "search_work_memory": "業務メモ検索",
-    "search_skills": "スキル検索",
-    "create_skill": "スキル作成",
-    "load_skill": "スキル詳細読込",
-    "list_skills_index": "スキル索引取得",
-    "add_to_memory": "メモ保存",
-    "refresh_user_profile": "プロフィール更新",
-    "schedule_agent_task": "将来実行の予約",
-    "apply_schedule_request": "日次予定の調整",
-    "run_browser_task": "ブラウザ自動操作",
-    "run_hybrid_rpa": "ハイブリッドRPA",
-    "register_browser_skill": "ブラウザ操作をスキル化",
-    "create_meeting": "会議タスク作成",
+    "get_current_datetime": "日時基準が必要なとき",
+    "ask_user_questions": "不足情報を確認したいとき",
+    "create_task": "新しいタスクを作りたいとき",
+    "update_task": "既存タスクを修正したいとき",
+    "delete_task": "不要タスクを消したいとき",
+    "search_similar_tasks": "重複や類似を確認したいとき",
+    "list_tasks": "タスク全体を見たいとき",
+    "get_task": "特定タスクの詳細を見たいとき",
+    "assign_task": "担当を割り当てたいとき",
+    "list_task_assignments": "担当状況を確認したいとき",
+    "list_project_assignments": "プロジェクト全体の担当を見たいとき",
+    "create_project": "新規プロジェクトを作りたいとき",
+    "update_project": "プロジェクト情報を更新したいとき",
+    "list_projects": "プロジェクト一覧を確認したいとき",
+    "list_project_members": "メンバー構成を確認したいとき",
+    "list_project_invitations": "招待状況を確認したいとき",
+    "load_project_context": "プロジェクト背景を読みたいとき",
+    "invite_project_member": "メンバーを招待したいとき",
+    "create_project_summary": "進捗要約を作りたいとき",
+    "list_kpi_templates": "KPI雛形を選びたいとき",
+    "list_phases": "フェーズ構成を確認したいとき",
+    "get_phase": "フェーズ詳細を確認したいとき",
+    "create_phase": "フェーズを追加したいとき",
+    "update_phase": "フェーズ内容を更新したいとき",
+    "delete_phase": "フェーズを削除したいとき",
+    "list_milestones": "マイルストーン一覧を見たいとき",
+    "create_milestone": "マイルストーンを追加したいとき",
+    "update_milestone": "マイルストーンを更新したいとき",
+    "delete_milestone": "マイルストーンを削除したいとき",
+    "add_agenda_item": "議題を追加したいとき",
+    "update_agenda_item": "議題を更新したいとき",
+    "delete_agenda_item": "議題を削除したいとき",
+    "list_agenda_items": "議題一覧を確認したいとき",
+    "reorder_agenda_items": "議題順を並べ替えたいとき",
+    "fetch_meeting_context": "会議前提をまとめて取得したいとき",
+    "list_recurring_meetings": "定例会議の設定を確認したいとき",
+    "create_checkin": "チェックインを記録したいとき",
+    "list_checkins": "チェックイン履歴を見たいとき",
+    "create_recurring_task": "定期タスクを作りたいとき",
+    "list_recurring_tasks": "定期タスク一覧を見たいとき",
+    "update_recurring_task": "定期タスク設定を更新したいとき",
+    "delete_recurring_task": "定期タスクを止めたいとき",
+    "search_memories": "保存メモを検索したいとき",
+    "search_work_memory": "業務メモを絞って探したいとき",
+    "create_work_memory": "手順を仕事メモリとして保存したいとき",
+    "load_work_memory": "特定の仕事メモリの詳細を読みたいとき",
+    "list_work_memory_index": "仕事メモリ一覧をざっと見たいとき",
+    "add_to_memory": "知見をメモ保存したいとき",
+    "refresh_user_profile": "プロフィール記憶を更新したいとき",
+    "schedule_agent_task": "将来実行を予約したいとき",
+    "apply_schedule_request": "今日の予定を整理したいとき",
+    "run_browser_task": "Web操作を自動実行したいとき",
+    "run_hybrid_rpa": "複雑なRPAを実行したいとき",
+    "register_browser_work_memory": "ブラウザ操作を再利用化したいとき",
+    "create_meeting": "会議予定タスクを作りたいとき",
 }
 
 _TOOL_CATALOG_SECTIONS: dict[str, tuple[str, ...]] = {
@@ -196,13 +194,12 @@ _TOOL_CATALOG_SECTIONS: dict[str, tuple[str, ...]] = {
         "create_checkin",
         "list_checkins",
     ),
-    "Memory/Skill": (
+    "Memory/WorkMemory": (
         "search_memories",
         "search_work_memory",
-        "search_skills",
-        "create_skill",
-        "load_skill",
-        "list_skills_index",
+        "create_work_memory",
+        "load_work_memory",
+        "list_work_memory_index",
         "add_to_memory",
         "refresh_user_profile",
     ),
@@ -217,7 +214,7 @@ _TOOL_CATALOG_SECTIONS: dict[str, tuple[str, ...]] = {
     "Browser": (
         "run_browser_task",
         "run_hybrid_rpa",
-        "register_browser_skill",
+        "register_browser_work_memory",
     ),
 }
 
@@ -243,9 +240,10 @@ def _format_tools_for_prompt(
     include_catalog: bool,
 ) -> str:
     lines = ["## Enabled Tools (This Turn)"]
+    lines.append("- 下の用途一覧を見て選び、詳細仕様は実行時のツール定義で確認する。")
     for name in enabled_tool_names:
         desc = _TOOL_HELP.get(name, "利用可能")
-        lines.append(f"- `{name}`: {desc}")
+        lines.append(f"- `{name}`: 使うとき -> {desc}")
 
     if not include_catalog:
         return "\n".join(lines)
@@ -258,7 +256,7 @@ def _format_tools_for_prompt(
     return "\n".join(lines)
 
 
-async def build_system_prompt_with_skills(
+async def build_system_prompt_with_work_memory(
     user_id: str,
     memory_repo: IMemoryRepository,
     user_message: str | None,
@@ -269,16 +267,19 @@ async def build_system_prompt_with_skills(
     datetime_section = get_current_datetime_section()
     profile_skill_section = format_profile_skill_prompts(profiles)
 
-    skills = await get_skills_index(user_id, memory_repo, limit=30)
-    skills_index_section = format_skills_index_for_prompt(skills, max_items=8)
+    work_memories = await get_work_memory_index(user_id, memory_repo, limit=30)
+    work_memory_index_section = format_work_memory_index_for_prompt(work_memories, max_items=8)
 
-    selected = select_relevant_skills(skills, user_message or "", limit=2)
-    loaded_skills = []
+    selected = select_relevant_work_memories(work_memories, user_message or "", limit=2)
+    loaded_work_memories = []
     for item in selected:
-        full_skill = await get_skill_by_id(user_id, memory_repo, item.id)
-        if full_skill:
-            loaded_skills.append(full_skill)
-    loaded_skills_section = format_loaded_skills_for_prompt(loaded_skills, max_chars_per_skill=600)
+        full_memory = await get_work_memory_by_id(user_id, memory_repo, item.id)
+        if full_memory:
+            loaded_work_memories.append(full_memory)
+    loaded_work_memory_section = format_loaded_work_memories_for_prompt(
+        loaded_work_memories,
+        max_chars_per_work_memory=600,
+    )
     tools_section = _format_tools_for_prompt(
         enabled_tool_names=enabled_tool_names,
         include_catalog=include_tool_catalog,
@@ -289,10 +290,26 @@ async def build_system_prompt_with_skills(
         SECRETARY_CORE_PROMPT,
         tools_section,
         profile_skill_section,
-        skills_index_section,
-        loaded_skills_section,
+        work_memory_index_section,
+        loaded_work_memory_section,
     ]
     return "\n\n".join(section for section in sections if section)
+
+
+def _resolve_runtime_routing_options(
+    routing_context: dict[str, Any] | None,
+) -> tuple[bool, str | None]:
+    if not isinstance(routing_context, dict):
+        return False, None
+
+    raw_mode = (
+        routing_context.get("extension_agent_mode")
+        or routing_context.get("agent_mode")
+    )
+    normalized_mode = str(raw_mode or "").strip().lower().replace("-", "_")
+    if normalized_mode in {"browser", "browser_agent"}:
+        return True, "browser"
+    return False, None
 
 
 async def create_secretary_agent(
@@ -316,8 +333,14 @@ async def create_secretary_agent(
     auto_approve: bool = True,
     user_repo: IUserRepository | None = None,
     user_message: str | None = None,
+    routing_context: dict[str, Any] | None = None,
 ) -> Agent:
-    routing = build_secretary_runtime_routing(user_message)
+    allow_browser, forced_profile = _resolve_runtime_routing_options(routing_context)
+    routing = build_secretary_runtime_routing(
+        user_message,
+        allow_browser=allow_browser,
+        forced_profile=forced_profile,
+    )
     model = llm_provider.get_model()
 
     task_creation_tool = create_task_tool(
@@ -349,7 +372,7 @@ async def create_secretary_agent(
         session_id=session_id,
         auto_approve=auto_approve,
     )
-    skill_creation_tool = create_skill_tool(
+    work_memory_creation_tool = create_work_memory_tool(
         memory_repo,
         user_id,
         proposal_repo=proposal_repo,
@@ -372,7 +395,7 @@ async def create_secretary_agent(
         ),
         list_kpi_templates_tool(),
         project_creation_tool,
-        skill_creation_tool,
+        work_memory_creation_tool,
         list_projects_tool(project_repo, user_id),
         list_project_members_tool(project_repo, project_member_repo, user_id),
         list_project_invitations_tool(project_repo, project_member_repo, project_invitation_repo, user_id),
@@ -440,7 +463,6 @@ async def create_secretary_agent(
             user_id,
         ),
         search_memories_tool(memory_repo, user_id),
-        search_skills_tool(memory_repo, user_id),
         search_work_memory_tool(memory_repo, user_id),
         add_to_memory_tool(
             memory_repo,
@@ -619,17 +641,17 @@ async def create_secretary_agent(
         list_recurring_tasks_tool(recurring_task_repo, user_id),
         update_recurring_task_tool(recurring_task_repo, user_id),
         delete_recurring_task_tool(recurring_task_repo, user_id),
-        load_skill_tool(memory_repo, user_id),
-        list_skills_index_tool(memory_repo, user_id),
+        load_work_memory_tool(memory_repo, user_id),
+        list_work_memory_index_tool(memory_repo, user_id),
         run_browser_task_tool(),
         run_hybrid_rpa_tool(),
-        register_browser_skill_tool(),
+        register_browser_work_memory_tool(),
         ask_user_questions_tool(),
     ]
 
     tools = _filter_tools_by_name(all_tools, routing.tool_names)
     enabled_tool_names = [getattr(tool, "name", "") for tool in tools if getattr(tool, "name", "")]
-    system_prompt = await build_system_prompt_with_skills(
+    system_prompt = await build_system_prompt_with_work_memory(
         user_id=user_id,
         memory_repo=memory_repo,
         user_message=user_message,

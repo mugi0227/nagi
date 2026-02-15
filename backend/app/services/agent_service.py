@@ -6,7 +6,9 @@ This service handles agent execution, tool calling, and response generation.
 
 from __future__ import annotations
 
+import ast
 import json
+from collections.abc import Mapping
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -38,13 +40,13 @@ from app.interfaces.task_assignment_repository import ITaskAssignmentRepository
 from app.interfaces.task_repository import ITaskRepository
 from app.interfaces.user_repository import IUserRepository
 from app.models.capture import CaptureCreate
-from app.models.chat import ChatRequest, ChatResponse
+from app.models.chat import ChatRequest, ChatResponse, PendingQuestion, PendingQuestions
 from app.models.enums import ContentType, ToolApprovalMode
 from app.utils.datetime_utils import ensure_utc
 
-# Global cache for runners (keyed by user_id + session_id + model)
+# Global cache for runners (keyed by user_id + session_id + model + routing_mode)
 # This allows session state to persist across requests
-_runner_cache: dict[tuple[str, str, str], tuple[InMemoryRunner, bool]] = {}
+_runner_cache: dict[tuple[str, str, str, str], tuple[InMemoryRunner, bool]] = {}
 _session_index: dict[str, dict[str, dict[str, Any]]] = {}
 
 
@@ -135,15 +137,23 @@ class AgentService:
         allow_auto_approve_mismatch: bool = False,
         model_id: str | None = None,
         routing_message: str | None = None,
+        routing_context: dict[str, Any] | None = None,
     ) -> InMemoryRunner:
         """Get cached runner or create a new one for the user.
 
         Note: All tools are now proposal-based, but auto_approve determines
         whether proposals are automatically approved or require user confirmation.
         """
-        use_cache = not (routing_message or "").strip()
+        routing_mode = ""
+        if isinstance(routing_context, dict):
+            routing_mode = str(
+                routing_context.get("extension_agent_mode")
+                or routing_context.get("agent_mode")
+                or ""
+            ).strip().lower()
+        use_cache = not (routing_message or "").strip() and not routing_mode
         effective_model_key = model_id or "default"
-        cache_key = (user_id, session_id, effective_model_key)
+        cache_key = (user_id, session_id, effective_model_key, routing_mode or "default")
 
         if use_cache:
             cached = _runner_cache.get(cache_key)
@@ -174,6 +184,7 @@ class AgentService:
             auto_approve=auto_approve,
             user_repo=self._user_repo,
             user_message=routing_message,
+            routing_context=routing_context,
         )
 
         runner = InMemoryRunner(agent=agent, app_name=self.APP_NAME)
@@ -1117,6 +1128,136 @@ class AgentService:
 
         return Content(role="user", parts=parts)
 
+    @staticmethod
+    def _normalize_tool_response(raw_response: Any) -> dict[str, Any] | None:
+        if raw_response is None:
+            return None
+        if isinstance(raw_response, dict):
+            return raw_response
+        if isinstance(raw_response, Mapping):
+            try:
+                parsed_mapping = dict(raw_response)
+            except Exception:
+                parsed_mapping = None
+            if isinstance(parsed_mapping, dict):
+                return parsed_mapping
+        if isinstance(raw_response, str):
+            raw = raw_response.strip()
+            if not raw:
+                return None
+            try:
+                parsed = json.loads(raw)
+            except json.JSONDecodeError:
+                try:
+                    literal = ast.literal_eval(raw)
+                except (ValueError, SyntaxError):
+                    return None
+                return literal if isinstance(literal, dict) else None
+            return parsed if isinstance(parsed, dict) else None
+        if hasattr(raw_response, "to_dict"):
+            try:
+                parsed = raw_response.to_dict()
+            except Exception:
+                parsed = None
+            if isinstance(parsed, dict):
+                return parsed
+        if hasattr(raw_response, "model_dump"):
+            try:
+                parsed = raw_response.model_dump(mode="json")
+            except Exception:
+                parsed = raw_response.model_dump()
+            return parsed if isinstance(parsed, dict) else None
+        return None
+
+    @staticmethod
+    def _extract_pending_questions_payload(raw_response: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not isinstance(raw_response, dict):
+            return None
+
+        stack: list[dict[str, Any]] = [raw_response]
+        seen: set[int] = set()
+        while stack:
+            current = stack.pop()
+            current_id = id(current)
+            if current_id in seen:
+                continue
+            seen.add(current_id)
+
+            status = current.get("status")
+            questions = current.get("questions")
+            if status == "awaiting_response" and isinstance(questions, list):
+                return current
+
+            nested_keys = ("result", "response", "data", "output", "tool_result")
+            for key in nested_keys:
+                nested = current.get(key)
+                if isinstance(nested, dict):
+                    stack.append(nested)
+
+            for value in current.values():
+                if isinstance(value, dict):
+                    stack.append(value)
+        return None
+
+    @classmethod
+    def _parse_pending_questions(
+        cls, raw_response: dict[str, Any] | None
+    ) -> PendingQuestions | None:
+        payload = cls._extract_pending_questions_payload(raw_response)
+        if not payload:
+            return None
+        raw_questions = payload.get("questions")
+        if not isinstance(raw_questions, list):
+            return None
+
+        questions: list[PendingQuestion] = []
+        for index, raw_question in enumerate(raw_questions):
+            if not isinstance(raw_question, dict):
+                continue
+
+            question_text_raw = raw_question.get("question")
+            if not isinstance(question_text_raw, str):
+                continue
+            question_text = question_text_raw.strip()
+            if not question_text:
+                continue
+
+            question_id_raw = raw_question.get("id")
+            question_id = str(question_id_raw).strip() if question_id_raw is not None else ""
+            if not question_id:
+                question_id = f"q_{index + 1}"
+
+            raw_options = raw_question.get("options")
+            options = (
+                [option.strip() for option in raw_options if isinstance(option, str) and option.strip()]
+                if isinstance(raw_options, list)
+                else []
+            )
+
+            placeholder_raw = raw_question.get("placeholder")
+            placeholder = (
+                placeholder_raw.strip()
+                if isinstance(placeholder_raw, str) and placeholder_raw.strip()
+                else None
+            )
+
+            questions.append(
+                PendingQuestion(
+                    id=question_id,
+                    question=question_text,
+                    options=options,
+                    allow_multiple=bool(raw_question.get("allow_multiple", False)),
+                    placeholder=placeholder,
+                )
+            )
+
+        if not questions:
+            return None
+
+        context_raw = payload.get("context")
+        context = context_raw.strip() if isinstance(context_raw, str) and context_raw.strip() else None
+        return PendingQuestions(questions=questions, context=context)
+
     async def process_chat(
         self,
         user_id: str,
@@ -1171,6 +1312,7 @@ class AgentService:
             auto_approve=self._resolve_auto_approve(request),
             model_id=request.model,
             routing_message=user_message_text,
+            routing_context=request.context,
         )
 
         # Run agent with user message
@@ -1192,6 +1334,7 @@ class AgentService:
             )
 
             assistant_message_parts: list[str] = []
+            pending_questions: PendingQuestions | None = None
             total_input_tokens = 0
             total_output_tokens = 0
             async for event in runner.run_async(
@@ -1208,10 +1351,23 @@ class AgentService:
                     text = getattr(part, "text", None)
                     if text:
                         assistant_message_parts.append(text)
+                    func_response = getattr(part, "function_response", None)
+                    if not func_response:
+                        continue
+                    raw_response = (
+                        func_response.response if hasattr(func_response, "response") else None
+                    )
+                    parsed_response = self._normalize_tool_response(raw_response)
+                    parsed_pending_questions = self._parse_pending_questions(parsed_response)
+                    if parsed_pending_questions:
+                        pending_questions = parsed_pending_questions
 
             assistant_message = "".join(assistant_message_parts).strip()
             if not assistant_message:
-                assistant_message = "（応答が空でした。もう一度試してみてください）"
+                if pending_questions:
+                    assistant_message = "I have follow-up questions. Please answer them to continue."
+                else:
+                    assistant_message = "（応答が空でした。もう一度試してみてください）"
 
             await self._record_message(
                 user_id=user_id,
@@ -1240,6 +1396,7 @@ class AgentService:
                 suggested_actions=[],
                 session_id=session_id,
                 capture_id=capture_id,
+                pending_questions=pending_questions,
                 usage=usage,
             )
 
@@ -1303,6 +1460,7 @@ class AgentService:
             auto_approve=self._resolve_auto_approve(request),
             model_id=request.model,
             routing_message=user_message_text,
+            routing_context=request.context,
         )
 
         try:
