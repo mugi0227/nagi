@@ -2468,9 +2468,48 @@ function normalizeHybridRpaPayload(resultPayload) {
 }
 
 async function maybeDelegateHybridRpa(resultPayload) {
-    const payload = normalizeHybridRpaPayload(resultPayload);
+    let payload = normalizeHybridRpaPayload(resultPayload);
     if (!payload.goal) {
         addActivity("rpa", "Hybrid RPA request detected but no goal was found.");
+        return;
+    }
+
+    if (!Array.isArray(payload.steps) || payload.steps.length === 0) {
+        const lookupGoal = String(payload.goal || payload.scenarioName || "").trim();
+        if (lookupGoal) {
+            const matchedScenario = await resolveHybridRpaScenarioFromSkills(lookupGoal);
+            if (matchedScenario?.scenario && Array.isArray(matchedScenario.scenario.steps) && matchedScenario.scenario.steps.length > 0) {
+                const scenario = matchedScenario.scenario;
+                payload = {
+                    ...payload,
+                    scenarioName: payload.scenarioName || String(scenario.name || matchedScenario.title || payload.goal).trim(),
+                    startUrl: payload.startUrl || String(scenario.start_url || "").trim(),
+                    steps: Array.isArray(scenario.steps) ? scenario.steps : [],
+                    scenarioAssets: scenario.assets && typeof scenario.assets === "object" ? scenario.assets : {},
+                    aiFallback: scenario.ai_fallback !== false,
+                    aiFallbackMaxSteps: Number(scenario.ai_fallback_max_steps) || payload.aiFallbackMaxSteps || 3,
+                    stepRetryLimit: Number(scenario.step_retry_limit) >= 0
+                        ? Number(scenario.step_retry_limit)
+                        : payload.stepRetryLimit,
+                    stopOnFailure: scenario.stop_on_failure !== false,
+                    notes: [payload.notes, matchedScenario.memoryId ? `skill_id=${matchedScenario.memoryId}` : ""]
+                        .filter((entry) => Boolean(entry))
+                        .join(" | ")
+                };
+                addActivity(
+                    "rpa",
+                    `Hybrid RPA had no steps; hydrated from skill: ${payload.scenarioName || payload.goal} (${payload.steps.length} steps)`
+                );
+            }
+        }
+    }
+
+    if (!Array.isArray(payload.steps) || payload.steps.length === 0) {
+        addActivity("rpa", "Hybrid RPA payload has no deterministic steps; falling back to browser planner.");
+        await startBrowserAgent(payload.goal, {
+            source: "delegated_hybrid_rpa_fallback",
+            postSummaryToChat: true
+        });
         return;
     }
 
@@ -3560,14 +3599,15 @@ async function saveScenarioAsSkill(options = {}) {
         startedAt: Date.now(),
         source: String(options.source || "rpa_recording")
     };
-    const baseTitle = buildSkillTitle(run, options.title);
-    const baseWhenToUse = buildWhenToUse(run, options.whenToUse);
-    const baseDescription = buildSkillDescription(run, options.description);
-    const tags = normalizeSkillTags(options.tags || ["browser", "automation", "rpa", "skill"]);
     const steps = scenario.steps
         .map((step) => convertScenarioStepToSkillLine(step))
         .filter((line) => Boolean(line))
         .slice(0, MAX_SKILL_STEP_LINES);
+    const metadataContext = buildScenarioMetadataContext(run, scenario, steps);
+    const baseTitle = buildSkillTitle(run, options.title, metadataContext);
+    const baseWhenToUse = buildWhenToUse(run, options.whenToUse, metadataContext);
+    const baseDescription = buildSkillDescription(run, options.description, metadataContext);
+    const tags = normalizeSkillTags(options.tags || ["browser", "automation", "rpa", "skill"]);
     const metadata = await suggestSkillMetadataForSkill({
         run,
         steps,
@@ -3807,53 +3847,236 @@ function normalizeSkillTags(rawTags) {
     return deduped.slice(0, 12);
 }
 
-function buildSkillTitle(run, preferredTitle) {
+function isGenericWorkflowText(value) {
+    const normalized = String(value || "").trim().toLowerCase();
+    if (!normalized) {
+        return true;
+    }
+    return [
+        "demo browser workflow",
+        "recorded scenario",
+        "rpa scenario",
+        "hybrid rpa task",
+        "browser task",
+        "recorded browser workflow"
+    ].some((token) => normalized.includes(token));
+}
+
+function parseUrlSafe(urlText) {
+    try {
+        const parsed = new URL(String(urlText || "").trim());
+        if (!["http:", "https:"].includes(parsed.protocol)) {
+            return null;
+        }
+        return parsed;
+    } catch {
+        return null;
+    }
+}
+
+function buildScenarioMetadataContext(run, scenario, steps) {
+    const normalizedScenario = scenario && typeof scenario === "object"
+        ? normalizeScenarioForSkill(scenario)
+        : null;
+    const scenarioSteps = Array.isArray(normalizedScenario?.steps) ? normalizedScenario.steps : [];
+    const fallbackSteps = Array.isArray(steps)
+        ? steps.filter((entry) => entry && typeof entry === "object")
+        : [];
+    const sourceSteps = scenarioSteps.length > 0 ? scenarioSteps : fallbackSteps;
+
+    const goal = String(run?.goal || "").trim();
+    const scenarioName = String(normalizedScenario?.name || "").trim();
+
+    const urlPool = [];
+    if (normalizedScenario?.start_url) {
+        urlPool.push(String(normalizedScenario.start_url).trim());
+    }
+    for (const step of sourceSteps) {
+        if (!step || typeof step !== "object") {
+            continue;
+        }
+        const type = String(step.type || "").trim().toLowerCase();
+        if ((type === "navigate" || type === "new_tab") && step.url) {
+            urlPool.push(String(step.url).trim());
+        }
+    }
+    const parsedUrls = urlPool.map((url) => parseUrlSafe(url)).filter((url) => Boolean(url));
+    const firstUrl = parsedUrls.length > 0 ? parsedUrls[0] : null;
+    const host = firstUrl ? firstUrl.hostname.replace(/^www\./, "") : "";
+
+    const pathSegments = firstUrl
+        ? firstUrl.pathname.split("/").map((seg) => seg.trim()).filter((seg) => Boolean(seg))
+        : [];
+    let slug = "";
+    if (pathSegments.length >= 2 && pathSegments[pathSegments.length - 2] === "hackathons") {
+        slug = pathSegments[pathSegments.length - 1];
+    } else if (pathSegments.length > 0) {
+        slug = pathSegments[pathSegments.length - 1];
+    }
+    const slugLabel = slug.replace(/[-_]+/g, " ").trim();
+
+    const clickHints = [];
+    const seenHints = new Set();
+    for (const step of sourceSteps) {
+        if (!step || typeof step !== "object") {
+            continue;
+        }
+        const type = String(step.type || "").trim().toLowerCase();
+        if (type !== "click") {
+            continue;
+        }
+        const hint = String(step.text_hint || step.textHint || "").trim();
+        if (!hint) {
+            continue;
+        }
+        const normalizedHint = hint.toLowerCase();
+        if (seenHints.has(normalizedHint)) {
+            continue;
+        }
+        seenHints.add(normalizedHint);
+        clickHints.push(hint);
+    }
+
+    const tabValues = [];
+    const seenTabs = new Set();
+    for (const parsed of parsedUrls) {
+        const tabValue = String(parsed.searchParams.get("tab") || "").trim();
+        if (!tabValue || seenTabs.has(tabValue)) {
+            continue;
+        }
+        seenTabs.add(tabValue);
+        tabValues.push(tabValue);
+    }
+
+    const targetLabel = [host, slugLabel].filter((part) => Boolean(part)).join(" ").trim();
+    const hasTabTraversal = tabValues.length >= 2 || clickHints.length >= 3;
+
+    let intentLabel = "";
+    if (hasTabTraversal && targetLabel) {
+        intentLabel = `${targetLabel}のタブ情報確認`;
+    } else if (targetLabel && clickHints.length > 0) {
+        intentLabel = `${targetLabel}で${clickHints.slice(0, 2).join("・")}を確認`;
+    } else if (targetLabel) {
+        intentLabel = `${targetLabel}の情報確認`;
+    } else if (!isGenericWorkflowText(goal) && goal) {
+        intentLabel = goal;
+    } else if (!isGenericWorkflowText(scenarioName) && scenarioName) {
+        intentLabel = scenarioName;
+    }
+
+    return {
+        goal,
+        scenarioName,
+        host,
+        slugLabel,
+        clickHints: clickHints.slice(0, 6),
+        tabValues: tabValues.slice(0, 6),
+        hasTabTraversal,
+        targetLabel,
+        intentLabel
+    };
+}
+
+function buildSkillTitle(run, preferredTitle, context = null) {
     const base = String(preferredTitle || "").trim();
     if (base) {
         return base.slice(0, 120);
     }
+    const metadataContext = context && typeof context === "object" ? context : null;
+    if (metadataContext?.intentLabel) {
+        return `${metadataContext.intentLabel}SOP`.slice(0, 120);
+    }
     const goal = String(run?.goal || "").trim();
-    if (!goal) {
+    if (!goal || isGenericWorkflowText(goal)) {
         return "ブラウザ操作SOP";
     }
     return `ブラウザ操作SOP: ${goal}`.slice(0, 120);
 }
 
-function buildWhenToUse(run, preferredWhenToUse) {
+function buildWhenToUse(run, preferredWhenToUse, context = null) {
     const base = String(preferredWhenToUse || "").trim();
     if (base) {
         return base.slice(0, 360);
     }
+    const metadataContext = context && typeof context === "object" ? context : null;
+    if (metadataContext?.hasTabTraversal && metadataContext?.targetLabel) {
+        const tabs = metadataContext.clickHints.length > 0
+            ? metadataContext.clickHints.slice(0, 4).join("・")
+            : metadataContext.tabValues.slice(0, 4).join("・");
+        if (tabs) {
+            return `${metadataContext.targetLabel}で「${tabs}」などのタブを順に確認したいときに使用します。`.slice(0, 360);
+        }
+        return `${metadataContext.targetLabel}のタブ情報を定期確認したいときに使用します。`.slice(0, 360);
+    }
+    if (metadataContext?.intentLabel) {
+        return `「${metadataContext.intentLabel}」を再現して実行したいときに使用します。`.slice(0, 360);
+    }
     const goal = String(run?.goal || "").trim();
-    if (!goal) {
+    if (!goal || isGenericWorkflowText(goal)) {
         return "定期的なブラウザ操作を再現性高く実行したいときに使用します。";
     }
     return `「${goal}」を再実行したいときに使用します。`.slice(0, 360);
 }
 
-function buildSkillDescription(run, preferredDescription) {
+function buildSkillDescription(run, preferredDescription, context = null) {
     const base = String(preferredDescription || "").trim();
     if (base) {
         return base.slice(0, 260);
     }
+    const metadataContext = context && typeof context === "object" ? context : null;
+    if (metadataContext?.hasTabTraversal && metadataContext?.targetLabel) {
+        const tabs = metadataContext.clickHints.length > 0
+            ? metadataContext.clickHints.slice(0, 4).join("・")
+            : metadataContext.tabValues.slice(0, 4).join("・");
+        if (tabs) {
+            return `${metadataContext.targetLabel}を開き、「${tabs}」を含む必要なタブ情報を確認する再利用可能なブラウザ操作スキルです。`.slice(0, 260);
+        }
+        return `${metadataContext.targetLabel}の情報確認を再利用可能な手順として自動化するスキルです。`.slice(0, 260);
+    }
+    if (metadataContext?.intentLabel) {
+        return `ブラウザ上で「${metadataContext.intentLabel}」を実行するための再利用可能なスキルです。`.slice(0, 260);
+    }
     const goal = String(run?.goal || "").trim();
-    if (!goal) {
+    if (!goal || isGenericWorkflowText(goal)) {
         return "ブラウザ上の定型操作を自動化する再利用可能なスキルです。";
     }
     return `ブラウザ上で「${goal}」を実行するための再利用可能なスキルです。`.slice(0, 260);
 }
 
-function normalizeSuggestedSkillMetadata(raw, fallback) {
+function normalizeSuggestedSkillMetadata(raw, fallback, context = null) {
     const source = raw && typeof raw === "object" ? raw : {};
-    const title = String(source.title || "").trim().slice(0, 120) || fallback.title;
-    const whenToUse = (
+    let title = String(source.title || "").trim().slice(0, 120) || fallback.title;
+    let whenToUse = (
         String(source.whenToUse || source.when_to_use || "").trim().slice(0, 360) ||
         fallback.whenToUse
     );
-    const description = (
+    let description = (
         String(source.description || source.summary || "").trim().slice(0, 260) ||
         fallback.description
     );
+
+    const metadataContext = context && typeof context === "object" ? context : null;
+    if (metadataContext?.intentLabel) {
+        if (isGenericWorkflowText(title)) {
+            title = buildSkillTitle({}, "", metadataContext);
+        }
+        const whenNormalized = whenToUse.toLowerCase();
+        if (
+            isGenericWorkflowText(whenToUse) ||
+            whenNormalized.includes("再実行したいときに使用します") ||
+            whenNormalized.includes("demo browser workflow")
+        ) {
+            whenToUse = buildWhenToUse({}, "", metadataContext);
+        }
+        const descNormalized = description.toLowerCase();
+        if (
+            isGenericWorkflowText(description) ||
+            descNormalized.includes("再利用可能なスキルです") && metadataContext.hasTabTraversal
+        ) {
+            description = buildSkillDescription({}, "", metadataContext);
+        }
+    }
+
     return {
         title,
         whenToUse,
@@ -3863,18 +4086,19 @@ function normalizeSuggestedSkillMetadata(raw, fallback) {
 
 async function suggestSkillMetadataForSkill(options = {}) {
     const run = options.run || {};
-    const fallback = {
-        title: String(options.title || buildSkillTitle(run)).trim().slice(0, 120),
-        whenToUse: String(options.whenToUse || buildWhenToUse(run)).trim().slice(0, 360),
-        description: String(options.description || buildSkillDescription(run)).trim().slice(0, 260)
-    };
+    const scenario = options.scenario && typeof options.scenario === "object" ? options.scenario : null;
     const steps = Array.isArray(options.steps)
         ? options.steps
             .map((step) => String(step || "").trim())
             .filter((step) => Boolean(step))
             .slice(0, 10)
         : [];
-    const scenario = options.scenario && typeof options.scenario === "object" ? options.scenario : null;
+    const metadataContext = buildScenarioMetadataContext(run, scenario, steps);
+    const fallback = {
+        title: String(options.title || buildSkillTitle(run, "", metadataContext)).trim().slice(0, 120),
+        whenToUse: String(options.whenToUse || buildWhenToUse(run, "", metadataContext)).trim().slice(0, 360),
+        description: String(options.description || buildSkillDescription(run, "", metadataContext)).trim().slice(0, 260)
+    };
 
     const response = await sendRuntimeMessage({
         type: "skill.suggest_metadata",
@@ -3899,7 +4123,7 @@ async function suggestSkillMetadataForSkill(options = {}) {
         return fallback;
     }
 
-    const normalized = normalizeSuggestedSkillMetadata(response?.metadata, fallback);
+    const normalized = normalizeSuggestedSkillMetadata(response?.metadata, fallback, metadataContext);
     const provider = String(response?.provider || "").trim();
     addActivity("skill", provider ? `AI metadata refined (${provider}).` : "AI metadata refined.");
     return normalized;
@@ -4268,11 +4492,12 @@ async function saveLatestBrowserRunAsSkill(options = {}) {
         return { ok: false, error: "No completed browser run with logs was found." };
     }
 
-    const baseTitle = buildSkillTitle(run, options.title);
-    const baseWhenToUse = buildWhenToUse(run, options.whenToUse);
-    const baseDescription = buildSkillDescription(run, options.description);
     const steps = extractSkillStepsFromRun(run);
     const scenario = buildScenarioFromRun(run);
+    const metadataContext = buildScenarioMetadataContext(run, scenario, steps);
+    const baseTitle = buildSkillTitle(run, options.title, metadataContext);
+    const baseWhenToUse = buildWhenToUse(run, options.whenToUse, metadataContext);
+    const baseDescription = buildSkillDescription(run, options.description, metadataContext);
     const tags = scenario
         ? normalizeSkillTags([...(Array.isArray(options.tags) ? options.tags : []), "rpa", "hybrid"])
         : normalizeSkillTags(options.tags);

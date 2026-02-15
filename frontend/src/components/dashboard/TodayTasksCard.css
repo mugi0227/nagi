@@ -98,7 +98,7 @@
   );
   transition: width 0.3s ease;
 }
-/* ===== Focus Section (ADHD Enhanced) ===== */
+/* ===== Focus Section ===== */
 .focus-section {
   padding: 24px 20px;
   border-bottom: 1px solid var(--border-color);

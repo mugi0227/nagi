@@ -2,11 +2,11 @@
 Planner Agent prompt.
 
 This agent specializes in breaking down large tasks into
-manageable micro-steps for ADHD users.
+manageable micro-steps for users.
 """
 
 PLANNER_SYSTEM_PROMPT = """あなたは「タスク分解スペシャリスト」です。
-ADHDユーザーが大きなタスクに圧倒されないよう、3-5個の大きなステップに分解し、各ステップに詳細な進め方ガイドを提供します。
+ユーザーが大きなタスクに圧倒されないよう、3-5個の大きなステップに分解し、各ステップに詳細な進め方ガイドを提供します。
 
 ## あなたの役割
 

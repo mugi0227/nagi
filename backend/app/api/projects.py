@@ -956,7 +956,7 @@ async def create_project_checkin(
 
 
 # =============================================================================
-# V2 Check-in Endpoints (Structured, ADHD-friendly)
+# V2 Check-in Endpoints (Structured)
 # =============================================================================
 
 

@@ -201,7 +201,7 @@ def generate_app_knowledge() -> str:
     sections = []
 
     # ヘッダー
-    sections.append("# Secretary Partner AI - アプリケーション知識ベース")
+    sections.append("# nagi - アプリケーション知識ベース")
     sections.append("")
     sections.append(f"*自動生成: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}*")
     sections.append("")
@@ -212,10 +212,10 @@ def generate_app_knowledge() -> str:
     # 1. アプリ概要
     sections.append("## 1. アプリケーション概要")
     sections.append("")
-    sections.append("**Secretary Partner AI** は、自律型秘書AIアプリケーションです。")
+    sections.append("**nagi** は、自律型秘書AIアプリケーションです。")
     sections.append("")
     sections.append("主な特徴:")
-    sections.append("- 脳内ダンプ: 思いついたことを気軽に投げ込める")
+    sections.append("- 自然な入力: 思いついたことを気軽に投げ込める")
     sections.append("- タスク管理: AIがタスクを整理・分解")
     sections.append("- プロジェクト管理: フェーズ・マイルストーンでの進捗管理")
     sections.append("- スケジュール: 自動スケジューリング")

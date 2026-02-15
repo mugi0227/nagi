@@ -783,10 +783,10 @@ def _memories() -> list[dict]:
         {
             "owner": "mugi",
             "create": MemoryCreate(
-                content="ADHDの傾向があり、タスクの切り替えが多いと消耗する。1つのタスクに集中する時間ブロック（25-50分）を作るとパフォーマンスが上がる。",
+                content="タスクの切り替えが多いと消耗する傾向がある。1つのタスクに集中する時間ブロック（25-50分）を作るとパフォーマンスが上がる。",
                 scope=MemoryScope.USER,
                 memory_type=MemoryType.PATTERN,
-                tags=["adhd", "focus", "pomodoro"],
+                tags=["focus", "pomodoro"],
                 source="agent",
             ),
         },

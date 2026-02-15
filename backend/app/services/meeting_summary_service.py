@@ -32,7 +32,7 @@ from app.models.task import Task
 class MeetingSummaryService:
     """Service for analyzing meeting transcripts."""
 
-    APP_NAME = "SecretaryPartnerAI_MeetingSummary"
+    APP_NAME = "nagi_MeetingSummary"
     MAX_RETRIES = 2
 
     def __init__(self, llm_provider: ILLMProvider):

@@ -53,7 +53,7 @@ _session_index: dict[str, dict[str, dict[str, Any]]] = {}
 class AgentService:
     """Service for running the Secretary Agent."""
 
-    APP_NAME = "SecretaryPartnerAI"
+    APP_NAME = "nagi"
     HISTORY_SEED_LIMIT = 200
     PDF_TEXT_MAX_PAGES = 30
     PDF_TEXT_MAX_CHARS = 20000

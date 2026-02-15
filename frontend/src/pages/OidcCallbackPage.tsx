@@ -59,7 +59,7 @@ export function OidcCallbackPage() {
     <div className="login-page">
       <div className="login-card">
         <div className="login-header">
-          <p className="login-kicker">Secretary Partner AI</p>
+          <p className="login-kicker">nagi</p>
           <h1 className="login-title">ログイン処理中</h1>
           <p className="login-subtitle">{message}</p>
         </div>

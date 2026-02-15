@@ -1,6 +1,6 @@
 # Deployment Guide - AWS Linux Environment
 
-このドキュメントは、Secretary Partner AIをAWS EC2（Amazon Linux）環境にデプロイする手順を説明します。
+このドキュメントは、nagiをAWS EC2（Amazon Linux）環境にデプロイする手順を説明します。
 
 ## 前提条件
 

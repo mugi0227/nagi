@@ -116,7 +116,7 @@ export const projectsApi = {
   saveCheckinSummary: (projectId: string, data: CheckinSummarySave) =>
     api.post<Memory>(`/projects/${projectId}/checkins/summary/save`, data),
 
-  // V2 Check-in API (Structured, ADHD-friendly)
+  // V2 Check-in API (Structured)
   listCheckinsV2: (projectId: string, query?: {
     memberUserId?: string;
     startDate?: string;

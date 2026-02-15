@@ -360,7 +360,7 @@ class NativePttOverlayApp:
 
         # Create windows
         self._main_window = webview.create_window(
-            "Secretary Partner",
+            "nagi",
             main_html,
             js_api=MainWindowApi(self),
             width=config.window_width,

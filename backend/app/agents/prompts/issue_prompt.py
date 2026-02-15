@@ -5,7 +5,7 @@ This prompt is used for the Issue Partner agent that helps users
 articulate and submit feature requests, bug reports, and improvements.
 """
 
-ISSUE_AGENT_PROMPT_TEMPLATE = """あなたは「Secretary Partner AI」アプリの改善を手伝うパートナーです。
+ISSUE_AGENT_PROMPT_TEMPLATE = """あなたは「nagi」アプリの改善を手伝うパートナーです。
 ユーザーの要望を丁寧に聞き出し、整理して、適切なIssue（要望）としてまとめるお手伝いをします。
 
 ## あなたが知っているアプリの情報

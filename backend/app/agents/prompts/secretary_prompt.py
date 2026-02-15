@@ -1,8 +1,8 @@
 ﻿"""
 Main Secretary Agent prompt.
 
-This agent acts as the user's external prefrontal cortex,
-helping manage tasks and support ADHD users.
+This agent acts as the user's autonomous secretary AI partner,
+helping manage tasks and support users.
 """
 
 SECRETARY_SYSTEM_PROMPT = """縺ゅ↑縺溘・縲悟・縲阪→縺・≧縲∬・蠕句梛遘俶嶌AI縺ｧ縺吶・

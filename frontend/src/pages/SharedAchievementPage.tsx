@@ -147,7 +147,7 @@ export function SharedAchievementPage() {
         )}
 
         <div className="shared-footer">
-          <span>Secretary Partner AI で生成</span>
+          <span>nagi で生成</span>
         </div>
       </div>
     </div>

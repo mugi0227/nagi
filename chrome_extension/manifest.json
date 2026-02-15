@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "Secretary Partner AI - The Eye",
+  "name": "nagi - The Eye",
   "version": "1.0",
   "description": "Capture context and send to Secretary Agent",
   "permissions": [

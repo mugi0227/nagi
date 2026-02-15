@@ -1,6 +1,6 @@
 # Amazon Transcribe 導入手順
 
-このドキュメントは、Secretary Partner AI の音声入力を `.env` で `Amazon Transcribe` に切り替えるための実施手順です。
+このドキュメントは、nagi の音声入力を `.env` で `Amazon Transcribe` に切り替えるための実施手順です。
 
 ## 1. 事前条件
 

@@ -178,7 +178,7 @@ export function LoginPage() {
         transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}
       >
         <div className="login-header">
-          <p className="login-kicker">Secretary Partner AI</p>
+          <p className="login-kicker">nagi</p>
           <h1 className="login-title">ログイン</h1>
           <p className="login-subtitle">
             {oidcEnabled

@@ -1,7 +1,7 @@
 /**
  * CheckinForm - Structured check-in form (V2)
  *
- * Modern ADHD-friendly design with visual hierarchy.
+ * Modern design with visual hierarchy.
  * Card-based sections with clear visual feedback.
  */
 import { useState } from 'react';

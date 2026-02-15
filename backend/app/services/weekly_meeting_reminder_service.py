@@ -147,7 +147,7 @@ async def _create_reminder_task(
     week_end = target_monday + timedelta(days=6)
     week_range = f"{target_monday.strftime('%m/%d')}-{week_end.strftime('%m/%d')}"
 
-    # Warm, ADHD-friendly message
+    # Warm, friendly message
     description = f"""今週（{week_range}）の会議予定は登録できていますか？ 📅
 
 お疲れさまです！週の始まりは会議の予定を整理するのにぴったりなタイミングですね。

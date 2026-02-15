@@ -1,5 +1,5 @@
 ﻿/* ============================================================
-   Secretary Partner - HUD Overlay JS
+   nagi - HUD Overlay JS
    Waveform, animations, state management
    Bridges to Python via pywebview.api
    ============================================================ */

@@ -1,8 +1,8 @@
-# Secretary Partner AI - Development Guide
+# nagi - Development Guide
 
 ## Project Overview
-ADHD向け自律型秘書AI「Brain Dump Partner」のバックエンド。
-ユーザーの「脳内多動」を受け止め、タスク管理を自律的にサポートする。
+自律型秘書AI「nagi」のバックエンド。
+タスク管理を自律的にサポートし、ユーザーを支えるパートナー的存在。
 
 ## Architecture
 Clean Architecture + Repository Pattern
@@ -92,7 +92,7 @@ AI機能のテストではモックを使用せず、実際のAPIを呼び出す
 ### AI生成ボタンの方針
 **重要**: AIで何かを生成する系のボタンは、即実行ではなく「チャットへのプロンプト自動入力」とする。
 
-**理由 (ADHD フレンドリー)**
+**理由**
 - 壁打ちできる（「やっぱ3つにまとめて」など調整可能）
 - 途中で気が変わっても柔軟に対応
 - やり直しやすい

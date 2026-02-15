@@ -1,1 +1,1 @@
-"""Secretary Partner AI - Brain Dump Partner Backend."""
+"""nagi - 自律型秘書AI Backend."""

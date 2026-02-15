@@ -171,7 +171,7 @@ class CheckinSummarySave(BaseModel):
 
 
 # =============================================================================
-# V2 Check-in Models (Structured, ADHD-friendly)
+# V2 Check-in Models (Structured)
 # =============================================================================
 
 

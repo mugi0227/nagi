@@ -16,7 +16,7 @@ export type ProjectRole = 'OWNER' | 'ADMIN' | 'MEMBER';
 export type BlockerStatus = 'OPEN' | 'RESOLVED';
 export type CheckinType = 'weekly' | 'issue' | 'general';
 
-// V2 Check-in types (Structured, ADHD-friendly)
+// V2 Check-in types (Structured)
 export type CheckinItemCategory = 'blocker' | 'discussion' | 'update' | 'request';
 export type CheckinItemUrgency = 'high' | 'medium' | 'low';
 export type CheckinMood = 'good' | 'okay' | 'struggling';
@@ -575,7 +575,7 @@ export interface CheckinCreate {
 }
 
 // =============================================================================
-// V2 Check-in Models (Structured, ADHD-friendly)
+// V2 Check-in Models (Structured)
 // =============================================================================
 
 export interface CheckinItem {

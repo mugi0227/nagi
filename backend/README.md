@@ -1,6 +1,6 @@
-# Secretary Partner AI - Backend
+# nagi - Backend
 
-ADHD向け自律型秘書AI「Brain Dump Partner」のバックエンド実装。
+自律型秘書AI「nagi」のバックエンド実装。
 
 ## Quick Start
 

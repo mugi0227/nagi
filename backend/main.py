@@ -1,7 +1,7 @@
 """
-Secretary Partner AI - Main Application Entry Point
+nagi - Main Application Entry Point
 
-Brain Dump Partner: 自律型秘書AI
+自律型秘書AI nagi
 """
 
 import json
@@ -21,7 +21,7 @@ async def lifespan(app: FastAPI):
     """Application lifespan handler for startup/shutdown events."""
     # Startup
     settings = get_settings()
-    print(f"Starting Secretary Partner AI in {settings.ENVIRONMENT} mode...")
+    print(f"Starting nagi in {settings.ENVIRONMENT} mode...")
 
     # Initialize database if needed
     if settings.ENVIRONMENT == "local":
@@ -40,7 +40,7 @@ async def lifespan(app: FastAPI):
     yield
 
     # Shutdown
-    print("Shutting down Secretary Partner AI...")
+    print("Shutting down nagi...")
     await stop_background_scheduler()
 
 
@@ -49,8 +49,8 @@ def create_app() -> FastAPI:
     settings = get_settings()
 
     app = FastAPI(
-        title="Secretary Partner AI",
-        description="Brain Dump Partner - 自律型秘書AI (外付け前頭葉)",
+        title="nagi",
+        description="自律型秘書AI nagi",
         version="0.1.0",
         lifespan=lifespan,
         docs_url="/docs" if settings.DEBUG else None,

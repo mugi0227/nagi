@@ -11,7 +11,7 @@ from typing import Optional
 from uuid import UUID
 
 from google.adk.tools import FunctionTool
-from pydantic import BaseModel, Field
+from pydantic import AliasChoices, BaseModel, Field
 
 from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.memory_repository import IMemoryRepository
@@ -60,7 +60,11 @@ class RefreshUserProfileInput(BaseModel):
 
 
 class LoadWorkMemoryInput(BaseModel):
-    work_memory_id: str = Field(..., description="Work-memory ID (UUID)")
+    work_memory_id: str = Field(
+        ...,
+        validation_alias=AliasChoices("work_memory_id", "memory_id", "id"),
+        description="Work-memory ID (UUID)",
+    )
 
 
 class ListWorkMemoryIndexInput(BaseModel):

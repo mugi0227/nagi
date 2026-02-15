@@ -3,14 +3,14 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "secretary-partner-ai"
+name = "nagi"
 version = "0.1.0"
-description = "Brain Dump Partner - ADHD向け自律型秘書AI"
+description = "自律型秘書AI nagi"
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 authors = [
-    { name = "Secretary Partner AI Team" }
+    { name = "nagi Team" }
 ]
 
 dependencies = [

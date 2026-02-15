@@ -6,7 +6,7 @@ from typing import Any, Optional
 
 
 class SecretaryError(Exception):
-    """Base exception for Secretary Partner AI."""
+    """Base exception for nagi."""
 
     def __init__(self, message: str, details: Optional[Any] = None):
         self.message = message
