@@ -1,12 +1,17 @@
-const SETTINGS_STORAGE_KEY = "secretary_extension_settings_v1";
+﻿const SETTINGS_STORAGE_KEY = "secretary_extension_settings_v1";
 const SESSION_STORAGE_KEY = "session_id";
 const APPROVAL_MODE_STORAGE_KEY = "aiApprovalMode";
+const AGENT_MODE_STORAGE_KEY = "extensionAgentMode";
 const APP_AUTH_TOKEN_KEYS = ["auth_token", "id_token", "access_token"];
 const APP_TOKEN_CACHE_TTL_MS = 60 * 1000;
 const DEFAULT_BEARER_TOKEN = "dev_user";
 const APPROVAL_MODES = Object.freeze({
     MANUAL: "manual",
     AUTO: "auto"
+});
+const AGENT_MODES = Object.freeze({
+    SECRETARY: "secretary",
+    BROWSER: "browser"
 });
 const BROWSER_PROVIDERS = Object.freeze({
     LITELLM: "litellm",
@@ -69,6 +74,7 @@ let browserRunHistory = [];
 let currentBrowserRun = null;
 let lastBrowserStatus = { running: false, step: 0 };
 let approvalMode = normalizeApprovalMode(localStorage.getItem(APPROVAL_MODE_STORAGE_KEY));
+let selectedAgentMode = normalizeAgentMode(localStorage.getItem(AGENT_MODE_STORAGE_KEY));
 let pendingProposals = [];
 let pendingProposalIndex = 0;
 let proposalApprovedBuffer = [];
@@ -101,6 +107,8 @@ const modelSelectorDropdown = document.getElementById("model-selector-dropdown")
 const modelSelectorTrigger = document.getElementById("model-selector-trigger");
 const modelSelectorValue = document.getElementById("model-selector-value");
 const modelSelectorMenu = document.getElementById("model-selector-menu");
+const agentModeChatBtn = document.getElementById("agent-mode-chat-btn");
+const agentModeBrowserBtn = document.getElementById("agent-mode-browser-btn");
 const settingsBtn = document.getElementById("settings-btn");
 const closeSettingsBtn = document.getElementById("close-settings");
 const thinkingIndicator = document.getElementById("thinking");
@@ -165,6 +173,7 @@ const browserStopBtn = document.getElementById("browser-stop-btn");
 const rpaRecordBtn = document.getElementById("rpa-record-btn");
 const rpaRecordStopBtn = document.getElementById("rpa-record-stop-btn");
 const browserAgentBadge = document.getElementById("browser-agent-badge");
+const browserPanel = document.getElementById("browser-panel");
 const activityLog = document.getElementById("activity-log");
 const defaultUserInputPlaceholder = userInput.getAttribute("placeholder") || "Type a message...";
 
@@ -175,6 +184,7 @@ async function init() {
     applySettingsToUI();
     bindEvents();
     syncApprovalModeUI();
+    syncAgentModeUI();
     renderInteractionPanel();
     updateBrowserAgentBadge();
     connectBrowserPort();
@@ -204,6 +214,14 @@ function bindEvents() {
 
     approvalAutoBtn.addEventListener("click", () => {
         setApprovalMode(APPROVAL_MODES.AUTO);
+    });
+
+    agentModeChatBtn.addEventListener("click", () => {
+        setAgentMode(AGENT_MODES.SECRETARY);
+    });
+
+    agentModeBrowserBtn.addEventListener("click", () => {
+        setAgentMode(AGENT_MODES.BROWSER);
     });
 
     uploadFileBtn.addEventListener("click", () => {
@@ -497,6 +515,10 @@ function normalizeApprovalMode(value) {
     return value === APPROVAL_MODES.MANUAL ? APPROVAL_MODES.MANUAL : APPROVAL_MODES.AUTO;
 }
 
+function normalizeAgentMode(value) {
+    return value === AGENT_MODES.BROWSER ? AGENT_MODES.BROWSER : AGENT_MODES.SECRETARY;
+}
+
 function setApprovalMode(mode) {
     approvalMode = normalizeApprovalMode(mode);
     localStorage.setItem(APPROVAL_MODE_STORAGE_KEY, approvalMode);
@@ -521,6 +543,34 @@ function syncApprovalModeUI() {
     const isManual = approvalMode === APPROVAL_MODES.MANUAL;
     approvalManualBtn.classList.toggle("active", isManual);
     approvalAutoBtn.classList.toggle("active", !isManual);
+}
+
+function setAgentMode(mode) {
+    const nextMode = normalizeAgentMode(mode);
+    if (selectedAgentMode === nextMode) {
+        return;
+    }
+    selectedAgentMode = nextMode;
+    localStorage.setItem(AGENT_MODE_STORAGE_KEY, selectedAgentMode);
+    syncAgentModeUI();
+    addActivity("settings", `Agent mode: ${selectedAgentMode}`);
+}
+
+function syncAgentModeUI() {
+    const browserSelected = selectedAgentMode === AGENT_MODES.BROWSER;
+    agentModeChatBtn.classList.toggle("active", !browserSelected);
+    agentModeBrowserBtn.classList.toggle("active", browserSelected);
+    if (browserPanel) {
+        browserPanel.classList.toggle("browser-mode-active", browserSelected);
+    }
+    validateInput();
+}
+
+function getDefaultComposerPlaceholder() {
+    if (selectedAgentMode === AGENT_MODES.BROWSER) {
+        return "Ask browser agent to operate this page...";
+    }
+    return defaultUserInputPlaceholder;
 }
 
 function readSettingsFromUI() {
@@ -1206,6 +1256,9 @@ async function sendMessage(options = {}) {
             file_mime_type: sendingAttachment?.kind === "pdf" ? sendingAttachment.mimeType : null,
             mode: "dump",
             session_id: currentSessionId,
+            context: {
+                extension_agent_mode: selectedAgentMode
+            },
             approval_mode: approvalMode,
             proposal_mode: approvalMode === APPROVAL_MODES.MANUAL,
             model: selectedModel || undefined
@@ -1781,17 +1834,40 @@ function buildQuestionsAnswerText() {
         .join("\n");
 }
 
-function extractLocalDecisionFromQuestionEntries(requestKind, entries) {
+function extractLocalDecisionFromQuestionEntries(requestKind, entries, questions = []) {
     if (requestKind !== "scenario_optimization") {
         return { approved: false };
     }
-    const first = Array.isArray(entries) && entries.length > 0 ? entries[0] : null;
-    if (!first) {
+    const list = Array.isArray(entries) ? entries : [];
+    const first = list.length > 0 ? list[0] : null;
+    if (!first || !Array.isArray(first.selectedOptions) || first.selectedOptions.length === 0) {
         return { approved: false };
     }
-    const selected = Array.isArray(first.selectedOptions) ? first.selectedOptions : [];
-    const answerText = String(selected[0] || first.value || "").trim().toLowerCase();
-    const approved = answerText.startsWith("apply optimization");
+
+    const questionList = Array.isArray(questions) ? questions : [];
+    const decisionQuestion =
+        questionList.find((question) => question?.id === first.id)
+        || questionList.find((question) => question?.id === "scenario_optimization_decision")
+        || questionList[0]
+        || null;
+    const options = Array.isArray(decisionQuestion?.options) ? decisionQuestion.options : [];
+    const normalizeText = (value) => String(value || "").trim().toLowerCase();
+    const selected = first.selectedOptions.map((value) => normalizeText(value)).filter((value) => Boolean(value));
+    const recommendedOption = options.length > 0 ? normalizeText(options[0]) : "";
+    if (recommendedOption && selected.includes(recommendedOption)) {
+        return { approved: true };
+    }
+    if (options.length > 1) {
+        const rejectOption = normalizeText(options[1]);
+        if (rejectOption && selected.includes(rejectOption)) {
+            return { approved: false };
+        }
+    }
+
+    const answerText = normalizeText(first.value);
+    const approved =
+        (answerText.includes("apply") && answerText.includes("optimiz"))
+        || (answerText.includes("最適化") && (answerText.includes("適用") || answerText.includes("承認")));
     return { approved };
 }
 
@@ -1834,6 +1910,7 @@ async function handleQuestionsSubmit() {
         return;
     }
     const entries = buildQuestionsAnswerEntries();
+    const questionDefs = Array.isArray(pendingQuestions?.questions) ? pendingQuestions.questions : [];
     const message = buildQuestionsAnswerText();
     if (!message.trim()) {
         return;
@@ -1844,7 +1921,7 @@ async function handleQuestionsSubmit() {
     localQuestionRequest = null;
     renderInteractionPanel();
     if (localRequest) {
-        const decision = extractLocalDecisionFromQuestionEntries(localRequest.kind, entries);
+        const decision = extractLocalDecisionFromQuestionEntries(localRequest.kind, entries, questionDefs);
         addActivity("questions", "Submitted local decision.");
         try {
             localRequest.resolve({
@@ -2022,34 +2099,43 @@ async function maybeDelegateBrowserTask(resultPayload) {
             "browser_delegate",
             `Matched skill scenario: ${scenarioName} (${scenario.steps.length} step${scenario.steps.length === 1 ? "" : "s"})`
         );
-        await startHybridRpaTask({
-            goal,
-            scenarioName,
-            startUrl: String(scenario.start_url || startUrl || "").trim(),
-            steps: Array.isArray(scenario.steps) ? scenario.steps : [],
-            scenarioAssets: scenario.assets && typeof scenario.assets === "object" ? scenario.assets : {},
-            assets:
-                (resultPayload?.assets && typeof resultPayload.assets === "object"
-                    ? resultPayload.assets
-                    : (resultPayload?.payload?.assets && typeof resultPayload.payload.assets === "object"
-                        ? resultPayload.payload.assets
-                        : {})),
-            aiFallback: scenario.ai_fallback !== false,
-            aiFallbackMaxSteps: Number(scenario.ai_fallback_max_steps) || 3,
-            stepRetryLimit: Number(scenario.step_retry_limit) >= 0
-                ? Number(scenario.step_retry_limit)
-                : 1,
-            stopOnFailure: scenario.stop_on_failure !== false,
-            notes: [notes, matchedScenario?.memoryId ? `skill_id=${matchedScenario.memoryId}` : ""]
-                .filter((line) => Boolean(line))
-                .join(" | ")
-        });
+        await startHybridRpaTask(
+            {
+                goal,
+                scenarioName,
+                startUrl: String(scenario.start_url || startUrl || "").trim(),
+                steps: Array.isArray(scenario.steps) ? scenario.steps : [],
+                scenarioAssets: scenario.assets && typeof scenario.assets === "object" ? scenario.assets : {},
+                assets:
+                    (resultPayload?.assets && typeof resultPayload.assets === "object"
+                        ? resultPayload.assets
+                        : (resultPayload?.payload?.assets && typeof resultPayload.payload.assets === "object"
+                            ? resultPayload.payload.assets
+                            : {})),
+                aiFallback: scenario.ai_fallback !== false,
+                aiFallbackMaxSteps: Number(scenario.ai_fallback_max_steps) || 3,
+                stepRetryLimit: Number(scenario.step_retry_limit) >= 0
+                    ? Number(scenario.step_retry_limit)
+                    : 1,
+                stopOnFailure: scenario.stop_on_failure !== false,
+                notes: [notes, matchedScenario?.memoryId ? `skill_id=${matchedScenario.memoryId}` : ""]
+                    .filter((line) => Boolean(line))
+                    .join(" | ")
+            },
+            {
+                source: "delegated_browser_task",
+                postSummaryToChat: true
+            }
+        );
         return;
     }
 
     addActivity("browser_delegate", "No matching RPA scenario found; falling back to planner mode.");
     addActivity("browser_delegate", `Delegating browser task: ${goal}`);
-    await startBrowserAgent(goal);
+    await startBrowserAgent(goal, {
+        source: "delegated_browser_task",
+        postSummaryToChat: true
+    });
 }
 
 function extractSkillTitleFromContent(content) {
@@ -2393,7 +2479,10 @@ async function maybeDelegateHybridRpa(resultPayload) {
         "rpa",
         `Delegating hybrid RPA: ${label} (${payload.steps.length} step${payload.steps.length === 1 ? "" : "s"})`
     );
-    await startHybridRpaTask(payload);
+    await startHybridRpaTask(payload, {
+        source: "delegated_hybrid_rpa",
+        postSummaryToChat: true
+    });
 }
 
 async function fetchSessions() {
@@ -2563,7 +2652,7 @@ function validateInput() {
     } else if (pttTranscribing) {
         userInput.placeholder = "Thinking... transcribing speech to text...";
     } else {
-        userInput.placeholder = defaultUserInputPlaceholder;
+        userInput.placeholder = getDefaultComposerPlaceholder();
     }
     uploadFileBtn.disabled = fileActionDisabled;
     captureBtn.disabled = fileActionDisabled;
@@ -2733,6 +2822,8 @@ function beginBrowserRun(goal, source, options = {}) {
         startedAt: Date.now(),
         endedAt: null,
         messages: [],
+        postSummaryToChat: Boolean(options?.postSummaryToChat),
+        chatSummaryPosted: false,
         scenario: options?.scenario && typeof options.scenario === "object"
             ? normalizeScenarioForSkill(options.scenario)
             : null
@@ -2741,17 +2832,216 @@ function beginBrowserRun(goal, source, options = {}) {
 
 function finalizeCurrentBrowserRun(reason = "") {
     if (!currentBrowserRun) {
-        return;
+        return null;
     }
-    currentBrowserRun.endedAt = Date.now();
+    const finalizedRun = currentBrowserRun;
+    finalizedRun.endedAt = Date.now();
     if (reason) {
-        currentBrowserRun.endReason = reason;
+        finalizedRun.endReason = reason;
     }
-    browserRunHistory.push(currentBrowserRun);
+    browserRunHistory.push(finalizedRun);
     if (browserRunHistory.length > MAX_BROWSER_RUN_HISTORY) {
         browserRunHistory = browserRunHistory.slice(-MAX_BROWSER_RUN_HISTORY);
     }
     currentBrowserRun = null;
+    return finalizedRun;
+}
+
+function extractFinalBrowserNarrative(run) {
+    const messages = Array.isArray(run?.messages) ? run.messages : [];
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        const role = String(message?.role || "").trim().toLowerCase();
+        if (role !== "assistant" && role !== "system") {
+            continue;
+        }
+        const firstLine = String(message?.text || "")
+            .split(/\r?\n/)
+            .map((line) => String(line || "").trim())
+            .find((line) => line);
+        if (!firstLine) {
+            continue;
+        }
+        if (
+            /^step\s+\d+\s*:/i.test(firstLine) ||
+            /^rpa step\s+\d+/i.test(firstLine) ||
+            /^session\s+/i.test(firstLine) ||
+            /^state change:/i.test(firstLine) ||
+            /^hybrid rpa started:/i.test(firstLine) ||
+            /^browser run finished/i.test(firstLine) ||
+            /^goal:/i.test(firstLine) ||
+            /^result:/i.test(firstLine) ||
+            /^highlights:/i.test(firstLine) ||
+            /^final note:/i.test(firstLine) ||
+            /^warnings:/i.test(firstLine)
+        ) {
+            continue;
+        }
+        return firstLine;
+    }
+    return "";
+}
+
+function inferBrowserRunOutcome(run) {
+    const messages = Array.isArray(run?.messages) ? run.messages : [];
+    const warnings = [];
+    let completionSignal = false;
+
+    for (const message of messages.slice(-80)) {
+        const text = String(message?.text || "").trim();
+        if (!text) {
+            continue;
+        }
+        const firstLine = text
+            .split(/\r?\n/)
+            .map((line) => String(line || "").trim())
+            .find((line) => line) || "";
+        const normalized = firstLine.toLowerCase();
+        if (
+            /action failed|runtime error|assertion failed|timed out|was not approved|stopped:|failed to |error/.test(
+                normalized
+            )
+        ) {
+            if (warnings.length < 2) {
+                warnings.push(firstLine);
+            }
+            continue;
+        }
+        if (
+            /task is complete|step completed|finished|complete|succeeded|applied/.test(
+                normalized
+            )
+        ) {
+            completionSignal = true;
+        }
+    }
+
+    if (warnings.length === 0) {
+        return {
+            status: "success",
+            label: "正常に完了しました",
+            warnings: []
+        };
+    }
+    if (completionSignal) {
+        return {
+            status: "partial",
+            label: "一部リカバリしつつ完了しました",
+            warnings
+        };
+    }
+    return {
+        status: "failed",
+        label: "途中で停止しました",
+        warnings
+    };
+}
+
+function isInformationSeekingRunGoal(goal) {
+    const normalized = String(goal || "").trim().toLowerCase();
+    if (!normalized) {
+        return false;
+    }
+    return /調べ|確認|教えて|要約|まとめ|内容|何が|どうだった|結果|返答|response|research|check|summar|tell me|what|latest|compare|analy|会話/.test(
+        normalized
+    );
+}
+
+function isActionCompletionNarrative(text) {
+    const normalized = String(text || "").trim().toLowerCase();
+    if (!normalized) {
+        return true;
+    }
+    const actionSignals =
+        /送信|入力|クリック|押下|開始|遷移|開い|type|typed|click|clicked|open|opened|navigate|started|message sent|conversation started/;
+    const informationSignals =
+        /わか|判明|回答|返答|要点|結論|内容|以下|まとめると|確認でき|respond|response|insight|finding|because|理由|提案|価値観|人生/;
+    return actionSignals.test(normalized) && !informationSignals.test(normalized);
+}
+
+function extractInformationalResultFromRun(run) {
+    const messages = Array.isArray(run?.messages) ? run.messages : [];
+    for (let i = messages.length - 1; i >= 0; i -= 1) {
+        const message = messages[i];
+        const role = String(message?.role || "").trim().toLowerCase();
+        if (role !== "assistant" && role !== "system") {
+            continue;
+        }
+        const lines = String(message?.text || "")
+            .split(/\r?\n/)
+            .map((line) => String(line || "").trim())
+            .filter((line) => Boolean(line));
+        if (lines.length === 0) {
+            continue;
+        }
+        const firstLine = lines[0];
+        if (
+            /^step\s+\d+\s*:/i.test(firstLine) ||
+            /^rpa step\s+\d+/i.test(firstLine) ||
+            /^session\s+/i.test(firstLine) ||
+            /^state change:/i.test(firstLine) ||
+            /^hybrid rpa started:/i.test(firstLine)
+        ) {
+            continue;
+        }
+        const merged = lines.join(" ");
+        if (merged.length < 28) {
+            continue;
+        }
+        if (isActionCompletionNarrative(merged)) {
+            continue;
+        }
+        return merged;
+    }
+    return "";
+}
+
+function buildBrowserRunChatSummary(run) {
+    const goal = String(run?.goal || "").trim() || "Browser task";
+    const infoGoal = isInformationSeekingRunGoal(goal);
+    const resultNarrative =
+        extractInformationalResultFromRun(run) || extractFinalBrowserNarrative(run);
+    const outcome = inferBrowserRunOutcome(run);
+
+    if (infoGoal) {
+        if (resultNarrative) {
+            const lines = [];
+            lines.push(`ご依頼内容（${goal}）について、ブラウザで確認した結果を報告します。`);
+            lines.push(resultNarrative);
+            if (outcome.warnings.length > 0) {
+                lines.push(`補足: 実行中に ${outcome.warnings.slice(0, 1).join(" / ")} がありました。`);
+            }
+            return lines.join("\n");
+        }
+        return [
+            `ご依頼内容（${goal}）について操作は実行しましたが、回答本文の取得が不十分でした。`,
+            "この状態では正確な内容報告ができないため、返信表示まで待機・スクロールして再取得が必要です。"
+        ].join("\n");
+    }
+
+    const finalLine = resultNarrative || "必要な操作を実行しました。";
+    return [
+        "ブラウザ操作の結果を報告します。",
+        `対象: ${goal}`,
+        finalLine,
+        `実行ステータス: ${outcome.label}`
+    ].join("\n");
+}
+
+function maybePostBrowserRunSummaryToChat(run) {
+    if (!run || !run.postSummaryToChat || run.chatSummaryPosted) {
+        return;
+    }
+    if (!Array.isArray(run.messages) || run.messages.length === 0) {
+        return;
+    }
+    const summary = buildBrowserRunChatSummary(run);
+    if (!summary.trim()) {
+        return;
+    }
+    run.chatSummaryPosted = true;
+    addMessage("assistant", summary);
+    addActivity("browser", "Posted execution summary to chat.");
 }
 
 function handleBrowserStatusTransition(status) {
@@ -2761,7 +3051,8 @@ function handleBrowserStatusTransition(status) {
         beginBrowserRun("Browser task", "external");
     }
     if (!running && lastBrowserStatus.running) {
-        finalizeCurrentBrowserRun("stopped");
+        const finalizedRun = finalizeCurrentBrowserRun("stopped");
+        maybePostBrowserRunSummaryToChat(finalizedRun);
     }
 
     lastBrowserStatus = {
@@ -2821,11 +3112,16 @@ async function runBrowserGoalFromInput() {
         return;
     }
 
+    setAgentMode(AGENT_MODES.BROWSER);
     browserGoalInput.value = "";
-    await startBrowserAgent(goal);
+    await startBrowserAgent(goal, {
+        source: "manual",
+        postSummaryToChat: false
+    });
 }
 
-async function startBrowserAgent(goal) {
+async function startBrowserAgent(goal, options = {}) {
+    setAgentMode(AGENT_MODES.BROWSER);
     const payload = {
         goal,
         config: buildBrowserAgentConfig()
@@ -2838,6 +3134,9 @@ async function startBrowserAgent(goal) {
             payload: { text: goal }
         });
         if (response?.ok) {
+            if (options?.postSummaryToChat && currentBrowserRun) {
+                currentBrowserRun.postSummaryToChat = true;
+            }
             appendBrowserRunMessage({
                 role: "user",
                 text: goal,
@@ -2849,7 +3148,9 @@ async function startBrowserAgent(goal) {
         }
     }
 
-    beginBrowserRun(goal, "start");
+    beginBrowserRun(goal, String(options?.source || "start"), {
+        postSummaryToChat: Boolean(options?.postSummaryToChat)
+    });
     response = await sendRuntimeMessage({
         type: "agent.start",
         payload
@@ -3017,7 +3318,7 @@ function buildHybridRpaAssets(task, scenarioSteps) {
     return assets;
 }
 
-async function startHybridRpaTask(task) {
+async function startHybridRpaTask(task, options = {}) {
     const scenarioSteps = Array.isArray(task.steps) ? task.steps : [];
     const runtimeAssets = buildHybridRpaAssets(task, scenarioSteps);
     const requiredSlots = extractAttachFileSlots(scenarioSteps);
@@ -3048,8 +3349,9 @@ async function startHybridRpaTask(task) {
         config: buildBrowserAgentConfig()
     };
 
-    beginBrowserRun(task.scenarioName || task.goal, "hybrid_rpa", {
-        scenario: payload.scenario
+    beginBrowserRun(task.scenarioName || task.goal, String(options?.source || "hybrid_rpa"), {
+        scenario: payload.scenario,
+        postSummaryToChat: Boolean(options?.postSummaryToChat)
     });
     const response = await sendRuntimeMessage({
         type: "rpa.start",
@@ -3258,15 +3560,9 @@ async function saveScenarioAsSkill(options = {}) {
         startedAt: Date.now(),
         source: String(options.source || "rpa_recording")
     };
-    const baseTitle = buildSkillTitle(run, options.title || `RPA SOP: ${scenario.name}`);
-    const baseWhenToUse = buildWhenToUse(
-        run,
-        options.whenToUse || `Use this when repeating scenario: ${scenario.name}`
-    );
-    const baseDescription = buildSkillDescription(
-        run,
-        options.description || `RPA scenario focused on: ${scenario.name}`
-    );
+    const baseTitle = buildSkillTitle(run, options.title);
+    const baseWhenToUse = buildWhenToUse(run, options.whenToUse);
+    const baseDescription = buildSkillDescription(run, options.description);
     const tags = normalizeSkillTags(options.tags || ["browser", "automation", "rpa", "skill"]);
     const steps = scenario.steps
         .map((step) => convertScenarioStepToSkillLine(step))
@@ -3291,7 +3587,8 @@ async function saveScenarioAsSkill(options = {}) {
         run,
         steps,
         screenshotUrls: [],
-        scenario
+        scenario,
+        forceScenarioJson: options.forceScenarioJson !== false
     });
 
     const response = await apiFetch("/memories", {
@@ -3319,23 +3616,20 @@ async function saveScenarioAsSkill(options = {}) {
 
 function buildScenarioOptimizationQuestionContext(summary, changes) {
     const lines = [];
-    lines.push("RPA optimization suggestion is available.");
+    lines.push("RPA最適化案があります。");
     if (summary) {
         lines.push("");
-        lines.push(`Summary: ${summary}`);
+        lines.push(`要約: ${summary}`);
     }
     if (Array.isArray(changes) && changes.length > 0) {
         lines.push("");
-        lines.push("Proposed changes:");
-        for (const change of changes.slice(0, 6)) {
-            const stepLabel = `Step ${Number(change?.stepIndex) || "?"}`;
+        lines.push("提案された変更:");
+        for (const change of changes) {
+            const stepLabel = `ステップ ${Number(change?.stepIndex) || "?"}`;
             const from = String(change?.from || "").trim() || "step";
             const to = String(change?.to || "").trim() || "step";
             const reason = String(change?.reason || "").trim();
-            lines.push(`- ${stepLabel}: ${from} -> ${to}${reason ? ` (${reason})` : ""}`);
-        }
-        if (changes.length > 6) {
-            lines.push(`- ...and ${changes.length - 6} more`);
+            lines.push(`- ${stepLabel}: ${from} -> ${to}${reason ? `（理由: ${reason}）` : ""}`);
         }
     }
     return lines.join("\n");
@@ -3349,10 +3643,10 @@ async function askScenarioOptimizationApproval(summary, changes) {
         questions: [
             {
                 id: "scenario_optimization_decision",
-                question: "Apply this optimization to the recorded scenario?",
+                question: "この最適化を録画シナリオに適用しますか？",
                 options: [
-                    "Apply optimization (Recommended)",
-                    "Keep original scenario"
+                    "最適化を適用する (Recommended)",
+                    "元のシナリオを維持する"
                 ],
                 allow_multiple: false
             }
@@ -3434,8 +3728,7 @@ async function stopRpaRecordingAndSave() {
         scenario,
         goal: response?.goal || scenario?.name || "Recorded scenario",
         source: "rpa_recording",
-        title: `Demo SOP: ${scenario?.name || "Recorded Browser Workflow"}`,
-        whenToUse: "Use this SOP for recurring browser operations demonstrated by a human."
+        forceScenarioJson: true
     });
 
     if (!saveResult.ok) {
@@ -3521,9 +3814,9 @@ function buildSkillTitle(run, preferredTitle) {
     }
     const goal = String(run?.goal || "").trim();
     if (!goal) {
-        return "Browser Operation Skill";
+        return "ブラウザ操作SOP";
     }
-    return `Browser SOP: ${goal}`.slice(0, 120);
+    return `ブラウザ操作SOP: ${goal}`.slice(0, 120);
 }
 
 function buildWhenToUse(run, preferredWhenToUse) {
@@ -3533,9 +3826,9 @@ function buildWhenToUse(run, preferredWhenToUse) {
     }
     const goal = String(run?.goal || "").trim();
     if (!goal) {
-        return "Use this skill when a browser workflow must be executed reliably.";
+        return "定期的なブラウザ操作を再現性高く実行したいときに使用します。";
     }
-    return `Use this when you need to complete: ${goal}`.slice(0, 360);
+    return `「${goal}」を再実行したいときに使用します。`.slice(0, 360);
 }
 
 function buildSkillDescription(run, preferredDescription) {
@@ -3545,9 +3838,9 @@ function buildSkillDescription(run, preferredDescription) {
     }
     const goal = String(run?.goal || "").trim();
     if (!goal) {
-        return "Reusable browser automation skill for recurring operational tasks.";
+        return "ブラウザ上の定型操作を自動化する再利用可能なスキルです。";
     }
-    return `Reusable browser automation skill to complete: ${goal}`.slice(0, 260);
+    return `ブラウザ上で「${goal}」を実行するための再利用可能なスキルです。`.slice(0, 260);
 }
 
 function normalizeSuggestedSkillMetadata(raw, fallback) {
@@ -3803,7 +4096,45 @@ function composeSkillContentRaw({ title, whenToUse, description, run, steps, scr
     return lines.join("\n");
 }
 
-function composeSkillContent({ title, whenToUse, description, run, steps, screenshotUrls, scenario = null }) {
+function compactScenarioForSkillContent(scenario, options = {}) {
+    const normalized = scenario ? normalizeScenarioForSkill(scenario) : null;
+    if (!normalized || !Array.isArray(normalized.steps) || normalized.steps.length === 0) {
+        return normalized;
+    }
+    const maxSteps = Number(options.maxSteps) > 0 ? Number(options.maxSteps) : 12;
+    const compactedSteps = [];
+    for (const rawStep of normalized.steps.slice(0, maxSteps)) {
+        const step = { ...rawStep };
+        if (typeof step.selector === "string") {
+            step.selector = step.selector.slice(0, 220);
+        }
+        if (typeof step.text_hint === "string") {
+            step.text_hint = step.text_hint.slice(0, 180);
+        }
+        if (typeof step.text === "string") {
+            step.text = step.text.slice(0, 180);
+        }
+        if (typeof step.url === "string") {
+            step.url = step.url.slice(0, 260);
+        }
+        compactedSteps.push(step);
+    }
+    return {
+        ...normalized,
+        steps: compactedSteps
+    };
+}
+
+function composeSkillContent({
+    title,
+    whenToUse,
+    description,
+    run,
+    steps,
+    screenshotUrls,
+    scenario = null,
+    forceScenarioJson = false
+}) {
     let trimmedShots = [...screenshotUrls];
     let trimmedSteps = [...steps];
     let trimmedScenario = scenario ? normalizeScenarioForSkill(scenario) : null;
@@ -3847,7 +4178,29 @@ function composeSkillContent({ title, whenToUse, description, run, steps, screen
         });
     }
 
-    if (trimmedScenario && content.length > MAX_SKILL_CONTENT_LENGTH) {
+    if (trimmedScenario && content.length > MAX_SKILL_CONTENT_LENGTH && forceScenarioJson) {
+        const compactCandidates = [
+            compactScenarioForSkillContent(trimmedScenario, { maxSteps: 10 }),
+            compactScenarioForSkillContent(trimmedScenario, { maxSteps: 6 }),
+            compactScenarioForSkillContent(trimmedScenario, { maxSteps: 4 })
+        ].filter((entry) => Boolean(entry));
+        for (const candidate of compactCandidates) {
+            content = composeSkillContentRaw({
+                title,
+                whenToUse,
+                description,
+                run,
+                steps: trimmedSteps.slice(0, 4),
+                screenshotUrls: [],
+                scenario: candidate
+            });
+            if (content.length <= MAX_SKILL_CONTENT_LENGTH) {
+                return content;
+            }
+        }
+    }
+
+    if (trimmedScenario && content.length > MAX_SKILL_CONTENT_LENGTH && !forceScenarioJson) {
         trimmedScenario = null;
         content = composeSkillContentRaw({
             title,
@@ -3862,6 +4215,18 @@ function composeSkillContent({ title, whenToUse, description, run, steps, screen
 
     if (content.length <= MAX_SKILL_CONTENT_LENGTH) {
         return content;
+    }
+
+    if (forceScenarioJson && trimmedScenario) {
+        return composeSkillContentRaw({
+            title,
+            whenToUse,
+            description,
+            run,
+            steps: trimmedSteps.slice(0, 3),
+            screenshotUrls: [],
+            scenario: compactScenarioForSkillContent(trimmedScenario, { maxSteps: 3 }) || trimmedScenario
+        });
     }
 
     return `${content.slice(0, MAX_SKILL_CONTENT_LENGTH - 3)}...`;
@@ -4436,3 +4801,4 @@ function sendRuntimeMessage(message) {
         });
     });
 }
+

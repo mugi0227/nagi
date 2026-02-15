@@ -38,6 +38,8 @@ const PROVIDER_MODEL_DEFAULTS = Object.freeze({
 });
 
 const MAX_CHAT_MESSAGES = 400;
+const MAX_STEP_RESULT_CACHE = 80;
+const STEP_RESULT_PROMPT_LIMIT = 8;
 const textEncoder = new TextEncoder();
 const DECISION_RETRY_MAX = 2;
 const DECISION_RETRY_DELAY_MS = 600;
@@ -85,6 +87,7 @@ const state = {
   tabId: null,
   windowId: null,
   chat: [],
+  stepResults: [],
   config: { ...DEFAULT_CONFIG },
   lastAction: null,
   lastChangeSummary: null,
@@ -285,6 +288,7 @@ async function startAgent(goal, incomingConfig, sender) {
   state.windowId = tab.windowId ?? null;
   state.lastAction = null;
   state.lastChangeSummary = null;
+  state.stepResults = [];
   state.stagnationCount = 0;
   state.scrollStallCount = 0;
   clearPendingApproval();
@@ -777,10 +781,13 @@ async function runAiRecoveryForRpaStep(scenario, step, failureMessage) {
       continue;
     }
 
-    const reasoning = typeof decision?.reasoning === "string" ? decision.reasoning.trim() : "";
-    pushChat("assistant", `[AI fallback ${attempt}/${maxFallbackSteps}] ${describeAction(action)}${reasoning ? `\nReason: ${reasoning}` : ""}`);
-
     if (action.type === "finish") {
+      const readiness = assessFinishReadiness(subGoal, decision, before);
+      if (!readiness.ready) {
+        visualReason = readiness.reason;
+        pushChat("system", `[AI fallback] Finish postponed: ${readiness.reason}`);
+        continue;
+      }
       const finalAnswer =
         typeof decision?.final_answer === "string" && decision.final_answer.trim()
           ? decision.final_answer.trim()
@@ -788,6 +795,9 @@ async function runAiRecoveryForRpaStep(scenario, step, failureMessage) {
       pushChat("assistant", finalAnswer);
       return { ok: true, message: "finish" };
     }
+
+    const reasoning = typeof decision?.reasoning === "string" ? decision.reasoning.trim() : "";
+    pushChat("assistant", `[AI fallback ${attempt}/${maxFallbackSteps}] ${describeAction(action)}${reasoning ? `\nReason: ${reasoning}` : ""}`);
 
     const highRiskReason = getHighRiskReason(action, before);
     if (highRiskReason) {
@@ -799,6 +809,15 @@ async function runAiRecoveryForRpaStep(scenario, step, failureMessage) {
 
     const execution = await executeAction(action);
     if (!execution.ok) {
+      recordStepResultCache({
+        step: state.step,
+        attempt,
+        phase: "rpa_fallback",
+        action: describeAction(action),
+        ok: false,
+        message: execution.message || "Action failed.",
+        before
+      });
       visualReason = `Action failed: ${execution.message || "unknown"}`;
       continue;
     }
@@ -818,6 +837,19 @@ async function runAiRecoveryForRpaStep(scenario, step, failureMessage) {
     pushChat("system", `[AI fallback] ${change.summary}`);
 
     const assertion = evaluateRpaStepAssertions(step, after);
+    recordStepResultCache({
+      step: state.step,
+      attempt,
+      phase: "rpa_fallback",
+      action: describeAction(action),
+      ok: assertion.ok,
+      message: assertion.ok
+        ? execution.message || "AI fallback step completed."
+        : assertion.message || "Assertion failed.",
+      changeSummary: change.summary,
+      before,
+      after
+    });
     if (assertion.ok) {
       return {
         ok: true,
@@ -844,7 +876,17 @@ async function executeHybridRpaStep(scenario, step, stepIndex) {
 
     if (step.type === "assert_text" || step.type === "assert_url") {
       const observation = await collectObservation(state.tabId);
-      return evaluateRpaStepAssertions(step, observation);
+      const assertion = evaluateRpaStepAssertions(step, observation);
+      recordStepResultCache({
+        step: stepNumber,
+        attempt: 1,
+        phase: "rpa",
+        action: describeRpaStep(step),
+        ok: assertion.ok,
+        message: assertion.ok ? "Assertion passed." : assertion.message || "Assertion failed.",
+        after: observation
+      });
+      return assertion;
     }
 
     let lastFailure = "Unknown error";
@@ -861,6 +903,15 @@ async function executeHybridRpaStep(scenario, step, stepIndex) {
           : {}
       );
       if (!action) {
+        recordStepResultCache({
+          step: stepNumber,
+          attempt,
+          phase: "rpa",
+          action: describeRpaStep(step),
+          ok: false,
+          message: "RPA step could not be mapped to an executable browser action.",
+          before
+        });
         return { ok: false, message: "RPA step could not be mapped to an executable browser action." };
       }
 
@@ -875,6 +926,15 @@ async function executeHybridRpaStep(scenario, step, stepIndex) {
       const execution = await executeAction(action);
       if (!execution.ok) {
         lastFailure = execution.message || "Action failed.";
+        recordStepResultCache({
+          step: stepNumber,
+          attempt,
+          phase: "rpa",
+          action: describeAction(action),
+          ok: false,
+          message: lastFailure,
+          before
+        });
         if (attempt <= retries) {
           pushChat(
             "system",
@@ -894,6 +954,19 @@ async function executeHybridRpaStep(scenario, step, stepIndex) {
       pushChat("system", `[RPA step ${stepNumber}] ${change.summary}`);
 
       const assertion = evaluateRpaStepAssertions(step, after);
+      recordStepResultCache({
+        step: stepNumber,
+        attempt,
+        phase: "rpa",
+        action: describeAction(action),
+        ok: assertion.ok,
+        message: assertion.ok
+          ? execution.message || "Step completed."
+          : assertion.message || "Assertion failed.",
+        changeSummary: change.summary,
+        before,
+        after
+      });
       if (assertion.ok) {
         return { ok: true, message: execution.message || "Step completed." };
       }
@@ -1063,6 +1136,7 @@ async function startHybridRpa(goal, rawScenario, rawAssets, incomingConfig, send
   state.windowId = tab.windowId ?? null;
   state.lastAction = null;
   state.lastChangeSummary = null;
+  state.stepResults = [];
   state.stagnationCount = 0;
   state.scrollStallCount = 0;
   state.pendingUserInstructions = [];
@@ -1603,9 +1677,14 @@ async function runAgentLoop() {
     }
 
     const reasoning = typeof decision?.reasoning === "string" ? decision.reasoning.trim() : "";
-    pushChat("assistant", formatActionAnnouncement(state.step, action, reasoning));
 
     if (action.type === "finish") {
+      const readiness = assessFinishReadiness(state.goal, decision, before);
+      if (!readiness.ready) {
+        pushChat("system", `Finish postponed: ${readiness.reason}`);
+        nextDecisionVisualReason = readiness.reason;
+        continue;
+      }
       const finalAnswer =
         typeof decision?.final_answer === "string" && decision.final_answer.trim()
           ? decision.final_answer.trim()
@@ -1613,6 +1692,8 @@ async function runAgentLoop() {
       pushChat("assistant", finalAnswer);
       break;
     }
+
+    pushChat("assistant", formatActionAnnouncement(state.step, action, reasoning));
 
     const highRiskReason = getHighRiskReason(action, before);
     if (highRiskReason) {
@@ -1628,6 +1709,15 @@ async function runAgentLoop() {
       pushChat("system", `Action failed: ${execution.message}`);
       state.lastAction = action;
       state.lastChangeSummary = `Action failed: ${execution.message || "unknown"}`;
+      recordStepResultCache({
+        step: state.step,
+        phase: "planner",
+        action: describeAction(action),
+        ok: false,
+        message: execution.message || "Action failed.",
+        changeSummary: state.lastChangeSummary,
+        before
+      });
       nextDecisionVisualReason = `Action execution failed (${truncate(
         execution.message || "unknown",
         140
@@ -1654,6 +1744,16 @@ async function runAgentLoop() {
     const change = evaluateStateChange(before, after);
     state.lastChangeSummary = change.summary;
     pushChat("system", change.summary);
+    recordStepResultCache({
+      step: state.step,
+      phase: "planner",
+      action: describeAction(action),
+      ok: true,
+      message: execution.message || "Action executed.",
+      changeSummary: change.summary,
+      before,
+      after
+    });
 
     const scrollGuard = evaluateScrollGuard(action, before, after);
     if (scrollGuard.checked) {
@@ -1880,10 +1980,10 @@ async function suggestSkillMetadata(payload = {}) {
 
 async function optimizeRpaScenario(payload = {}) {
   const source = payload && typeof payload === "object" ? payload : {};
-  const goal = String(source.goal || source.scenario_name || "Hybrid RPA Task").trim() || "Hybrid RPA Task";
+  const goal = String(source.goal || source.scenario_name || "ハイブリッドRPAタスク").trim() || "ハイブリッドRPAタスク";
   const scenario = normalizeRpaScenario(source.scenario, goal);
   if (!Array.isArray(scenario.steps) || scenario.steps.length === 0) {
-    return { ok: false, error: "Scenario has no steps." };
+    return { ok: false, error: "シナリオにステップがありません。" };
   }
 
   const configOverride = sanitizeConfig(source.config ?? {});
@@ -1899,7 +1999,7 @@ async function optimizeRpaScenario(payload = {}) {
     const rawContent = await requestTextFromProvider(
       promptText,
       effectiveConfig,
-      "You optimize recorded browser RPA scenarios. Return strict JSON only. Do not include markdown.",
+      "あなたは録画済みブラウザRPAシナリオの最適化担当です。JSONのみを返し、Markdownは出力しないでください。",
       {
         maxTokens: 1000,
         temperature: 0.1
@@ -1918,7 +2018,7 @@ async function optimizeRpaScenario(payload = {}) {
       }
       return {
         ok: false,
-        error: "Optimization response was not valid JSON."
+        error: "最適化応答が有効なJSONではありません。"
       };
     }
 
@@ -1947,7 +2047,7 @@ async function optimizeRpaScenario(payload = {}) {
       ok: true,
       changed: false,
       scenario: serializeRpaScenario(scenario),
-      summary: String(parsed.summary || "").trim() || "No safe optimization was suggested.",
+      summary: String(parsed.summary || "").trim() || "安全に適用できる最適化提案はありませんでした。",
       changes: []
     };
   } catch (error) {
@@ -1962,15 +2062,27 @@ async function optimizeRpaScenario(payload = {}) {
     }
     return {
       ok: false,
-      error: error?.message || "Failed to optimize scenario."
+      error: error?.message || "シナリオ最適化に失敗しました。"
     };
   }
 }
 
 function buildRpaOptimizationPromptText({ goal, scenario, responseLanguage }) {
+  const serializedScenario = serializeRpaScenario(scenario);
+  const summarizedSteps = Array.isArray(serializedScenario.steps)
+    ? serializedScenario.steps.map((step, idx) => ({
+        step_index: idx + 1,
+        type: step.type,
+        selector: step.selector || "",
+        text_hint: step.text_hint || "",
+        asset_slot: step.asset_slot || "",
+        accept: step.accept || "",
+        multiple: Boolean(step.multiple)
+      }))
+    : [];
   const lines = [
-    "Return strict JSON only.",
-    "Schema:",
+    "必ず厳密なJSONのみを返してください（Markdownやコードフェンスは禁止）。",
+    "出力スキーマ:",
     "{",
     '  "summary": "string",',
     '  "replacements": [',
@@ -1989,20 +2101,156 @@ function buildRpaOptimizationPromptText({ goal, scenario, responseLanguage }) {
     "  ]",
     "}",
     "",
-    "Rules:",
-    `1. Write summary and reason fields in ${normalizeResponseLanguage(responseLanguage)}.`,
-    "2. Only replace steps when confident they are file upload points.",
-    "3. Prefer replacing click on file chooser related controls with attach_file.",
-    "4. Keep step_index 1-based and within range.",
-    "5. Do not output markdown or code fences.",
+    "ルール:",
+    `1. summary と reason は必ず ${normalizeResponseLanguage(responseLanguage)} で書くこと。`,
+    "2. あなたの役割は「人間の操作記録」を「Chrome操作AIで再現可能な手順」に最適化すること。",
+    "3. 重要: Chrome操作AIはOSネイティブのファイル選択ダイアログを直接操作できない。",
+    "4. Chrome操作AIがファイルを添付できる唯一の方法は attach_file で input[type=file] に直接セットすること。",
+    "5. attach_file の selector は必ず file input を直接指すCSSセレクタにすること（button/div/spanは禁止）。",
+    "6. click -> attach_file の置換は、ファイル選択ダイアログを開くためのクリックだと高確信できる場合だけ行うこと。",
+    "7. 「ファイルをアップロード」「Upload file」等のメニュー項目を選ぶクリックは通常そのまま残すこと。",
+    "8. 既存ステップに attach_file がある場合は、その selector / asset_slot / accept / multiple を優先的に再利用すること。",
+    "9. text_hint に C:\\\\fakepath などのローカルパスを入れないこと。",
+    "10. step_index は1始まりで、必ず既存ステップ範囲内にすること。",
+    "11. 安全に置換できない場合は replacements を空配列にすること。",
     "",
-    "Target goal:",
+    "能力差の前提:",
+    "- 人間: 画面解釈、OSファイルダイアログ操作、曖昧UIの補完が可能。",
+    "- Chrome操作AI: DOM上の click/type/scroll/keypress/navigate/attach_file のみ可能。",
+    "",
+    "良い置換例:",
+    '- click(selector: "... input[type=file] ...") -> attach_file(selector: "... input[type=file] ...")',
+    '- click(selector: "...hidden-local-file...button") を置換するなら、new_step.selector は近傍の input[type=file] にする',
+    "",
+    "悪い置換例:",
+    '- attach_file(selector: "button....")',
+    '- attach_file(selector: "div....")',
+    '- メニュー選択クリック（text_hint: "ファイルをアップロード"）を attach_file に置換',
+    "",
+    "対象ゴール:",
     truncate(String(goal || ""), 320),
     "",
-    "Scenario JSON:",
-    JSON.stringify(serializeRpaScenario(scenario), null, 2)
+    "ステップ要約(JSON):",
+    JSON.stringify(summarizedSteps, null, 2),
+    "",
+    "シナリオJSON:",
+    JSON.stringify(serializedScenario, null, 2)
   ];
   return lines.join("\n");
+}
+
+function isLikelyFileInputSelector(selector) {
+  const normalized = String(selector || "").trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  if (/\[type\s*=\s*["']?file/.test(normalized)) {
+    return true;
+  }
+  return /(^|[\s>+~])input([.#:[\s>+~]|$)/.test(normalized);
+}
+
+function normalizeSelectorForComparison(selector) {
+  return String(selector || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function selectorsEquivalent(left, right) {
+  const a = normalizeSelectorForComparison(left);
+  const b = normalizeSelectorForComparison(right);
+  return Boolean(a && b && a === b);
+}
+
+function collectKnownFileInputSelectors(steps) {
+  const source = Array.isArray(steps) ? steps : [];
+  const seen = new Set();
+  const result = [];
+  for (const step of source) {
+    if (!step || typeof step !== "object") {
+      continue;
+    }
+    const selector = String(step.selector || "").trim();
+    if (!selector) {
+      continue;
+    }
+    const isAttach = String(step.type || "").trim().toLowerCase() === "attach_file";
+    if (!isAttach && !isLikelyFileInputSelector(selector)) {
+      continue;
+    }
+    const normalized = normalizeSelectorForComparison(selector);
+    if (!normalized || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(selector);
+  }
+  return result;
+}
+
+function findNearbyAttachFileStep(steps, index, maxDistance = 3) {
+  if (!Array.isArray(steps) || !Number.isFinite(index)) {
+    return null;
+  }
+  for (let offset = 1; offset <= maxDistance; offset += 1) {
+    const forward = steps[index + offset];
+    if (forward && forward.type === "attach_file" && isLikelyFileInputSelector(forward.selector)) {
+      return forward;
+    }
+    const backward = steps[index - offset];
+    if (backward && backward.type === "attach_file" && isLikelyFileInputSelector(backward.selector)) {
+      return backward;
+    }
+  }
+  return null;
+}
+
+function inferNearbyFileInputSelector(steps, index) {
+  const nearbyAttach = findNearbyAttachFileStep(steps, index);
+  if (nearbyAttach?.selector) {
+    return String(nearbyAttach.selector).trim();
+  }
+  const knownSelectors = collectKnownFileInputSelectors(steps);
+  if (knownSelectors.length === 1) {
+    return knownSelectors[0];
+  }
+  return "";
+}
+
+function isLikelyUploadMenuSelectionClick(step) {
+  if (!step || step.type !== "click") {
+    return false;
+  }
+  const selector = String(step.selector || "").toLowerCase();
+  const hint = String(step.textHint || step.text_hint || "").toLowerCase();
+  const signal = `${selector} ${hint}`;
+  const hasUploadWords =
+    /upload|attach|file|ファイルをアップロード|ファイル|アップロード|添付/.test(signal);
+  if (!hasUploadWords) {
+    return false;
+  }
+  const menuLike = /menu|list-item|menu-text|mdc-list-item|mat-mdc-list-item|dropdown|popover/.test(signal);
+  const chooserLike =
+    /input\s*\[\s*type\s*=\s*["']?file|hidden-local-file|file-selector|browse|choose|select file|open file|参照|選択/.test(
+      signal
+    );
+  return menuLike && !chooserLike;
+}
+
+function isLikelyFileDialogOpenClick(step) {
+  if (!step || step.type !== "click") {
+    return false;
+  }
+  const selector = String(step.selector || "").toLowerCase();
+  const hint = String(step.textHint || step.text_hint || "").toLowerCase();
+  const signal = `${selector} ${hint}`;
+  if (isLikelyFileInputSelector(selector)) {
+    return true;
+  }
+  return /hidden-local-file|file-selector|browse|choose file|select file|open file|参照|ファイルを選択/.test(
+    signal
+  );
 }
 
 function applyRpaOptimizationSuggestion(baseScenario, suggestion) {
@@ -2032,13 +2280,55 @@ function applyRpaOptimizationSuggestion(baseScenario, suggestion) {
     if (!rawNewStep) {
       continue;
     }
+    const rawArgs = rawNewStep.args && typeof rawNewStep.args === "object" ? rawNewStep.args : {};
+    const hasExplicitAssetSlot = Boolean(
+      String(rawNewStep.asset_slot || rawNewStep.assetSlot || rawArgs.asset_slot || rawArgs.assetSlot || "").trim()
+    );
+    const hasExplicitAccept = Boolean(String(rawNewStep.accept || rawArgs.accept || "").trim());
+    const hasExplicitMultiple =
+      rawNewStep.multiple !== undefined || rawArgs.multiple !== undefined;
+
+    const previousStep = steps[index];
+    if (!previousStep || previousStep.type !== "click" || previousStep.type === "attach_file") {
+      continue;
+    }
+    if (isLikelyUploadMenuSelectionClick(previousStep)) {
+      continue;
+    }
 
     const normalized = normalizeRpaStep(rawNewStep, index);
     if (!normalized || normalized.type !== "attach_file") {
       continue;
     }
-    const previousStep = steps[index];
-    if (!previousStep || previousStep.type === "attach_file") {
+    if (!isLikelyFileInputSelector(normalized.selector)) {
+      const inferredSelector = inferNearbyFileInputSelector(steps, index);
+      if (inferredSelector) {
+        normalized.selector = inferredSelector;
+      }
+    }
+    if (!isLikelyFileInputSelector(normalized.selector)) {
+      continue;
+    }
+
+    const nearbyAttach = findNearbyAttachFileStep(steps, index);
+    if (nearbyAttach) {
+      if (!hasExplicitAssetSlot && nearbyAttach.assetSlot) {
+        normalized.assetSlot = nearbyAttach.assetSlot;
+      }
+      if (!hasExplicitAccept && nearbyAttach.accept) {
+        normalized.accept = nearbyAttach.accept;
+      }
+      if (!hasExplicitMultiple && nearbyAttach.multiple) {
+        normalized.multiple = true;
+      }
+    }
+
+    const nextStep = steps[index + 1];
+    if (
+      nextStep &&
+      nextStep.type === "attach_file" &&
+      selectorsEquivalent(nextStep.selector, normalized.selector)
+    ) {
       continue;
     }
 
@@ -2053,7 +2343,7 @@ function applyRpaOptimizationSuggestion(baseScenario, suggestion) {
 
   return {
     changed: changes.length > 0,
-    summary: truncate(String(suggestion?.summary || "").trim(), 260) || "Applied LLM scenario optimization.",
+    summary: truncate(String(suggestion?.summary || "").trim(), 260) || "LLM最適化を適用しました。",
     scenario: {
       ...baseScenario,
       steps
@@ -2066,10 +2356,14 @@ function applyHeuristicFileStepOptimization(baseScenario) {
   const steps = Array.isArray(baseScenario.steps)
     ? baseScenario.steps.map((step) => ({ ...step }))
     : [];
+  const knownFileInputSelectors = collectKnownFileInputSelectors(steps);
 
   for (let i = 0; i < steps.length; i += 1) {
     const step = steps[i];
     if (!step || step.type !== "click") {
+      continue;
+    }
+    if (isLikelyUploadMenuSelectionClick(step)) {
       continue;
     }
     const selector = String(step.selector || "");
@@ -2077,18 +2371,40 @@ function applyHeuristicFileStepOptimization(baseScenario) {
     const signal = `${selector} ${hint}`.toLowerCase();
     const looksLikeFileUpload =
       /input\s*\[\s*type\s*=\s*["']?file/.test(signal) ||
-      /upload|attach|file|choose|browse|参照|添付|アップロード|ファイル/.test(signal);
+      /upload|attach|file|choose|browse|参照|添付|アップロード|ファイル/.test(signal) ||
+      isLikelyFileDialogOpenClick(step);
     if (!looksLikeFileUpload) {
       continue;
     }
+    let attachSelector = selector;
+    if (!isLikelyFileInputSelector(attachSelector)) {
+      attachSelector = inferNearbyFileInputSelector(steps, i);
+    }
+    if (!isLikelyFileInputSelector(attachSelector) && knownFileInputSelectors.length === 1) {
+      attachSelector = knownFileInputSelectors[0];
+    }
+    if (!isLikelyFileInputSelector(attachSelector)) {
+      continue;
+    }
+
+    const nextStep = steps[i + 1];
+    if (
+      nextStep &&
+      nextStep.type === "attach_file" &&
+      selectorsEquivalent(nextStep.selector, attachSelector)
+    ) {
+      continue;
+    }
+
+    const nearbyAttach = findNearbyAttachFileStep(steps, i);
     const replacement = normalizeRpaStep(
       {
         type: "attach_file",
-        selector,
+        selector: attachSelector,
         text_hint: hint,
-        asset_slot: inferAssetSlotFromText(hint || selector),
-        accept: "application/pdf",
-        multiple: false
+        asset_slot: nearbyAttach?.assetSlot || inferAssetSlotFromText(hint || attachSelector),
+        accept: nearbyAttach?.accept || "application/pdf",
+        multiple: Boolean(nearbyAttach?.multiple)
       },
       i
     );
@@ -2098,7 +2414,7 @@ function applyHeuristicFileStepOptimization(baseScenario) {
     steps[i] = replacement;
     return {
       changed: true,
-      summary: "Replaced one file-upload click step with attach_file by heuristic.",
+      summary: "ヒューリスティックにより、ファイルアップロードのclickをattach_fileへ置換しました。",
       scenario: {
         ...baseScenario,
         steps
@@ -2108,7 +2424,7 @@ function applyHeuristicFileStepOptimization(baseScenario) {
           stepIndex: i + 1,
           from: "click",
           to: "attach_file",
-          reason: "heuristic_file_upload_detection"
+          reason: "ヒューリスティックによるファイルアップロード検出"
         }
       ]
     };
@@ -2116,7 +2432,7 @@ function applyHeuristicFileStepOptimization(baseScenario) {
 
   return {
     changed: false,
-    summary: "No file upload step candidate found.",
+    summary: "ファイルアップロードとして置換できる候補は見つかりませんでした。",
     scenario: baseScenario,
     changes: []
   };
@@ -2584,6 +2900,65 @@ async function requestSkillMetadataViaBedrock(promptText, config) {
   return extractBedrockContent(payload);
 }
 
+function summarizeObservationForCache(observation) {
+  if (!observation || typeof observation !== "object") {
+    return null;
+  }
+  const snippetRaw = String(observation?.page?.textSnippet || "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return {
+    url: safeUrl(String(observation.url || "")),
+    title: truncate(String(observation.title || "").trim(), 120),
+    scrollY: Number(observation?.scroll?.y) || 0,
+    atBottom: Boolean(observation?.scroll?.atBottom),
+    textSnippet: truncate(snippetRaw, 220)
+  };
+}
+
+function recordStepResultCache(entry) {
+  const source = entry && typeof entry === "object" ? entry : {};
+  const stepNumber = clampNumber(source.step, 0, 9999, state.step);
+  const attempt = clampNumber(source.attempt, 0, 9, 0);
+  const phase = truncate(String(source.phase || state.mode || "planner").trim(), 40) || "planner";
+  const actionText = truncate(String(source.action || "").trim(), 180);
+  const message = truncate(String(source.message || "").trim(), 220);
+  const changeSummary = truncate(String(source.changeSummary || "").trim(), 260);
+  const record = {
+    at: Date.now(),
+    step: stepNumber,
+    attempt,
+    phase,
+    action: actionText,
+    ok: Boolean(source.ok),
+    message,
+    changeSummary,
+    before: summarizeObservationForCache(source.before),
+    after: summarizeObservationForCache(source.after)
+  };
+
+  state.stepResults.push(record);
+  if (state.stepResults.length > MAX_STEP_RESULT_CACHE) {
+    state.stepResults = state.stepResults.slice(-MAX_STEP_RESULT_CACHE);
+  }
+  state.updatedAt = Date.now();
+}
+
+function getRecentStepResultsForPrompt() {
+  const source = Array.isArray(state.stepResults) ? state.stepResults : [];
+  return source.slice(-STEP_RESULT_PROMPT_LIMIT).map((entry) => ({
+    step: Number(entry.step) || 0,
+    attempt: Number(entry.attempt) || 0,
+    phase: String(entry.phase || ""),
+    action: String(entry.action || ""),
+    ok: Boolean(entry.ok),
+    message: String(entry.message || ""),
+    change_summary: String(entry.changeSummary || ""),
+    before: entry.before || null,
+    after: entry.after || null
+  }));
+}
+
 async function requestDecision(observation, options = {}) {
   const goalOverride =
     typeof options?.goal === "string" && options.goal.trim() ? options.goal.trim() : state.goal;
@@ -2604,6 +2979,7 @@ async function requestDecision(observation, options = {}) {
     last_action: state.lastAction,
     last_change_summary: state.lastChangeSummary,
     pending_user_instructions: pendingInstructions,
+    recent_step_results: getRecentStepResultsForPrompt(),
     text_snippet: observation.page.textSnippet.slice(0, 1200),
     elements: observation.page.elements.slice(0, 40).map((element) => ({
       id: element.id,
@@ -2675,13 +3051,17 @@ function buildDecisionPromptText(promptData, retryHint = "") {
     "Rules:",
     "1. Use element_id when possible.",
     "2. Choose one action only.",
-    "3. If goal is already achieved, use finish.",
+    "3. Use finish only when the user-requested outcome is truly completed on the current page.",
     "4. Do not include markdown fences.",
     "5. For scroll-down, prefer large movement (roughly 75-90% of viewport) to reduce overlap.",
     "6. If scroll is already at bottom/top and no progress, do not keep scrolling forever.",
     `7. Write reasoning and final_answer in ${state.config.responseLanguage}.`,
     "8. If the target is visible in screenshot but not reliably present in elements, use click_at with normalized coordinates (0 to 1).",
-    "9. Use new_tab when the user asks to open a page in a new tab."
+    "9. Use new_tab when the user asks to open a page in a new tab.",
+    "10. Use recent_step_results as short-term memory from earlier steps in this run.",
+    "11. If the goal is information-seeking (調べる/確認/要約/tell me/what happened/etc.), do not finish right after sending a message or opening a page.",
+    "12. For information-seeking goals, continue with wait/scroll/read actions until page text contains the answer content.",
+    "13. final_answer must report the obtained information itself, not just operation success."
   ];
 
   if (promptData?.recovery_context) {
@@ -2694,6 +3074,65 @@ function buildDecisionPromptText(promptData, retryHint = "") {
 
   lines.push("", "Current observation JSON:", JSON.stringify(promptData, null, 2));
   return lines.join("\n");
+}
+
+function isInformationSeekingGoalText(goal) {
+  const normalized = String(goal || "").trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+  return /調べ|確認|教えて|要約|まとめ|内容|何が|どうだった|結果|conversation|返答|response|research|check|summar|tell me|what|latest|compare|analy/.test(
+    normalized
+  );
+}
+
+function looksLikeActionOnlyReport(text) {
+  const normalized = String(text || "").trim().toLowerCase();
+  if (!normalized) {
+    return true;
+  }
+  const actionSignals =
+    /送信|入力|クリック|押下|開始|遷移|開い|type|typed|click|clicked|open|opened|navigate|started|start conversation|message sent/;
+  const infoSignals =
+    /わか|判明|回答|返答|要点|結論|内容|以下|まとめると|観察|確認でき|respond|response|insight|finding|because|理由|提案|価値観|人生/;
+  return actionSignals.test(normalized) && !infoSignals.test(normalized);
+}
+
+function assessFinishReadiness(goal, decision, observation) {
+  if (!isInformationSeekingGoalText(goal)) {
+    return { ready: true, reason: "" };
+  }
+
+  const finalAnswer =
+    typeof decision?.final_answer === "string" ? decision.final_answer.trim() : "";
+  if (!finalAnswer) {
+    return {
+      ready: false,
+      reason: "Goal is information-seeking. Do not finish without reporting concrete findings."
+    };
+  }
+  if (finalAnswer.length < 36) {
+    return {
+      ready: false,
+      reason: "Final answer is too short for an information-seeking goal. Include concrete findings."
+    };
+  }
+  if (looksLikeActionOnlyReport(finalAnswer)) {
+    return {
+      ready: false,
+      reason: "Final answer describes only actions. Continue and capture the actual information result."
+    };
+  }
+
+  const textSnippet = String(observation?.page?.textSnippet || "").trim();
+  if (textSnippet.length < 20) {
+    return {
+      ready: false,
+      reason: "Page evidence is still thin. Observe response text before finishing."
+    };
+  }
+
+  return { ready: true, reason: "" };
 }
 
 function isDecisionRetryableError(error) {
@@ -3440,6 +3879,7 @@ function getStatus() {
     sessionId: state.sessionId,
     goal: state.goal,
     step: state.step,
+    stepResultCount: Array.isArray(state.stepResults) ? state.stepResults.length : 0,
     tabId: state.tabId,
     activeRpa: state.activeRpa,
     activeRecording: toRecordingPayload(state.activeRecording),
@@ -3705,7 +4145,9 @@ function plannerSystemPrompt(responseLanguage) {
     "You must return strict JSON only.",
     "Think about the current page and choose one next action.",
     "Use safe, reversible actions first.",
-    "When the goal appears completed, return action.type=finish.",
+    "Use action.type=finish only when the requested outcome is actually completed.",
+    "For information-seeking goals, do not finish immediately after input/click; read the page response and report concrete findings.",
+    "final_answer must answer the user's request with obtained content, not just operation success.",
     `Write reasoning and final_answer in ${language}.`
   ].join(" ");
 }

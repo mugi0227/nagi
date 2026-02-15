@@ -87,7 +87,7 @@
             </div>
         </main>
 
-        <section class="browser-panel">
+        <section id="browser-panel" class="browser-panel">
             <div class="browser-panel-head">
                 <span class="browser-title">Browser Agent</span>
                 <span id="browser-agent-badge" class="browser-badge idle">Idle</span>
@@ -177,6 +177,17 @@
                         </svg>
                     </button>
                     <ul class="model-selector-menu hidden" id="model-selector-menu"></ul>
+                </div>
+            </div>
+            <div id="agent-mode-row" class="agent-mode-row">
+                <span class="agent-mode-label">Agent</span>
+                <div class="agent-mode-toggle" role="group" aria-label="Agent mode">
+                    <button id="agent-mode-chat-btn" class="agent-mode-btn active" type="button">
+                        Secretary
+                    </button>
+                    <button id="agent-mode-browser-btn" class="agent-mode-btn" type="button">
+                        Browser
+                    </button>
                 </div>
             </div>
             <div class="input-box-wrapper">
