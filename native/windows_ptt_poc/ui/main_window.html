@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -7,25 +7,32 @@
   <title>Secretary Partner</title>
   <style>
     html, body {
+      width: 100%;
       height: 100%;
       overflow: hidden;
+      background: transparent;
     }
 
     .app {
       display: flex;
       flex-direction: column;
       height: 100vh;
-      padding: 0;
+      background: var(--bg-main);
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(51, 65, 85, 0.6);
+      overflow: hidden;
+      position: relative;
+      box-shadow: var(--shadow-card);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
     }
-
-    /* ── Custom Titlebar ───────────────────────────────────── */
 
     .titlebar {
       display: flex;
       align-items: center;
+      gap: 10px;
       padding: 10px 16px;
-      background: var(--bg-main);
-      -webkit-app-region: drag;
+      background: transparent;
       flex-shrink: 0;
     }
 
@@ -33,47 +40,95 @@
       font-size: 15px;
       font-weight: 700;
       color: var(--text-main);
-      margin-right: 10px;
     }
 
     .titlebar-buttons {
       margin-left: auto;
       display: flex;
       gap: 6px;
-      -webkit-app-region: no-drag;
     }
-
-    /* ── Content area ──────────────────────────────────────── */
 
     .content {
       display: flex;
       flex-direction: column;
-      gap: 8px;
-      padding: 0 16px 14px;
+      gap: 10px;
       flex: 1;
       min-height: 0;
       overflow-y: auto;
+      padding: 0 16px 16px;
     }
 
-    /* ── Status section ────────────────────────────────────── */
+    /* Settings cards: hidden by default, shown when gear is open */
+    #settingsHeader,
+    #authCard,
+    #hotkeyCard {
+      display: none;
+    }
+
+    .app.settings-open #settingsHeader,
+    .app.settings-open #authCard,
+    .app.settings-open #hotkeyCard {
+      display: block;
+    }
+
+    .app.settings-open .chat-card,
+    .app.settings-open .composer-card,
+    .app.settings-open .status-area {
+      display: none !important;
+    }
+
+    .settings-toggle {
+      padding: 5px 8px;
+    }
+
+    .settings-toggle svg {
+      display: block;
+    }
+
+    .settings-toggle.active {
+      color: var(--primary);
+      background: rgba(14, 165, 233, 0.1);
+    }
+
+    .settings-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 2px 0 6px;
+    }
+
+    .settings-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .app.chat-mode .chat-card {
+      display: flex;
+      flex: 1;
+      min-height: 0;
+      max-height: none;
+    }
+
+    .app.chat-mode #chatMessages {
+      min-height: 0;
+    }
 
     .status-area {
-      padding: 0 0 4px;
+      padding-top: 2px;
     }
 
     #statusText {
-      font-size: 14px;
-      font-weight: 500;
+      font-size: 15px;
+      font-weight: 600;
       color: var(--text-main);
     }
 
     #hintText {
+      margin-top: 2px;
       font-size: 12px;
       color: var(--primary);
-      margin-top: 2px;
     }
-
-    /* ── Auth card ─────────────────────────────────────────── */
 
     #userLabel {
       font-size: 13px;
@@ -82,15 +137,28 @@
       margin-bottom: 8px;
     }
 
-    #linkCode {
-      flex: 1;
-      max-width: 220px;
+    .link-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
     }
 
-    /* ── Hotkey card ───────────────────────────────────────── */
+    #linkCode {
+      flex: 1 1 260px;
+      min-width: 220px;
+      max-width: 420px;
+    }
+
+    .hotkey-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
 
     #hotkeySelect {
-      width: 80px;
+      width: 86px;
     }
 
     #currentHotkey {
@@ -99,33 +167,201 @@
       margin-left: 4px;
     }
 
-    /* ── Transcript card ───────────────────────────────────── */
-
-    .transcript-card {
-      display: flex;
+    .chat-card {
+      display: none;
       flex-direction: column;
-      flex: 1;
-      min-height: 0;
+      min-height: 260px;
+      max-height: 460px;
     }
 
-    .transcript-card .section-label {
-      margin-bottom: 6px;
+    .chat-card.visible {
+      display: flex;
+    }
+
+    .chat-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      flex-shrink: 0;
+    }
+
+    .chat-header .title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .chat-empty {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+    }
+
+    #chatMessages {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      overflow-y: auto;
+      min-height: 180px;
+      flex: 1;
+      padding-right: 4px;
+    }
+
+    .chat-message {
+      display: flex;
+      flex-direction: column;
+      max-width: 86%;
+      gap: 4px;
+    }
+
+    .chat-message.user {
+      margin-left: auto;
+      align-items: flex-end;
+    }
+
+    .chat-message.assistant {
+      margin-right: auto;
+      align-items: flex-start;
+    }
+
+    .chat-meta {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .chat-bubble {
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 9px 11px;
+      font-size: 13px;
+      line-height: 1.6;
+      word-break: break-word;
+    }
+
+    .chat-message.user .chat-bubble {
+      background: rgba(14, 165, 233, 0.16);
+      border-color: rgba(14, 165, 233, 0.4);
+      color: var(--text-main);
+      white-space: pre-wrap;
+    }
+
+    .chat-message.assistant .chat-bubble {
+      background: var(--bg-input);
+      color: var(--text-main);
+    }
+
+    .question-card {
+      display: none;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .question-card.visible {
+      display: flex;
+    }
+
+    .question-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .question-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text-main);
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    .question-context {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .question-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .question-item {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .question-label {
+      font-size: 13px;
+      color: var(--text-main);
+      line-height: 1.5;
+    }
+
+    .question-options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .question-option-btn {
+      border: 1px solid var(--border);
+      background: var(--bg-input);
+      color: var(--text-main);
+      border-radius: var(--radius-full);
+      padding: 5px 10px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+
+    .question-option-btn:hover {
+      border-color: var(--primary);
+    }
+
+    .question-option-btn.selected {
+      background: rgba(14, 165, 233, 0.2);
+      border-color: var(--primary);
+      color: var(--primary-light);
+    }
+
+    .question-free-input {
+      width: 100%;
+    }
+
+    .question-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .composer-card {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      flex-shrink: 0;
     }
 
     #transcriptText {
-      flex: 1;
-      min-height: 80px;
-      max-height: 200px;
+      width: 100%;
+      min-height: 56px;
+      max-height: 220px;
       overflow-y: auto;
+      line-height: 1.6;
       user-select: text;
       -webkit-user-select: text;
+      resize: none;
     }
 
     .btn-row {
       display: flex;
       align-items: center;
       gap: 8px;
-      margin-top: 8px;
       flex-wrap: wrap;
     }
 
@@ -133,67 +369,94 @@
       margin-left: auto;
       display: flex;
       gap: 8px;
-    }
-
-    /* ── Response area ─────────────────────────────────────── */
-
-    .response-label {
-      margin-top: 10px;
-      margin-bottom: 4px;
+      flex-wrap: wrap;
     }
 
     #responseText {
-      background: var(--bg-input);
-      border: 1px solid var(--border);
-      border-radius: var(--radius-sm);
-      padding: 8px 12px;
-      font-size: 12px;
-      color: var(--text-muted);
-      min-height: 48px;
-      max-height: 100px;
-      overflow-y: auto;
-      line-height: 1.5;
-      white-space: pre-wrap;
-      word-break: break-word;
-      user-select: text;
-      -webkit-user-select: text;
+      display: none;
+    }
+
+    /* Resize grip (bottom-right corner) */
+
+    .resize-grip {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 18px;
+      height: 18px;
+      cursor: se-resize;
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .app:hover .resize-grip {
+      opacity: 0.35;
+    }
+
+    .resize-grip::before,
+    .resize-grip::after {
+      content: '';
+      position: absolute;
+      background: var(--text-muted);
+      border-radius: 1px;
+    }
+
+    .resize-grip::before {
+      width: 8px;
+      height: 2px;
+      bottom: 5px;
+      right: 4px;
+      transform: rotate(-45deg);
+    }
+
+    .resize-grip::after {
+      width: 5px;
+      height: 2px;
+      bottom: 4px;
+      right: 3px;
+      transform: rotate(-45deg);
     }
   </style>
 </head>
 <body>
-  <div class="app">
-    <!-- Titlebar -->
+  <div class="app" id="appRoot">
+    <div class="resize-grip" id="resizeGrip"></div>
     <div class="titlebar">
       <span class="titlebar-title">Secretary Partner</span>
       <span class="status-dot" id="statusDot"></span>
       <div class="titlebar-buttons">
-        <button class="btn btn-subtle btn-sm" id="hideBtn">非表示</button>
-        <button class="btn btn-danger btn-sm" id="closeBtn">終了</button>
+        <button class="btn btn-subtle btn-sm settings-toggle" id="settingsBtn" title="Settings"><svg width="15" height="15" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M11.49 3.17c-.38-1.56-2.6-1.56-2.98 0a1.532 1.532 0 01-2.286.948c-1.372-.836-2.942.734-2.106 2.106.54.886.061 2.042-.947 2.287-1.561.379-1.561 2.6 0 2.978a1.532 1.532 0 01.947 2.287c-.836 1.372.734 2.942 2.106 2.106a1.532 1.532 0 012.287.947c.379 1.561 2.6 1.561 2.978 0a1.533 1.533 0 012.287-.947c1.372.836 2.942-.734 2.106-2.106a1.533 1.533 0 01.947-2.287c1.561-.379 1.561-2.6 0-2.978a1.532 1.532 0 01-.947-2.287c.836-1.372-.734-2.942-2.106-2.106a1.532 1.532 0 01-2.287-.947zM10 13a3 3 0 100-6 3 3 0 000 6z" clip-rule="evenodd"/></svg></button>
+        <button class="btn btn-subtle btn-sm" id="hideBtn">Hide</button>
+        <button class="btn btn-danger btn-sm" id="closeBtn">Close</button>
       </div>
     </div>
 
-    <!-- Content -->
     <div class="content">
-      <!-- Status -->
       <div class="status-area">
-        <div id="statusText">起動中...</div>
+        <div id="statusText">Idle</div>
         <div id="hintText"></div>
       </div>
 
-      <!-- Auth Card -->
-      <div class="card" id="authCard">
-        <div id="userLabel">認証: 未連携</div>
-        <div class="row">
-          <input type="text" id="linkCode" placeholder="連携コード">
-          <button class="btn btn-primary btn-sm" id="linkBtn">Link</button>
-          <button class="btn btn-subtle btn-sm" id="openLinkPage">連携ページを開く</button>
+      <div id="settingsHeader">
+        <div class="settings-header-row">
+          <span class="settings-title">Settings</span>
+          <button class="btn btn-subtle btn-sm" id="settingsCloseBtn">Back</button>
         </div>
       </div>
 
-      <!-- Hotkey Card -->
-      <div class="card">
-        <div class="row">
-          <span class="section-label" style="margin-right: 8px;">ホットキー</span>
+      <div class="card" id="authCard">
+        <div id="userLabel">User: Not linked</div>
+        <div class="link-row">
+          <input type="text" id="linkCode" placeholder="Link code">
+          <button class="btn btn-primary btn-sm" id="linkBtn">Link</button>
+          <button class="btn btn-subtle btn-sm" id="openLinkPage">Open link page</button>
+        </div>
+      </div>
+
+      <div class="card" id="hotkeyCard">
+        <div class="hotkey-row">
+          <span class="section-label" style="margin-right: 8px;">Hotkey</span>
           <select id="hotkeySelect">
             <option value="F1">F1</option>
             <option value="F2">F2</option>
@@ -208,29 +471,52 @@
             <option value="F11">F11</option>
             <option value="F12">F12</option>
           </select>
-          <button class="btn btn-primary btn-sm" id="applyHotkey">適用</button>
-          <span id="currentHotkey">現在のホットキー: F8</span>
+          <button class="btn btn-primary btn-sm" id="applyHotkey">Apply</button>
+          <span id="currentHotkey">Current hotkey: F8</span>
         </div>
       </div>
 
-      <!-- Transcript Card -->
-      <div class="card transcript-card">
-        <span class="section-label">文字起こし / 入力</span>
-        <textarea id="transcriptText" placeholder="ここに文字起こし結果が表示されます..." rows="4"></textarea>
+      <div class="card chat-card" id="chatCard">
+        <div class="chat-header">
+          <span class="title">Chat</span>
+        </div>
+        <div class="chat-empty" id="chatEmpty">Chat history appears here after your first message.</div>
+        <div id="chatMessages"></div>
+      </div>
+
+      <div class="card question-card" id="questionCard">
+        <div class="question-header">
+          <span class="question-title">Questions</span>
+        </div>
+        <div class="question-context" id="questionContext"></div>
+        <div class="question-list" id="questionList"></div>
+        <div class="question-actions">
+          <button class="btn btn-secondary btn-sm" id="questionCancelBtn">Cancel</button>
+          <button class="btn btn-primary btn-sm" id="questionSendBtn">Send answers</button>
+        </div>
+      </div>
+
+      <div class="card composer-card">
+        <span class="section-label">Transcription / Input</span>
+        <textarea id="transcriptText" rows="2" placeholder="Type or edit text here, then press Enter to send."></textarea>
         <div class="btn-row">
-          <button class="btn btn-primary" id="sendBtn">送信 (Enter)</button>
-          <button class="btn btn-secondary btn-sm" id="clearBtn">クリア</button>
+          <button class="btn btn-primary" id="sendBtn">Send (Enter)</button>
+          <button class="btn btn-secondary btn-sm" id="clearBtn">Clear</button>
           <div class="btn-row-right">
-            <button class="btn btn-subtle btn-sm" id="openWeb">Webアプリ</button>
-            <button class="btn btn-subtle btn-sm" id="openTasks">タスクを開く</button>
+            <button class="btn btn-subtle btn-sm" id="openWeb">Open web app</button>
+            <button class="btn btn-subtle btn-sm" id="openTasks">Open tasks</button>
           </div>
         </div>
-        <span class="section-label response-label">最新の応答</span>
-        <div id="responseText"></div>
       </div>
+
+      <div id="responseText"></div>
     </div>
   </div>
 
+  <script src="lib/marked.min.js"></script>
+  <script src="lib/purify.min.js"></script>
   <script src="main.js"></script>
 </body>
 </html>
+
+

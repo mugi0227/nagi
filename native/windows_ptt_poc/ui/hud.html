@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
@@ -7,6 +7,7 @@
   <title>HUD</title>
   <style>
     html, body {
+      width: 100%;
       height: 100%;
       overflow: hidden;
       background: transparent;
@@ -14,78 +15,86 @@
 
     .hud-container {
       position: absolute;
-      top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
-      background: var(--bg-card);
-      border: 1px solid var(--border);
+      inset: 0;
+      background: rgba(30, 41, 59, 0.88);
+      border: 1px solid rgba(51, 65, 85, 0.6);
       border-radius: var(--radius-md);
       display: flex;
       flex-direction: column;
       overflow: hidden;
       cursor: pointer;
-      animation: fadeIn 150ms ease-out;
+      animation: fadeIn 140ms ease-out;
+      box-shadow: var(--shadow-card);
     }
 
     .hud-container.glow-red {
-      animation: glowRed 1.2s ease-in-out infinite, fadeIn 150ms ease-out;
+      animation: glowRed 1.2s ease-in-out infinite, fadeIn 140ms ease-out;
     }
 
     .hud-container.glow-blue {
-      animation: glowBlue 1.2s ease-in-out infinite, fadeIn 150ms ease-out;
+      animation: glowBlue 1.2s ease-in-out infinite, fadeIn 140ms ease-out;
     }
 
     .hud-container.glow-green {
-      animation: glowGreen 1.5s ease-in-out infinite, fadeIn 150ms ease-out;
+      animation: glowGreen 1.5s ease-in-out infinite, fadeIn 140ms ease-out;
     }
 
-    /* ── Recording state ───────────────────────────────────── */
+    .state-recording,
+    .state-processing,
+    .state-preview,
+    .state-sent,
+    .state-idle,
+    .state-chat {
+      display: none;
+    }
 
-    .state-recording {
+    .hud-container[data-state="recording"] .state-recording,
+    .hud-container[data-state="processing"] .state-processing,
+    .hud-container[data-state="preview"] .state-preview,
+    .hud-container[data-state="sent"] .state-sent,
+    .hud-container[data-state="idle"] .state-idle,
+    .hud-container[data-state="chat"] .state-chat {
       display: flex;
+    }
+
+    /* Chat mode: opaque background to prevent black fringe on bubbles */
+    .hud-container[data-state="chat"] {
+      background: #1e293b;
+    }
+
+    .state-recording,
+    .state-processing {
       align-items: center;
+      gap: 18px;
       padding: 0 24px;
       height: 100%;
-      gap: 20px;
     }
 
-    .waveform-canvas {
-      flex-shrink: 0;
-    }
-
-    .recording-info {
+    .recording-info,
+    .processing-info {
       display: flex;
       flex-direction: column;
       gap: 4px;
     }
 
-    .recording-info .title {
-      font-size: 14px;
+    .recording-info .title,
+    .processing-info .title {
+      font-size: 15px;
       font-weight: 700;
       color: var(--text-main);
     }
 
-    .recording-info .hint {
-      font-size: 11px;
+    .recording-info .hint,
+    .processing-info .hint {
+      font-size: 12px;
       color: var(--text-muted);
-    }
-
-    /* ── Processing state ──────────────────────────────────── */
-
-    .state-processing {
-      display: flex;
-      align-items: center;
-      padding: 0 24px;
-      height: 100%;
-      gap: 20px;
     }
 
     .dots-container {
       display: flex;
-      gap: 8px;
       align-items: center;
-      height: 30px;
+      gap: 8px;
+      height: 34px;
     }
 
     .dot {
@@ -93,36 +102,17 @@
       height: 12px;
       border-radius: 50%;
       background: var(--primary);
-      animation: dotBounce 0.8s ease-in-out infinite;
+      animation: dotBounce 0.85s ease-in-out infinite;
     }
 
-    .dot:nth-child(2) { animation-delay: 0.15s; }
-    .dot:nth-child(3) { animation-delay: 0.3s; }
-
-    .processing-info {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .processing-info .title {
-      font-size: 14px;
-      font-weight: 700;
-      color: var(--text-main);
-    }
-
-    .processing-info .hint {
-      font-size: 11px;
-      color: var(--text-muted);
-    }
-
-    /* ── Preview state ─────────────────────────────────────── */
+    .dot:nth-child(2) { animation-delay: 0.14s; }
+    .dot:nth-child(3) { animation-delay: 0.28s; }
 
     .state-preview {
-      display: flex;
       flex-direction: column;
       height: 100%;
       padding: 14px 18px 12px;
+      cursor: default;
     }
 
     .preview-header {
@@ -134,69 +124,67 @@
     }
 
     .preview-header .title {
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 700;
       color: var(--text-main);
     }
 
     .preview-hint {
-      font-size: 11px;
+      font-size: 12px;
       color: var(--primary);
       font-weight: 600;
-      margin-bottom: 10px;
+      margin-bottom: 8px;
       flex-shrink: 0;
     }
 
     .preview-text-area {
       flex: 1;
-      min-height: 0;
+      min-height: 180px;
       background: var(--bg-main);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
-      padding: 10px 12px;
+      padding: 12px;
       font-family: var(--font-family);
-      font-size: 13px;
+      font-size: 14px;
       color: var(--text-main);
-      line-height: 1.6;
+      line-height: 1.65;
       overflow-y: auto;
       outline: none;
       white-space: pre-wrap;
       word-break: break-word;
-      cursor: text;
       user-select: text;
       -webkit-user-select: text;
+      cursor: text;
     }
 
     .preview-text-area:focus {
       border-color: var(--primary);
-      box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+      box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.18);
     }
 
     .preview-text-area:empty::before {
-      content: 'テキストを編集...';
+      content: 'Edit text here...';
       color: var(--text-muted);
     }
 
-    /* ── Sent state ────────────────────────────────────────── */
-
     .state-sent {
-      display: flex;
-      align-items: center;
-      padding: 0 24px;
-      height: 100%;
+      align-items: flex-start;
       gap: 16px;
+      padding: 18px 20px;
+      height: 100%;
     }
 
     .check-circle {
-      width: 32px;
-      height: 32px;
+      width: 34px;
+      height: 34px;
       border-radius: 50%;
       background: var(--success);
       display: flex;
       align-items: center;
       justify-content: center;
       flex-shrink: 0;
-      animation: checkPop 300ms ease-out;
+      animation: checkPop 280ms ease-out;
+      margin-top: 2px;
     }
 
     .check-circle svg {
@@ -212,95 +200,318 @@
     .sent-info {
       display: flex;
       flex-direction: column;
-      gap: 4px;
+      gap: 6px;
       min-width: 0;
+      width: 100%;
+      height: 100%;
     }
 
     .sent-info .title {
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 700;
       color: var(--text-main);
     }
 
     .sent-info .response-preview {
-      font-size: 11px;
-      color: var(--text-muted);
-      overflow: hidden;
-      text-overflow: ellipsis;
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      line-height: 1.4;
+      font-size: 13px;
+      color: var(--text-main);
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      overflow-y: auto;
+      flex: 1;
+      min-height: 0;
+      padding: 8px 10px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: var(--bg-main);
+      user-select: text;
+      -webkit-user-select: text;
     }
 
-    /* ── Idle state ────────────────────────────────────────── */
-
     .state-idle {
-      display: flex;
       flex-direction: column;
       justify-content: center;
-      padding: 0 24px;
       height: 100%;
+      padding: 14px 18px;
+      gap: 4px;
     }
 
     .state-idle .title {
-      font-size: 14px;
+      font-size: 15px;
       font-weight: 700;
       color: var(--text-main);
     }
 
     .state-idle .hint {
-      font-size: 11px;
+      font-size: 12px;
       color: var(--text-muted);
-      margin-top: 4px;
     }
 
     .state-idle .idle-preview {
       margin-top: 10px;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
       background: var(--bg-main);
       border: 1px solid var(--border);
       border-radius: var(--radius-sm);
       padding: 10px 12px;
+      font-size: 13px;
+      color: var(--text-main);
+      line-height: 1.6;
+      white-space: pre-wrap;
+      word-break: break-word;
+      user-select: text;
+      -webkit-user-select: text;
+    }
+
+    /* Floating Chat State */
+
+    .state-chat {
+      flex-direction: column;
+      height: 100%;
+      padding: 10px 14px;
+      cursor: default;
+    }
+
+    .chat-hud-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+      flex-shrink: 0;
+    }
+
+    .chat-hud-header .title {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--text-main);
+    }
+
+    .chat-hud-messages {
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 4px 0;
+    }
+
+    .chat-hud-msg {
+      max-width: 88%;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .chat-hud-msg.user {
+      margin-left: auto;
+      align-items: flex-end;
+    }
+
+    .chat-hud-msg.assistant {
+      margin-right: auto;
+      align-items: flex-start;
+    }
+
+    .chat-hud-msg .bubble {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 7px 10px;
+      font-size: 13px;
+      line-height: 1.55;
+      word-break: break-word;
+    }
+
+    .chat-hud-msg.user .bubble {
+      background: rgba(14, 165, 233, 0.16);
+      border-color: rgba(14, 165, 233, 0.4);
+      color: var(--text-main);
+      white-space: pre-wrap;
+    }
+
+    .chat-hud-msg.assistant .bubble {
+      background: var(--bg-input);
+      color: var(--text-main);
+    }
+
+    .chat-hud-questions {
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 8px;
+      padding: 9px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: rgba(15, 23, 42, 0.55);
+    }
+
+    .chat-hud-questions.visible {
+      display: flex;
+    }
+
+    .chat-hud-questions-context {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+
+    .chat-hud-question-item {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .chat-hud-question-label {
       font-size: 12px;
       color: var(--text-main);
       line-height: 1.5;
-      overflow-y: auto;
-      flex: 1;
-      min-height: 0;
     }
 
-    /* ── Utility: hide all states ──────────────────────────── */
-
-    .state-recording,
-    .state-processing,
-    .state-preview,
-    .state-sent,
-    .state-idle {
-      display: none;
-    }
-
-    .hud-container[data-state="recording"] .state-recording,
-    .hud-container[data-state="processing"] .state-processing,
-    .hud-container[data-state="preview"] .state-preview,
-    .hud-container[data-state="sent"] .state-sent,
-    .hud-container[data-state="idle"] .state-idle {
+    .chat-hud-question-options {
       display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .chat-hud-question-option {
+      border: 1px solid var(--border);
+      background: var(--bg-input);
+      color: var(--text-main);
+      border-radius: var(--radius-full);
+      padding: 4px 8px;
+      font-size: 11px;
+      cursor: pointer;
+      transition: all var(--transition);
+    }
+
+    .chat-hud-question-option:hover {
+      border-color: var(--primary);
+    }
+
+    .chat-hud-question-option.selected {
+      background: rgba(14, 165, 233, 0.2);
+      border-color: var(--primary);
+      color: var(--primary-light);
+    }
+
+    .chat-hud-question-input {
+      width: 100%;
+      font-size: 12px;
+      padding: 6px 10px;
+    }
+
+    .chat-hud-question-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 6px;
+    }
+
+    .chat-hud-input-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 8px;
+      flex-shrink: 0;
+    }
+
+    .chat-hud-input-row input {
+      flex: 1;
+      min-width: 0;
+    }
+
+    /* Chat inline recording / processing */
+
+    .chat-hud-input-recording,
+    .chat-hud-input-processing {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 4px;
+      margin-top: 8px;
+      flex-shrink: 0;
+    }
+
+    .chat-hud-input-recording.active {
+      display: flex;
+    }
+
+    .chat-hud-input-processing.active {
+      display: flex;
+    }
+
+    .chat-recording-label {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-muted);
+    }
+
+    .dots-sm {
+      gap: 5px;
+      height: 24px;
+    }
+
+    .dot-sm {
+      width: 8px;
+      height: 8px;
+    }
+
+    /* Resize grip (bottom-right corner) */
+
+    .resize-grip {
+      position: absolute;
+      bottom: 0;
+      right: 0;
+      width: 16px;
+      height: 16px;
+      cursor: se-resize;
+      z-index: 10;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+
+    .hud-container:hover .resize-grip {
+      opacity: 0.35;
+    }
+
+    .resize-grip::before,
+    .resize-grip::after {
+      content: '';
+      position: absolute;
+      background: var(--text-muted);
+      border-radius: 1px;
+    }
+
+    .resize-grip::before {
+      width: 8px;
+      height: 2px;
+      bottom: 4px;
+      right: 3px;
+      transform: rotate(-45deg);
+    }
+
+    .resize-grip::after {
+      width: 5px;
+      height: 2px;
+      bottom: 3px;
+      right: 2px;
+      transform: rotate(-45deg);
     }
   </style>
 </head>
 <body>
   <div class="hud-container" id="hudContainer">
-
-    <!-- RECORDING -->
+    <div class="resize-grip" id="resizeGrip"></div>
     <div class="state-recording">
-      <canvas class="waveform-canvas" id="waveformCanvas" width="160" height="50"></canvas>
+      <canvas class="waveform-canvas" id="waveformCanvas" width="180" height="56"></canvas>
       <div class="recording-info">
-        <span class="title">聞き取り中...</span>
-        <span class="hint">キーを離すと文字起こし</span>
+        <span class="title">Listening...</span>
+        <span class="hint">Release hotkey to stop recording.</span>
       </div>
     </div>
 
-    <!-- PROCESSING -->
     <div class="state-processing">
       <div class="dots-container">
         <div class="dot"></div>
@@ -308,39 +519,78 @@
         <div class="dot"></div>
       </div>
       <div class="processing-info">
-        <span class="title">変換中...</span>
-        <span class="hint">音声を解析しています</span>
+        <span class="title">Thinking...</span>
+        <span class="hint">Processing audio...</span>
       </div>
     </div>
 
-    <!-- PREVIEW -->
     <div class="state-preview">
       <div class="preview-header">
-        <span class="title">プレビュー準備完了</span>
+        <span class="title">Preview</span>
       </div>
-      <div class="preview-hint" id="previewHint">Enter で送信 / Esc でキャンセル</div>
+      <div class="preview-hint" id="previewHint"></div>
       <div class="preview-text-area" id="previewText" contenteditable="true"></div>
     </div>
 
-    <!-- SENT -->
     <div class="state-sent">
       <div class="check-circle">
-        <svg viewBox="0 0 24 24"><polyline points="6 12 10 16 18 8"></polyline></svg>
+        <svg viewBox="0 0 24 24">
+          <path d="M20 6L9 17l-5-5"></path>
+        </svg>
       </div>
       <div class="sent-info">
-        <span class="title">送信完了</span>
+        <span class="title">Sent</span>
         <span class="response-preview" id="sentResponsePreview"></span>
       </div>
     </div>
 
-    <!-- IDLE -->
     <div class="state-idle">
       <span class="title" id="idleTitle"></span>
       <span class="hint" id="idleHint"></span>
-      <div class="idle-preview" id="idlePreview" style="display:none;"></div>
+      <div class="idle-preview" id="idlePreview"></div>
+    </div>
+
+    <div class="state-chat">
+      <div class="chat-hud-header">
+        <span class="title">Chat</span>
+        <div class="chat-hud-actions">
+          <button class="btn btn-subtle btn-sm" id="hudChatExpand" title="Open main window">Open</button>
+          <button class="btn btn-subtle btn-sm" id="hudChatMinimize" title="Minimize chat">_</button>
+          <button class="btn btn-subtle btn-sm" id="hudChatClose" title="Close chat">X</button>
+        </div>
+      </div>
+      <div class="chat-hud-messages" id="hudChatMessages"></div>
+      <div class="chat-hud-questions" id="hudQuestionsCard">
+        <div class="chat-hud-questions-context" id="hudQuestionsContext"></div>
+        <div id="hudQuestionsList"></div>
+        <div class="chat-hud-question-actions">
+          <button class="btn btn-secondary btn-sm" id="hudQuestionCancelBtn">Cancel</button>
+          <button class="btn btn-primary btn-sm" id="hudQuestionSendBtn">Send</button>
+        </div>
+      </div>
+      <div class="chat-hud-input-recording" id="chatRecordingArea">
+        <canvas id="chatWaveformCanvas" width="120" height="36"></canvas>
+        <span class="chat-recording-label">Listening...</span>
+      </div>
+      <div class="chat-hud-input-processing" id="chatProcessingArea">
+        <div class="dots-container dots-sm">
+          <div class="dot dot-sm"></div>
+          <div class="dot dot-sm"></div>
+          <div class="dot dot-sm"></div>
+        </div>
+        <span class="chat-recording-label">Processing...</span>
+      </div>
+      <div class="chat-hud-input-row" id="chatInputRow">
+        <input type="text" id="hudChatInput" placeholder="Type a message..." />
+        <button class="btn btn-primary btn-sm" id="hudChatSendBtn">Send</button>
+      </div>
     </div>
   </div>
 
+  <script src="lib/marked.min.js"></script>
+  <script src="lib/purify.min.js"></script>
   <script src="hud.js"></script>
 </body>
 </html>
+
+

@@ -6,9 +6,9 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
 :root {
-  --bg-main: #0f172a;
-  --bg-card: #1e293b;
-  --bg-input: #0f172a;
+  --bg-main: rgba(15, 23, 42, 0.88);
+  --bg-card: rgba(30, 41, 59, 0.92);
+  --bg-input: rgba(15, 23, 42, 0.85);
   --border: #334155;
   --border-hover: #475569;
 
@@ -47,7 +47,7 @@
 
 body {
   font-family: var(--font-family);
-  background: var(--bg-main);
+  background: transparent;
   color: var(--text-main);
   font-size: 14px;
   line-height: 1.5;
@@ -296,4 +296,121 @@ select {
   0% { transform: scale(0); }
   50% { transform: scale(1.2); }
   100% { transform: scale(1); }
+}
+
+/* ── Markdown Content Styling ──────────────────────────────── */
+
+.chat-bubble h1,
+.chat-bubble h2,
+.chat-bubble h3,
+.bubble h1,
+.bubble h2,
+.bubble h3 {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-main);
+  margin: 8px 0 4px 0;
+  line-height: 1.4;
+}
+
+.chat-bubble h1:first-child,
+.chat-bubble h2:first-child,
+.chat-bubble h3:first-child,
+.bubble h1:first-child,
+.bubble h2:first-child,
+.bubble h3:first-child {
+  margin-top: 0;
+}
+
+.chat-bubble p,
+.bubble p {
+  margin: 4px 0;
+}
+
+.chat-bubble p:first-child,
+.bubble p:first-child {
+  margin-top: 0;
+}
+
+.chat-bubble p:last-child,
+.bubble p:last-child {
+  margin-bottom: 0;
+}
+
+.chat-bubble ul,
+.chat-bubble ol,
+.bubble ul,
+.bubble ol {
+  padding-left: 20px;
+  margin: 4px 0;
+}
+
+.chat-bubble li,
+.bubble li {
+  margin: 2px 0;
+}
+
+.chat-bubble code,
+.bubble code {
+  background: rgba(148, 163, 184, 0.15);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 12px;
+}
+
+.chat-bubble pre,
+.bubble pre {
+  background: rgba(15, 23, 42, 0.6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin: 6px 0;
+  overflow-x: auto;
+  white-space: pre;
+}
+
+.chat-bubble pre code,
+.bubble pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: 12px;
+}
+
+.chat-bubble a,
+.bubble a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.chat-bubble a:hover,
+.bubble a:hover {
+  text-decoration: underline;
+}
+
+.chat-bubble strong,
+.bubble strong {
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.chat-bubble em,
+.bubble em {
+  font-style: italic;
+}
+
+.chat-bubble blockquote,
+.bubble blockquote {
+  border-left: 3px solid var(--primary);
+  padding-left: 10px;
+  margin: 6px 0;
+  color: var(--text-muted);
+}
+
+.chat-bubble hr,
+.bubble hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 8px 0;
 }
