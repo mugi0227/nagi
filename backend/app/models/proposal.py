@@ -12,7 +12,8 @@ class ProposalType(str, Enum):
     """Type of action being proposed by AI."""
     CREATE_TASK = "create_task"
     CREATE_PROJECT = "create_project"
-    CREATE_SKILL = "create_skill"
+    CREATE_WORK_MEMORY = "create_work_memory"
+    CREATE_SKILL = "create_skill"  # legacy
     ASSIGN_TASK = "assign_task"
     PHASE_BREAKDOWN = "phase_breakdown"
     TOOL_ACTION = "tool_action"

@@ -23,7 +23,7 @@ from app.api.deps import (
 )
 from app.models.memory import MemoryCreate
 from app.models.proposal import ApprovalResult, ProposalStatus, RejectionResult
-from app.tools.memory_tools import CreateSkillInput
+from app.tools.memory_tools import CreateWorkMemoryInput
 from app.tools.phase_tools import apply_phase_plan
 from app.tools.project_tools import CreateProjectInput
 from app.tools.task_tools import AssignTaskInput, CreateTaskInput, assign_task
@@ -134,8 +134,8 @@ async def approve_proposal(
         )
         result.project_id = created_project.get("id")
 
-    elif proposal.proposal_type.value == "create_skill":
-        input_data = CreateSkillInput(**proposal.payload)
+    elif proposal.proposal_type.value in {"create_work_memory", "create_skill"}:
+        input_data = CreateWorkMemoryInput(**proposal.payload)
         created_memory = await memory_repo.create(
             user.id,
             MemoryCreate(

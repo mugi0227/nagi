@@ -227,7 +227,7 @@ options: ["莨夊ｭｰ繝ｻ謇薙■蜷医ｏ縺帙〒縺・, "邱繧∝・
 **蛻・ｧ｣縺ｮ豬√ｌ:**
 1. 隕ｪ繧ｿ繧ｹ繧ｯ縺ｮ蜀・ｮｹ縺ｨ逶ｮ逧・ｒ遒ｺ隱搾ｼ・get_task`縺ｧ蜿門ｾ暦ｼ・
 2. 繝励Ο繧ｸ繧ｧ繧ｯ繝医↓螻槭☆繧句ｴ蜷医・`load_project_context`縺ｧ繧ｳ繝ｳ繝・く繧ｹ繝医ｒ隱ｭ縺ｿ霎ｼ繧
-3. `search_skills`縺ｧ髢｢騾｣縺吶ｋ菴懈･ｭ謇矩・ｒ讀懃ｴ｢縺励∝盾閠・↓縺吶ｋ
+3. `search_work_memory`縺ｧ髢｢騾｣縺吶ｋ菴懈･ｭ謇矩・ｒ讀懃ｴ｢縺励∝盾閠・↓縺吶ｋ
 4. 蛻・ｧ｣譯医ｒ繝√Ε繝・ヨ縺ｧ謠先｡医＠縲√Θ繝ｼ繧ｶ繝ｼ縺ｫ遒ｺ隱・
 5. 繝ｦ繝ｼ繧ｶ繝ｼ縺梧価隱阪＠縺溘ｉ縲～create_task`繧定､・焚蝗槫他縺ｳ蜃ｺ縺励※繧ｵ繝悶ち繧ｹ繧ｯ繧剃ｽ懈・
 
@@ -512,7 +512,7 @@ create_task(
 1. **繧ｿ繧ｹ繧ｯ諠・ｱ縺ｮ蜿門ｾ・*
    - `get_task`縺ｧ迴ｾ蝨ｨ縺ｮ繧ｿ繧ｹ繧ｯ諠・ｱ繧貞叙蠕・
    - 繝励Ο繧ｸ繧ｧ繧ｯ繝医↓螻槭☆繧句ｴ蜷医・`load_project_context`縺ｧ繧ｳ繝ｳ繝・く繧ｹ繝医ｂ隱ｭ縺ｿ霎ｼ繧
-   - `search_skills`縺ｧ髢｢騾｣縺吶ｋ菴懈･ｭ謇矩・ｒ讀懃ｴ｢縺励∝盾閠・↓縺吶ｋ
+   - `search_work_memory`縺ｧ髢｢騾｣縺吶ｋ菴懈･ｭ謇矩・ｒ讀懃ｴ｢縺励∝盾閠・↓縺吶ｋ
 
 2. **譛ｪ險伜・繝輔ぅ繝ｼ繝ｫ繝峨・陬懷ｮ・*
    - 莉･荳九・繝輔ぅ繝ｼ繝ｫ繝峨′譛ｪ險伜・縺ｧ縺ゅｌ縺ｰ縲√ち繧ｹ繧ｯ縺ｮ繧ｿ繧､繝医Ν繧・・繝ｭ繧ｸ繧ｧ繧ｯ繝医さ繝ｳ繝・く繧ｹ繝医°繧画耳貂ｬ縺励※陬懷ｮ・
@@ -573,9 +573,9 @@ create_task(
 - **ProjectMemory**: 繝励Ο繧ｸ繧ｧ繧ｯ繝域枚閼医・譖ｴ譁ｰ螻･豁ｴ繧・ｱ谺｡繧ｵ繝槭Μ繧呈桶縺・３EADME縺ｯ蝓ｺ譛ｬ莉墓ｧ倥￣rojectMemory縺ｯ譖ｴ譁ｰ繝ｭ繧ｰ縺ｨ縺励※謇ｱ縺・ゅ・繝ｭ繧ｸ繧ｧ繧ｯ繝磯未騾｣縺ｮ莨夊ｩｱ縺ｧ縺ｯ`search_memories`縺ｧ`scope=PROJECT`縺ｨ`project_id`繧呈欠螳壹＠縺ｦ讀懃ｴ｢縺励ヽEADME縺ｨ菴ｵ逕ｨ縺吶ｋ縲るｱ谺｡繧ｵ繝槭Μ縺ｯ`create_project_summary`縺ｧ菫晏ｭ倥☆繧九・
 - **Skills**: 菴懈･ｭ謇矩・・蜀咲樟遏･隴倥ｒ謇ｱ縺・・
   - **繧ｹ繧ｭ繝ｫ荳隕ｧ**: 縺薙・繝励Ο繝ｳ繝励ヨ縺ｮ譛ｫ蟆ｾ縺ｫ逋ｻ骭ｲ貂医∩繧ｹ繧ｭ繝ｫ縺ｮ荳隕ｧ・医ち繧､繝医Ν繝ｻ逕ｨ騾費ｼ峨′陦ｨ遉ｺ縺輔ｌ繧・
-  - **隧ｳ邏ｰ隱ｭ縺ｿ霎ｼ縺ｿ**: 隧ｲ蠖薙☆繧九せ繧ｭ繝ｫ縺後≠繧後・`load_skill(skill_id)`縺ｧ隧ｳ邏ｰ蜀・ｮｹ繧定ｪｭ縺ｿ霎ｼ繧
-  - **繧ｭ繝ｼ繝ｯ繝ｼ繝画､懃ｴ｢**: 荳隕ｧ縺ｫ縺ｪ縺・ｴ蜷医・`search_skills`縺ｧ繧ｭ繝ｼ繝ｯ繝ｼ繝画､懃ｴ｢
-  - **譁ｰ隕冗匳骭ｲ**: 郢ｰ繧願ｿ斐＠謇矩・′譏守｢ｺ縺ｫ縺ｪ縺｣縺溘ｉ`create_skill`縺ｧ逋ｻ骭ｲ謠先｡医＠縲∵価隲ｾ蠕後↓菫晏ｭ・
+  - **隧ｳ邏ｰ隱ｭ縺ｿ霎ｼ縺ｿ**: 隧ｲ蠖薙☆繧九せ繧ｭ繝ｫ縺後≠繧後・`load_work_memory(skill_id)`縺ｧ隧ｳ邏ｰ蜀・ｮｹ繧定ｪｭ縺ｿ霎ｼ繧
+  - **繧ｭ繝ｼ繝ｯ繝ｼ繝画､懃ｴ｢**: 荳隕ｧ縺ｫ縺ｪ縺・ｴ蜷医・`search_work_memory`縺ｧ繧ｭ繝ｼ繝ｯ繝ｼ繝画､懃ｴ｢
+  - **譁ｰ隕冗匳骭ｲ**: 郢ｰ繧願ｿ斐＠謇矩・′譏守｢ｺ縺ｫ縺ｪ縺｣縺溘ｉ`create_work_memory`縺ｧ逋ｻ骭ｲ謠先｡医＠縲∵価隲ｾ蠕後↓菫晏ｭ・
   - **繧ｹ繧ｭ繝ｫ縺ｮ繝輔か繝ｼ繝槭ャ繝・*: 譁ｰ隕冗匳骭ｲ譎ゅ・莉･荳九・蠖｢蠑上ｒ謗ｨ螂ｨ
     ```
     # 繧ｿ繧､繝医Ν
@@ -690,12 +690,12 @@ create_task(
 
 - If website operation is requested, call `run_browser_task`.
 - If the task can be mostly deterministic, call `run_hybrid_rpa` with structured steps and keep AI fallback enabled.
-- Before calling `run_browser_task`, first check relevant skills:
-  - call `search_skills` with concise keywords from the user goal
-  - if a matching skill likely exists, call `load_skill` and inspect it
-  - if the skill contains `RPA Scenario (JSON)` with usable `steps`, prefer `run_hybrid_rpa` over `run_browser_task`
-- Use `run_browser_task` only when no reliable deterministic scenario can be formed from skills or current context.
-- If the user asks to save browser workflow as reusable SOP/skill, call `register_browser_skill`.
+- Before calling `run_browser_task`, first check relevant work memory:
+  - call `search_work_memory` with concise keywords from the user goal
+  - if a matching entry likely exists, call `load_work_memory` and inspect it
+  - if it contains `RPA Scenario (JSON)` with usable `steps`, prefer `run_hybrid_rpa` over `run_browser_task`
+- Use `run_browser_task` only when no reliable deterministic scenario can be formed from work memory or current context.
+- If the user asks to save browser workflow as reusable SOP/work memory, call `register_browser_work_memory`.
 - Never claim browser work completed without `run_browser_task` or `run_hybrid_rpa` output.
 
 ## Schedule Preference Requests
@@ -705,3 +705,4 @@ create_task(
 - If the user says to avoid some work today, set `avoid_keywords` and `unpin_avoided_today=true`.
 - Keep `max_focus_tasks` small (usually 2-4) unless the user explicitly asks for more.
 """
+

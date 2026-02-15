@@ -20,17 +20,17 @@ class RunBrowserTaskInput(BaseModel):
     notes: Optional[str] = Field(None, description="Optional notes for execution context")
 
 
-class RegisterBrowserSkillInput(BaseModel):
-    """Input for register_browser_skill tool."""
+class RegisterBrowserWorkMemoryInput(BaseModel):
+    """Input for register_browser_work_memory tool."""
 
-    title: str = Field(..., min_length=1, description="Skill title")
+    title: str = Field(..., min_length=1, description="Work-memory title")
     when_to_use: Optional[str] = Field(
         None,
-        description="Optional 'When to use' description for the skill"
+        description="Optional 'When to use' description for the work memory"
     )
     tags: list[str] = Field(
-        default_factory=lambda: ["browser", "automation", "skill"],
-        description="Optional skill tags"
+        default_factory=lambda: ["browser", "automation", "work_memory"],
+        description="Optional work-memory tags"
     )
     target_goal: Optional[str] = Field(
         None,
@@ -101,14 +101,15 @@ async def run_browser_task(input_data: RunBrowserTaskInput) -> dict:
     }
 
 
-async def register_browser_skill(input_data: RegisterBrowserSkillInput) -> dict:
+async def register_browser_work_memory(input_data: RegisterBrowserWorkMemoryInput) -> dict:
     """
-    Request extension-side skill registration from latest browser run logs.
+    Request extension-side work-memory registration from latest browser run logs.
     """
     return {
-        "status": "browser_skill_registration_requested",
+        "status": "browser_work_memory_registration_requested",
         "requires_extension_execution": True,
         "kind": "register_browser_skill",
+        "action": "register_browser_work_memory",
         "title": input_data.title,
         "when_to_use": input_data.when_to_use,
         "tags": input_data.tags,
@@ -197,25 +198,42 @@ def run_hybrid_rpa_tool() -> FunctionTool:
     return FunctionTool(func=_tool)
 
 
-def register_browser_skill_tool() -> FunctionTool:
-    """Create ADK tool for extension-side browser skill registration."""
+def register_browser_work_memory_tool() -> FunctionTool:
+    """Create ADK tool for extension-side browser work-memory registration."""
 
     async def _tool(input_data: dict) -> dict:
         """
-        register_browser_skill: Create a WORK/RULE skill from browser-agent run logs
+        register_browser_work_memory: Create a WORK/RULE memory from browser-agent run logs
         (including screenshots) via the Chrome extension.
 
         Parameters:
-            title (str): Skill title.
+            title (str): Work-memory title.
             when_to_use (str, optional): Optional usage guidance.
-            tags (list[str], optional): Skill tags.
+            tags (list[str], optional): Work-memory tags.
             target_goal (str, optional): Match a specific browser run by goal text.
             force (bool, optional): Allow in-progress run fallback.
 
         Returns:
             dict: Delegation payload consumed by extension stream handler.
         """
-        return await register_browser_skill(RegisterBrowserSkillInput(**input_data))
+        return await register_browser_work_memory(RegisterBrowserWorkMemoryInput(**input_data))
+
+    _tool.__name__ = "register_browser_work_memory"
+    return FunctionTool(func=_tool)
+
+
+RegisterBrowserSkillInput = RegisterBrowserWorkMemoryInput
+
+
+async def register_browser_skill(input_data: RegisterBrowserSkillInput) -> dict:
+    return await register_browser_work_memory(
+        RegisterBrowserWorkMemoryInput(**input_data.model_dump())
+    )
+
+
+def register_browser_skill_tool() -> FunctionTool:
+    async def _tool(input_data: dict) -> dict:
+        return await register_browser_work_memory(RegisterBrowserWorkMemoryInput(**input_data))
 
     _tool.__name__ = "register_browser_skill"
     return FunctionTool(func=_tool)

@@ -1,7 +1,7 @@
 """Agent tools for Google ADK."""
 
 from app.tools.browser_automation_tools import (
-    register_browser_skill_tool,
+    register_browser_work_memory_tool,
     run_browser_task_tool,
     run_hybrid_rpa_tool,
 )
@@ -22,12 +22,11 @@ from app.tools.meeting_context_tools import (
 )
 from app.tools.memory_tools import (
     add_to_memory_tool,
-    create_skill_tool,
-    list_skills_index_tool,
-    load_skill_tool,
+    create_work_memory_tool,
+    list_work_memory_index_tool,
+    load_work_memory_tool,
     refresh_user_profile_tool,
     search_memories_tool,
-    search_skills_tool,
     search_work_memory_tool,
 )
 from app.tools.phase_tools import (
@@ -103,12 +102,11 @@ __all__ = [
     "get_task_tool",
     "search_work_memory_tool",
     "search_memories_tool",
-    "search_skills_tool",
     "add_to_memory_tool",
+    "create_work_memory_tool",
     "refresh_user_profile_tool",
-    "create_skill_tool",
-    "load_skill_tool",
-    "list_skills_index_tool",
+    "load_work_memory_tool",
+    "list_work_memory_index_tool",
     "apply_schedule_request_tool",
     "get_current_datetime_tool",
     "schedule_agent_task_tool",
@@ -135,7 +133,7 @@ __all__ = [
     "delete_recurring_task_tool",
     "run_browser_task_tool",
     "run_hybrid_rpa_tool",
-    "register_browser_skill_tool",
+    "register_browser_work_memory_tool",
     "create_checkin_tool",
     "list_checkins_tool",
 ]

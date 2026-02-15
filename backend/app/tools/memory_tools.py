@@ -6,6 +6,7 @@ Tools for searching and adding memories (user facts, work procedures, etc.).
 
 from __future__ import annotations
 
+import hashlib
 from typing import Optional
 from uuid import UUID
 
@@ -16,92 +17,61 @@ from app.interfaces.llm_provider import ILLMProvider
 from app.interfaces.memory_repository import IMemoryRepository
 from app.interfaces.proposal_repository import IProposalRepository
 from app.models.enums import MemoryScope, MemoryType
-from app.models.memory import MemoryCreate, MemoryUpdate
+from app.models.memory import MemoryCreate, MemorySearchResult, MemoryUpdate
 from app.models.proposal import Proposal, ProposalType
 from app.services.llm_utils import generate_text
-from app.services.skills_service import get_skill_by_id, get_skills_index
+from app.services.work_memory_service import (
+    get_work_memory_by_id,
+    get_work_memory_index,
+)
 from app.tools.approval_tools import create_tool_action_proposal
-
-# ===========================================
-# Tool Input Models
-# ===========================================
 
 
 class SearchWorkMemoryInput(BaseModel):
-    """Input for search_work_memory tool."""
-
-    query: str = Field(..., description="検索クエリ（手順やルールを探す）")
-    limit: int = Field(3, ge=1, le=10, description="最大結果数")
+    query: str = Field(..., description="Search query")
+    limit: int = Field(3, ge=1, le=10, description="Max results")
 
 
 class SearchMemoriesInput(BaseModel):
-    """Input for search_memories tool."""
-
-    query: str = Field(..., description="検索クエリ")
-    scope: Optional[MemoryScope] = Field(
-        None,
-        description="記憶スコープ（USER/PROJECT/WORK）",
-    )
-    memory_type: Optional[MemoryType] = Field(
-        None,
-        description="記憶タイプ（FACT/PREFERENCE/PATTERN/RULE）",
-    )
-    project_id: Optional[str] = Field(None, description="プロジェクトID（PROJECT scopeの場合）")
-    limit: int = Field(5, ge=1, le=20, description="最大結果数")
+    query: str = Field(..., description="Search query")
+    scope: Optional[MemoryScope] = Field(None, description="Memory scope")
+    memory_type: Optional[MemoryType] = Field(None, description="Memory type")
+    project_id: Optional[str] = Field(None, description="Project ID for PROJECT scope")
+    limit: int = Field(5, ge=1, le=20, description="Max results")
 
 
 class AddToMemoryInput(BaseModel):
-    """Input for add_to_memory tool."""
-
-    content: str = Field(..., description="記憶する内容（ユーザーの名前、好み、事実など）")
-    scope: MemoryScope = Field(
-        MemoryScope.USER,
-        description="記憶スコープ: USER(ユーザー個人), PROJECT(プロジェクト), WORK(仕事手順)"
-    )
-    memory_type: MemoryType = Field(
-        MemoryType.FACT,
-        description="記憶タイプ: FACT(事実), PREFERENCE(好み), PATTERN(傾向), RULE(ルール)"
-    )
-    project_id: Optional[str] = Field(None, description="プロジェクトID（PROJECT scopeの場合）")
-    tags: list[str] = Field(default_factory=list, description="検索用タグ")
+    content: str = Field(..., description="Memory content")
+    scope: MemoryScope = Field(MemoryScope.USER, description="Memory scope")
+    memory_type: MemoryType = Field(MemoryType.FACT, description="Memory type")
+    project_id: Optional[str] = Field(None, description="Project ID for PROJECT scope")
+    tags: list[str] = Field(default_factory=list, description="Tags")
 
 
-class CreateSkillInput(BaseModel):
-    """Input for propose_skill tool."""
-
-    content: str = Field(..., description="スキル内容（Markdown）")
-    scope: MemoryScope = Field(
-        MemoryScope.WORK,
-        description="記憶スコープ (WORK固定)",
-    )
-    memory_type: MemoryType = Field(
-        MemoryType.RULE,
-        description="記憶タイプ (RULE固定)",
-    )
-    tags: list[str] = Field(default_factory=list, description="検索用タグ")
+class CreateWorkMemoryInput(BaseModel):
+    content: str = Field(..., description="Work-memory content in Markdown")
+    scope: MemoryScope = Field(MemoryScope.WORK, description="Memory scope")
+    memory_type: MemoryType = Field(MemoryType.RULE, description="Memory type")
+    tags: list[str] = Field(default_factory=list, description="Tags")
 
 
 class RefreshUserProfileInput(BaseModel):
-    """Input for refresh_user_profile tool."""
-
-    limit: int = Field(50, ge=1, le=200, description="参照するメモリ数")
+    limit: int = Field(50, ge=1, le=200, description="How many memories to summarize")
 
 
-class LoadSkillInput(BaseModel):
-    """Input for load_skill tool."""
-
-    skill_id: str = Field(..., description="スキルID（UUID形式）")
+class LoadWorkMemoryInput(BaseModel):
+    work_memory_id: str = Field(..., description="Work-memory ID (UUID)")
 
 
-class ListSkillsIndexInput(BaseModel):
-    """Input for list_skills_index tool."""
-
+class ListWorkMemoryIndexInput(BaseModel):
     pass
 
 
-# ===========================================
-# Tool Functions
-# ===========================================
+def _resolve_proposal_user_id(user_id: str) -> tuple[UUID, Optional[str]]:
+    try:
+        return UUID(user_id), None
+    except (ValueError, TypeError, AttributeError):
+        return UUID(bytes=hashlib.md5(user_id.encode()).digest()), user_id
 
 
 async def search_work_memory(
@@ -109,23 +79,12 @@ async def search_work_memory(
     repo: IMemoryRepository,
     input_data: SearchWorkMemoryInput,
 ) -> dict:
-    """
-    Search work memories (procedures, rules).
-
-    Args:
-        user_id: User ID
-        repo: Memory repository
-        input_data: Search parameters
-
-    Returns:
-        List of work memories with relevance scores
-    """
-    results = await repo.search_work_memory(
+    raw_results = await repo.search_work_memory(
         user_id,
         query=input_data.query,
         limit=input_data.limit,
     )
-
+    results: list[MemorySearchResult] = list(raw_results or [])
     return {
         "memories": [
             {
@@ -143,32 +102,21 @@ async def search_memories(
     repo: IMemoryRepository,
     input_data: SearchMemoriesInput,
 ) -> dict:
-    """
-    Search memories by content.
-
-    Args:
-        user_id: User ID
-        repo: Memory repository
-        input_data: Search parameters
-
-    Returns:
-        List of memories with relevance scores
-    """
     project_id = UUID(input_data.project_id) if input_data.project_id else None
-    results = await repo.search(
+    raw_results = await repo.search(
         user_id,
         query=input_data.query,
         scope=input_data.scope,
         project_id=project_id,
         limit=input_data.limit,
     )
-
+    results: list[MemorySearchResult] = list(raw_results or [])
     if input_data.memory_type:
         results = [
-            result for result in results
+            result
+            for result in results
             if result.memory.memory_type == input_data.memory_type
         ]
-
     return {
         "memories": [
             {
@@ -186,57 +134,31 @@ async def add_to_memory(
     repo: IMemoryRepository,
     input_data: AddToMemoryInput,
 ) -> dict:
-    """
-    Add a new memory (user fact, preference, work procedure, etc.).
-
-    Args:
-        user_id: User ID
-        repo: Memory repository
-        input_data: Memory data
-
-    Returns:
-        Created memory as dict
-    """
     project_id = UUID(input_data.project_id) if input_data.project_id else None
-
-    memory_data = MemoryCreate(
-        content=input_data.content,
-        scope=input_data.scope,
-        memory_type=input_data.memory_type,
-        project_id=project_id,
-        tags=input_data.tags,
-        source="agent",
+    memory = await repo.create(
+        user_id,
+        MemoryCreate(
+            content=input_data.content,
+            scope=input_data.scope,
+            memory_type=input_data.memory_type,
+            project_id=project_id,
+            tags=input_data.tags,
+            source="agent",
+        ),
     )
-
-    memory = await repo.create(user_id, memory_data)
-    return memory.model_dump(mode="json")  # Serialize UUIDs to strings
+    return memory.model_dump(mode="json")
 
 
-async def propose_skill(
+async def propose_work_memory(
     user_id: str,
     session_id: str,
     proposal_repo: IProposalRepository,
     memory_repo: IMemoryRepository,
-    input_data: CreateSkillInput,
+    input_data: CreateWorkMemoryInput,
     description: str = "",
     auto_approve: bool = False,
 ) -> dict:
-    """
-    Propose a skill for user approval, or auto-approve if configured.
-
-    Args:
-        user_id: User ID
-        session_id: Chat session ID
-        proposal_repo: Proposal repository
-        memory_repo: Memory repository (for auto-approval)
-        input_data: Skill data
-        description: AI-generated description
-        auto_approve: If True, create immediately
-    """
-    from uuid import UUID
-
-    if not description:
-        description = "作業手順のスキルを登録します。"
+    proposal_description = description or "Create this work memory."
 
     if auto_approve:
         memory = await memory_repo.create(
@@ -245,6 +167,7 @@ async def propose_skill(
                 content=input_data.content,
                 scope=input_data.scope,
                 memory_type=input_data.memory_type,
+                project_id=None,
                 tags=input_data.tags,
                 source="agent",
             ),
@@ -252,84 +175,52 @@ async def propose_skill(
         return {
             "auto_approved": True,
             "memory_id": str(memory.id),
-            "description": description,
+            "description": proposal_description,
         }
 
-    user_id_raw = None
-    try:
-        parsed_user_id = UUID(user_id)
-    except (ValueError, AttributeError):
-        import hashlib
-
-        user_id_raw = user_id
-        parsed_user_id = UUID(bytes=hashlib.md5(user_id.encode()).digest())
-
+    proposal_user_id, user_id_raw = _resolve_proposal_user_id(user_id)
     proposal = Proposal(
-        user_id=parsed_user_id,
+        user_id=proposal_user_id,
         user_id_raw=user_id_raw,
         session_id=session_id,
-        proposal_type=ProposalType.CREATE_SKILL,
+        proposal_type=ProposalType.CREATE_WORK_MEMORY,
         payload={
             "content": input_data.content,
             "tags": input_data.tags,
             "scope": input_data.scope.value,
             "memory_type": input_data.memory_type.value,
         },
-        description=description,
+        description=proposal_description,
     )
-
     created_proposal = await proposal_repo.create(proposal)
-
-    # Return pending_approval status to signal AI to wait for user approval
     return {
         "status": "pending_approval",
         "proposal_id": str(created_proposal.id),
-        "proposal_type": ProposalType.CREATE_SKILL.value,
-        "description": description,
-        "message": "ユーザーの承諾待ちです。承諾されるまで「完了しました」とは言わないでください。",
+        "proposal_type": ProposalType.CREATE_WORK_MEMORY.value,
+        "description": proposal_description,
+        "message": "Waiting for user approval.",
     }
 
 
-async def load_skill(
+async def load_work_memory(
     user_id: str,
     repo: IMemoryRepository,
-    input_data: LoadSkillInput,
+    work_memory_id: str,
 ) -> dict:
-    """
-    Load full skill content by ID.
-
-    Args:
-        user_id: User ID
-        repo: Memory repository
-        input_data: Skill ID
-
-    Returns:
-        Full skill content (title, when_to_use, content, tags)
-    """
-    skill = await get_skill_by_id(user_id, repo, input_data.skill_id)
-    if not skill:
-        return {"error": f"Skill not found: {input_data.skill_id}"}
-    return skill.model_dump()
+    work_memory = await get_work_memory_by_id(user_id, repo, work_memory_id)
+    if not work_memory:
+        return {"error": f"Work memory not found: {work_memory_id}"}
+    return work_memory.model_dump()
 
 
-async def list_skills_index(
+async def list_work_memory_index(
     user_id: str,
     repo: IMemoryRepository,
 ) -> dict:
-    """
-    List all skills with compact index (title + when_to_use).
-
-    Args:
-        user_id: User ID
-        repo: Memory repository
-
-    Returns:
-        List of skills with id, title, when_to_use, tags
-    """
-    skills = await get_skills_index(user_id, repo)
+    work_memories = await get_work_memory_index(user_id, repo)
     return {
-        "skills": [skill.model_dump() for skill in skills],
-        "count": len(skills),
+        "work_memories": [memory.model_dump() for memory in work_memories],
+        "count": len(work_memories),
     }
 
 
@@ -339,18 +230,6 @@ async def refresh_user_profile(
     llm_provider: ILLMProvider,
     input_data: RefreshUserProfileInput,
 ) -> dict:
-    """
-    Refresh user profile summary from user memories.
-
-    Args:
-        user_id: User ID
-        repo: Memory repository
-        llm_provider: LLM provider
-        input_data: Parameters
-
-    Returns:
-        Updated profile memory (or created one)
-    """
     memories = await repo.list(
         user_id,
         scope=MemoryScope.USER,
@@ -378,7 +257,6 @@ async def refresh_user_profile(
         temperature=0.2,
         max_output_tokens=400,
     )
-
     if not summary_text:
         summary_text = "\n".join([f"- {memory.content}" for memory in base_memories[:10]])
 
@@ -397,33 +275,20 @@ async def refresh_user_profile(
 
     created = await repo.create(
         user_id,
-        MemoryCreate(
-            content=summary_text,
-            scope=MemoryScope.USER,
-            memory_type=MemoryType.PATTERN,
-            tags=tags,
-            source="agent",
-        ),
+            MemoryCreate(
+                content=summary_text,
+                scope=MemoryScope.USER,
+                memory_type=MemoryType.PATTERN,
+                project_id=None,
+                tags=tags,
+                source="agent",
+            ),
     )
     return {"updated": True, "memory": created.model_dump(mode="json")}
 
-# ===========================================
-# ADK Tool Definitions
-# ===========================================
-
 
 def search_work_memory_tool(repo: IMemoryRepository, user_id: str) -> FunctionTool:
-    """Create ADK tool for searching work memories."""
     async def _tool(input_data: dict) -> dict:
-        """search_work_memory: 仕事の手順やルール（WorkMemory）を検索します。
-
-        Parameters:
-            query (str): 検索クエリ（手順やルールを探す文字列、必須）
-            limit (int, optional): 最大結果数（1〜10、デフォルト: 3）
-
-        Returns:
-            dict: 検索結果 (memories: リスト, count: 件数)
-        """
         return await search_work_memory(user_id, repo, SearchWorkMemoryInput(**input_data))
 
     _tool.__name__ = "search_work_memory"
@@ -431,41 +296,10 @@ def search_work_memory_tool(repo: IMemoryRepository, user_id: str) -> FunctionTo
 
 
 def search_memories_tool(repo: IMemoryRepository, user_id: str) -> FunctionTool:
-    """Create ADK tool for searching memories."""
     async def _tool(input_data: dict) -> dict:
-        """search_memories: 記憶（User/Project/Work）を検索します。
-
-        Parameters:
-            query (str): 検索クエリ（必須）
-            scope (str, optional): 記憶スコープ（USER/PROJECT/WORK）
-            memory_type (str, optional): 記憶タイプ（FACT/PREFERENCE/PATTERN/RULE）
-            project_id (str, optional): プロジェクトID（PROJECT scopeの場合に指定）
-            limit (int, optional): 最大結果数（デフォルト: 5）
-
-        Returns:
-            dict: 検索結果 (memories: リスト, count: 件数)
-        """
         return await search_memories(user_id, repo, SearchMemoriesInput(**input_data))
 
     _tool.__name__ = "search_memories"
-    return FunctionTool(func=_tool)
-
-
-def search_skills_tool(repo: IMemoryRepository, user_id: str) -> FunctionTool:
-    """Create ADK tool for searching Skills (WorkMemory)."""
-    async def _tool(input_data: dict) -> dict:
-        """search_skills: 作業スキル（手順・ルール）を検索します。
-
-        Parameters:
-            query (str): 検索クエリ（必須）
-            limit (int, optional): 最大結果数（デフォルト: 3）
-
-        Returns:
-            dict: 検索結果 (memories: リスト, count: 件数)
-        """
-        return await search_work_memory(user_id, repo, SearchWorkMemoryInput(**input_data))
-
-    _tool.__name__ = "search_skills"
     return FunctionTool(func=_tool)
 
 
@@ -476,20 +310,7 @@ def add_to_memory_tool(
     session_id: Optional[str] = None,
     auto_approve: bool = True,
 ) -> FunctionTool:
-    """Create ADK tool for adding memories."""
     async def _tool(input_data: dict) -> dict:
-        """add_to_memory: 記憶（User/Project/Work）を追加します。
-
-        Parameters:
-            content (str): 記憶する内容（ユーザーの名前、好み、事実など、必須）
-            scope (str, optional): 記憶スコープ (USER/PROJECT/WORK)、デフォルト: USER
-            memory_type (str, optional): 記憶タイプ (FACT/PREFERENCE/PATTERN/RULE)、デフォルト: FACT
-            project_id (str, optional): プロジェクトID（PROJECT scopeの場合に指定）
-            tags (list[str], optional): 検索用タグのリスト
-
-        Returns:
-            dict: 作成された記憶情報
-        """
         payload = dict(input_data)
         proposal_desc = payload.pop("proposal_description", "")
         if proposal_repo and session_id and not auto_approve:
@@ -507,118 +328,84 @@ def add_to_memory_tool(
     return FunctionTool(func=_tool)
 
 
-def propose_skill_tool(
+def propose_work_memory_tool(
     proposal_repo: IProposalRepository,
     memory_repo: IMemoryRepository,
     user_id: str,
     session_id: str,
     auto_approve: bool = False,
 ) -> FunctionTool:
-    """Create ADK tool for proposing/creating skills."""
     async def _tool(input_data: dict) -> dict:
-        """propose_skill: スキル（作業手順）を提案して登録します。
-
-        Parameters:
-            content (str): スキル内容（Markdown、必須）
-            tags (list[str], optional): 検索用タグ
-            proposal_description (str, optional): 提案理由
-
-        Returns:
-            dict: メモリIDまたは提案ID
-        """
-        proposal_desc = input_data.pop("proposal_description", "")
-        return await propose_skill(
-            user_id,
-            session_id,
-            proposal_repo,
-            memory_repo,
-            CreateSkillInput(**input_data),
-            proposal_desc,
-            auto_approve,
+        payload = dict(input_data)
+        proposal_desc = payload.pop("proposal_description", "")
+        return await propose_work_memory(
+            user_id=user_id,
+            session_id=session_id,
+            proposal_repo=proposal_repo,
+            memory_repo=memory_repo,
+            input_data=CreateWorkMemoryInput(**payload),
+            description=proposal_desc,
+            auto_approve=auto_approve,
         )
 
-    _tool.__name__ = "propose_skill"
+    _tool.__name__ = "propose_work_memory"
     return FunctionTool(func=_tool)
 
 
-def create_skill_tool(
+def create_work_memory_tool(
     memory_repo: IMemoryRepository,
     user_id: str,
     proposal_repo: Optional[IProposalRepository] = None,
     session_id: Optional[str] = None,
     auto_approve: bool = True,
 ) -> FunctionTool:
-    """Create ADK tool for creating skills."""
     async def _tool(input_data: dict) -> dict:
-        """create_skill: スキルを登録します、E
-        Parameters:
-            content (str): スキル内容 (Markdown)
-            tags (list[str], optional): 検索用タグ
-            proposal_description (str, optional): 承諾用の説明
-        Returns:
-            dict: 作成されたメモリ情報 or proposal payload
-        """
         payload = dict(input_data)
         proposal_desc = payload.pop("proposal_description", "")
         if proposal_repo and session_id and not auto_approve:
-            return await propose_skill(
-                user_id,
-                session_id,
-                proposal_repo,
-                memory_repo,
-                CreateSkillInput(**payload),
-                proposal_desc,
-                False,
+            return await propose_work_memory(
+                user_id=user_id,
+                session_id=session_id,
+                proposal_repo=proposal_repo,
+                memory_repo=memory_repo,
+                input_data=CreateWorkMemoryInput(**payload),
+                description=proposal_desc,
+                auto_approve=False,
             )
 
-        skill = CreateSkillInput(**payload)
+        work_memory = CreateWorkMemoryInput(**payload)
         memory = await memory_repo.create(
             user_id,
             MemoryCreate(
-                content=skill.content,
-                scope=skill.scope,
-                memory_type=skill.memory_type,
-                tags=skill.tags,
+                content=work_memory.content,
+                scope=work_memory.scope,
+                memory_type=work_memory.memory_type,
+                project_id=None,
+                tags=work_memory.tags,
                 source="agent",
             ),
         )
         return memory.model_dump(mode="json")
 
-    _tool.__name__ = "create_skill"
+    _tool.__name__ = "create_work_memory"
     return FunctionTool(func=_tool)
 
 
-def load_skill_tool(repo: IMemoryRepository, user_id: str) -> FunctionTool:
-    """Create ADK tool for loading full skill content."""
+def load_work_memory_tool(repo: IMemoryRepository, user_id: str) -> FunctionTool:
     async def _tool(input_data: dict) -> dict:
-        """load_skill: スキルの詳細内容を読み込みます。
+        parsed = LoadWorkMemoryInput(**input_data)
+        return await load_work_memory(user_id, repo, parsed.work_memory_id)
 
-        Parameters:
-            skill_id (str): スキルID（UUID形式、必須）
-
-        Returns:
-            dict: スキル詳細 (title, when_to_use, content, tags)
-        """
-        return await load_skill(user_id, repo, LoadSkillInput(**input_data))
-
-    _tool.__name__ = "load_skill"
+    _tool.__name__ = "load_work_memory"
     return FunctionTool(func=_tool)
 
 
-def list_skills_index_tool(repo: IMemoryRepository, user_id: str) -> FunctionTool:
-    """Create ADK tool for listing skills index."""
+def list_work_memory_index_tool(repo: IMemoryRepository, user_id: str) -> FunctionTool:
     async def _tool(input_data: dict) -> dict:
-        """list_skills_index: 登録されているスキル一覧（タイトルと用途）を取得します。
+        _ = ListWorkMemoryIndexInput(**input_data)
+        return await list_work_memory_index(user_id, repo)
 
-        Parameters:
-            (none)
-
-        Returns:
-            dict: スキル一覧 (skills: list, count: int)
-        """
-        return await list_skills_index(user_id, repo)
-
-    _tool.__name__ = "list_skills_index"
+    _tool.__name__ = "list_work_memory_index"
     return FunctionTool(func=_tool)
 
 
@@ -630,17 +417,7 @@ def refresh_user_profile_tool(
     session_id: Optional[str] = None,
     auto_approve: bool = True,
 ) -> FunctionTool:
-    """Create ADK tool for refreshing user profile summary."""
-
     async def _tool(input_data: dict) -> dict:
-        """refresh_user_profile: UserMemoryからプロフィールサマリを更新します。
-
-        Parameters:
-            limit (int, optional): 参照するメモリ数（デフォルト: 50）
-
-        Returns:
-            dict: 更新結果とプロフィールメモリ
-        """
         payload = dict(input_data)
         proposal_desc = payload.pop("proposal_description", "")
         if proposal_repo and session_id and not auto_approve:
@@ -661,4 +438,3 @@ def refresh_user_profile_tool(
 
     _tool.__name__ = "refresh_user_profile"
     return FunctionTool(func=_tool)
-
