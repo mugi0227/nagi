@@ -5,10 +5,10 @@ Unit tests for browser automation delegation tools.
 import pytest
 
 from app.tools.browser_automation_tools import (
-    RegisterBrowserSkillInput,
+    RegisterBrowserWorkMemoryInput,
     RunBrowserTaskInput,
     RunHybridRpaInput,
-    register_browser_skill,
+    register_browser_work_memory,
     run_browser_task,
     run_hybrid_rpa,
 )
@@ -32,9 +32,9 @@ async def test_run_browser_task_payload():
 
 
 @pytest.mark.asyncio
-async def test_register_browser_skill_payload():
-    payload = await register_browser_skill(
-        RegisterBrowserSkillInput(
+async def test_register_browser_work_memory_payload():
+    payload = await register_browser_work_memory(
+        RegisterBrowserWorkMemoryInput(
             title="Invoice workflow",
             when_to_use="When processing monthly invoice submissions",
             tags=["browser", "invoice"],
@@ -43,8 +43,9 @@ async def test_register_browser_skill_payload():
         )
     )
 
-    assert payload["status"] == "browser_skill_registration_requested"
+    assert payload["status"] == "browser_work_memory_registration_requested"
     assert payload["requires_extension_execution"] is True
+    assert payload["action"] == "register_browser_work_memory"
     assert payload["kind"] == "register_browser_skill"
     assert payload["payload"]["title"] == "Invoice workflow"
     assert payload["payload"]["force"] is True

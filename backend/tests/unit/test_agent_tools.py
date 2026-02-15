@@ -11,7 +11,8 @@ from uuid import uuid4
 import pytest
 
 from app.core.exceptions import NotFoundError
-from app.models.enums import EnergyLevel, Priority, TaskStatus
+from app.models.enums import EnergyLevel, Priority, ProjectStatus, TaskStatus
+from app.models.project import Project
 from app.models.task import Task, TaskCreate
 from app.tools.task_tools import (
     CreateMeetingInput,
@@ -50,6 +51,7 @@ class MockTaskRepository:
             estimated_minutes=task.estimated_minutes,
             due_date=task.due_date,
             parent_id=task.parent_id,
+            order_in_parent=task.order_in_parent,
             dependency_ids=task.dependency_ids,
             source_capture_id=task.source_capture_id,
             created_by=task.created_by,
@@ -61,16 +63,26 @@ class MockTaskRepository:
             location=task.location,
             attendees=task.attendees,
             meeting_notes=task.meeting_notes,
+            guide=task.guide,
         )
         self.tasks[task_id] = task_obj
         return task_obj
 
-    async def get(self, user_id: str, task_id) -> Task | None:
+    async def get(self, user_id: str, task_id, project_id=None) -> Task | None:
         """Get a task."""
         task = self.tasks.get(task_id)
         if task and task.user_id == user_id:
+            if project_id is not None and task.project_id != project_id:
+                return None
             return task
         return None
+
+    async def get_subtasks(self, user_id: str, parent_id, project_id=None):
+        """Get subtasks."""
+        tasks = [t for t in self.tasks.values() if t.user_id == user_id and t.parent_id == parent_id]
+        if project_id is not None:
+            tasks = [t for t in tasks if t.project_id == project_id]
+        return sorted(tasks, key=lambda t: t.order_in_parent or 99999)
 
     async def update(self, user_id: str, task_id, update, project_id=None) -> Task:
         """Update a task."""
@@ -138,6 +150,29 @@ class MockTaskRepository:
         return similar[:limit]
 
 
+class MockProjectRepository:
+    """Minimal project repository for permission checks in tool tests."""
+
+    def __init__(self, projects: list[Project]):
+        self._projects = {project.id: project for project in projects}
+
+    async def get(self, user_id: str, project_id):
+        del user_id
+        return self._projects.get(project_id)
+
+    async def list(self, user_id: str, limit: int = 1000):
+        del user_id, limit
+        return list(self._projects.values())
+
+
+class MockProjectMemberRepository:
+    """Minimal project member repository for permission checks in tool tests."""
+
+    async def get_by_project_and_member_user_id(self, project_id, member_user_id):
+        del project_id, member_user_id
+        return None
+
+
 @pytest.mark.asyncio
 async def test_create_task_tool():
     """Test create_task tool function."""
@@ -157,6 +192,102 @@ async def test_create_task_tool():
     assert result["title"] == "テストタスク"
     assert result["description"] == "テスト説明"
     assert result["importance"] == Priority.HIGH
+    assert len(repo.tasks) == 1
+
+
+@pytest.mark.asyncio
+async def test_create_subtask_inherits_parent_project_id_when_omitted():
+    """Subtasks should inherit parent project_id when project_id is omitted."""
+    repo = MockTaskRepository()
+    user_id = "test_user"
+    project_id = uuid4()
+    now = datetime.utcnow()
+    project = Project(
+        id=project_id,
+        user_id=user_id,
+        name="Test Project",
+        status=ProjectStatus.ACTIVE,
+        created_at=now,
+        updated_at=now,
+    )
+    project_repo = MockProjectRepository([project])
+    member_repo = MockProjectMemberRepository()
+
+    parent = await repo.create(
+        user_id,
+        TaskCreate(
+            title="親タスク",
+            project_id=project_id,
+        ),
+    )
+
+    result = await create_task(
+        user_id,
+        repo,
+        CreateTaskInput(title="子タスク", parent_id=str(parent.id)),
+        None,
+        project_repo,
+        member_repo,
+    )
+
+    assert result["project_id"] == str(project_id)
+    created = repo.tasks[next(task_id for task_id in repo.tasks if str(task_id) == result["id"])]
+    assert created.project_id == project_id
+    assert created.parent_id == parent.id
+
+
+@pytest.mark.asyncio
+async def test_create_subtask_returns_error_when_parent_project_mismatches():
+    """Subtask creation should fail when parent_id and project_id scopes mismatch."""
+    repo = MockTaskRepository()
+    user_id = "test_user"
+    now = datetime.utcnow()
+    parent_project_id = uuid4()
+    other_project_id = uuid4()
+    project_repo = MockProjectRepository(
+        [
+            Project(
+                id=parent_project_id,
+                user_id=user_id,
+                name="Parent Project",
+                status=ProjectStatus.ACTIVE,
+                created_at=now,
+                updated_at=now,
+            ),
+            Project(
+                id=other_project_id,
+                user_id=user_id,
+                name="Other Project",
+                status=ProjectStatus.ACTIVE,
+                created_at=now,
+                updated_at=now,
+            ),
+        ]
+    )
+    member_repo = MockProjectMemberRepository()
+
+    parent = await repo.create(
+        user_id,
+        TaskCreate(
+            title="親タスク",
+            project_id=parent_project_id,
+        ),
+    )
+
+    result = await create_task(
+        user_id,
+        repo,
+        CreateTaskInput(
+            title="子タスク",
+            parent_id=str(parent.id),
+            project_id=str(other_project_id),
+        ),
+        None,
+        project_repo,
+        member_repo,
+    )
+
+    assert result.get("error") == "parent_id and project_id mismatch"
     assert len(repo.tasks) == 1
 
 
